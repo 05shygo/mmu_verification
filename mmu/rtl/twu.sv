@@ -1,0 +1,1326 @@
+module twu(
+//!******************************************
+//! Clock and Reset
+//!******************************************
+input logic 		forever_cpuclk,
+input logic 		cpurst_b,
+input logic [3:0]	twu_idx,
+input logic 		refill_arb_twu_grant,
+
+//!******************************************
+//! System Regs
+//!******************************************
+input  logic         cp0_mmu_icg_en,       
+input  logic         cp0_mmu_maee,         
+input  logic [1:0]  cp0_mmu_mpp,          
+input  logic         cp0_mmu_mprv,         
+input  logic         cp0_mmu_mxr,          
+input  logic         cp0_mmu_sum,          
+input  logic [1:0]  cp0_yy_priv_mode,     
+input  logic         pad_yy_icg_scan_en,
+
+input  logic [15:0]  regs_ptw_cur_asid,
+input  logic [27:0]  regs_ptw_satp_ppn,
+
+//!******************************************
+//! xbar Request
+//!******************************************
+input logic 		xbar_twu_req,
+input logic  [1:0]	xbar_twu_hit_level,
+input logic  [27:0]	xbar_twu_ppn,
+input logic  [26:0]	xbar_twu_vpn,
+input logic  [2:0]	xbar_twu_type,
+input logic  [5:0]	xbar_twu_id,
+
+//!******************************************
+//! mbuf Request
+//!******************************************
+//input logic 		mbuf_twu_bus_error,
+input logic  [26:0]	mbuf_twu_vpn,
+input logic  [2:0]	mbuf_twu_type,
+input logic  [5:0]	mbuf_twu_id,
+input logic  [63:0]	mbuf_twu_data,
+input logic 		mbuf_twu_data_vld,
+input logic 		mbuf_grant,
+input logic  [2:0]	mbuf_twu_lvl,
+
+//!******************************************
+//! sysmap and pmp
+//!******************************************
+input logic  [4:0]	sysmap_mmu_flg,
+input logic  [7:0]	sysmap_mmu_hit,
+input logic  [3:0]	pmp_mmu_flg,
+
+//!******************************************
+//! TWU to MBUF
+//!******************************************
+output logic		twu_mbuf_req,
+output logic [39:0]	twu_mbuf_paddr,
+output logic [26:0]	twu_mbuf_vpn,
+output logic [2:0]	twu_mbuf_type,
+output logic [5:0]	twu_mbuf_id,
+output logic [2:0]	twu_mbuf_lvl,
+output logic [3:0]	twu_mbuf_twu_idx,
+//output logic		twu_mbuf_mask,
+
+//!******************************************
+//! TWU to sysmap and pmp
+//!******************************************
+output logic [27:0]	mmu_pmp_pa,
+output logic 		mmu_pmp_fecth,
+output logic [27:0]	mmu_sysmap_pa,
+
+//!******************************************
+//! TWU to arbiter
+//!******************************************
+output logic 		twu_arb_ref_req,
+output logic [41:0]	twu_arb_ref_data_din,
+output logic [47:0]	twu_arb_ref_tag_din,
+output logic [2:0]	twu_arb_ref_pgs,
+output logic [2:0]	twu_arb_ref_type,
+output logic [5:0]	twu_arb_ref_id,
+
+//!******************************************
+//! TWU to L2TLB
+//!******************************************
+output logic 		twu_l2tlb_ref_pgflt,
+output logic [5:0]	twu_l2tlb_ref_pgflt_id,
+output logic [2:0]	twu_l2tlb_ref_pgflt_type,
+output logic 		twu_l2tlb_ref_acc_err,
+output logic [2:0]	twu_l2tlb_ref_acc_err_type,
+output logic [5:0]	twu_l2tlb_ref_acc_err_id,
+//!******************************************
+//! TWU to xbar
+//!******************************************
+output logic 		twu_mask,
+output logic 		twu_idle,
+output logic [2:0]  twu_data_ready,
+input  logic 		mbuf_twu_have,
+
+input  logic		acc_err_twu_grant,
+input  logic		pgflt_twu_grant,
+input logic 		tlboper_ptw_abort	
+);
+
+logic	[1:0]			cp0_priv_mode   ;
+logic				fst_chk_cp0_user_mode;
+logic				fst_chk_cp0_supv_mode;
+logic				fst_pmp_cp0_mach_mode;
+logic				scd_chk_cp0_user_mode;
+logic				scd_chk_cp0_supv_mode;
+logic				scd_pmp_cp0_mach_mode;
+logic				thd_chk_cp0_user_mode;
+logic				thd_chk_cp0_supv_mode;
+logic				thd_pmp_cp0_mach_mode;
+logic				twu_busy             ;
+logic				fst_pmp_vld          ;
+logic				fst_chk_vld          ;
+logic				scd_pmp_vld          ;
+logic				scd_chk_vld          ;
+logic				thd_pmp_vld          ;
+logic				thd_chk_vld          ;
+logic				fst_pmp_wait         ;
+logic				fst_chk_wait         ;
+logic				scd_pmp_wait         ;
+logic				scd_chk_wait         ;
+logic				thd_pmp_wait         ;
+logic				thd_chk_wait         ;
+logic	[26:0]		fst_pmp_vpn          ;
+logic	[2:0]		fst_pmp_type         ;
+logic	[5:0]		fst_pmp_id           ;
+logic	[26:0]		scd_pmp_vpn			 ;
+logic	[2:0]		scd_pmp_type		;	
+logic	[5:0]		scd_pmp_id			 ;
+logic	[26:0]		thd_pmp_vpn			 ;
+logic	[2:0]		thd_pmp_type		;	
+logic	[5:0]		thd_pmp_id			 ;
+logic	[26:0]		fst_chk_vpn          ;
+logic	[2:0]		fst_chk_type         ;
+logic	[5:0]		fst_chk_id           ;
+logic	[63:0]		fst_chk_data         ;
+logic	[26:0]		scd_chk_vpn			 ;
+logic	[2:0]		scd_chk_type		;	
+logic	[5:0]		scd_chk_id			 ;
+logic	[63:0]		scd_chk_data		;	
+logic	[26:0]		thd_chk_vpn			 ;
+logic	[2:0]		thd_chk_type		;	
+logic	[5:0]		thd_chk_id			 ;
+logic	[63:0]		thd_chk_data		;	
+logic				fst_pmp_fetch_type   ;
+logic               fst_pmp_load_type    ;
+logic               fst_pmp_store_type   ;
+logic               fst_pmp_pref_type    ;
+logic				scd_pmp_fetch_type   ;
+logic               scd_pmp_load_type    ;
+logic               scd_pmp_store_type   ;
+logic               scd_pmp_pref_type    ;
+logic				thd_pmp_fetch_type   ;
+logic				thd_pmp_load_type    ;
+logic				thd_pmp_store_type   ;
+logic				thd_pmp_pref_type    ;
+logic				fst_chk_fetch_type   ;
+logic				fst_chk_load_type    ;
+logic				fst_chk_store_type   ;
+logic				scd_chk_fetch_type   ;
+logic				scd_chk_load_type    ;
+logic				scd_chk_store_type   ;
+logic				thd_chk_fetch_type   ;
+logic				thd_chk_load_type    ;
+logic				thd_chk_store_type   ;
+logic				fst_pmp_deny         ;
+logic				scd_pmp_deny         ;
+logic				thd_pmp_deny         ;
+logic				fst_pmp_mbuf_req     ;
+logic	[39:0]		fst_pmp_pa           ;
+logic				scd_pmp_mbuf_req	;		
+logic	[39:0]		scd_pmp_pa			 ;
+logic				thd_pmp_mbuf_req     ;
+logic   [39:0]		thd_pmp_pa           ;
+logic	[8:0]			fst_chk_flg          ;
+logic	[8:0]			scd_chk_flg          ;
+logic	[8:0]			thd_chk_flg	         ;
+logic				fst_chk_page_flt	;	
+logic				scd_chk_page_flt	;	
+logic				thd_chk_page_flt	;	
+logic				fst_chk_leaf_vld	 ;
+logic				scd_chk_leaf_vld	;	
+logic				thd_chk_leaf_vld	;	
+logic				fst_chk_refill_req	;	
+logic	[41:0]		fst_chk_refill_date	;	
+logic	[47:0]		fst_chk_refill_tag	;	
+logic	[2:0]		fst_chk_refill_type	;	
+logic	[5:0]		fst_chk_refill_id	;	
+logic				scd_chk_refill_req	;	
+logic	[41:0]		scd_chk_refill_date	;	
+logic	[47:0]		scd_chk_refill_tag	;	
+logic	[2:0]		scd_chk_refill_type	;	
+logic	[5:0]		scd_chk_refill_id	;	
+logic				thd_chk_refill_req	;	
+logic	[41:0]		thd_chk_refill_date	;	
+logic	[47:0]		thd_chk_refill_tag	;	
+logic	[2:0]		thd_chk_refill_type	;	
+logic	[5:0]		thd_chk_refill_id	;	
+logic				fst_chk_csr_req		 ;
+logic	[26:0]		fst_chk_csr_vpn		 ;
+logic	[2:0]		fst_chk_csr_type 	;	
+logic	[5:0]		fst_chk_csr_id		 ;
+logic	[63:0]		fst_chk_csr_data	 ;
+logic				scd_chk_csr_req		 ;
+logic	[26:0]		scd_chk_csr_vpn      ;
+logic	[2:0]		scd_chk_csr_type     ;
+logic	[5:0]		scd_chk_csr_id       ;
+logic	[63:0]		scd_chk_csr_data     ;
+//logic				thd_chk_csr_req      ;
+//logic	[26:0]		thd_chk_csr_vpn      ;
+//logic	[2:0]		thd_chk_csr_type     ;
+//logic	[5:0]		thd_chk_csr_id       ;
+//logic	[63:0]		thd_chk_csr_data     ;
+//logic				mbuf_twu_data_vld_reg;
+//logic	[26:0]		mbuf_twu_vpn_reg     ;
+//logic	[2:0]		mbuf_twu_type_reg    ;
+//logic	[6:0]		mbuf_twu_id_reg      ;
+//logic	[63:0]		mbuf_twu_data_reg    ;
+//logic	[2:0]		mbuf_twu_lvl_reg     ;
+//logic				data_reg_cmplt       ;
+logic				twu_pgflt_vld        ;
+logic	[2:0]		twu_pgflt_type       ;
+logic	[5:0]		twu_pgflt_id         ;
+logic				twu_acc_err_vld      ;
+logic	[2:0]		twu_acc_err_type     ;
+logic	[5:0]		twu_acc_err_id       ;
+logic				pgflt_thd_chk_grant  ;
+logic				pgflt_scd_chk_grant  ;
+logic				pgflt_fst_chk_grant  ;
+logic				acc_err_thd_pmp_grant;
+logic				acc_err_scd_pmp_grant;
+logic				acc_err_fst_pmp_grant;
+logic				fst_pmp_itlb_sel     ;
+logic				scd_pmp_itlb_sel     ;
+logic				thd_pmp_itlb_sel     ;
+logic				pmp_itlb_sel         ;
+logic	[2:0]		pmp_grant            ;
+logic	            fst_pmp_grant        ;
+logic				scd_pmp_grant        ;
+logic				thd_pmp_grant        ;
+logic				csr_req              ;
+logic				fst_csr_itlb_sel     ;
+logic				scd_csr_itlb_sel     ;
+logic				csr_itlb_sel         ;
+logic	[1:0]		csr_grant            ;
+logic				scd_csr_grant        ;
+logic				fst_csr_grant        ;
+logic	[26:0]		csr_vpn              ;
+logic	[2:0]		csr_type             ;
+logic	[5:0]		csr_id               ;
+logic	[63:0]		csr_data             ;
+logic	[2:0]		ptw_cur_st           ;
+logic	[2:0]		ptw_nxt_st           ;
+logic				csr_idle 	         ;
+logic				csr_busy  	         ;
+logic				twu_crs1_1g          ;
+logic				twu_crs2_1g          ;
+logic				twu_crs1_2m          ;
+logic				twu_crs2_2m          ;
+logic				twu_crs2_chk         ;
+logic	[26:0]		csr_vpn_flop         ;
+logic	[2:0]		csr_type_flop        ;
+logic	[5:0]		csr_id_flop          ;
+logic	[39:0]		twu_sysmap_adder     ;
+logic	[63:0]		csr_data_flop        ;
+logic	[2:0]		csr_refill_pgs       ;
+logic	[7:0]			twu_hit_num          ;
+logic				twu_csr_cross        ;
+logic				csr_fetch_type       ;
+logic				csr_refill_req       ;
+logic	[41:0]		csr_refill_data      ;
+logic	[47:0]		csr_refill_tag       ;
+logic	[2:0]		csr_refill_type      ;
+logic	[5:0]		csr_refill_id        ;
+//logic				twu_arb_ref_req      ;
+logic				fst_chk_itlb_sel     ;
+logic				scd_chk_itlb_sel     ;
+logic				thd_chk_itlb_sel     ;
+//logic				csr_itlb_sel         ;
+logic				refill_itlb_sel      ;
+logic	[3:0]			refill_grant         ;
+logic				refill_csr_grant     ;
+logic				refill_fst_chk_grant ;
+logic				refill_scd_chk_grant ;
+logic				refill_thd_chk_grant ;
+logic   [41:0]			fst_chk_refill_data  ;
+logic   [27:0]			scd_pmp_ppn	     ;				
+logic   [41:0]			scd_chk_refill_data  ;
+logic   [41:0]			thd_chk_refill_data  ;
+logic   [27:0]			thd_pmp_ppn	     ;
+//logic	[2:0]			twu_l2tlb_ref_pgflt_type;
+//logic	[6:0]			twu_l2tlb_ref_pgflt_id;			
+		
+
+//logic   [2:0]                   twu_l2tlb_ref_acc_err_type;
+//logic   [6:0]                   twu_l2tlb_ref_acc_err_id;
+//logic	[5:0]			csr_id			;
+logic				ptw_chk_cross		;
+logic   			ptw_crs2_1g		;
+logic				ptw_crs2_2m		;	
+logic				csr_ref_itlb_sel	;
+logic               fst_ref_sel;
+logic               scd_ref_sel;
+logic               thd_ref_sel;
+logic               csr_ref_sel;
+logic               fst_csr_sel;
+logic               scd_csr_sel;
+logic               fst_pmp_sel;
+logic               scd_pmp_sel;
+logic               thd_pmp_sel;
+logic               fst_chk_ready;
+logic               scd_chk_ready;
+logic               thd_chk_ready;
+//logic   [2:0]       twu_data_ready;
+logic               twu_clk_en;
+logic               twu_clk;
+
+
+
+parameter VADDR_WIDTH = 39;              // VADDR
+parameter PADDR_WIDTH = 40;              // PADDR
+parameter VPN_WIDTH   = VADDR_WIDTH-12;  // VPN
+parameter PPN_WIDTH   = PADDR_WIDTH-12;  // PPN
+parameter FLG_WIDTH   = 14;              // PPN
+parameter ASID_WIDTH  = 16;              // PPN
+parameter PGS_WIDTH   = 3;               // Page Size
+parameter PTE_LEVEL   = 3;               // Page Table Label
+parameter ID_WIDTH    = 6;
+parameter DATA_WIDTH  = 64;
+
+// VPN width per level
+parameter VPN_PERLEL = VPN_WIDTH/PTE_LEVEL;
+
+// Valid + VPN + ASID + PageSize + Global
+parameter TAG_WIDTH  = 1+VPN_WIDTH+ASID_WIDTH+PGS_WIDTH+1;  
+parameter RDATA_WIDTH = PPN_WIDTH+FLG_WIDTH;
+
+assign twu_clk_en = 1'b1; 
+// &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
+gated_clk_cell  x_twu_gateclk (
+  .clk_in             (forever_cpuclk    ),
+  .clk_out            (twu_clk           ),
+  .external_en        (1'b0              ),
+  .global_en          (1'b1              ),
+  .local_en           (twu_clk_en        ),
+  .module_en          (cp0_mmu_icg_en    ),
+  .pad_yy_icg_scan_en (pad_yy_icg_scan_en)
+);
+
+
+assign cp0_priv_mode[1:0] = cp0_mmu_mprv ? cp0_mmu_mpp[1:0]
+                                         : cp0_yy_priv_mode[1:0];
+
+
+assign twu_mask = fst_pmp_wait 
+				| scd_pmp_wait 
+				| thd_pmp_wait 
+				| (fst_chk_vld & (!fst_chk_page_flt) & (!fst_chk_leaf_vld) & (!scd_pmp_wait))
+				| (scd_chk_vld & (!scd_chk_page_flt) & (!scd_chk_leaf_vld) & (!thd_pmp_wait));
+
+assign twu_busy = mbuf_twu_have 
+				| fst_pmp_vld 
+				| fst_chk_vld
+				| scd_pmp_vld 
+				| scd_chk_vld				
+				| thd_pmp_vld 
+				| thd_chk_vld
+				| csr_busy;
+				
+assign twu_idle = ~ twu_busy;	
+
+assign abort = tlboper_ptw_abort;		
+				
+//==============================================================================
+//                  FST PMP
+//==============================================================================
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)
+		fst_pmp_vld <= 1'b0;
+	else if(abort)
+		fst_pmp_vld <= 1'b0;
+	else if(fst_pmp_wait)
+		fst_pmp_vld <= fst_pmp_vld;
+	else if(xbar_twu_req & (xbar_twu_hit_level == 2'b00)& (!fst_pmp_wait))
+		fst_pmp_vld <= 1'b1;
+	else 
+		fst_pmp_vld <= 1'b0;
+end
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		fst_pmp_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+		fst_pmp_type[2:0] <= 2'b0;
+		fst_pmp_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+	end else if(xbar_twu_req & (xbar_twu_hit_level == 3'b000) & (!fst_pmp_wait))begin
+		fst_pmp_vpn[VPN_WIDTH-1:0] <= xbar_twu_vpn[VPN_WIDTH-1:0];
+		fst_pmp_type[2:0] <= xbar_twu_type[2:0];
+		fst_pmp_id[ID_WIDTH-1:0] <= xbar_twu_id[ID_WIDTH-1:0];
+	end
+end		
+
+//!******************************************
+//! PMP chek
+//!******************************************
+assign fst_pmp_fetch_type = fst_pmp_type[2:0] == 3'b011;
+assign fst_pmp_load_type  = fst_pmp_type[2:0] == 3'b010;
+assign fst_pmp_store_type = fst_pmp_type[2:0] == 3'b110;
+assign fst_pmp_pref_type  = fst_pmp_type[2:0] == 3'b100;
+
+assign fst_pmp_cp0_mach_mode = fst_pmp_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b11
+                                      : cp0_priv_mode[1:0] == 2'b11;
+
+assign fst_pmp_deny = (fst_pmp_fetch_type && !pmp_mmu_flg[2]
+                    || fst_pmp_load_type  && !pmp_mmu_flg[0]
+                    || fst_pmp_store_type && !pmp_mmu_flg[1]
+                    || fst_pmp_pref_type  && !pmp_mmu_flg[0])
+                    // L-bit for M-Mode
+                       && !(fst_pmp_cp0_mach_mode && !pmp_mmu_flg[3]);
+//!******************************************
+//! write MBUF
+//!******************************************
+assign fst_pmp_mbuf_req = fst_pmp_vld & (~fst_pmp_deny) & fst_pmp_grant;
+assign fst_pmp_pa[PPN_WIDTH+11:0] = {regs_ptw_satp_ppn[PPN_WIDTH-1:0],fst_pmp_vpn[VPN_WIDTH-1:18],3'b0};
+
+//!******************************************
+//! wait 
+//!******************************************
+assign fst_pmp_wait =    fst_pmp_vld & (!fst_pmp_grant)
+					   | fst_pmp_mbuf_req & (!mbuf_grant)
+					   | fst_pmp_vld & fst_pmp_grant & fst_pmp_deny & (!acc_err_fst_pmp_grant);
+
+
+
+
+//==============================================================================
+//                  FST CHK
+//==============================================================================
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)
+		fst_chk_vld <= 1'b0;
+	else if(abort)
+		fst_chk_vld <= 1'b0;
+	else if(fst_chk_wait)
+		fst_chk_vld <= fst_chk_vld;
+	else if(mbuf_twu_data_vld & mbuf_twu_lvl[2]& (!fst_chk_wait))
+		fst_chk_vld <= 1'b1;
+//	else if(mbuf_twu_data_vld_reg & mbuf_twu_lvl_reg[2]& (!fst_chk_wait))
+//		fst_chk_vld <= 1'b1;
+	else 
+		fst_chk_vld <= 1'b0;
+end
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		fst_chk_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+		fst_chk_type[2:0] <= 3'b0;
+		fst_chk_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+		fst_chk_data[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
+	end else if(mbuf_twu_data_vld & mbuf_twu_lvl[2] & (!fst_chk_wait))begin
+		fst_chk_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
+		fst_chk_type[2:0] <= mbuf_twu_type[2:0];
+		fst_chk_id[ID_WIDTH-1:0] <= mbuf_twu_id[ID_WIDTH-1:0];
+		fst_chk_data[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
+	end
+end
+
+//!******************************************
+//! Page fault
+//!******************************************
+assign fst_chk_flg[8:0] = {fst_chk_data[9:6], fst_chk_data[4:0]};
+assign fst_chk_fetch_type = fst_chk_type[2:0] == 3'b011;
+assign fst_chk_load_type  = fst_chk_type[2:0] == 3'b010;
+assign fst_chk_store_type = fst_chk_type[2:0] == 3'b110;
+
+assign fst_chk_cp0_user_mode = fst_chk_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b00 
+                                      : cp0_priv_mode[1:0] == 2'b00;
+assign fst_chk_cp0_supv_mode = fst_chk_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b01 
+                                      : cp0_priv_mode[1:0] == 2'b01;
+
+assign fst_chk_page_flt =  (!fst_chk_flg[0]                       // not valid
+						||  !(fst_chk_flg[1] || cp0_mmu_mxr && fst_chk_flg[3]) 
+								&& fst_chk_flg[2]         // write only
+						||  (!fst_chk_flg[1] && fst_chk_load_type     // match R
+							&& !(cp0_mmu_mxr && fst_chk_flg[3])  
+						|| !fst_chk_flg[2] && fst_chk_store_type     // match W
+						|| !fst_chk_flg[3] && fst_chk_fetch_type     // match X
+						||  fst_chk_flg[4] && fst_chk_cp0_supv_mode && !cp0_mmu_sum // S->U
+						|| !fst_chk_flg[4] && fst_chk_cp0_user_mode      // U->S
+						|| !fst_chk_flg[5]                       // A bit volation
+						|| !fst_chk_flg[6] && fst_chk_store_type     // D bit volation
+						|| fst_chk_data[27:10] != 18'b0 // 1g align
+							) && fst_chk_leaf_vld);
+
+assign fst_chk_leaf_vld = fst_chk_flg[0] && (fst_chk_flg[1] || fst_chk_flg[3]);
+
+//!******************************************
+//! refill
+//!******************************************
+assign fst_chk_refill_req = fst_chk_vld & fst_chk_leaf_vld & cp0_mmu_maee & (!fst_chk_page_flt);
+assign fst_chk_refill_data[RDATA_WIDTH-1:0] = {fst_chk_data[37:10],fst_chk_data[63:59],fst_chk_data[9:6],fst_chk_data[4:0]};
+assign fst_chk_refill_tag[TAG_WIDTH-1:0] = {1'b1,fst_chk_vpn[VPN_WIDTH-1:0],regs_ptw_cur_asid[ASID_WIDTH-1:0],3'b100,fst_chk_data[5]};
+assign fst_chk_refill_type[2:0] = fst_chk_type[2:0];
+assign fst_chk_refill_id[ID_WIDTH-1:0] = fst_chk_id[ID_WIDTH-1:0];
+
+//!******************************************
+//! CSR
+//!******************************************
+assign fst_chk_csr_req = fst_chk_vld &  fst_chk_leaf_vld & (!cp0_mmu_maee) & (!fst_chk_page_flt);
+assign fst_chk_csr_vpn[VPN_WIDTH-1:0] = fst_chk_vpn[VPN_WIDTH-1:0];
+assign fst_chk_csr_type[2:0] = fst_chk_type[2:0];
+assign fst_chk_csr_id[ID_WIDTH-1:0] = fst_chk_id[ID_WIDTH-1:0];
+assign fst_chk_csr_data[DATA_WIDTH-1:0] = fst_chk_data[DATA_WIDTH-1:0];
+
+//!******************************************
+//! wait
+//!******************************************
+assign fst_chk_wait =    fst_chk_vld & scd_pmp_wait & (!fst_chk_leaf_vld) & (!fst_chk_page_flt)
+					  |  fst_chk_vld & fst_chk_leaf_vld & (!fst_chk_page_flt) & cp0_mmu_maee & (!refill_fst_chk_grant)
+					  |  fst_chk_vld & fst_chk_page_flt & (!pgflt_fst_chk_grant)
+					  |	 fst_chk_vld & fst_chk_leaf_vld & (!fst_chk_page_flt) & (!cp0_mmu_maee) & (!fst_csr_grant);
+
+
+//==============================================================================
+//                  SCD PMP
+//==============================================================================
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)
+		scd_pmp_vld <= 1'b0;
+	else if(abort)
+		scd_pmp_vld <= 1'b0;
+	else if(scd_pmp_wait)
+		scd_pmp_vld <= scd_pmp_vld;		
+	else if(xbar_twu_req & (xbar_twu_hit_level == 2'b10) & (!scd_pmp_wait))
+		scd_pmp_vld <= 1'b1;
+	else if(fst_chk_vld & (!fst_chk_leaf_vld) & (!fst_chk_page_flt) & (!scd_pmp_wait))
+		scd_pmp_vld <= 1'b1;
+	else 
+		scd_pmp_vld <= 1'b0;
+end
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		scd_pmp_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+		scd_pmp_type[2:0] <= 2'b0;
+		scd_pmp_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+		scd_pmp_ppn[PPN_WIDTH-1:0] <= {PPN_WIDTH{1'b0}};
+	end	else if(xbar_twu_req & (xbar_twu_hit_level == 2'b10) & (!scd_pmp_wait))begin
+		scd_pmp_vpn[VPN_WIDTH-1:0] <= xbar_twu_vpn[VPN_WIDTH-1:0];
+		scd_pmp_type[2:0] <= xbar_twu_type[2:0];
+		scd_pmp_id[ID_WIDTH-1:0] <= xbar_twu_id[ID_WIDTH-1:0];
+		scd_pmp_ppn[PPN_WIDTH-1:0] <= xbar_twu_ppn[PPN_WIDTH-1:0];
+	end else if(fst_chk_vld & (!fst_chk_leaf_vld) & (!fst_chk_page_flt) & (!scd_pmp_wait))begin
+		scd_pmp_vpn[VPN_WIDTH-1:0] <= fst_chk_vpn[VPN_WIDTH-1:0];
+		scd_pmp_type[2:0] <= fst_chk_type[2:0];
+		scd_pmp_id[ID_WIDTH-1:0] <= fst_chk_id[ID_WIDTH-1:0];
+		scd_pmp_ppn[PPN_WIDTH-1:0] <= fst_chk_data[37:10];
+	end
+end		
+
+//!******************************************
+//! PMP chek
+//!******************************************
+assign scd_pmp_fetch_type = scd_pmp_type[2:0] == 3'b011;
+assign scd_pmp_load_type  = scd_pmp_type[2:0] == 3'b010;
+assign scd_pmp_store_type = scd_pmp_type[2:0] == 3'b110;
+assign scd_pmp_pref_type  = scd_pmp_type[2:0] == 3'b100;
+
+assign scd_pmp_cp0_mach_mode = scd_pmp_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b11
+                                      : cp0_priv_mode[1:0] == 2'b11;
+
+
+assign scd_pmp_deny = (scd_pmp_fetch_type && !pmp_mmu_flg[2]
+                    || scd_pmp_load_type  && !pmp_mmu_flg[0]
+                    || scd_pmp_store_type && !pmp_mmu_flg[1]
+                    || scd_pmp_pref_type  && !pmp_mmu_flg[0])
+                    // L-bit for M-Mode
+                       && !(scd_pmp_cp0_mach_mode && !pmp_mmu_flg[3]);
+//!******************************************
+//! write MBUF
+//!******************************************
+assign scd_pmp_mbuf_req = scd_pmp_vld & (!scd_pmp_deny) & scd_pmp_grant;
+assign scd_pmp_pa[PPN_WIDTH+11:0] = {scd_pmp_ppn[PPN_WIDTH-1:0],scd_pmp_vpn[17:9],3'b0};
+
+//!******************************************
+//! wait 
+//!******************************************
+assign scd_pmp_wait =    scd_pmp_vld & (!scd_pmp_grant)
+					   | scd_pmp_mbuf_req & (!mbuf_grant)
+					   | scd_pmp_vld & scd_pmp_grant & scd_pmp_deny & (!acc_err_scd_pmp_grant);
+
+
+
+
+//==============================================================================
+//                  SCD CHK
+//==============================================================================
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)
+		scd_chk_vld <= 1'b0;
+	else if(abort)
+		scd_chk_vld <= 1'b0;
+	else if(scd_chk_wait)
+		scd_chk_vld <= scd_chk_vld;
+	else if(mbuf_twu_data_vld & mbuf_twu_lvl[1] & (!scd_chk_wait))
+		scd_chk_vld <= 1'b1;
+	else 
+		scd_chk_vld <= 1'b0;
+end
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		scd_chk_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+		scd_chk_type[2:0] <= 3'b0;
+		scd_chk_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+		scd_chk_data[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
+	end else if(mbuf_twu_data_vld & mbuf_twu_lvl[1] & (!scd_chk_wait))begin
+		scd_chk_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
+		scd_chk_type[2:0] <= mbuf_twu_type[2:0];
+		scd_chk_id[ID_WIDTH-1:0] <= mbuf_twu_id[ID_WIDTH-1:0];
+		scd_chk_data[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
+	end
+end
+
+//!******************************************
+//! Page fault
+//!******************************************
+assign scd_chk_flg[8:0] = {scd_chk_data[9:6], scd_chk_data[4:0]};
+assign scd_chk_fetch_type = scd_chk_type[2:0] == 3'b011;
+assign scd_chk_load_type  = scd_chk_type[2:0] == 3'b010;
+assign scd_chk_store_type = scd_chk_type[2:0] == 3'b110;
+
+assign scd_chk_cp0_user_mode = fst_chk_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b00 
+                                   : cp0_priv_mode[1:0] == 2'b00;
+assign scd_chk_cp0_supv_mode = fst_chk_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b01 
+                                      : cp0_priv_mode[1:0] == 2'b01;
+
+assign scd_chk_page_flt =  (!scd_chk_flg[0]                       // not valid
+						||  !(scd_chk_flg[1] || cp0_mmu_mxr && scd_chk_flg[3]) 
+								&& scd_chk_flg[2]         // write only
+						||  (!scd_chk_flg[1] && scd_chk_load_type     // match R
+							&& !(cp0_mmu_mxr && scd_chk_flg[3])  
+						|| !scd_chk_flg[2] && scd_chk_store_type     // match W
+						|| !scd_chk_flg[3] && scd_chk_fetch_type     // match X
+						||  scd_chk_flg[4] && scd_chk_cp0_supv_mode && !cp0_mmu_sum // S->U
+						|| !scd_chk_flg[4] && scd_chk_cp0_user_mode      // U->S
+						|| !scd_chk_flg[5]                       // A bit volation
+						|| !scd_chk_flg[6] && scd_chk_store_type     // D bit volation
+						|| scd_chk_data[18:10] != 9'b0 // 2m align
+							) && scd_chk_leaf_vld);
+
+assign scd_chk_leaf_vld = scd_chk_flg[0] && (scd_chk_flg[1] || scd_chk_flg[3]);
+
+//!******************************************
+//! refill
+//!******************************************
+assign scd_chk_refill_req = scd_chk_vld & scd_chk_leaf_vld & cp0_mmu_maee & (!scd_chk_page_flt);
+assign scd_chk_refill_data[RDATA_WIDTH-1:0] = {scd_chk_data[37:10],scd_chk_data[63:59],scd_chk_data[9:6],scd_chk_data[4:0]};
+assign scd_chk_refill_tag[TAG_WIDTH-1:0] = {1'b1,scd_chk_vpn[VPN_WIDTH-1:0],regs_ptw_cur_asid[ASID_WIDTH-1:0],3'b010,scd_chk_data[5]};
+assign scd_chk_refill_type[2:0] = scd_chk_type[2:0];
+assign scd_chk_refill_id[ID_WIDTH-1:0] = scd_chk_id[ID_WIDTH-1:0];
+
+//!******************************************
+//! CSR
+//!******************************************
+assign scd_chk_csr_req = scd_chk_vld & scd_chk_leaf_vld & (!cp0_mmu_maee) & (!scd_chk_page_flt);
+assign scd_chk_csr_vpn[VPN_WIDTH-1:0] = scd_chk_vpn[VPN_WIDTH-1:0];
+assign scd_chk_csr_type[2:0] = scd_chk_type[2:0];
+assign scd_chk_csr_id[ID_WIDTH-1:0] = scd_chk_id[ID_WIDTH-1:0];
+assign scd_chk_csr_data[DATA_WIDTH-1:0] = scd_chk_data[DATA_WIDTH-1:0];
+
+//!******************************************
+//! wait
+//!******************************************
+assign scd_chk_wait =    scd_chk_vld & thd_pmp_wait & (!scd_chk_leaf_vld) & (!scd_chk_page_flt)
+					  |  scd_chk_vld & scd_chk_leaf_vld & (!scd_chk_page_flt) & cp0_mmu_maee & (!refill_scd_chk_grant)
+					  |  scd_chk_vld & scd_chk_page_flt & (!pgflt_scd_chk_grant)
+					  |	 scd_chk_vld & scd_chk_leaf_vld & (!scd_chk_page_flt) & (!cp0_mmu_maee) & (!scd_csr_grant);
+
+
+//==============================================================================
+//                  THD PMP
+//==============================================================================
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)
+		thd_pmp_vld <= 1'b0;
+	else if(abort)
+		thd_pmp_vld <= 1'b0;
+	else if(thd_pmp_wait)
+		thd_pmp_vld <= thd_pmp_vld;
+	else if(xbar_twu_req & (xbar_twu_hit_level == 2'b01) & (!thd_pmp_wait))
+		thd_pmp_vld <= 1'b1;
+	else if(scd_chk_vld & (!scd_chk_leaf_vld) & (!scd_chk_page_flt) & (!thd_pmp_wait))
+		thd_pmp_vld <= 1'b1;
+	else 
+		thd_pmp_vld <= 1'b0;
+end
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		thd_pmp_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+		thd_pmp_type[2:0] <= 2'b0;
+		thd_pmp_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+		thd_pmp_ppn[PPN_WIDTH-1:0] <= {PPN_WIDTH{1'b0}};
+	end	else if(xbar_twu_req & (xbar_twu_hit_level == 2'b01) & (!thd_pmp_wait))begin
+		thd_pmp_vpn[VPN_WIDTH-1:0] <= xbar_twu_vpn[VPN_WIDTH-1:0];
+		thd_pmp_type[2:0] <= xbar_twu_type[2:0];
+		thd_pmp_id[ID_WIDTH-1:0] <= xbar_twu_id[ID_WIDTH-1:0];
+		thd_pmp_ppn[PPN_WIDTH-1:0] <= xbar_twu_ppn[PPN_WIDTH-1:0];
+	end else if(scd_chk_vld & (!scd_chk_leaf_vld) & (!scd_chk_page_flt) & (!thd_pmp_wait))begin
+		thd_pmp_vpn[VPN_WIDTH-1:0] <= scd_chk_vpn[VPN_WIDTH-1:0];
+		thd_pmp_type[2:0] <= scd_chk_type[2:0];
+		thd_pmp_id[ID_WIDTH-1:0] <= scd_chk_id[ID_WIDTH-1:0];
+		thd_pmp_ppn[PPN_WIDTH-1:0] <= scd_chk_data[37:10];
+	end
+end		
+
+//!******************************************
+//! PMP chek
+//!******************************************
+assign thd_pmp_fetch_type = thd_pmp_type[2:0] == 3'b011;
+assign thd_pmp_load_type  = thd_pmp_type[2:0] == 3'b010;
+assign thd_pmp_store_type = thd_pmp_type[2:0] == 3'b110;
+assign thd_pmp_pref_type  = thd_pmp_type[2:0] == 3'b100;
+
+assign thd_pmp_cp0_mach_mode = thd_pmp_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b11
+                                      : cp0_priv_mode[1:0] == 2'b11;
+
+
+assign thd_pmp_deny = (thd_pmp_fetch_type && !pmp_mmu_flg[2]
+                    || thd_pmp_load_type  && !pmp_mmu_flg[0]
+                    || thd_pmp_store_type && !pmp_mmu_flg[1]
+                    || thd_pmp_pref_type  && !pmp_mmu_flg[0])
+                    // L-bit for M-Mode
+                       && !(thd_pmp_cp0_mach_mode && !pmp_mmu_flg[3]);
+//!******************************************
+//! write MBUF
+//!******************************************
+assign thd_pmp_mbuf_req = thd_pmp_vld & (~thd_pmp_deny) & thd_pmp_grant;
+assign thd_pmp_pa[PPN_WIDTH+11:0] = {thd_pmp_ppn[PPN_WIDTH-1:0],thd_pmp_vpn[8:0],3'b0};
+
+//!******************************************
+//! wait 
+//!******************************************
+assign thd_pmp_wait =    thd_pmp_vld & (!thd_pmp_grant)
+					   | thd_pmp_mbuf_req & (!mbuf_grant)
+					   | thd_pmp_vld & thd_pmp_grant & thd_pmp_deny & (!acc_err_thd_pmp_grant);
+
+
+
+//==============================================================================
+//                  THD CHK
+//==============================================================================
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)
+		thd_chk_vld <= 1'b0;
+	else if(abort)
+		thd_chk_vld <= 1'b0;
+	else if(thd_chk_wait)
+		thd_chk_vld <= thd_chk_vld;
+	else if(mbuf_twu_data_vld & mbuf_twu_lvl[0] & (!thd_chk_wait))
+		thd_chk_vld <= 1'b1;
+	else 
+		thd_chk_vld <= 1'b0;
+end
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		thd_chk_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+		thd_chk_type[2:0] <= 3'b0;
+		thd_chk_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+		thd_chk_data[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
+	end else if(mbuf_twu_data_vld & mbuf_twu_lvl[0] & (!thd_chk_wait))begin
+		thd_chk_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
+		thd_chk_type[2:0] <= mbuf_twu_type[2:0];
+		thd_chk_id[ID_WIDTH-1:0] <= mbuf_twu_id[ID_WIDTH-1:0];
+		thd_chk_data[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
+	end
+end
+
+//!******************************************
+//! Page fault
+//!******************************************
+assign thd_chk_flg[8:0] = {thd_chk_data[9:6], thd_chk_data[4:0]};
+assign thd_chk_fetch_type = thd_chk_type[2:0] == 3'b011;
+assign thd_chk_load_type  = thd_chk_type[2:0] == 3'b010;
+assign thd_chk_store_type = thd_chk_type[2:0] == 3'b110;
+
+assign thd_chk_cp0_user_mode = fst_chk_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b00 
+                                : cp0_priv_mode[1:0] == 2'b00;
+assign thd_chk_cp0_supv_mode = fst_chk_fetch_type ? cp0_yy_priv_mode[1:0] == 2'b01 
+                                      : cp0_priv_mode[1:0] == 2'b01;
+
+assign thd_chk_page_flt =  (!thd_chk_flg[0]                       // not valid
+						||  !(thd_chk_flg[1] || cp0_mmu_mxr && thd_chk_flg[3]) 
+								&& thd_chk_flg[2]         // write only
+						||  (!thd_chk_flg[1] && thd_chk_load_type     // match R
+							&& !(cp0_mmu_mxr && thd_chk_flg[3])  
+						|| !thd_chk_flg[2] && thd_chk_store_type     // match W
+						|| !thd_chk_flg[3] && thd_chk_fetch_type     // match X
+						||  thd_chk_flg[4] && thd_chk_cp0_supv_mode && !cp0_mmu_sum // S->U
+						|| !thd_chk_flg[4] && thd_chk_cp0_user_mode      // U->S
+						|| !thd_chk_flg[5]                       // A bit volation
+						|| !thd_chk_flg[6] && thd_chk_store_type)     // D bit volat
+						|| !thd_chk_flg[1] && !thd_chk_flg[3]);
+
+
+//!******************************************
+//! refill
+//!******************************************
+assign thd_chk_refill_req = thd_chk_vld & (!thd_chk_page_flt);
+assign thd_chk_refill_data[RDATA_WIDTH-1:0] = {thd_chk_data[37:10],thd_chk_data[63:59],thd_chk_data[9:6],thd_chk_data[4:0]};
+assign thd_chk_refill_tag[TAG_WIDTH-1:0] = {1'b1,thd_chk_vpn[VPN_WIDTH-1:0],regs_ptw_cur_asid[ASID_WIDTH-1:0],3'b001,thd_chk_data[5]};
+assign thd_chk_refill_type[2:0] = thd_chk_type[2:0];
+assign thd_chk_refill_id[ID_WIDTH-1:0] = thd_chk_id[ID_WIDTH-1:0];
+
+//!******************************************
+//! wait
+//!******************************************
+assign thd_chk_wait =    thd_chk_vld & (~thd_chk_page_flt) & (!refill_thd_chk_grant)
+					  |  thd_chk_vld & thd_chk_page_flt & (!pgflt_thd_chk_grant);
+
+//==============================================================================
+//                  DATA READY
+//==============================================================================
+assign thd_chk_ready = ~thd_chk_wait;
+assign scd_chk_ready = ~scd_chk_wait;
+assign fst_chk_ready = ~fst_chk_wait;
+
+assign twu_data_ready[2:0] = {fst_chk_ready,scd_chk_ready,thd_chk_ready};
+
+//==============================================================================
+//                  Page fault reg
+//==============================================================================
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+    if(!cpurst_b)
+        twu_pgflt_vld <= 1'b0;
+    else if(abort)
+        twu_pgflt_vld <= 1'b0;
+    else if(thd_chk_vld & thd_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant))
+        twu_pgflt_vld <= 1'b1;
+    else if(scd_chk_vld & scd_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant))
+        twu_pgflt_vld <= 1'b1;
+    else if(fst_chk_vld & fst_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant))
+        twu_pgflt_vld <= 1'b1;
+    else if(pgflt_twu_grant)
+        twu_pgflt_vld <= 1'b0;
+end
+
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		twu_pgflt_type[2:0] <= 3'b0;
+		twu_pgflt_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+	end else if(thd_chk_vld & thd_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant))begin
+		twu_pgflt_type[2:0] <= thd_chk_type[2:0];
+		twu_pgflt_id[ID_WIDTH-1:0] <= thd_chk_id[ID_WIDTH-1:0];		
+	end else if(scd_chk_vld & scd_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant))begin
+		twu_pgflt_type[2:0] <= scd_chk_type[2:0];
+		twu_pgflt_id[ID_WIDTH-1:0] <= scd_chk_id[ID_WIDTH-1:0];
+	end else if(fst_chk_vld & fst_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant))begin
+		twu_pgflt_type[2:0] <= fst_chk_type[2:0];
+		twu_pgflt_id[ID_WIDTH-1:0] <= fst_chk_id[ID_WIDTH-1:0];
+	end
+end
+
+
+
+assign pgflt_thd_chk_grant = thd_chk_vld & thd_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant);
+assign pgflt_scd_chk_grant = scd_chk_vld & scd_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant) & (!pgflt_thd_chk_grant);
+assign pgflt_fst_chk_grant = fst_chk_vld & fst_chk_page_flt & (!twu_pgflt_vld | pgflt_twu_grant) & (!pgflt_scd_chk_grant & !pgflt_thd_chk_grant);
+
+assign twu_l2tlb_ref_pgflt = twu_pgflt_vld;
+assign twu_l2tlb_ref_pgflt_type[2:0] = twu_pgflt_type[2:0];
+assign twu_l2tlb_ref_pgflt_id[ID_WIDTH-1:0] = twu_pgflt_id[ID_WIDTH-1:0];
+
+	
+//==============================================================================
+//                  Access fault reg
+//==============================================================================	
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+    if(!cpurst_b)
+        twu_acc_err_vld <= 1'b0;
+    else if(abort)
+        twu_acc_err_vld <= 1'b0;
+    else if(thd_pmp_vld & thd_pmp_deny & thd_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant))
+        twu_acc_err_vld <= 1'b1;
+    else if(scd_pmp_vld & scd_pmp_deny& scd_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant))
+        twu_acc_err_vld <= 1'b1;
+    else if(fst_pmp_vld & fst_pmp_deny& fst_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant))
+        twu_acc_err_vld <= 1'b1;
+    else if(acc_err_twu_grant)
+        twu_acc_err_vld <= 1'b0;
+end
+
+	
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		twu_acc_err_type[2:0] <= 3'b0;
+		twu_acc_err_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+	end else if(thd_pmp_vld & thd_pmp_deny & thd_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant))begin
+		twu_acc_err_type[2:0] <= thd_pmp_type[2:0];
+		twu_acc_err_id[ID_WIDTH-1:0] <= thd_pmp_id[ID_WIDTH-1:0];				
+	end else if(scd_pmp_vld & scd_pmp_deny& scd_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant))begin
+		twu_acc_err_type[2:0] <= scd_pmp_type[2:0];
+		twu_acc_err_id[ID_WIDTH-1:0] <= scd_pmp_id[ID_WIDTH-1:0];		
+	end else if(fst_pmp_vld & fst_pmp_deny& fst_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant))begin
+		twu_acc_err_type[2:0] <= fst_pmp_type[2:0];
+		twu_acc_err_id[ID_WIDTH-1:0] <= fst_pmp_id[ID_WIDTH-1:0];	
+	end
+end
+
+
+
+assign acc_err_thd_pmp_grant = thd_pmp_vld & thd_pmp_deny & thd_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant);
+assign acc_err_scd_pmp_grant = scd_pmp_vld & scd_pmp_deny & scd_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant);
+assign acc_err_fst_pmp_grant = fst_pmp_vld & fst_pmp_deny & fst_pmp_grant & (!twu_acc_err_vld | acc_err_twu_grant);	
+	
+assign twu_l2tlb_ref_acc_err = twu_acc_err_vld;
+assign twu_l2tlb_ref_acc_err_type[2:0] = twu_acc_err_type[2:0];
+assign twu_l2tlb_ref_acc_err_id[ID_WIDTH-1:0] = twu_acc_err_id[ID_WIDTH-1:0];
+
+
+//==============================================================================
+//                  PMP Arbiter
+//==============================================================================
+
+assign fst_pmp_itlb_sel = fst_pmp_vld & fst_pmp_fetch_type;
+assign scd_pmp_itlb_sel = scd_pmp_vld & scd_pmp_fetch_type;
+assign thd_pmp_itlb_sel = thd_pmp_vld & thd_pmp_fetch_type;
+
+assign pmp_itlb_sel = fst_pmp_itlb_sel | scd_pmp_itlb_sel | thd_pmp_itlb_sel;
+
+assign fst_pmp_sel = (!pmp_itlb_sel) & (!scd_pmp_vld) & (!thd_pmp_vld) & fst_pmp_vld;
+assign scd_pmp_sel = (!pmp_itlb_sel) & (!thd_pmp_vld) & scd_pmp_vld;
+assign thd_pmp_sel = (!pmp_itlb_sel) & thd_pmp_vld;
+
+
+always_comb begin
+    case({pmp_itlb_sel,fst_pmp_sel,scd_pmp_sel,thd_pmp_sel})
+        4'b1000 : pmp_grant[2:0] = {fst_pmp_itlb_sel,scd_pmp_itlb_sel,thd_pmp_itlb_sel};
+        4'b0100 : pmp_grant[2:0] = 3'b100;
+        4'b0010 : pmp_grant[2:0] = 3'b010;
+        4'b0001 : pmp_grant[2:0] = 3'b001;
+        default : pmp_grant[2:0] = 3'b000;
+    endcase
+end
+
+
+assign fst_pmp_grant = pmp_grant[2];
+assign scd_pmp_grant = pmp_grant[1];
+assign thd_pmp_grant = pmp_grant[0];
+
+always_comb begin
+	case(pmp_grant[2:0])
+		3'b001	: begin
+			mmu_pmp_pa[PPN_WIDTH-1:0] = thd_pmp_pa[PPN_WIDTH+11:12];
+			mmu_pmp_fecth = thd_pmp_fetch_type;
+		end	
+		3'b010	: begin
+			mmu_pmp_pa[PPN_WIDTH-1:0] = scd_pmp_pa[PPN_WIDTH+11:12];
+			mmu_pmp_fecth = scd_pmp_fetch_type;
+		end
+		3'b100	: begin
+			mmu_pmp_pa[PPN_WIDTH-1:0] = fst_pmp_pa[PPN_WIDTH+11:12];
+			mmu_pmp_fecth = fst_pmp_fetch_type;
+		end	
+		default : begin
+			mmu_pmp_pa[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
+			mmu_pmp_fecth = 1'b0;
+		end
+	endcase
+end
+
+
+//==============================================================================
+//                  CSR Arbiter
+//==============================================================================
+assign csr_req = |csr_grant[1:0];
+
+assign fst_csr_itlb_sel = fst_chk_csr_req & fst_chk_fetch_type;
+assign scd_csr_itlb_sel = scd_chk_csr_req & scd_chk_fetch_type;
+
+assign csr_itlb_sel = fst_csr_itlb_sel | scd_csr_itlb_sel;
+
+assign fst_csr_sel = (!csr_itlb_sel) & (!scd_chk_csr_req) & fst_chk_csr_req;
+assign scd_csr_sel = (!csr_itlb_sel) & scd_chk_csr_req;
+
+always_comb begin
+    case({csr_itlb_sel,fst_csr_sel,scd_csr_sel})
+        3'b100  : csr_grant[1:0] = {fst_csr_itlb_sel,scd_csr_itlb_sel};
+        3'b010  : csr_grant[1:0] = 2'b10;
+        3'b010  : csr_grant[1:0] = 2'b01; 
+        default : csr_grant[1:0] = 2'b00;
+    endcase
+end
+
+
+assign scd_csr_grant = csr_grant[0] & csr_idle;
+assign fst_csr_grant = csr_grant[1] & csr_idle;
+
+always_comb begin
+	case(csr_grant[1:0])
+		2'b01	: begin
+			csr_vpn[VPN_WIDTH-1:0] = scd_chk_csr_vpn[VPN_WIDTH-1:0];
+			csr_type[2:0] = scd_chk_csr_type[2:0];
+			csr_id[ID_WIDTH-1:0] = scd_chk_csr_id[ID_WIDTH-1:0];
+			csr_data[DATA_WIDTH-1:0] = scd_chk_csr_data[DATA_WIDTH-1:0];
+		end	
+		2'b10	: begin
+			csr_vpn[VPN_WIDTH-1:0] = fst_chk_csr_vpn[VPN_WIDTH-1:0];
+			csr_type[2:0] = fst_chk_csr_type[2:0];
+			csr_id[ID_WIDTH-1:0] = fst_chk_csr_id[ID_WIDTH-1:0];
+			csr_data[DATA_WIDTH-1:0] = fst_chk_csr_data[DATA_WIDTH-1:0];
+		end
+		default : begin
+			csr_vpn[VPN_WIDTH-1:0] = {VPN_WIDTH{1'b0}};
+			csr_type[2:0] = 3'b0;
+			csr_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
+			csr_data[DATA_WIDTH-1:0] = {DATA_WIDTH{1'b0}};
+		end
+	endcase
+end
+
+
+//==============================================================================
+//                  CSR FSM
+//==============================================================================
+parameter TWU_IDLE         = 3'b000,  //waiting for a translation request  
+          TWU_1G_CRS1      = 3'b001,  //1GB page crossing check - phase 1 (fetch sysmap hit info)
+          TWU_1G_CRS2      = 3'b010,  //1GB page crossing check - phase 2 (validate boundary)  
+          TWU_2M_CRS1      = 3'b011,  //2MB page crossing check - phase 1 (fetch sysmap hit info)
+          TWU_2M_CRS2      = 3'b100,  //2MB page crossing check - phase 1 (validate boundary)
+		  CSR_DATA_VLD 	   = 3'b101;
+
+always_ff @(posedge twu_clk or negedge cpurst_b)begin
+	if (!cpurst_b)
+		ptw_cur_st[2:0] <= TWU_IDLE;
+	else if(abort)
+		ptw_cur_st[2:0] <= TWU_IDLE;
+	else
+		ptw_cur_st[2:0] <= ptw_nxt_st[2:0];
+end
+
+always_comb begin
+	case (ptw_cur_st)
+		TWU_IDLE:begin
+		if(csr_req & csr_grant[1])
+			ptw_nxt_st[2:0] = TWU_1G_CRS1;
+		else if(csr_req & csr_grant[0])
+			ptw_nxt_st[2:0] = TWU_2M_CRS1;
+		end
+		TWU_1G_CRS1:begin
+			ptw_nxt_st[2:0] = TWU_1G_CRS2;
+		end
+		TWU_1G_CRS2:begin
+		if(ptw_chk_cross)
+			ptw_nxt_st[2:0] = TWU_2M_CRS1;
+		else
+			ptw_nxt_st[2:0] = CSR_DATA_VLD;
+		end
+		TWU_2M_CRS1:begin
+			ptw_nxt_st[2:0] = TWU_2M_CRS2;
+		end
+		TWU_2M_CRS2:begin
+			ptw_nxt_st[2:0] = CSR_DATA_VLD;
+		end
+		CSR_DATA_VLD:begin
+		if(refill_csr_grant)
+			ptw_nxt_st[2:0] = TWU_IDLE;
+		else 
+			ptw_nxt_st[2:0] = CSR_DATA_VLD;
+		end
+		default:begin
+			ptw_nxt_st[2:0] = TWU_IDLE;
+		end
+	endcase
+end
+
+assign csr_idle = ptw_cur_st[2:0] == TWU_IDLE;
+assign csr_busy = ~csr_idle;
+assign twu_crs1_1g = ptw_cur_st[2:0] == TWU_1G_CRS1;
+assign twu_crs2_1g = ptw_cur_st[2:0] == TWU_1G_CRS2;
+assign twu_crs1_2m = ptw_cur_st[2:0] == TWU_2M_CRS1;
+assign twu_crs2_2m = ptw_cur_st[2:0] == TWU_2M_CRS2;
+assign twu_crs2_chk = twu_crs2_1g || twu_crs2_2m;
+
+always_ff @(posedge twu_clk or negedge cpurst_b)begin
+	if (!cpurst_b)begin
+		csr_vpn_flop[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+		csr_type_flop[2:0] <= 3'b0;
+		csr_id_flop[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+	end	else if(csr_req & csr_idle)begin
+		csr_vpn_flop[VPN_WIDTH-1:0] <= csr_vpn[VPN_WIDTH-1:0];
+		csr_type_flop[2:0] <= csr_type[2:0];
+		csr_id_flop[ID_WIDTH-1:0] <= csr_id[ID_WIDTH-1:0] ;
+	end
+end
+
+always_ff @(posedge twu_clk or negedge cpurst_b)begin
+	if (!cpurst_b)
+		twu_sysmap_adder[PADDR_WIDTH-1:0] <= {PADDR_WIDTH{1'b0}};
+	else if(csr_req & csr_idle)
+		twu_sysmap_adder[PADDR_WIDTH-1:0] <= {csr_data[PPN_WIDTH+9:10], 12'b0};
+    else if(twu_crs1_1g)
+		twu_sysmap_adder[PADDR_WIDTH-1:0] <= {csr_data_flop[PPN_WIDTH+9:PPN_WIDTH], 18'h3ffff, 12'b0};
+    else if(twu_crs2_1g && twu_csr_cross)
+		twu_sysmap_adder[PADDR_WIDTH-1:0] <= {csr_data_flop[PPN_WIDTH+9:PPN_WIDTH], csr_vpn_flop[17:9], 21'b0};
+    else if(twu_crs1_2m)
+		twu_sysmap_adder[PADDR_WIDTH-1:0] <= {csr_data_flop[PPN_WIDTH+9:PPN_WIDTH-9], 9'h1ff, 12'b0};
+    else if(twu_crs2_2m && twu_csr_cross)
+		twu_sysmap_adder[PADDR_WIDTH-1:0] <= {csr_data_flop[PPN_WIDTH+9:PPN_WIDTH-9], csr_vpn_flop[8:0], 12'b0};
+end
+
+
+always_ff @(posedge twu_clk or negedge cpurst_b)begin
+	if (!cpurst_b)
+		csr_data_flop[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
+	else if(csr_req & csr_idle)
+		csr_data_flop[DATA_WIDTH-1:0] <= csr_data[DATA_WIDTH-1:0];
+	else if(twu_crs2_1g && twu_csr_cross)
+		csr_data_flop[DATA_WIDTH-1:0] <= {csr_data_flop[58:PPN_WIDTH], csr_vpn_flop[17:9], csr_data_flop[18:0]};
+	else if(twu_crs2_1g && twu_csr_cross)
+		csr_data_flop[DATA_WIDTH-1:0] <= {csr_data_flop[58:PPN_WIDTH-9], csr_vpn_flop[8:0], csr_data_flop[9:0]};
+end
+
+
+always @(posedge twu_clk or negedge cpurst_b)begin
+	if (!cpurst_b)
+		csr_refill_pgs[PGS_WIDTH-1:0] <= {PGS_WIDTH{1'b0}};
+	else if(csr_req & csr_idle)
+		csr_refill_pgs[PGS_WIDTH-1:0] <= {csr_grant[1:0],1'b0};
+	else if(ptw_crs2_1g && ptw_chk_cross)
+		csr_refill_pgs[PGS_WIDTH-1:0] <= 3'b010;
+	else if(ptw_crs2_2m && ptw_chk_cross)
+		csr_refill_pgs[PGS_WIDTH-1:0] <= 3'b001;
+end
+
+
+// sysmap check 2 and hit num not match
+always @(posedge twu_clk or negedge cpurst_b)
+begin
+  if (!cpurst_b)
+    twu_hit_num[7:0] <= 8'b0;
+  else if(twu_crs1_1g || twu_crs1_2m)
+    twu_hit_num[7:0] <= sysmap_mmu_hit[7:0];
+end
+
+assign twu_csr_cross = twu_crs2_chk && twu_hit_num[7:0] != sysmap_mmu_hit[7:0];
+
+
+assign csr_fetch_type = csr_type_flop[2:0] == 3'b011;
+assign csr_refill_req = ptw_cur_st[2:0] == CSR_DATA_VLD;
+assign csr_refill_data[RDATA_WIDTH-1:0] = {csr_data_flop[PPN_WIDTH+9:10],sysmap_mmu_flg[4:0],csr_data_flop[9:6],csr_data_flop[4:0]};
+assign csr_refill_tag[TAG_WIDTH-1:0] = {1'b1,csr_vpn_flop[VPN_WIDTH-1:0],regs_ptw_cur_asid[ASID_WIDTH-1:0],csr_refill_pgs[PGS_WIDTH-1:0],csr_data_flop[5]};
+assign csr_refill_type[2:0] = csr_type_flop[2:0];
+assign csr_refill_id[ID_WIDTH-1:0] = csr_id_flop[ID_WIDTH-1:0];
+
+
+//==========================================================
+//                  Interface to SysMap
+//==========================================================
+assign mmu_sysmap_pa[PPN_WIDTH-1:0] = twu_sysmap_adder[PPN_WIDTH+11:12];
+
+//==============================================================================
+//                  write MBUF Arbiter
+//==============================================================================
+
+assign twu_mbuf_lvl[2:0] = {fst_pmp_mbuf_req,scd_pmp_mbuf_req,thd_pmp_mbuf_req};
+assign twu_mbuf_req = |twu_mbuf_lvl[2:0];
+assign twu_mbuf_twu_idx[3:0] = twu_idx[3:0];
+
+always_comb begin
+	case(twu_mbuf_lvl[2:0])
+		3'b001	: begin
+			twu_mbuf_paddr[PADDR_WIDTH-1:0] = thd_pmp_pa[PADDR_WIDTH-1:0];
+			twu_mbuf_vpn[VPN_WIDTH-1:0] = thd_pmp_vpn[VPN_WIDTH-1:0];
+			twu_mbuf_type[2:0] = thd_pmp_type[2:0];
+			twu_mbuf_id[ID_WIDTH-1:0] = thd_pmp_id[ID_WIDTH-1:0];
+		end	
+		3'b010	: begin
+			twu_mbuf_paddr[PADDR_WIDTH-1:0] = scd_pmp_pa[PADDR_WIDTH-1:0];
+			twu_mbuf_vpn[VPN_WIDTH-1:0] = scd_pmp_vpn[VPN_WIDTH-1:0];
+			twu_mbuf_type[2:0] = scd_pmp_type[2:0];
+			twu_mbuf_id[ID_WIDTH-1:0] = scd_pmp_id[ID_WIDTH-1:0];
+		end
+		3'b100	: begin
+			twu_mbuf_paddr[PADDR_WIDTH-1:0] = fst_pmp_pa[PADDR_WIDTH-1:0];
+			twu_mbuf_vpn[VPN_WIDTH-1:0] = fst_pmp_vpn[VPN_WIDTH-1:0];
+			twu_mbuf_type[2:0] = fst_pmp_type[2:0];
+			twu_mbuf_id[ID_WIDTH-1:0] = fst_pmp_id[ID_WIDTH-1:0];
+		end
+		default : begin
+			twu_mbuf_paddr[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
+			twu_mbuf_vpn[VPN_WIDTH-1:0] = {VPN_WIDTH{1'b0}};
+			twu_mbuf_type[2:0] = 3'b0;
+			twu_mbuf_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
+		end
+	endcase
+end
+
+
+//==============================================================================
+//                  refill Arbiter
+//==============================================================================
+assign twu_arb_ref_req = |refill_grant[3:0];
+
+assign fst_chk_itlb_sel = fst_chk_refill_req & fst_chk_fetch_type;
+assign scd_chk_itlb_sel = scd_chk_refill_req & scd_chk_fetch_type;
+assign thd_chk_itlb_sel = thd_chk_refill_req & thd_chk_fetch_type;
+assign csr_ref_itlb_sel = csr_refill_req & csr_fetch_type;
+
+assign refill_itlb_sel = fst_chk_itlb_sel | scd_chk_itlb_sel | thd_chk_itlb_sel | csr_itlb_sel;
+
+assign fst_ref_sel = (!refill_itlb_sel) & (!csr_refill_req) & (!thd_chk_refill_req) & (!scd_chk_refill_req) & fst_chk_refill_req;
+assign scd_ref_sel = (!refill_itlb_sel) & (!csr_refill_req) & (!thd_chk_refill_req) & scd_chk_refill_req;
+assign thd_ref_sel = (!refill_itlb_sel) & (!csr_refill_req) & thd_chk_refill_req;
+assign csr_ref_sel = (!refill_itlb_sel) & csr_refill_req;
+
+always_comb begin
+    case({refill_itlb_sel,csr_ref_sel,fst_ref_sel,scd_ref_sel,thd_ref_sel})
+        5'b10000    : refill_grant[3:0] = {csr_itlb_sel,fst_chk_itlb_sel,scd_chk_itlb_sel,thd_chk_itlb_sel};
+        5'b01000    : refill_grant[3:0] = 4'b1000;
+        5'b00100    : refill_grant[3:0] = 4'b0100;
+        5'b00010    : refill_grant[3:0] = 4'b0010;
+        5'b00001    : refill_grant[3:0] = 4'b0001;
+		default 	: refill_grant[3:0] = 4'b0000;
+    endcase
+end
+
+assign refill_csr_grant = refill_grant[3] & refill_arb_twu_grant;
+assign refill_fst_chk_grant = refill_grant[2] & refill_arb_twu_grant;
+assign refill_scd_chk_grant = refill_grant[1] & refill_arb_twu_grant;
+assign refill_thd_chk_grant = refill_grant[0] & refill_arb_twu_grant;
+
+always_comb begin
+	case(refill_grant[3:0])
+		4'b0001	: begin
+			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = thd_chk_refill_data[RDATA_WIDTH-1:0];
+			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = thd_chk_refill_tag[TAG_WIDTH-1:0];
+			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b001;
+			twu_arb_ref_type[2:0] = thd_chk_refill_type[2:0];
+			twu_arb_ref_id[ID_WIDTH-1:0] = thd_chk_refill_id[ID_WIDTH-1:0];
+		end
+		4'b0010	: begin
+			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = scd_chk_refill_data[RDATA_WIDTH-1:0];
+			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = scd_chk_refill_tag[TAG_WIDTH-1:0];
+			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b010;
+			twu_arb_ref_type[2:0] = scd_chk_refill_type[2:0];
+			twu_arb_ref_id[ID_WIDTH-1:0] = scd_chk_refill_id[ID_WIDTH-1:0];
+		end
+		4'b0100	: begin
+			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = fst_chk_refill_data[RDATA_WIDTH-1:0];
+			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = fst_chk_refill_tag[TAG_WIDTH-1:0];
+			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b100;
+			twu_arb_ref_type[2:0] = fst_chk_refill_type[2:0];
+			twu_arb_ref_id[ID_WIDTH-1:0] = fst_chk_refill_id[ID_WIDTH-1:0];
+		end
+		4'b1000	: begin
+			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = csr_refill_data[RDATA_WIDTH-1:0];
+			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = csr_refill_tag[TAG_WIDTH-1:0];
+			twu_arb_ref_pgs[PGS_WIDTH-1:0] = csr_refill_pgs[2:0];
+			twu_arb_ref_type[2:0] = csr_refill_type[2:0];
+			twu_arb_ref_id[ID_WIDTH-1:0] = csr_refill_id[ID_WIDTH-1:0];
+		end
+		default : begin
+			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = {RDATA_WIDTH{1'b0}};
+			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = {TAG_WIDTH{1'b0}};
+			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b0;
+			twu_arb_ref_type[2:0] = 3'b0;
+			twu_arb_ref_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};			
+		end
+	endcase
+end
+
+
+
+
+
+endmodule
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+

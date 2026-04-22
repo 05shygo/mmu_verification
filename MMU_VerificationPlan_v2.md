@@ -12,7 +12,7 @@
 | v0.1 | 2026-04-22 | Verification Team | 骨架建立 |
 | v1.0 | 2026-04-22 | Verification Team | 首次完整发布（Draft） |
 | v2.0 | 2026-04-22 | Verification Team | RTL精读补充：修正F1.1 entry数量（32→16）、F2.3 MB Entry FSM 7状态（补WFG/ACFLT）、F8.2 INVVA single-pass描述；新增F2.3a/b、F3.NEW.1、F4.NEW.1~3、F5.NEW.1、F7.NEW.1~2、F8.NEW.1、F10.NEW.1、F12.NEW.1共12个功能点；12条BUG_HUNT TC；10个新覆盖组；6条新SVA；R15-R18风险；接口表补全 |
-| v3.0 | 2026-04-22 | Verification Team | RTL 二次核对：证伪 plan_v1 中 4 条疑似缺陷（mmu_arb bank mask literal / twu CSR case 重复 / CSR FSM IDLE else / 跨级 fetch_type 误用）→ 降级 TC-BUG-001/004，删除 TC-BUG-009/010；新发现 **1 条 P0 高危 Bug**：`twu.sv` L1130 分支重复导致 2MB CSR 跨界 `csr_data_flop` 不更新（F4.NEW.4/TC-BUG-011）；新增 3 条 P1 盲点：csr_grant 互斥（F4.NEW.5）、ptw_write 双级流水 reset 竞争（F5.NEW.2）、xbar 轮转复位偏向 TWU0（F5.NEW.3）；新增 1 条 P2 文档项（F8.NEW.2 死代码清理）；R19 新增，R15/R16 证据强化；追加 `cg_twu_2m_csr_cross` / `cg_xbar_cold_start` / `cg_l2_store_dtlb_tag` + `sva_twu_2m_cross_data` / `sva_csr_grant_onehot` / `sva_ptw_write_pipe_reset_safe`；接口表补齐 `mmu_xx_mmu_en` / `mmu_cp0_tlb_done`；配套 plan_v2.md |
+| v3.0 | 2026-04-22 | Verification Team | RTL 二次核对 + 用户对 thd_chk 语义的澄清（thd_chk 必为叶 PTE）：证伪 plan_v1 中 6 条疑似缺陷（mmu_arb bank mask literal / twu CSR case 重复 / CSR FSM IDLE else / 跨级 fetch_type 误用 / thd_chk 4K 页 A-bit 检测缺失 / MAEE=0 叶 PTE refill 误触）→ 降级 TC-BUG-001/002/003/004，删除 TC-BUG-009/010；**新增 PTW→LSU 取 PTE 通道串行单 outstanding 协议验证（F4.42a/b/c，3 covergroup bins + 6 SVA）**；新发现 **1 条 P0 高危 Bug**：`twu.sv` L1130 分支重复导致 2MB CSR 跨界 `csr_data_flop` 不更新（F4.NEW.4/TC-BUG-011）；新增 3 条 P1 盲点：csr_grant 互斥（F4.NEW.5）、ptw_write 双级流水 reset 竞争（F5.NEW.2）、xbar 轮转复位偏向 TWU0（F5.NEW.3）；新增 1 条 P2 文档项（F8.NEW.2 死代码清理）；R19 新增，R15/R16 证据强化；追加 `cg_twu_2m_csr_cross` / `cg_xbar_cold_start` / `cg_l2_store_dtlb_tag` + `sva_twu_2m_cross_data` / `sva_csr_grant_onehot` / `sva_ptw_write_pipe_reset_safe`；接口表补齐 `mmu_xx_mmu_en` / `mmu_cp0_tlb_done`；配套 plan_v2.md |
 
 ---
 
@@ -174,7 +174,7 @@ MMU 的主要职责：
 | 4 | LSU Pipe2（prefetch） | IN/OUT | `lsu_mmu_va2_vld/va2[27:0]`、`mmu_lsu_pa2_*` | 预取通道 |
 | 5 | LSU STAMO | IN | `lsu_mmu_stamo_vld/pa` | 原子操作 PA 通报 |
 | 6 | LSU TLB Inv | IN/OUT | `lsu_mmu_tlb_*inv*`、`lsu_mmu_tlb_va/asid`、`mmu_lsu_tlb_inv_done` | SFENCE.VMA |
-| 7 | LSU Data（PTW 取 PTE 通道） | OUT/IN | `mmu_lsu_data_req/addr/size`、`lsu_mmu_data/data_vld/bus_error`、`mmu_lsu_tlb_busy/wakeup[11:0]` | PTW 通过 LSU 发起 PTE 读 |
+| 7 | LSU Data（PTW 取 PTE 通道） | OUT/IN | `mmu_lsu_data_req/addr/size`、`lsu_mmu_data/data_vld/bus_error`、`mmu_lsu_tlb_busy/wakeup[11:0]` | PTW 通过 LSU 发起 PTE 读；**v3.0 明确：采用严格串行单 outstanding 握手协议**——`mmu_lsu_data_req` 拉高后必须保持 `mmu_lsu_data_req` 和 `mmu_lsu_data_req_addr` 稳定直到 `lsu_mmu_data_vld` 返回；无 tag/ID 字段，一次最多一个 outstanding，禁止 LSU 乱序返回（F4.42a~c）。注：`mmu_lsu_tlb_busy` 仅表 MBUF 满；`mmu_lsu_wakeup[11:0]` 为 TLB 层面广播，与 PTE 取数握手无关 |
 | 8 | PMP | IN/OUT | `pmp_mmu_flg{0-7}[3:0]`、`mmu_pmp_pa{0-7}`、`mmu_pmp_fetch{3,5,6,7}` | 8 端口 PMP 权限联动 |
 | 9 | RTU | IN | `rtu_mmu_bad_vpn/expt_vld`、`rtu_yy_xx_flush` | 异常与 flush |
 | 10 | 性能计数（HPCP） | IN/OUT | `hpcp_mmu_cnt_en`、`mmu_hpcp_*_miss` | 性能事件计数 |
@@ -507,6 +507,9 @@ MMU 的主要职责：
 | F4.40 | `L1PDE_cache` / `L2PDE_cache` | regs_ptw_clr 立即清 valid；多周期查询无瞬态 stale（GAP-PDE.3） | [L1PDE_cache.sv#L60-L70](mmu/rtl/L1PDE_cache.sv#L60), [L2PDE_cache.sv#L59-L68](mmu/rtl/L2PDE_cache.sv#L59) | P1 | TC-PDE-CLR-001 | sva_pde_clr |
 | F4.41 | `pplru` | plru_ref_num[15:0] onehot 一致性（GAP-PDE.5） | [pplru.sv](mmu/rtl/pplru.sv) | P1 | TC-PPLRU-ONEHOT-001 | sva_pplru_onehot |
 | F4.42 | `ptw_mbuf` | mmu_lsu_data_req_addr / req_grant[8:0] / 响应同步到正确 entry on 状态（GAP-LD.1 / GAP-LD.2 / GAP-LD.3） | [ptw_mbuf.sv#L477-L530](mmu/rtl/ptw_mbuf.sv#L477) | P1 | TC-PMBUF-LSU-CHN-001 | sva_lsu_data_chn |
+| F4.42a | `ptw_mbuf` | **【v3.0 新增】串行单 outstanding 握手协议**：`mmu_lsu_data_req` 拉高后，必须与 `mmu_lsu_data_req_addr` / `mmu_lsu_data_size` **保持稳定**直到 `lsu_mmu_data_vld`（或 `lsu_mmu_data_bus_error`）返回；任何时刻 **outstanding 请求 ≤ 1**；该请求完成前不得发下一个。RTL 依据：`mbuf_ptr_nxt` 仅在 `lsu_mmu_data_vld_reg & mmu_lsu_data_req` 或 MBUF 变空时更新（L363-L379），地址由 `mbuf_ptr_nxt` one-hot 选中（L401-L410） | [ptw_mbuf.sv#L288,L363-L410](mmu/rtl/ptw_mbuf.sv#L288) | P0 | TC-PMBUF-SERIAL-OUTSTANDING-001, TC-PMBUF-ADDR-STABLE-001 | cg_lsu_req_outstanding, sva_lsu_req_stable_until_vld, sva_lsu_addr_stable_until_vld, sva_single_outstanding |
+| F4.42b | `ptw_mbuf` | **【v3.0 新增】无 tag / ID 机制、严格以 outstanding entry 为隐含 ID 按順序返回**：`lsu_mmu_data_vld` 回来时必须和当前 `mbuf_ptr` 所指 entry 一一对应；禁止 LSU 乱序返回或同周期多 entry 都以为自己被命中；验证侧 monitor 需在 `mmu_lsu_data_req=0` 时检查不出现 `lsu_mmu_data_vld=1` | [ptw_mbuf.sv#L532-L550](mmu/rtl/ptw_mbuf.sv#L532) | P0 | TC-PMBUF-NO-TAG-001, TC-PMBUF-INORDER-RESP-001 | sva_response_inorder, sva_vld_only_when_req |
+| F4.42c | `ptw_mbuf` | **【v3.0 新增】MBUF 指针更新约束**：`mbuf_ptr` 仅在 `lsu_mmu_data_vld` 收到后或 MBUF 变空时前进；其他周期保持；以此保证地址/请求在 outstanding 期间不变 | [ptw_mbuf.sv#L363-L379](mmu/rtl/ptw_mbuf.sv#L363) | P1 | TC-PMBUF-PTR-HOLD-001 | cg_mbuf_ptr_hold, sva_mbuf_ptr_only_on_response |
 | F4.43 | `ptw_mbuf` | **单 cycle 多响应防护**：FSM 不被 stale resp 触发多 entry（GAP-LD.4） | [ptw_mbuf.sv#L532-L550](mmu/rtl/ptw_mbuf.sv#L532) | P0 | TC-PMBUF-MULTI-RESP-001 | sva_no_stale_resp |
 | F4.44 | `ptw_mbuf` | mmu_lsu_data_req=1 长期未 grant 的死锁防护（GAP-LD.5） | [ptw_mbuf.sv#L461](mmu/rtl/ptw_mbuf.sv#L461) | P1 | TC-PMBUF-NO-DEADLOCK-001 | sva_lsu_progress |
 | F4.45 | `twu` | L0/L1/L2 PTE addr 边界：SysMap 跨界 adder 中间态下游 PMP/SysMap 无 stale lookup（GAP-AG.1~4） | [twu.sv#L427,L587,L745,L1118-L1150](mmu/rtl/twu.sv#L427) | P2 | TC-TWU-ADDR-BOUND-001 | cg_addr_gen |
@@ -520,9 +523,9 @@ MMU 的主要职责：
 | F4.53 | `ptw` | mmu_lsu_tlb_busy 与 L1 DTLB credit=0 一致性（GAP-PX.11）；walk watchdog 缺失 → 死锁风险（GAP-PX.14） | [ptw.sv](mmu/rtl/ptw.sv) | P1 | TC-PTW-BUSY-CONSIST-001, TC-PTW-WATCHDOG-001 | sva_busy_credit_match |
 | F4.54 | `twu` | PMP deny mid-walk：终止 vs 完成 L0 read；pgflt 含 level 信息（GAP-PX.12）；SysMap hit 在 L2 阶段时下游 L1/L0 不再发起（GAP-PX.13） | [twu.sv#L380-L420,L1168](mmu/rtl/twu.sv#L380) | P1 | TC-PMP-MIDWALK-001, TC-SYSMAP-MIDWALK-001 | cg_walk_terminate |
 | F4.55 | `twu` / `ptw_mbuf` | RSW（PTE[63:59]）软件保留位的处理（GAP-PX.15）；TWU0/1/2 同 cycle 不同 level walk → MBUF 优先编码确保单 LSU req（GAP-PX.17）；CSR refill vs 普通 refill 优先级（GAP-PX.18） | [twu.sv#L140-L180,L1209-L1250](mmu/rtl/twu.sv#L140), [ptw_mbuf.sv#L253-L265](mmu/rtl/ptw_mbuf.sv#L253) | P1 | TC-PTE-RSW-001, TC-MBUF-MULTI-LEVEL-001, TC-CSR-REFILL-PRIO-001 | cg_pte_rsw |
-| F4.NEW.1 | `ptw_mbuf` / `PDE_cache` | **PDE Cache 仅非叶 PTE 更新**：`mbuf_cache_upd` 条件 = V=1 & R=0 & X=0（非叶节点）；叶 PTE 不触发 PDE Cache 更新；叶 PTE 命中时验证 Cache 无污染（GAP-PDE.NEW.1） | [ptw_mbuf.sv](mmu/rtl/ptw_mbuf.sv), [PDE_cache.sv](mmu/rtl/PDE_cache.sv) | P0 | TC-PDECACHE-LEAF-001 | cg_pde_leaf_nonleaf, sva_pde_nonleaf_upd |
+| F4.NEW.1 | `ptw_mbuf` / `PDE_cache` | **PDE Cache 仅非叶 PTE 更新**：`mbuf_cache_upd` 条件 = V=1 & R=0 & X=0（非叶节点）；叶 PTE 不触叶 PDE Cache 更新；**v3.0 澄清**：thd_chk 仅针对 L0 叶 PTE，因此 `thd_chk_refill_req` 只要不触异常即可发出，**与 `mbuf_cache_upd` 非叶限制不矛盾**；叶 PTE 命中时验证 Cache 无污染（GAP-PDE.NEW.1）| [ptw_mbuf.sv](mmu/rtl/ptw_mbuf.sv), [PDE_cache.sv](mmu/rtl/PDE_cache.sv) | P1 | TC-PDECACHE-LEAF-001（TC-BUG-003 已降级为 Functional） | cg_pde_leaf_nonleaf, sva_pde_nonleaf_upd |
 | F4.NEW.2 | `twu` | **TWU 6 级流水线架构**：实际为 FST_PMP→FST_CHK→SCD_PMP→SCD_CHK→THD_PMP→THD_CHK 六级有效寄存器；每级权限检查需验证各级独立的 fetch_type 传播（疑似 scd/thd_chk 复用 fst_chk_fetch_type，GAP-T.NEW.1） | [twu.sv](mmu/rtl/twu.sv) | P1 | TC-TWU-STAGE-FETCH-001 | cg_twu_stage_fetch |
-| F4.NEW.3 | `twu` | **thd_chk 路径（4K 页）A bit 检测**：`thd_chk_page_flt` 中 A bit 检测（`!flg[5]`）疑似缺失 — 4K 页 A=0 可能不触发 page fault（需设计确认；GAP-AD.NEW.1/K10 扩展）| [twu.sv](mmu/rtl/twu.sv) | P0 | TC-BUG-002 | cg_twu_stage_fetch, sva_thd_a_bit_pgflt |
+| F4.NEW.3 | `twu` | **thd_chk 路径（叶 PTE）4K 页 A bit 检测正向覆盖**（v3.0 证伪改判）：第三级流水线 **必为叶 PTE**，`thd_chk_page_flt` 中 A bit 检测（`!flg[5]`）对应 4K 页正常执行，非缺陷；保留功能点用于 4K/2M/1G×A=0/1 正向覆盖 | [twu.sv](mmu/rtl/twu.sv) | P1 | TC-BUG-002（降为 Functional） | cg_twu_stage_fetch, sva_thd_a_bit_pgflt |
 | F4.NEW.4 | `twu` | **【v3.0 新发现 P0 高危】2MB CSR 跨界 `csr_data_flop` 不更新**（GAP-TWU.NEW.1）：`twu.sv` L1130 处 `else if(twu_crs2_1g && twu_csr_cross)` 与上一行条件**完全重复**，推测应为 `twu_crs2_2m`；导致 **2MB 巨页 CSR 跨界场景下 `csr_data_flop` 不会被 shifted 更新**，后续 CSR refill 使用旧数据 | [twu.sv#L1128-L1133](mmu/rtl/twu.sv#L1128) | P0 | TC-BUG-011 | cg_twu_2m_csr_cross, sva_twu_2m_cross_data |
 | F4.NEW.5 | `twu` | **CSR FSM `csr_grant[1:0]` 互斥性**（v3.0 新发现 / GAP-TWU.NEW.2）：TWU_IDLE 状态对 `csr_grant` 按 bit[1] / bit[0] 顺序判断，若仲裁侧异常输出 `2'b11` 则隐式偏向 1G 分支；需显式断言仲裁 onehot 约束 | [twu.sv#L1052-L1063](mmu/rtl/twu.sv#L1052) | P1 | TC-BUG-012 | sva_csr_grant_onehot |
 | F5.10 | `mmu_arb` | **Skew hash 实现**（与 F3.15 交叉）：VPN[26:0] 各 bit XOR 成 idx_w0..w7（GAP-Arb.1 / GAP-Hash.1） | [mmu_arb.sv#L150-L450](mmu/rtl/mmu_arb.sv#L150) | P0 | TC-HASH-001~003 | l2tlb_skew_hash_cg |
@@ -1268,8 +1271,8 @@ MMU 的主要职责：
 | TC-GAP-TOP-009 (`TC-PTW-LSU-PROTO-001`) | F14.18 | Directed | ptw lsu proto seq | P0 |
 | TC-GAP-TOP-010 (`TC-PARAM-WRAP-001`, `TC-AGE-CMP-001`, `TC-ASID-PROTO-001`, `TC-MB-BYPASS-PRIO-001`, `TC-DUAL-HIT-PLRU-001`) | F14.19, F14.20 | Constrained-Random | param wrap seq | P1 |
 | TC-BUG-001 | F4.NEW.2 | **Functional**（v3.0 证伪改判：原疑似跨级 fetch_type 错用经 RTL 二次核对确认 fst/scd/thd 各级 `*_pmp_fetch_type` 字段独立，非缺陷） | fst=fetch scd=store 跨级权限场景覆盖；验证三级权限独立传递 | **P1** |
-| TC-BUG-002 | F4.NEW.3 | BUG_HUNT（真实缺陷，v3.0 升 P0） | 4K PTE A=0 thd_chk_page_flt 验证；期望触发 page fault | P0 |
-| TC-BUG-003 | F4.NEW.1 | BUG_HUNT（真实缺陷，v3.0 升 P0） | MAEE=0 场景 thd_chk_refill_req 不应触发 refill；验证 mbuf_cache_upd 仅非叶 PTE | P0 |
+| TC-BUG-002 | F4.NEW.3 | **Functional**（v3.0 证伪改判：thd_chk 必为叶 PTE，A-bit 检测正常执行，非缺陷） | 4K/2M/1G × A=0/1 thd_chk_page_flt 正向覆盖；期望 A=0 触发 page fault | **P1** |
+| TC-BUG-003 | F4.NEW.1 | **Functional**（v3.0 证伪改判：thd_chk 必为叶 PTE，`thd_chk_refill_req` 只要不触异常即可发出；PDE Cache 非叶限制仅约束 `mbuf_cache_upd`，两者不矛盾） | 叶 PTE refill 不触异常路径正向覆盖；验证 mbuf_cache_upd 仅非叶 PTE 触发 | **P1** |
 | TC-BUG-004 | F5.NEW.1 | **Functional**（v3.0 证伪改判：RTL L142 `8'b00110011` 字面量前缀完整，非缺陷） | selector=00/01/10/11 时 8-bit bank mask 字面量编码覆盖（正向） | **P1** |
 | TC-BUG-005 | F3.4 | BUG_HUNT（真实缺陷，v3.0 升 P0） | `mmu_l2tlb.sv#L456` `raw_vld = pipe_vld \|\| ptw_req`（`\|\|` 应为 `&&`）使 PTW 写周期误触 tag compare hit | P0 |
 | TC-BUG-006 | F3.5 | BUG_HUNT（真实缺陷，v3.0 升 P0） | `mmu_l2tlb.sv#L512` `arb_l2tlb_is_dtlb` 判断重复 `3'b010` 两次且漏 store type `3'b110`；构造 store miss 验证 | P0 |
@@ -1285,7 +1288,7 @@ MMU 的主要职责：
 | TC-BUG-BYPASS-001 | F2.3a | BUG_HUNT | MB Entry alloc+grant 同周期 IDLE→WFC bypass 路径验证；不经过 WFG 直接握手 | P0 |
 | TC-BUG-WFG-ABT-001 | F2.3b | BUG_HUNT | WFG+grant+abort 同周期竞争 → ABT 路径验证；abort_hold_r 防迟到 install 污染 | P0 |
 
-> **v3.0 统计更新**：原 60 条 TC-GAP-* + v2.0 新增 12 条 TC-BUG-* + v3.0 新增 5 条（TC-BUG-011~015）− v3.0 删除 2 条（TC-BUG-009/010）= **共 75 条** Gap/BUG TC。分布：P0=24+11+4=**39**、P1=30+1+4=**35**、P2=6+0+1=**7**（已含 v3.0 将 TC-BUG-002/003/005/006/007/008 六条真实缺陷从 P1 升 P0、TC-BUG-001/004 两条证伪从 P0 降 P1）。具体 stimuli/checker 实现交由后续 sequence 开发阶段跟踪 JIRA。
+> **v3.0 统计更新**：原 60 条 TC-GAP-* + v2.0 新增 12 条 TC-BUG-* + v3.0 新增 5 条（TC-BUG-011~015）− v3.0 删除 2 条（TC-BUG-009/010）= **共 75 条** Gap/BUG TC。分布：P0=24+9+4=**37**、P1=30+3+4=**37**、P2=6+0+1=**7**（已含 v3.0 将 TC-BUG-005/006/007/008 四条真实缺陷从 P1 升 P0、TC-BUG-001/002/003/004 四条证伪从 P0 降 P1）。具体 stimuli/checker 实现交由后续 sequence 开发阶段跟踪 JIRA。
 
 ---
 
@@ -1347,6 +1350,8 @@ MMU 的主要职责：
 | **`cg_twu_2m_csr_cross`** 新（v3.0） | `twu` bind | 2MB 巨页 `twu_crs2_2m && twu_csr_cross` 事件覆盖；采样 `csr_data_flop` 前/后值与 shift mask；cross(pgs=2M, csr_cross=1) 必须被命中（F4.NEW.4/TC-BUG-011） |
 | **`cg_xbar_cold_start`** 新（v3.0） | `one_to_four_xbar` bind | 复位后前 N（=16）次 `PDE_xbar_req` 的 TWU 分配分布；bin 每个 TWU 的首次分配次数（F5.NEW.3/TC-BUG-014） |
 | **`cg_l2_store_dtlb_tag`** 新（v3.0） | `mmu_l2tlb` bind | `d_req_type=3'b110`（store）路径的 `arb_l2tlb_is_dtlb` 判断覆盖；load(010) vs store(110) cross（F3.5/TC-BUG-006） |
+| **`cg_lsu_req_outstanding`** 新（v3.0） | `ptw_mbuf` bind | 采样 `mmu_lsu_data_req` 拉高期间的持续周期数、outstanding 数目（必须总是 ≤ 1）、请求周期内 `mmu_lsu_data_req_addr` 改变计数（必须=0）；F4.42a |
+| **`cg_mbuf_ptr_hold`** 新（v3.0） | `ptw_mbuf` bind | `mbuf_ptr` 相邻两周期变化时必须命中 `lsu_mmu_data_vld` 或 MBUF 由非空转空两种 bin（F4.42c） |
 
 功能覆盖率目标：**100%**（未覆盖点必须评审豁免）。
 
@@ -1364,7 +1369,7 @@ MMU 的主要职责：
 | `mmu_tlboper_sva.sv` | `ct_mmu_tlboper` | inv_done 语义、与 refill 互斥 |
 | `mmu_arb_sva.sv` | `mmu_arb` | 优先级单热、work-conserving、skew 索引 8 路独立 |
 | `mmu_sysmap_sva.sv` | `ct_mmu_sysmap` | hit 优先级、flag 合法 |
-| **`mmu_gap_sva.sv`** 新 | top bind | `sva_wakeup_broadcast`（F2.17/F4.23）、`sva_refill_atomic`（F3.28）、`sva_no_x_after_reset`（F13.9）、`sva_a_bit_pgflt` / `sva_d_bit_pgflt`（F4.13/F4.14，A=0读 或 D=0写一律 page-fault，无硬件 write-back）、`sva_pde_asid_match`（F4.38）、`sva_satp_mode_illegal`（F9.3）、`sva_stamo_bypass`（F10.18）、`sva_pmp_fetch_4ports`（F7.3）、`sva_mmu_en_consist`（F10.15）、`sva_priv_race`（F14.16）、`sva_csr_handshake`（F14.17）、`sva_ptw_lsu_chn`（F14.18）、`sva_credit_wrap`（F14.19）、`sva_icg_hold`（F12.8）、`sva_reset_order`（F13.11）、`sva_exc_priority`（F10.22）、`sva_abt_protocol`（F10.17）、`sva_wen_bit`（F13.13）、`sva_thd_a_bit_pgflt`（F4.NEW.3，4K 页 A=0 必须 page fault）、`sva_pde_nonleaf_upd`（F4.NEW.1，仅非叶 PTE 触发 mbuf_cache_upd）、`sva_rrpv_inv_clr`（F3.NEW.1，INV 后 RRPV 状态监控）、`sva_sfence_invva_single`（F8.NEW.1，INVVA FSM 仅一次 L2 查找）、`sva_wfg_abt_race`（F2.3b，WFG grant+abort 竞争正确性）、`sva_bank_sel_valid`（F5.NEW.1，mask_bank_sel 字面量正确性；v3.0 证伪后仅作正向覆盖保障）、`sva_twu_2m_cross_data`（F4.NEW.4，2MB CSR 跨界必须触发 `csr_data_flop` 更新，抓取 twu.sv L1130 分支重复 Bug）、`sva_csr_grant_onehot`（F4.NEW.5，TWU `csr_grant[1:0]` 禁止同时为 1）、`sva_ptw_write_pipe_reset_safe`（F5.NEW.2，reset 断言期间 `ptw_write_req1/req2` 同步清零无 stale）|
+| **`mmu_gap_sva.sv`** 新 | top bind | `sva_wakeup_broadcast`（F2.17/F4.23）、`sva_refill_atomic`（F3.28）、`sva_no_x_after_reset`（F13.9）、`sva_a_bit_pgflt` / `sva_d_bit_pgflt`（F4.13/F4.14，A=0读 或 D=0写一律 page-fault，无硬件 write-back）、`sva_pde_asid_match`（F4.38）、`sva_satp_mode_illegal`（F9.3）、`sva_stamo_bypass`（F10.18）、`sva_pmp_fetch_4ports`（F7.3）、`sva_mmu_en_consist`（F10.15）、`sva_priv_race`（F14.16）、`sva_csr_handshake`（F14.17）、`sva_ptw_lsu_chn`（F14.18）、`sva_credit_wrap`（F14.19）、`sva_icg_hold`（F12.8）、`sva_reset_order`（F13.11）、`sva_exc_priority`（F10.22）、`sva_abt_protocol`（F10.17）、`sva_wen_bit`（F13.13）、`sva_thd_a_bit_pgflt`（F4.NEW.3，4K 页 A=0 必须 page fault）、`sva_pde_nonleaf_upd`（F4.NEW.1，仅非叶 PTE 触发 mbuf_cache_upd）、`sva_rrpv_inv_clr`（F3.NEW.1，INV 后 RRPV 状态监控）、`sva_sfence_invva_single`（F8.NEW.1，INVVA FSM 仅一次 L2 查找）、`sva_wfg_abt_race`（F2.3b，WFG grant+abort 竞争正确性）、`sva_bank_sel_valid`（F5.NEW.1，mask_bank_sel 字面量正确性；v3.0 证伪后仅作正向覆盖保障）、`sva_twu_2m_cross_data`（F4.NEW.4，2MB CSR 跨界必须触发 `csr_data_flop` 更新，抓取 twu.sv L1130 分支重复 Bug）、`sva_csr_grant_onehot`（F4.NEW.5，TWU `csr_grant[1:0]` 禁止同时为 1）、`sva_ptw_write_pipe_reset_safe`（F5.NEW.2，reset 断言期间 `ptw_write_req1/req2` 同步清零无 stale）、**`sva_lsu_req_stable_until_vld`（F4.42a，`mmu_lsu_data_req` 拉高期间值不得中途拉低直到 `lsu_mmu_data_vld` 或 `bus_error`）**、**`sva_lsu_addr_stable_until_vld`（F4.42a，`mmu_lsu_data_req_addr` 在 req 持续期间禁止变化）**、**`sva_single_outstanding`（F4.42a，outstanding 请求数总是 ≤ 1）**、**`sva_response_inorder`（F4.42b，`lsu_mmu_data_vld` 到达时必须当前 `mmu_lsu_data_req=1`）**、**`sva_vld_only_when_req`（F4.42b，`mmu_lsu_data_req=0` 时 `lsu_mmu_data_vld` 不得为 1）**、**`sva_mbuf_ptr_only_on_response`（F4.42c，`mbuf_ptr` 仅在 vld 或 MBUF 变空时更新）**|
 
 断言覆盖率：**100% 被触发**（未触发需分析）。
 
@@ -1481,7 +1486,7 @@ MMU 的主要职责：
 | **R12** | **L2TLB SRAM 无 reset 产生首 cycle X**（K9/GAP-SR.1） | **中** | 外部 valid FF 作为隔离；`sva_no_x_after_reset` + post-reset cross cg 保障 |
 | **R13** | **CSR/SFENCE/SATP 多 hazard 叠加**（K8/K3/K4） | **中** | satp_hazard_cg 顶层交叉覆盖；`sva_satp_mode_illegal` / `sva_csr_handshake` 探测 |
 | **R14** | **STAMO/Pipe2/PMP 在 Pipe 间不对称**（K6/K7） | **中** | `sva_stamo_bypass` / `sva_pmp_fetch_4ports` + DTLB STAMO Pipe1 负向用例守护 |
-| **R15** | **twu thd_chk A-bit 缺失 / PDE cache 叶-非叶更新限制 / L2TLB raw_vld OR 逻辑 / arb_l2tlb_is_dtlb store 类型缺失 / RRPV 无效后残留 / pplru entry 0 首次不更新**（6 条真实缺陷：TC-BUG-002/003/005/006/007/008，v3.0 全部升 **P0**）| **高** | 针对每条缺陷 directed TC + SVA（`sva_thd_a_bit_pgflt` / `sva_pde_nonleaf_upd` / 新 `sva_raw_vld_excl` / 新 `sva_l2_store_type_covered` / `sva_rrpv_inv_clr` / `cg_pplru_entry0_hit`）同步锁定；设计 review 逐条签字确认 |
+| **R15** | **L2TLB raw_vld OR 逻辑 / arb_l2tlb_is_dtlb store 类型缺失 / RRPV 无效后残留 / pplru entry 0 首次不更新**（4 条真实缺陷：TC-BUG-005/006/007/008，v3.0 全部升 **P0**）| **高** | 针对每条缺陷 directed TC + SVA（新 `sva_raw_vld_excl` / 新 `sva_l2_store_type_covered` / `sva_rrpv_inv_clr` / `cg_pplru_entry0_hit`）同步锁定；设计 review 逐条签字确认。**注：**原列 TC-BUG-002/003（thd_chk A-bit / PDE 叶非叶）已随用户澄清证伪——thd_chk 必为叶 PTE、A-bit 检测正常执行、`thd_chk_refill_req` 只要不触异常即可发出，R15 条目中已移除 |
 | **R16** | **mmu_arb bank mask 编码错误**（TC-BUG-004/F5.NEW.1）| ~~高~~ → **低（v3.0 证伪）** | RTL `mmu_arb.sv#L142` 已核实使用 `8'b00110011` 完整字面量，非缺陷；保留 `cg_bank_mask_sel` 作为正向覆盖；相关 TC-BUG-004 已降为 Functional |
 | **R17** | **SFENCE INVVA single-pass 导致混合页大小同 VPN 部分不无效**（F8.NEW.1/TC-SFENCE-INVVA-MULTIPGS-001）| **中** | 架构书面确认 L2TLB 是否禁止多 pgs 同 VPN 共存；`cg_sfence_invva_pgs` + `sva_sfence_invva_single` 验证 |
 | **R18** | **pplru entry 0 PLRU 首次更新行为异常**（F12.NEW.1/TC-PPLRU-ENTRY0-FIRST-HIT-001）| **低** | `cg_pplru_entry0_hit` 监控首次替换后的公平性；多次命中后 PLRU 树自行纠正；需确认是否影响 PDE Cache 预热性能 |

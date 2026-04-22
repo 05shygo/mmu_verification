@@ -52,6 +52,35 @@ RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）及用户对 thd_c
 |----|------|------|
 | **F8.NEW.2 / TC-BUG-015** | `ct_mmu_tlboper.v#L685-L730` | 原 14-state INVVA FSM 注释残留（已被 single-pass 替代）。非仿真 TC，仅代码评审追踪 |
 
+### B.4 **PTW → LSU 取 PTE 通道协议补强（v3.0 新增 F4.42a/b/c）**
+
+**背景**：用户澄清——PTW 发给 LSU 的请求是**严格串行单 outstanding**。请求一旦拉起，必须**保持 `mmu_lsu_data_req` 与 `mmu_lsu_data_req_addr` 稳定**直到 `lsu_mmu_data_vld`（或 `bus_error`）返回；任一时刻至多只有一个 outstanding 请求；LSU 数据通道**无 tag/ID 字段**，也不支持乱序返回。
+
+**原计划思路（缺陷）**：v2.0 仅有 F4.42 一条 `sva_lsu_data_chn`，描述为"`mmu_lsu_data_req_addr` / `req_grant[8:0]` / 响应同步到正确 entry on 状态"，**优先级 P1**。
+- ❌ 未声明"请求/地址在 outstanding 期间必须保持稳定"
+- ❌ 未声明"outstanding 请求数 ≤ 1"
+- ❌ 未明确"无 tag/ID、LSU 不会乱序返回"
+- ❌ 未约束"`lsu_mmu_data_vld=1` 必须 `mmu_lsu_data_req=1`"
+- ❌ 未约束 MBUF 指针更新时机
+- ❌ 接口表第 7 组仅列信号未描述握手语义
+
+**RTL 证据**（[ptw_mbuf.sv#L288,L363-L410](mmu/rtl/ptw_mbuf.sv#L288)）：
+1. `mmu_lsu_data_req = |(mbuf_entry_vld & ~mbuf_entry_get & ~mbuf_entry_bus_err_flop) & !tlboper_ptw_abort`
+2. `mbuf_ptr_nxt` **只在** `(lsu_mmu_data_vld_reg & mmu_lsu_data_req)` 或 MBUF 变空时更新；其余周期 `mbuf_ptr_nxt = mbuf_ptr`
+3. 地址由 `mbuf_ptr_nxt` one-hot 选择 `mbuf_entry_padder[*]`——因此 outstanding 期间地址稳定
+4. 无 tag/ID 信号存在
+5. `mmu_lsu_tlb_busy` 仅表 MBUF 满，`mmu_lsu_wakeup[11:0]` 是 TLB 层广播，均与 PTE 握手协议无关
+
+**改进后描述**（已落入 MMU_VerificationPlan_v2.md）：
+
+| ID | Feature 表 | 新增验证点 |
+|----|-----------|------------|
+| **F4.42a（新 P0）** | 串行单 outstanding 握手 | `mmu_lsu_data_req` 拉高后必须与 `mmu_lsu_data_req_addr` / `mmu_lsu_data_size` **保持稳定**直到 `lsu_mmu_data_vld` 或 `lsu_mmu_data_bus_error` 返回；outstanding ≤ 1；TC-PMBUF-SERIAL-OUTSTANDING-001、TC-PMBUF-ADDR-STABLE-001；SVA: `sva_lsu_req_stable_until_vld` / `sva_lsu_addr_stable_until_vld` / `sva_single_outstanding`；covergroup: `cg_lsu_req_outstanding` |
+| **F4.42b（新 P0）** | 无 tag/ID、按顺序返回 | `lsu_mmu_data_vld` 返回时必须对应当前 `mbuf_ptr` 所指 entry；`mmu_lsu_data_req=0` 时 `lsu_mmu_data_vld` 不得为 1；禁止 LSU 乱序；TC-PMBUF-NO-TAG-001、TC-PMBUF-INORDER-RESP-001；SVA: `sva_response_inorder` / `sva_vld_only_when_req` |
+| **F4.42c（新 P1）** | MBUF 指针更新约束 | `mbuf_ptr` 仅在 `lsu_mmu_data_vld` 或 MBUF 变空时前进，其他周期保持；TC-PMBUF-PTR-HOLD-001；SVA: `sva_mbuf_ptr_only_on_response`；covergroup: `cg_mbuf_ptr_hold` |
+
+**接口表（§2.3 第 7 组）**：明确追加"串行单 outstanding 握手协议"说明并说明 `mmu_lsu_tlb_busy` / `mmu_lsu_wakeup[11:0]` 不参与此握手。
+
 ---
 
 ## C. 真实缺陷 TC 优先级升级（plan_v1.md 真实项）
@@ -91,6 +120,8 @@ RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）及用户对 thd_c
 | `cg_twu_2m_csr_cross` | `twu` | 2MB 巨页 `twu_crs2_2m && twu_csr_cross` 事件必须被命中；采样 `csr_data_flop` 前后值抓取 L1130 分支重复 Bug（F4.NEW.4） |
 | `cg_xbar_cold_start` | `one_to_four_xbar` | 复位后前 16 次 `PDE_xbar_req` 的 TWU 分配分布（F5.NEW.3） |
 | `cg_l2_store_dtlb_tag` | `mmu_l2tlb` | `d_req_type=3'b110`（store）路径的 `arb_l2tlb_is_dtlb` 判断覆盖；load(010) vs store(110) cross（F3.5） |
+| `cg_lsu_req_outstanding` | `ptw_mbuf` | 采样 `mmu_lsu_data_req` 拉高持续周期数、outstanding 请求数（必须 ≤1）、请求期内地址改变计数（必须=0）（F4.42a）|
+| `cg_mbuf_ptr_hold` | `ptw_mbuf` | `mbuf_ptr` 相邻两周期变化时必须命中 `lsu_mmu_data_vld` 或 MBUF 由非空转空两种 bin（F4.42c）|
 
 ### 新增 SVA（3 条）
 
@@ -99,6 +130,12 @@ RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）及用户对 thd_c
 | `sva_twu_2m_cross_data` | F4.NEW.4：2MB CSR 跨界必须触发 `csr_data_flop` 更新 |
 | `sva_csr_grant_onehot` | F4.NEW.5：`csr_grant[1:0]` 禁止同时为 1 |
 | `sva_ptw_write_pipe_reset_safe` | F5.NEW.2：reset 断言期间 `ptw_write_req1/req2` 同步清零无 stale |
+| `sva_lsu_req_stable_until_vld` | F4.42a：`mmu_lsu_data_req` 拉高期间不得中途拉低直到 `lsu_mmu_data_vld` 或 `bus_error` |
+| `sva_lsu_addr_stable_until_vld` | F4.42a：`mmu_lsu_data_req_addr` 在 req 持续期间禁止变化 |
+| `sva_single_outstanding` | F4.42a：任意周期 outstanding 请求数 ≤ 1 |
+| `sva_response_inorder` | F4.42b：`lsu_mmu_data_vld=1` 时必须 `mmu_lsu_data_req=1` |
+| `sva_vld_only_when_req` | F4.42b：`mmu_lsu_data_req=0` 时 `lsu_mmu_data_vld` 不得为 1 |
+| `sva_mbuf_ptr_only_on_response` | F4.42c：`mbuf_ptr` 仅在 `lsu_mmu_data_vld` 或 MBUF 变空时更新 |
 
 ---
 

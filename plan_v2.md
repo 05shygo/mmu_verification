@@ -10,7 +10,7 @@
 
 ## 0. 本次完善总体方针
 
-1. **先纠错、再补充**：v2.0 继承自 plan_v1.md 的 10 条"潜在 RTL 缺陷"经过二次 RTL 走读后，**4 条为错判**、**6 条真实存在**。先把错判降级并做透明化记录（保留 TC 编号 gap 以便追溯演化），再在真实缺陷之上升级优先级。
+1. **先纠错、再补充**：v2.0 继承自 plan_v1.md 的 10 条“潜在 RTL 缺陷”经过二次 RTL 走读后，**6 条为错判**（用户澄清：thd_chk 必为叶 PTE，进一步证伪 TC-BUG-002/003）、**4 条真实存在**。先把错判降级并做透明化记录（保留 TC 编号 gap 以便追溯演化），再在真实缺陷之上升级优先级。
 2. **强证据、不定性**：v3.0 所有新发现以"RTL 二次核对 — 疑似，需设计确认"语气书写；对应 TC 打 BUG_HUNT 标签并配 SVA 形式化保护，不在验证侧擅自定性。
 3. **覆盖率闭环**：每一条新 Gap 必须同时具备 **Feature 表行 + TC 行 + covergroup 或 SVA**，避免只在某一层落单。
 4. **接口表一致性**：补齐 v1 遗漏的**广播/全局使能/CSR 细分**信号，保证 §2.3 接口表与 `ct_mmu_top.v` 端口列表一一对应。
@@ -19,12 +19,12 @@
 
 ## A. 纠错项（v2.0 → v3.0 证伪）
 
-RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）后确认 v2.0 中以下 4 条疑似缺陷**不成立**：
+RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）及用户对 thd_chk 语义的澄清后，确认 v2.0 中以下 **6 条疑似缺陷不成立**：
 
 | v2.0 原判定 | v3.0 证伪依据 | v1.md 处置 |
 |-------------|--------------|-----------|
-| TC-BUG-001 / F4.NEW.2：`twu` 跨级使用 fst_pmp_fetch_type 错误 | `twu.sv#L1175` `fst_pmp_itlb_sel = fst_pmp_vld & fst_pmp_fetch_type`；scd/thd 各级对应 `scd_pmp_*` / `thd_pmp_*` 独立字段，无误用 | **TC-BUG-001 由 BUG_HUNT 降级为 Functional，P0→P1**；Feature 表 F4.NEW.2 保留但去除"错误"定性 |
-| TC-BUG-004 / F5.NEW.1：`mmu_arb` bank mask 字面量缺 `8'b` 前缀 | `mmu_arb.sv#L142` 使用 `8'b00110011` 等完整字面量，未出现无前缀 decimal | **TC-BUG-004 降为 Functional，P0→P1**；F5.NEW.1 描述改为"正向覆盖"；**R16 风险等级由高降为低** |
+| TC-BUG-001 / F4.NEW.2：`twu` 跨级使用 fst_pmp_fetch_type 错误 | `twu.sv#L1175` `fst_pmp_itlb_sel = fst_pmp_vld & fst_pmp_fetch_type`；scd/thd 各级对应 `scd_pmp_*` / `thd_pmp_*` 独立字段，无误用 | **TC-BUG-001 由 BUG_HUNT 降级为 Functional，P0→P1**；Feature 表 F4.NEW.2 保留但去除"错误"定性 || TC-BUG-002 / F4.NEW.3：`twu` thd_chk 路径 4K 页 A-bit 检测缺失 | 用户澄清：thd_chk 必为叶 PTE，`thd_chk_page_flt` 中 A-bit 检测（`!flg[5]`）正常执行，4K/2M/1G 均有对应分支，非缺陷 | **TC-BUG-002 降为 Functional，P0→P1**；`sva_thd_a_bit_pgflt` 保留作正向保护 |
+| TC-BUG-003 / F4.NEW.1：MAEE=0 + 叶 PTE 时 thd_chk_refill_req 误触 / `mbuf_cache_upd` 误入 Cache | 用户澄清：thd_chk 必为叶 PTE，`thd_chk_refill_req` **只要不触异常即可发出**；`mbuf_cache_upd` 的“仅非叶 PTE”限制仅作用于 Cache 内容，与 refill 发送不矛盾 | **TC-BUG-003 降为 Functional，P0→P1**；`sva_pde_nonleaf_upd` 保留作 Cache 污染保护 || TC-BUG-004 / F5.NEW.1：`mmu_arb` bank mask 字面量缺 `8'b` 前缀 | `mmu_arb.sv#L142` 使用 `8'b00110011` 等完整字面量，未出现无前缀 decimal | **TC-BUG-004 降为 Functional，P0→P1**；F5.NEW.1 描述改为"正向覆盖"；**R16 风险等级由高降为低** |
 | TC-BUG-009 / F4.NEW.2：`twu` CSR Arbiter `2'b10` case 分支重复 | `twu.sv` CSR Arbiter 实际 case 为 `2'b01`/`2'b10`，不存在重复 | **TC-BUG-009 整行删除**（编号保留空位以便 v2→v3 演化追溯）|
 | TC-BUG-010 / F4.NEW.2：CSR FSM IDLE 无 else 分支可能 latch 推断 | `twu.sv#L1040` 已有 `else ptw_nxt_st = TWU_IDLE` 闭合分支 | **TC-BUG-010 整行删除** |
 
@@ -56,12 +56,10 @@ RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）后确认 v2.0 中
 
 ## C. 真实缺陷 TC 优先级升级（plan_v1.md 真实项）
 
-下列 6 条经 RTL 二次核对**确认为真实缺陷或强疑似缺陷**，v3.0 全部从 P1 升为 P0：
+下列 **4 条**经 RTL 二次核对**确认为真实缺陷或强疑似缺陷**，v3.0 全部从 P1 升为 P0（注：原列入 TC-BUG-002/003 已随用户澄清证伪——thd_chk 必为叶 PTE，A-bit 检测正常执行、`thd_chk_refill_req` 与 `mbuf_cache_upd` 非叶限制不矛盾，已移出本表并在§A 记录）：
 
 | TC | 定位 | 真实缺陷证据 |
 |----|------|--------------|
-| TC-BUG-002 / F4.NEW.3 | `twu.sv` thd_chk A-bit 路径 | `thd_chk_page_flt` 中 4K 页 A-bit 检测存在遗漏分支 |
-| TC-BUG-003 / F4.NEW.1 | `twu.sv` PDE Cache 叶/非叶更新 | MAEE=0 且为叶 PTE 时 `thd_chk_refill_req` 仍可能触发 |
 | TC-BUG-005 / F3.4 | `mmu_l2tlb.sv#L456` | `raw_vld = pipe_vld \|\| ptw_req`（应为 `&&`），PTW 写同周期误触发 tag compare hit |
 | TC-BUG-006 / F3.5 | `mmu_l2tlb.sv#L512` | `arb_l2tlb_is_dtlb` 判断重复 `3'b010` 两次且漏 store 类型 `3'b110` |
 | TC-BUG-007 / F3.NEW.1 | `mmu_l2tlb_replacement_policy.sv` | SFENCE INVVA 无效化 entry 后 RRPV 未复位，受旧残留影响下一次 victim 选择 |
@@ -113,7 +111,7 @@ RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）后确认 v2.0 中
 | v3.0 新增 TC-BUG-011~015 | — | +5 |
 | v3.0 删除 TC-BUG-009/010 | — | −2 |
 | **合计** | 72 | **75** |
-| P0 / P1 / P2 分布 | 29 / 35 / 8 | **39 / 35 / 7**（6 条真实缺陷升 P0，2 条证伪降 P1）|
+| P0 / P1 / P2 分布 | 29 / 35 / 8 | **37 / 37 / 7**（4 条真实缺陷升 P0，4 条证伪降 P1）|
 
 ---
 
@@ -121,7 +119,7 @@ RTL 二次核对（`mmu_arb.sv` / `twu.sv` / `mmu_l2tlb.sv`）后确认 v2.0 中
 
 | 风险 | v3.0 处置 |
 |------|----------|
-| R15 | 描述扩展为 6 条真实缺陷合并保护（TC-BUG-002/003/005/006/007/008 全升 P0） |
+| R15 | 描述收敛为 4 条真实缺陷合并保护（TC-BUG-005/006/007/008 全升 P0）；原列入的 TC-BUG-002/003 随用户澄清证伪（thd_chk 必为叶 PTE，A-bit 检测与 `thd_chk_refill_req` 均为正常设计）从 R15 移除 |
 | **R16** | **等级由高降为低**（v2.0 怀疑的 bank mask 编码错误证伪） |
 | R17/R18 | 保持原状 |
 | **R19 新增** | **P0 高危**：`twu.sv#L1130` 2MB CSR 跨界分支重复，独立 JIRA 工单跟踪；修复前豁免相关测试 |

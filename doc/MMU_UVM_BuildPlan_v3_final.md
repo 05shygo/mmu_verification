@@ -1,4 +1,4 @@
-# MMU UVM 验证环境搭建计划 — v3 终版（代码搭建蓝图）
+﻿# MMU UVM 验证环境搭建计划 — v3 终版（代码搭建蓝图）
 
 > **文档版本**：v3.0（Final, Code Skeleton Only）
 > **日期**：2026-04-22
@@ -13,7 +13,7 @@
 | v3.0 | 2026-04-22 | Verification Team | 终版：剥离测试点/覆盖率目标/回归/签核到 VerificationPlan；扩充文件骨架与实施阶段 |
 | v3.0 Final | 2026-04-22 | Verification Team | 对齐 `MMU_VerificationPlan_v3.md`：吸收 plan_v1/v2/v3 三轮完善（6 条错判降级、2 条删除、4 条真实缺陷 P0 升级、5 条 v3 新缺陷、F4.42a/b/c PTW→LSU 协议补强、接口表第 13/14 组补齐、5 个新 covergroup、9 条新 SVA、R19/R20 风险新增）。新增 `bug_hunt_tests/` 与 `ptw_lsu_protocol_tests/` 测试子目录、`mmu_ptw_lsu_protocol_sva.sv`、`mmu_twu_sva.sv`；§13 追加 Phase 11 v3.0 Gap-driven 回归。|
 | v3.0 Final+ | 2026-04-22 | Verification Team | **TWU/MBUF 架构澄清增量**（对齐 MMU_VerificationPlan_v3.md F4.5/F4.6/F4.24/F4.52/F4.53/F4.NEW.2 同步修订）：TWU 6 级流水线权威定义（非状态机，稳定态每周期 1 入，单 TWU 多笔 PTE 读在飞）；`twu_mask[3:0]` 语义修正为 **per-TWU 自阻塞**（PMP/PTE wait，非 MBUF 满反压）；PTW MBUF 与 L2TLB Miss Buffer entry **一对一不溢出**，RTL **无"MBUF 满→阻塞 TWU"反压路径**；`mmu_lsu_tlb_busy` 源头澄清为 **L1 DTLB MB 全满**（非 PTW MBUF 满）。新增 4 个 covergroup（`cg_twu_pipeline_occupancy` / `cg_twu_mask_per_twu` / `cg_mbuf_no_overflow` / `cg_tlb_busy_source`）、5 条新 SVA（`sva_twu_mask_semantics` / `sva_twu_pipeline_no_stall_when_unmasked` / `sva_twu_multi_inflight_legal` / `sva_twu_ready_equiv` / `sva_xbar_drop_when_all_mask` / `sva_ptw_mbuf_no_overflow` / `sva_no_backpressure_to_twu_from_mbuf_full` / `sva_busy_from_dtlb_mb_only`）、新 SVA 文件 `mmu_mbuf_invariant_sva.sv`、新测试子目录 `ptw_twu_arch_tests/`（6 个 TC）、ptw_mem_agent 新增 3 类保护性 checker 和 3 类压测 sequence。|
-| v4.0 | 2026-04-22 | Verification Team | **plan_v4/v5/v6 三轮增量**（对齐 MMU_VerificationPlan_v3.md F2.NEW.3-6 / F3.NEW.2-5 / F4.NEW.6-14 / F5.16 / F6.NEW.1-7 / F7.NEW.3-9）：新增 76 条 TC（含 L1DTLB MMU-off 广播、L2TLB req_is_load 标志、双信号回填语义、PTW ready 反压、TWU MAEE 双路属性选路、PMP 三级序列化、sysmap flag 替换与跨界降级、PTW PMP 端口映射等）；新增 SVA 文件 `mmu_maee_twu_sva.sv` / `mmu_pmp_twu_sva.sv` / `mmu_sysmap_sva.sv`；新增 30+ covergroup；新增测试子目录 `maee_twu_tests/` / `pmp_twu_tests_v6/`；`pmp_if.sv` 修正 RTL typo `mmu_pmp_fecth7`（ptw.sv:L62）并添加 DA-003 端口分配注释；§13 追加 Phase 12/13/14。|
+（对齐 MMU_VerificationPlan_v3.md F2.NEW.3-6 / F3.NEW.2-5 / F4.NEW.6-14 / F5.16 / F6.NEW.1-7 / F7.NEW.3-9）：新增 76 条 TC（含 L1DTLB MMU-off 广播、L2TLB req_is_load 标志、双信号回填语义、PTW ready 反压、TWU MAEE 双路属性选路、PMP 三级序列化、sysmap flag 替换与跨界降级、PTW PMP 端口映射等）；新增 SVA 文件 `mmu_maee_twu_sva.sv` / `mmu_pmp_twu_sva.sv` / `mmu_sysmap_sva.sv`；新增 30+ covergroup；新增测试子目录 `maee_twu_tests/` / `pmp_twu_tests_v6/`；`pmp_if.sv` 修正 RTL typo `mmu_pmp_fecth7`（ptw.sv:L62）并添加 DA-003 端口分配注释；§13 追加 Phase 12/13/14。|
 
 ---
 
@@ -94,7 +94,7 @@ UVM 代码实现工程师 / Coding AI（具备 SystemVerilog + UVM 1.2 基础，
 | 1 | `ifu_agent` | Active | IFU 取指（`ifu_mmu_*` / `mmu_ifu_*`） | 新写，参考 `hpdcache_agent` |
 | 2 | `lsu_agent` | Active | LSU Pipe0/1/2/STAMO + TLB Inv 子通道（`lsu_mmu_*0/1/2`、`lsu_mmu_stamo_*`、`lsu_mmu_tlb_*inv*`） | 新写，5 子线程 driver |
 | 3 | `cp0_agent` | Active | CP0/CSR（`cp0_mmu_*` / `mmu_cp0_*` / `cp0_yy_priv_mode`） | 新写，参考 `conf_and_perf_agent` |
-| 4 | `ptw_mem_agent` | Responder | PTW 数据通道（`mmu_lsu_data_*` / `lsu_mmu_data*` / `lsu_mmu_bus_error` / `mmu_lsu_tlb_busy/wakeup`） | 复用 `memory_response_model` + `memory_shadow` |
+| 4 | `ptw_mem_agent` | Responder | PTW 数据通道（`mmu_lsu_data_*` / `lsu_mmu_data*` / `lsu_mmu_bus_error`）；**v7.3 修订**：`mmu_lsu_tlb_busy` / `mmu_lsu_tlb_wakeup[11:0]` / `mmu_lsu_mmu_en` 已移至 `lsu_agent`（L1DTLB → LSU 广播子分组 `tlb_status`） | 复用 `memory_response_model` + `memory_shadow` |
 | 5 | `pmp_agent` | Responder | PMP 8 端口（`pmp_mmu_flg{0..7}` / `mmu_pmp_pa{0..7}` / `mmu_pmp_fetch{3,5,6,7}`） | 新写，配置式 responder |
 | 6 | `sysmap_cfg_agent` | Active | SysMap 区域配置（仅 build/初始化阶段） | 新写，最简 active |
 | 7 | `misc_agent` | Passive + 注入 | RTU flush/expt + HPCP cnt_en/miss + biu_smp_disable + scan_en + had_debug | 新写，多子接口聚合 |
@@ -197,11 +197,12 @@ UVM 代码实现工程师 / Coding AI（具备 SystemVerilog + UVM 1.2 基础，
 | LSU Pipe2 (Prefetch) | `lsu_mmu_va2*`, `mmu_lsu_pa2*`, `mmu_lsu_share2`, `mmu_lsu_sec2` | `lsu_if`（pipe2 子分组）↔ `lsu_agent` |
 | LSU STAMO | `lsu_mmu_stamo_*` | `lsu_if`（stamo 子分组）↔ `lsu_agent` |
 | LSU TLB Inv | `lsu_mmu_tlb_*inv*`, `lsu_mmu_tlb_va`, `lsu_mmu_tlb_asid`, `mmu_lsu_tlb_inv_done` | `lsu_if`（inv 子分组）↔ `lsu_agent` |
-| LSU PTW Data | `mmu_lsu_data_*`, `lsu_mmu_data*`, `lsu_mmu_bus_error`, `mmu_lsu_tlb_busy/wakeup`, `mmu_lsu_mmu_en` | `ptw_mem_if` ↔ `ptw_mem_agent`（**严格串行单 outstanding，见下表第 7 组说明**） |
+| LSU PTW Data | `mmu_lsu_data_*`, `lsu_mmu_data*`, `lsu_mmu_bus_error` | `ptw_mem_if` ↔ `ptw_mem_agent`（**严格串行单 outstanding，见下表第 7 组说明**） |
+| **【v7.3 新增】L1DTLB → LSU 广播（`tlb_status` 子分组）** | `mmu_lsu_tlb_busy`（源：`mmu_l1dtlb.sv#L1229` `&mb_entry_vld`）、`mmu_lsu_tlb_wakeup[11:0]`（源：`mmu_l1dtlb_install.sv#L231-L264` `{12{mb_have_free}} | {12{l1dtlb_expt_for_taken}}`，MB 有空 OR page fault 广播唤醒 LSU **12 个 LSIQ entry**）、`mmu_lsu_mmu_en`（语义归 L1DTLB 域；RTL 驱动源 = `ct_mmu_regs.v#L645` SATP.mode） | `lsu_if`（`tlb_status` 子分组）↔ `lsu_agent`（monitor 新增 `ap_tlb_status` analysis port） |
 | PMP | `pmp_mmu_flg{0..7}`, `mmu_pmp_pa{0..7}`, `mmu_pmp_fetch{3,5,6,7}` | `pmp_if` ↔ `pmp_agent` |
 | RTU | `rtu_mmu_bad_vpn`, `rtu_mmu_expt_vld`, `rtu_yy_xx_flush` | `misc_if`（rtu 子分组）↔ `misc_agent` |
 | Sysmap | （无顶层端口，纯内部）配置经 `ct_mmu_sysmap.v` 实例参数 | `sysmap_cfg_if`（白盒注入）↔ `sysmap_cfg_agent` |
-| **【v3.0 Final 新增】全局使能 / TLB Oper 完成（第 13 组）** | `mmu_xx_mmu_en`（顶层使能广播）、`mmu_lsu_mmu_en`（LSU 专用广播）、`mmu_cp0_tlb_done`（TLB Oper 完成握手） | `cp0_if` / `misc_if`（在 `misc_agent` 内 monitor 广播信号，在 `cp0_agent` 内 monitor `tlb_done`） |
+| **【v3.0 Final 新增 / v7.3 修订】全局使能 / TLB Oper 完成（第 13 组）** | `mmu_xx_mmu_en`（顶层使能广播）、`mmu_cp0_tlb_done`（TLB Oper 完成握手）；**v7.3 修订**：`mmu_lsu_mmu_en` 已移至 L1DTLB → LSU 广播组（见上方新增行） | `cp0_if` / `misc_if`（在 `misc_agent` 内 monitor 广播信号，在 `cp0_agent` 内 monitor `tlb_done`） |
 | **【v3.0 Final 新增】CSR 细分控制（第 14 组）** | `cp0_mmu_cskyee`、`cp0_mmu_reg_num[1:0]`、`cp0_mmu_mpp[1:0]`、`cp0_mmu_wdata[63:0]`、`cp0_mmu_wreg` | `cp0_if` ↔ `cp0_agent`（driver 细分字段支持） |
 
 > **【v3.0 Final 勘误】**
@@ -219,7 +220,7 @@ UVM 代码实现工程师 / Coding AI（具备 SystemVerilog + UVM 1.2 基础，
 > | 单 outstanding | 任意周期 outstanding 请求数 ≤ 1 | `sva_single_outstanding`（F4.42a） |
 > | 无 tag，按序返回 | 通道无 tag/ID 字段；`lsu_mmu_data_vld=1` 必须 `mmu_lsu_data_req=1`；对应当前 `mbuf_ptr` entry | `sva_response_inorder` / `sva_vld_only_when_req`（F4.42b） |
 > | 指针约束 | `mbuf_ptr` 仅在 `lsu_mmu_data_vld` 或 MBUF 变空时前进 | `sva_mbuf_ptr_only_on_response`（F4.42c） |
-> | 不参与握手 | `mmu_lsu_tlb_busy`（v3.0 澄清：实际源为 **L1 DTLB MB 全满 `&mb_entry_vld`**，**非 PTW MBUF 满**，见 F2.18 / F4.24）、`mmu_lsu_wakeup[11:0]`（TLB 层广播）均与 PTE 数据握手无关 | — |
+> | 不参与握手（**v7.3 归属修订：三信号已迁至 `lsu_if`**） | `mmu_lsu_tlb_busy`（源 = L1DTLB MB 全满 `&mb_entry_vld`，`mmu_l1dtlb.sv#L1229`）、`mmu_lsu_tlb_wakeup[11:0]`（源 = L1DTLB MB 有空 OR page fault 广播唤醒 LSU 12 LSIQ entry，`mmu_l1dtlb_install.sv#L231-L264`）、`mmu_lsu_mmu_en`（MMU 使能广播，语义归 L1DTLB 域，RTL 源 = `ct_mmu_regs.v#L645`）均 **与 PTE 数据握手无关，归 L1DTLB → LSU 广播通道**（见 §2.4 新行） | — |
 
 > **【v3.0 Final ★ TWU/MBUF 架构澄清】**
 >
@@ -678,6 +679,14 @@ interface lsu_if(input bit clk_i, input bit rst_ni);
   logic [26:0]  lsu_mmu_tlb_va;
   logic [15:0]  lsu_mmu_tlb_asid;
   logic         mmu_lsu_tlb_inv_done;
+  // ---- L1DTLB → LSU 广播子分组（v7.3：从 ptw_mem_if 搬入） ----
+  // 源：mmu_l1dtlb.sv#L79-L80, L1229（tlb_busy = &mb_entry_vld）
+  //     mmu_l1dtlb_install.sv#L231-L264（tlb_wakeup = {12{mb_have_free}} | {12{l1dtlb_expt_for_taken}}，
+  //       MB 有空闲 OR L1DTLB page fault 任一成立即广播，唤醒 LSU 12 个 LSIQ entry）
+  //     ct_mmu_regs.v#L645（mmu_en 驱动源 = SATP.mode；语义归 L1DTLB 域）
+  logic         mmu_lsu_tlb_busy;
+  logic [11:0]  mmu_lsu_tlb_wakeup;
+  logic         mmu_lsu_mmu_en;
 endinterface
 ```
 
@@ -720,10 +729,7 @@ interface ptw_mem_if(input bit clk_i, input bit rst_ni);
   logic         mmu_lsu_data_req;
   logic [39:0]  mmu_lsu_data_req_addr;
   logic         mmu_lsu_data_req_size;
-  logic         mmu_lsu_mmu_en;
-  // PTW 流控反向
-  logic         mmu_lsu_tlb_busy;
-  logic [11:0]  mmu_lsu_tlb_wakeup;
+  // v7.3：mmu_lsu_mmu_en / mmu_lsu_tlb_busy / mmu_lsu_tlb_wakeup[11:0] 已迁至 lsu_if（L1DTLB → LSU 广播子分组 tlb_status）
   // 响应（TB 驱动）
   logic         lsu_mmu_bus_error;
   logic         lsu_mmu_data_vld;
@@ -1664,16 +1670,16 @@ module tb_top;
     .lsu_mmu_id0           (lsu_vif.lsu_mmu_id0),
     .lsu_mmu_va0           (lsu_vif.lsu_mmu_va0),
     // ... <按 ct_mmu_top.v 端口顺序补全所有 lsu/pipe2/stamo/inv/data 信号>
-    // PTW data 通道
-    .mmu_lsu_mmu_en        (ptw_mem_vif.mmu_lsu_mmu_en),
+    // PTW data 通道（v7.3：mmu_en / tlb_busy / tlb_wakeup 归 lsu_vif，L1DTLB → LSU 广播子分组）
+    .mmu_lsu_mmu_en        (lsu_vif.mmu_lsu_mmu_en),
     .mmu_lsu_data_req      (ptw_mem_vif.mmu_lsu_data_req),
     .mmu_lsu_data_req_addr (ptw_mem_vif.mmu_lsu_data_req_addr),
     .mmu_lsu_data_req_size (ptw_mem_vif.mmu_lsu_data_req_size),
     .lsu_mmu_bus_error     (ptw_mem_vif.lsu_mmu_bus_error),
     .lsu_mmu_data_vld      (ptw_mem_vif.lsu_mmu_data_vld),
     .lsu_mmu_data          (ptw_mem_vif.lsu_mmu_data),
-    .mmu_lsu_tlb_busy      (ptw_mem_vif.mmu_lsu_tlb_busy),
-    .mmu_lsu_tlb_wakeup    (ptw_mem_vif.mmu_lsu_tlb_wakeup),
+    .mmu_lsu_tlb_busy      (lsu_vif.mmu_lsu_tlb_busy),
+    .mmu_lsu_tlb_wakeup    (lsu_vif.mmu_lsu_tlb_wakeup),
     // PMP（8 端口 flag 输入 + 8 PA 输出 + 4 fetch_en 输出）
     .pmp_mmu_flg0          (pmp_vif.pmp_mmu_flg0),
     .pmp_mmu_flg1          (pmp_vif.pmp_mmu_flg1),
@@ -2429,3 +2435,147 @@ make regress LIST=simu/mmu_smoke_list
 ---
 
 **文档结束。** 工程师可从 **Phase 1：环境骨架** 开始，按 [§13 实施落地阶段](#第-13-章实施落地阶段10-个-phase) 逐 Phase 落地；v3.0 Gap-driven 回归由 **Phase 11** 统一纳管。
+
+
+---
+
+## 第 9 章 v5 ~ v7.2 增量补丁（PMP Agent 升级 / v7 新 SVA / PDE Cache 重构 / xbar 两级分发）
+
+> **本章目的**：记录自 v4.0 之后，验证计划 `MMU_VerificationPlan_v3.md` 继续滚动到 **v7.2** 期间的增量搭建改动。**v5.0 ~ v7.2 共计 5 轮增量**，全部落地在本章；前面章节保持 v4.0 原貌不动。
+
+### 9.1 版本历史（增量）
+
+| 版本 | 日期 | 作者 | 变更说明 |
+|------|------|------|----------|
+| v5.0 | 2026-04-22 | Verification Team | plan_v5：吸收 F4.NEW.6/7/8/9/10/11 PTW↔L2TLB↔arb 接口规格（`ptw_l2tlb_ready` 反压、`twu_idle` vs `twu_xbar_mask` 语义区分、`xbar_twu_hit_level`、异常直通、`twu_data_ready` 数据分发、mmu_arb 三通道仲裁）；新增 SVA `mmu_ptw_lsu_protocol_sva.sv` 完善协议断言；新增测试子目录 `ptw_twu_arch_tests/` 扩充 P0 case。 |
+| v6.0 | 2026-04-22 | Verification Team | plan_v6：吸收 MAEE/SysMap/PMP PTW 精化——F4.NEW.12 双路属性选路、F4.NEW.13 PMP 三级序列化、F4.NEW.14 pmp_grant one-hot、F6.NEW.1-7 sysmap 7 点、F7.NEW.3-9 PMP 7 点；新增 SVA 文件 `mmu_maee_twu_sva.sv` / `mmu_pmp_twu_sva.sv` / `mmu_sysmap_sva.sv`；修正 pmp_if.sv 的 `mmu_pmp_fecth7` RTL typo。 |
+| v7.0 | 2026-04-23 | Verification Team | `lsu_mmu_bus_error` 并发协议（bus_error 与 data_vld **同拍非互斥**），`mbuf_get !bus_error` 门控，`write_back_req/bus_err_write_back_req` 双路径，PDE Cache 更新时序重构（`pde_updata_data_vld/data_flop/vpn/lvl` 四寄存器，次周期驱动 `mbuf_cache_upd`，`pde_updata_lvl[0]=1` 排除 THD/4K 叶级更新）。新增 SVA：`sva_bus_err_with_data_vld` / `sva_mbuf_get_not_set_on_bus_err` / `sva_mbuf_get_bus_err_mutex` / `sva_pde_cache_one_cycle_delay` / `sva_pde_cache_no_leaf_entry`；新增 CG：`cg_mbuf_bus_err_concurrent` / `cg_pde_cache_timing`；新增 TC：TC-MBUF-BUS-ERR-CONCURRENT-001 / TC-MBUF-GET-NO-BUS-ERR-001 / TC-PDE-CACHE-TIMING-001 / TC-PDE-CACHE-LVL-001；新增测试子目录 `bus_err_concurrent_tests/`。 |
+| v7.1 | 2026-04-23 | Verification Team | PTW RTL 核对补丁：F4.23 归属纠错（`mmu_lsu_tlb_wakeup[11:0]` 源头 = **L1DTLB**，非 PTW）；F4.51 重写——`one_to_four_xbar` 为**两级分发**（Stage-1 优先编码器 `twu_idle` → Stage-2 `twu_req_point_r` fallback）；F4.52 补全 `mbuf_twu_have[3:0]` per-TWU 位向量语义；新增 F4.NEW.15/16/17（xbar 两级分发 P0 / mbuf_twu_have 生成 P1 / twu_busy 含 mbuf_twu_have P1）。新增 SVA：`sva_xbar_idle_first_priority` / `sva_xbar_pointer_only_when_no_idle` / `sva_mbuf_twu_have_from_vld_entries` / `sva_twu_busy_includes_mbuf_have`；新增 CG：`cg_xbar_dispatch_mode` / `cg_mbuf_twu_have_patterns`；新增 SVA 文件 `mmu_xbar_sva.sv`。 |
+| v7.3 | 2026-04-23 | Verification Team | **信号归属修订**（对齐 `MMU_VerificationPlan_v3.md` v7.3，RTL 精读 `mmu_l1dtlb.sv` / `mmu_l1dtlb_install.sv` / `ct_mmu_regs.v`）：`mmu_lsu_tlb_busy` / `mmu_lsu_tlb_wakeup[11:0]` / `mmu_lsu_mmu_en` 三信号从 `ptw_mem_agent` / `ptw_mem_if` 搬到 `lsu_agent` / `lsu_if`（L1DTLB → LSU 广播子分组 `tlb_status`）；§1.2 Agent 表 row 4、§2.4 端口映射表（新增 L1DTLB → LSU 广播行）、第 13 组定义、§6.2/§6.4 interface 骨架、tb_top DUT 连线（3 行 ptw_mem_vif → lsu_vif）同步修订。RTL 证据：`mmu_l1dtlb.sv#L1229` + `mmu_l1dtlb_install.sv#L231-L264` + `ct_mmu_regs.v#L645`。 |
+| v7.2 | 2026-04-23 | Verification Team | **PMP Agent 验证计划完善**（对照 `pmp/rtl/ct_pmp_*.v` 精读）：§2.3 Row 8 修订（`pmp_mmu_flg[3:0]={L,X,W,R}`，bit[3]=L）、F7.2 纠错（Reserved→L 锁定）；新增 F7.NEW.10..F7.NEW.22 共 **13 条**特性；新增 **19 条** PMP TC（TOR/NAPOT/NA4/优先级/默认权限/L-lock/MPRV/pmpcfg2/5-vs-8 端口）；**10 条** SVA（`sva_pmp_flg_bit_layout` / `sva_pmp_priority_lowest_wins` / `sva_pmp_tor_chain` / `sva_pmp_napot_mask_shape` / `sva_pmp_na4_never_hits` / `sva_pmp_l_bit_lock_no_update` / `sva_pmp_m_mode_no_match_allow` / `sva_pmp_u_mode_no_match_deny` / `sva_pmp_mprv_port2_zero` / `sva_pmp_mprv_port3_fetch_mask`）；**7 条** CG（`cg_pmp_addr_mode_per_entry` / `cg_pmp_napot_size` / `cg_pmp_priority_hit_index` / `cg_pmp_priv_perm_matrix` / `cg_pmp_lock_sequence` / `cg_pmp_mprv_scenarios` / `cg_pmp_port_concurrency`）；**4 条**新风险 R-NEW.PMP.1..4；新增 SVA 文件 `mmu_pmp_sva.sv`；新增测试子目录 `pmp_v7_tests/`；pmp_agent 类型由 **Responder 升级为 Responder + Active**。 |
+
+### 9.2 pmp_agent 架构升级（v7.2：Responder + Active with Reference Model）
+
+> **定位变化**：v4.0 版本 `pmp_agent` 仅作为 **Responder**（被动按 PA 返回 `pmp_mmu_flg`）。v7.2 升级为 **Responder + Active 混合模式**，新增 CSR 激励、Reference Model、7 类 CG，用于覆盖 F7.NEW.10..F7.NEW.22 全部特性点。
+
+#### 9.2.1 pmp_driver（新增，Active 能力）
+
+**文件**：`testbench/pmp_agent/pmp_driver.sv`
+
+**职责**：
+- 通过 CP0 接口驱动 `pmpcfg0/1` 与 `pmpaddr0..7` CSR 写序列（8 entry，`pmpcfg2` 硬连线 0 故无写）。
+- 编程 4 种 Addr-Match 模式：**OFF / TOR / NA4 / NAPOT**（NA4/pmpcfg2 需配合"实现缺失 → 按规格写但观测无命中"回归）。
+- 驱动 L-bit 锁定序列（`pmp{i}cfg.L=1 → 后续写吞`，以及 TOR 依赖锁：`pmp{i+1}.L && A==TOR → pmp{i}addr` 写也吞）。
+- 支持 M/U/S priv 模式切换激励（通过 cp0_agent 协作）、MPRV 激励（port 2 免疫 / port 3 fetch 屏蔽差异化验证）。
+
+#### 9.2.2 pmp_responder + pmp_monitor（保留 v4.0，小幅扩展）
+
+**文件**：`testbench/pmp_agent/pmp_responder.sv`、`testbench/pmp_agent/pmp_monitor.sv`
+
+**职责（相对 v4.0）**：
+- Responder 继续按物理地址返回 `pmp_mmu_flg{0..7}[3:0]`（**v7.2 确认位序 {L,X,W,R}**）。
+- Monitor 扩充采样：`mmu_pmp_pa{0..7}`、`mmu_pmp_fetch{0,1,3,5,6,7}`（注意 fetch4 已注释 / fecth7 为 RTL typo）、`pmpcfg0/1/2` 回读（pmpcfg2 应恒 0）。
+- 5 端口 vs 8 端口实测：对 `ct_pmp_acc0..4`（5 端口）独立监控；`port5..7` 按 **waiver** 记录（R-NEW.PMP.1）。
+
+#### 9.2.3 pmp_ref_model（新增，v7.2）
+
+**文件**：`testbench/pmp_agent/pmp_ref_model.sv`
+
+**职责**：
+- 维护 shadow 寄存器：`pmp_cfg[8]` / `pmp_addr[8]`，`pmpcfg2` 镜像恒 0。
+- 复现 4 种 Addr-Match：OFF（恒不命中）、TOR（`bottom[i]=pmpaddr[i-1]`，`bottom[0]=29'b1`，hit = `addr ≥ bottom && addr < upaddr`）、NA4（**恒不命中 / RTL Gap**）、NAPOT（casez 匹配 4KB..1TB 共 29 档）。
+- 优先级选择：多 entry 同时 hit 时取 **lowest index**（对标 `ct_pmp_acc.v#L170-L192`）。
+- 默认权限：M-mode 无命中 → `4'b0111`（L=0, X=W=R=1）；非 M-mode 无命中 → `4'b0000`。
+- L-bit 锁定：`pmp{i}cfg.L=1` 吞写；TOR 依赖锁；**复位清 L（RTL Gap，与 Priv spec sticky 偏离）**。
+- MPRV 差异化：port 2 `mprv=0`；port 3 `mprv=mprv & !fetch3`；其余 port `mprv` 透传。
+
+#### 9.2.4 pmp_sequences（新增 19 类 seq，v7.2）
+
+**文件**：`testbench/pmp_agent/pmp_sequences/*.sv`
+
+| Sequence 名 | 对应 TC | 关键行为 |
+|---|---|---|
+| `pmp_tor_chain_seq` | TC-PMP-TOR-CHAIN-001 | 编程 2/3/多 TOR 区间 + 正常区间命中 |
+| `pmp_tor_zero_len_seq` | TC-PMP-TOR-ZERO-LEN-001 | 零宽 / 逆序 TOR 退化 |
+| `pmp_tor_lock_seq` | TC-PMP-TOR-LOCK-DEP-001 | L-lock + TOR 依赖锁（锁 pmp{i+1} 后再写 pmp{i}addr） |
+| `pmp_napot_size_sweep_seq` | TC-PMP-NAPOT-ALL-SIZES-001 | 4KB..1TB 29 档全覆盖 |
+| `pmp_napot_illegal_seq` | TC-PMP-NAPOT-ILLEGAL-001 | 非法 pattern → mask=0 |
+| `pmp_na4_seq` | TC-PMP-NA4-UNSUPPORTED-001 | NA4 配置恒不命中（RTL Gap 登记） |
+| `pmp_multi_hit_seq` | TC-PMP-PRIORITY-LOWEST-IDX-001 | 多 entry 同 hit → winner=min idx |
+| `pmp_default_m_seq` | TC-PMP-DEFAULT-M-ALLOW-001 | M-mode 无命中 allow |
+| `pmp_default_u_seq` | TC-PMP-DEFAULT-U-DENY-001 | U/S-mode 无命中 deny |
+| `pmp_flg_order_seq` | TC-PMP-FLG-LXWR-ORDER-001 | 位序 {L,X,W,R} Ref Model 一致性 |
+| `pmp_lock_seq` | TC-PMP-L-BIT-LOCK-001 | L=1 吞 cfg/addr 写 |
+| `pmp_reset_seq` | TC-PMP-L-BIT-RESET-CLR-001 | 复位后 L=0 验证 |
+| `pmp_mprv_port2_seq` | TC-PMP-MPRV-PORT2-IMMUNE-001 | port 2 对 MPRV 免疫 |
+| `pmp_mprv_port3_seq` | TC-PMP-MPRV-PORT3-FETCH-MASK-001 | port 3 fetch 时屏蔽 MPRV |
+| `pmp_pmpcfg2_seq` | TC-PMP-PMPCFG2-ZERO-001 | pmpcfg2 硬连线 0 读写验证 |
+| `pmp_5port_concurrent_seq` | TC-PMP-5PORT-REGRESS-001 | 5 端口 ct_pmp_acc0..4 并发实测 |
+| `pmp_8port_spec_seq` | TC-PMP-8PORT-SPEC-001 | 8 端口规格回归（port5..7 waiver） |
+| `pmp_csr_warl_seq` | —（辅助） | pmpcfg WARL bits[6:5]=0 回读 |
+| `pmp_comprehensive_seq` | —（主 vseq 调度） | 上述 seq 组合大回归 |
+
+#### 9.2.5 pmp_covergroups（新增 7 CG，v7.2）
+
+**文件**：`testbench/pmp_agent/pmp_covergroups.sv`
+
+| Covergroup | 覆盖维度 |
+|---|---|
+| `cg_pmp_addr_mode_per_entry` | 每 entry × {OFF/TOR/NA4/NAPOT} 4 模式交叉 |
+| `cg_pmp_napot_size` | NAPOT 29 档尺寸（4KB..1TB）+ 非法 pattern |
+| `cg_pmp_priority_hit_index` | winner index ∈ {0..7}（多 hit 时）|
+| `cg_pmp_priv_perm_matrix` | priv {M/S/U} × access {R/W/X} × outcome {allow/deny} |
+| `cg_pmp_lock_sequence` | L-bit 锁定状态 × TOR 依赖锁 × 复位清 |
+| `cg_pmp_mprv_scenarios` | MPRV × port{0..7} × fetch={0,1} |
+| `cg_pmp_port_concurrency` | 同拍并发端口数 {1..5}（实测）+ {1..8}（规格） |
+
+### 9.3 新增测试子目录（v5 ~ v7.2 累计）
+
+```
+testbench/test/
+├── maee_twu_tests/          # v6：F4.NEW.12 / F6.NEW.1..F6.NEW.4 MAEE×sysmap
+├── pmp_twu_tests_v6/        # v6：F4.NEW.13/14 + F7.NEW.3..F7.NEW.9
+├── bus_err_concurrent_tests/ # v7.0：F4.22 / F4.35 / F4.42a / F4.NEW.1 bus_error
+├── sysmap_degrade_tests/    # v6：F6.NEW.3/4 跨界降级
+├── pmp_v7_tests/            # v7.2：F7.NEW.10..F7.NEW.22（19 TC）
+└── ptw_twu_arch_tests/      # v5/v7.1：F4.NEW.6/7/15/16/17 xbar + mbuf_twu_have
+```
+
+### 9.4 新增 SVA 文件（v5 ~ v7.2 累计 8 个）
+
+| SVA 文件 | 属于版本 | 涵盖 SVA（按声明顺序） |
+|---|---|---|
+| `mmu_ptw_lsu_protocol_sva.sv` | v5.0 | `sva_lsu_req_stable_until_vld` / `sva_single_outstanding` / `sva_response_inorder` / `sva_vld_only_when_req` / `sva_mbuf_ptr_only_on_response` |
+| `mmu_twu_sva.sv` | v4/v5 | `sva_twu_mask_semantics` / `sva_twu_pipeline_no_stall_when_unmasked` / `sva_twu_multi_inflight_legal` / `sva_twu_ready_equiv` |
+| `mmu_mbuf_invariant_sva.sv` | v4 | `sva_ptw_mbuf_no_overflow` / `sva_no_backpressure_to_twu_from_mbuf_full` / `sva_busy_from_dtlb_mb_only` |
+| `mmu_maee_twu_sva.sv` | v6.0 | `sva_twu_maee_mutex` / `sva_maee0_csr_req` / `sva_maee1_skip_csr` |
+| `mmu_pmp_twu_sva.sv` | v6.0 | `sva_no_lsu_req_during_pmp_wait` / `sva_pmp_grant_onehot` / `sva_pmp_deny_acc_fault` / `sva_pmp_deny_no_lsu_req` / `sva_ptw_pmp_fetch_zero` / `sva_pmp_wait_implies_mask` |
+| `mmu_sysmap_sva.sv` | v6.0 | `sva_sysmap_cross_degrade` / `sva_csr_refill_flg_matches_sysmap` / `sva_sysmap_pa_align` |
+| `mmu_xbar_sva.sv` | v7.1 | `sva_xbar_idle_first_priority` / `sva_xbar_pointer_only_when_no_idle` / `sva_mbuf_twu_have_from_vld_entries` / `sva_twu_busy_includes_mbuf_have` + v7.0：`sva_bus_err_with_data_vld` / `sva_mbuf_get_not_set_on_bus_err` / `sva_mbuf_get_bus_err_mutex` / `sva_pde_cache_one_cycle_delay` / `sva_pde_cache_no_leaf_entry` |
+| `mmu_pmp_sva.sv` | v7.2 | `sva_pmp_flg_bit_layout` / `sva_pmp_priority_lowest_wins` / `sva_pmp_tor_chain` / `sva_pmp_napot_mask_shape` / `sva_pmp_na4_never_hits` / `sva_pmp_l_bit_lock_no_update` / `sva_pmp_m_mode_no_match_allow` / `sva_pmp_u_mode_no_match_deny` / `sva_pmp_mprv_port2_zero` / `sva_pmp_mprv_port3_fetch_mask` |
+
+### 9.5 新增 Virtual Sequence（v7 系列）
+
+- `mmu_pmp_comprehensive_vseq`（v7.2 主回归）：依次调度 9.2.4 的 19 类 seq，覆盖 F7.NEW.10..22。
+- `mmu_bus_err_concurrent_vseq`（v7.0）：ptw_mem_agent 注入 `bus_error & data_vld` 同拍 + 观察 mbuf_get 门控。
+- `mmu_sysmap_degrade_vseq`（v6.0）：大页跨界 + 触发降级。
+- `mmu_maee_vseq`（v6.0）：MAEE 0/1 切换 + 双路属性选路。
+- `mmu_pde_cache_vseq`（v7.0）：PDE Cache 时序重构（4 寄存器次周期驱动 + 叶级排除）。
+
+### 9.6 Env 更新（`mmu_env.svh`）
+
+- 新增组件句柄：`pmp_ref_model m_pmp_ref_model`（v7.2）。
+- 新增 Virtual Interface：`pmp_cfg_if m_pmp_cfg_vif`（driver ↔ CP0 CSR 激励路径）。
+- `mmu_top_cfg` 新增配置位：`pmp_agent_active=1`（v7.2 默认 Active）、`pmp_5port_mode=1`（默认仅校验 5 端口，避开 R-NEW.PMP.1 port5..7 端口悬空）。
+
+### 9.7 风险登记（v7.2 新增 4 条）
+
+| ID | 级别 | 描述 | 闭环建议 |
+|---|---|---|---|
+| R-NEW.PMP.1 | 高 | `ct_pmp_top.v` 仅实例化 5 个 `ct_pmp_acc`（`x_ct_pmp_acc0..4`），规格目标 8 端口，port5..7 悬空 | 与设计方对齐 ECO 或 waiver；TC-PMP-5PORT-REGRESS-001 作为主线，TC-PMP-8PORT-SPEC-001 做 spec 回归 |
+| R-NEW.PMP.2 | 中 | NA4 模式未实现（`mmu_na4_addr_match=1'b0`） | 登记为已知行为；建议 ECO 或用 NAPOT(4KB) 替代 |
+| R-NEW.PMP.3 | 中 | L-bit 复位清 0，偏离 RISC-V Priv spec sticky 语义 | 登记 spec 偏差；建议改为 power-on reset only 或 sticky FF |
+| R-NEW.PMP.4 | 低 | `pmpcfg2` 硬连线 0，pmp8-15 不实现（RISC-V 允许 0/16/64 entry） | 文档注明 8 entry 实现；测试侧不访问 pmp8-15 区段 |
+
+---
+

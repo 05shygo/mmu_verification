@@ -557,11 +557,42 @@ end
 //==============================================================================
 //                  Refill to PDE Cache
 //==============================================================================
-assign mbuf_cache_upd = lsu_mmu_data_vld & lsu_mmu_data[0] & (!lsu_mmu_data[1] & !lsu_mmu_data[3]);
+always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
+    if(!cpurst_b)
+        pde_updata_data_vld <= 1'b0;
+    else if(|write_back_grant[8:0])
+        pde_updata_data_vld <= 1'b1;
+    else 
+        pde_updata_data_vld <= 1'b0;
+end
 
-assign mbuf_cache_upd_ppn[PPN_WIDTH-1:0] = lsu_mmu_data[PPN_WIDTH+9:10];
-assign mbuf_cache_upd_lvl[1:0] = mbuf_twu_lvl[2:1];
-assign mbuf_cache_upd_vpn[VPN_WIDTH-1:0] = mbuf_twu_vpn[VPN_WIDTH-1:0];
+always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
+    if(!cpurst_b)
+        pde_updata_data_flop[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
+        pde_updata_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
+        pde_updata_lvl[2:0] <= 3'b0;
+    else if(|write_back_grant[8:0])
+        pde_updata_data_flop[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
+        pde_updata_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
+        pde_updata_lvl[2:0] <= mbuf_twu_lvl[2:0];
+end
+
+// 只有同时满足下列条件的 PTE 才能回填 PDE Cache:
+//   - pde_updata_data_vld      : 本拍 PTE 数据有效
+//   - pde_updata_data_flop[0] = V=1 : 表项有效
+//   - pde_updata_data_flop[1] = R=0 且 pde_updata_data_flop[3] = X=0  -> 非叶子 (中间级 PDE)
+//   - pde_updata_data_flop[2] = W=0                          -> 非只读/非 write-only 保留编码
+//   - pde_updata_lvl[0]     = 0                            -> 当前不是第 3 级 PTW 检查
+//                                                       (最后一级不应再作为 PDE 缓存)
+assign mbuf_cache_upd = pde_updata_data_vld
+                      & pde_updata_data_flop[0]                    // V = 1
+                      & (!pde_updata_data_flop[1]                  // R = 0
+                      &  !pde_updata_data_flop[3])                 // X = 0   -> 非叶子
+                      & (!(pde_updata_data_flop[2] | pde_updata_lvl[0]));  // W = 0 且 非第 3 级 PTW 检查
+
+assign mbuf_cache_upd_ppn[PPN_WIDTH-1:0] = pde_updata_data_flop[PPN_WIDTH+9:10];
+assign mbuf_cache_upd_lvl[1:0] = pde_updata_lvl[2:1];
+assign mbuf_cache_upd_vpn[VPN_WIDTH-1:0] = pde_updata_vpn[VPN_WIDTH-1:0];
 
 
 

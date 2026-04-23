@@ -8,6 +8,11 @@
 -F ${CV_DV_UTILS_DIR}/uvm/Files.f
 
 # ---------------------------------------------------------------------------
+# Phase 2: RTL compile-time macro definitions (must come before RTL sources)
+# ---------------------------------------------------------------------------
+${TB_DIR}/common/mmu_rtl_defines.v
+
+# ---------------------------------------------------------------------------
 # Phase 2: Relate-RTL library units (behavioral cells)
 # ---------------------------------------------------------------------------
 ${RELATE_RTL_DIR}/clk/gated_clk_cell.v

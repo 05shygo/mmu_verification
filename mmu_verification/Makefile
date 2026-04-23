@@ -9,7 +9,8 @@
 #===============================================================================
 PROJECT_DIR     ?= $(shell pwd)
 MMU_RTL_DIR     ?= $(PROJECT_DIR)/../mmu/rtl
-RELATE_RTL_DIR  ?= $(PROJECT_DIR)/../mmu/rtl/relate\ rtl
+RELATE_RTL_DIR  ?= $(PROJECT_DIR)/../mmu/rtl/relate_rtl
+RELATE_RTL_REAL ?= $(PROJECT_DIR)/../mmu/rtl/relate rtl
 MMU_PARAMS_DIR  ?= $(PROJECT_DIR)/modules/mmu_params
 TB_DIR          ?= $(PROJECT_DIR)/testbench
 CORE_V_VERIF    ?= $(PROJECT_DIR)/modules/dv_utils
@@ -194,6 +195,8 @@ check_env:
 
 setup:
 	@mkdir -p $(OUTPUT_DIR) $(LOG_DIR) $(WAVE_DIR) $(COV_DIR) $(REGRESS_DIR)
+	@# Create no-space symlink for 'relate rtl' directory (VCS can't handle spaces in .f paths)
+	@ln -sfn "$(RELATE_RTL_REAL)" $(RELATE_RTL_DIR) 2>/dev/null || true
 
 #===============================================================================
 # Compile

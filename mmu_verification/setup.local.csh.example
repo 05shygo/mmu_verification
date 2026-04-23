@@ -1,0 +1,22 @@
+#!/bin/csh
+# setup.local.csh.example — Server-specific EDA tool path configuration (csh/tcsh)
+#
+# INSTRUCTIONS:
+#   cp setup.local.csh.example setup.local.csh
+#   Edit setup.local.csh with your server's actual VCS/Verdi install paths.
+#   This file is sourced automatically by setup_env.csh.
+#   setup.local.csh is listed in .gitignore and will NOT be committed.
+#
+# Example for a server where the EDA tool setup script is a csh script:
+# -----------------------------------------------------------------------
+
+# --- Option A: Source a site-wide csh EDA setup script directly ---
+# source /mnt/tools/env/eda.cshrc
+
+# --- Option B: Set paths manually ---
+# setenv VCS_HOME    /mnt/tools/synopsys/vcs/V-2023.12-SP2
+# setenv VERDI_HOME  /mnt/tools/synopsys/verdi/V-2023.12-SP2
+# setenv PATH        ${VCS_HOME}/bin:${VERDI_HOME}/bin:${PATH}
+
+# --- Optional: License server ---
+# setenv SNPSLMD_LICENSE_FILE <port>@<license_server>

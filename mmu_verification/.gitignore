@@ -1,0 +1,22 @@
+# MMU UVM Verification — .gitignore
+
+# Server-specific local environment (never commit)
+setup.local.sh
+setup.local.csh
+
+# Build outputs
+output/
+*.log
+*.fsdb
+*.vpd
+*.rc
+AN.DB
+DVEfiles/
+ucli.key
+vc_hdrs.h
+.vlogansetup*
+novas*
+verdiLog/
+csrc/
+simv
+simv.daidir/

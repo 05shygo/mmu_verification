@@ -172,7 +172,12 @@ env:
 	@echo "TEST_NAME        = $(TEST_NAME)"
 
 check_env:
-	@test -n "$(VCS_HOME)" || (echo "ERROR: VCS_HOME not set"; exit 1)
+	@which vcs >/dev/null 2>&1 || \
+	  (echo ""; \
+	   echo "ERROR: 'vcs' not found in PATH."; \
+	   echo "  bash users: cp setup.local.sh.example setup.local.sh  # set VCS_HOME, then re-source setup_env.sh"; \
+	   echo "  csh  users: cp setup.local.csh.example setup.local.csh  # set VCS_HOME, then re-source setup_env.csh"; \
+	   echo ""; exit 1)
 	@test -d "$(CORE_V_VERIF)" || (echo "ERROR: CORE_V_VERIF not found: $(CORE_V_VERIF)"; exit 1)
 	@test -d "$(CV_DV_UTILS_DIR)" || (echo "ERROR: CV_DV_UTILS_DIR not found: $(CV_DV_UTILS_DIR)"; exit 1)
 

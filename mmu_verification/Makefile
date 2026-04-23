@@ -9,6 +9,9 @@
 #===============================================================================
 PROJECT_DIR     ?= $(shell pwd)
 MMU_RTL_DIR     ?= $(PROJECT_DIR)/../mmu/rtl
+RELATE_RTL_DIR  ?= $(PROJECT_DIR)/../mmu/rtl/relate\ rtl
+MMU_PARAMS_DIR  ?= $(PROJECT_DIR)/modules/mmu_params
+TB_DIR          ?= $(PROJECT_DIR)/testbench
 CORE_V_VERIF    ?= $(PROJECT_DIR)/modules/dv_utils
 CV_DV_UTILS_DIR ?= $(CORE_V_VERIF)/lib/cv_dv_utils
 OUTPUT_DIR      ?= $(PROJECT_DIR)/output
@@ -48,17 +51,24 @@ PLUS_ARGS       ?=
 #===============================================================================
 # Include and Source Files
 #===============================================================================
-INCDIR          := +incdir+$(PROJECT_DIR)/testbench/common \
-                   +incdir+$(PROJECT_DIR)/testbench/env \
-                   +incdir+$(PROJECT_DIR)/testbench/test \
-                   +incdir+$(PROJECT_DIR)/testbench/top \
+INCDIR          := +incdir+$(TB_DIR)/common \
+                   +incdir+$(TB_DIR)/env \
+                   +incdir+$(TB_DIR)/test \
+                   +incdir+$(TB_DIR)/top \
+                   +incdir+$(TB_DIR)/ifu_agent \
+                   +incdir+$(TB_DIR)/lsu_agent \
+                   +incdir+$(TB_DIR)/cp0_agent \
+                   +incdir+$(TB_DIR)/ptw_mem_agent \
+                   +incdir+$(TB_DIR)/pmp_agent \
+                   +incdir+$(TB_DIR)/sysmap_cfg_agent \
+                   +incdir+$(TB_DIR)/misc_agent \
+                   +incdir+$(MMU_PARAMS_DIR) \
                    +incdir+$(CV_DV_UTILS_DIR)/uvm
 
-# Phase 1: only dv_utils + tb testbench files
-# Phase 2+: add RTL flist and agent/env/test files
-TB_FLIST        := -F $(PROJECT_DIR)/testbench/Files.f
+# Phase 2: RTL + interfaces + packages (all in Files.f)
+TB_FLIST        := -F $(TB_DIR)/Files.f
 
-TOP_FILE        := $(PROJECT_DIR)/testbench/top/tb_top.sv
+TOP_FILE        := $(TB_DIR)/top/tb_top.sv
 
 #===============================================================================
 # Compile / Elab Options
@@ -73,6 +83,7 @@ VCS_ELAB_OPTS   := -full64 \
                    -debug_region+cell+encrypt \
                    +vcs+fsdbon \
                    +UVM_CONFIG_DB_TRACE \
+                   +define+MB_WIDTH=8 \
                    -Mdir=$(OUTPUT_DIR)/csrc \
                    -o $(OUTPUT_DIR)/simv
 
@@ -192,11 +203,18 @@ comp: setup comp_all
 
 comp_all: setup
 	@echo "==============================================================================="
-	@echo "Compiling MMU UVM TB (Phase 1 skeleton)..."
+	@echo "Compiling MMU UVM TB (Phase 2: DUT + interfaces + packages)..."
 	@echo "TOP_MODULE=$(TOP_MODULE)  UVM_VERSION=$(UVM_VERSION)"
-	@echo "CORE_V_VERIF=$(CORE_V_VERIF)"
+	@echo "MMU_RTL_DIR=$(MMU_RTL_DIR)"
+	@echo "RELATE_RTL_DIR=$(RELATE_RTL_DIR)"
 	@echo "==============================================================================="
-	CORE_V_VERIF=$(CORE_V_VERIF) $(VCS) $(VCS_ELAB_OPTS) \
+	CORE_V_VERIF=$(CORE_V_VERIF) \
+	MMU_RTL_DIR=$(MMU_RTL_DIR) \
+	RELATE_RTL_DIR="$(RELATE_RTL_DIR)" \
+	MMU_PARAMS_DIR=$(MMU_PARAMS_DIR) \
+	TB_DIR=$(TB_DIR) \
+	CV_DV_UTILS_DIR=$(CV_DV_UTILS_DIR) \
+	$(VCS) $(VCS_ELAB_OPTS) \
 		$(INCDIR) \
 		$(TB_FLIST) \
 		$(TOP_FILE) \

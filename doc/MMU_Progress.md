@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-23
+> **更新**：2026-04-24
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -13,7 +13,7 @@
 |-------|------|--------|------|------------|
 | **Phase 1** | 环境骨架 | A | ✅ 完成 | ✅ `make comp` + `make run` 通过，0 cycle 退出无错 |
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
-| **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ⏳ 未开始 | — |
+| **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | 🔄 进行中（工程师 A 完成，待 B 同步） | ⏳ 待验证（步骤 3-4/3-5 工程师 B 未完成） |
 | **Phase 4** | PTW 内存模型 + 参考模型 | A | 🔒 等待 Phase 3 | — |
 | **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔒 等待 Phase 4 | — |
 | **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | 🔒 等待 Phase 5 | — |
@@ -84,23 +84,40 @@
 
 ---
 
-## Phase 3 任务清单（⏳ 待开始）
+## Phase 3 详细进度（🔄 进行中）
 
-**负责**：工程师 A / B 并行
-**解锁条件**：Phase 2 退出准则已达成 ✅
+**负责**：工程师 A（主）/ B（并行）
+**工程师 A 完成日期**：2026-04-24（步骤 3-1/2/3/6/7/8）
+**退出准则**：⏳ 待验证 — 需工程师 B 完成步骤 3-4/3-5（ifu_agent/lsu_agent 骨架）后，`make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap` UVM_ERROR=0，UVM_FATAL=0
 
-| 步骤 | 交付物 | 负责人 | 状态 |
-|------|--------|--------|------|
-| 3-1 | `cp0_agent`：transaction / sequencer / driver / monitor / agent | A | ⏳ |
-| 3-2 | `pmp_agent`：transaction / sequencer / driver / monitor / agent | A | ⏳ |
-| 3-3 | `sysmap_cfg_agent`：transaction / sequencer / driver / monitor / agent | A | ⏳ |
-| 3-4 | `ifu_agent` 骨架（driver + monitor） | B | ⏳ |
-| 3-5 | `lsu_agent` 骨架（driver + monitor） | B | ⏳ |
-| 3-6 | `mmu_env`：env 类，集成所有 agent | A | ⏳ |
-| 3-7 | `mmu_sanity_test`：cp0 配置 → 发起一次 IFU 查询 | A/B | ⏳ |
-| 3-8 | `testbench/Files.f` 更新：加入 Phase 3 所有文件 | A | ⏳ |
+### Phase 3 Batch 1（30 文件，工程师 A）
 
-**退出准则**：`make run TEST_NAME=mmu_sanity_test` 无 UVM_ERROR/FATAL，DUT 响应第一笔查询
+| 步骤 | 交付物 | 状态 | 备注 |
+|------|--------|------|------|
+| 3-1 | `cp0_agent/` (9 文件) | ✅ | cp0_agent_pkg / if / txn / sequencer / driver / monitor / sequences / covergroups / agent |
+| 3-2 | `pmp_agent/` (9 文件) | ✅ | pmp_agent_pkg / if / txn / sequencer / driver / monitor / sequences / covergroups / agent |
+| 3-3 | `sysmap_cfg_agent/` (9 文件) | ✅ | sysmap_cfg_agent_pkg / if / txn / sequencer / driver / monitor / sequences / covergroups / agent |
+| 3-4 | `ifu_agent` 骨架（driver + monitor） | ⏳ | **工程师 B** 负责 |
+| 3-5 | `lsu_agent` 骨架（driver + monitor） | ⏳ | **工程师 B** 负责 |
+| 3-6 | `testbench/env/mmu_env_pkg.sv` | ✅ | 导入 3 个 agent 包；include mmu_top_cfg.svh + mmu_env.svh |
+| 3-6 | `testbench/env/mmu_top_cfg.svh` | ✅ | 7 个 agent mode 开关 + SB 开关 + SVA 开关 |
+| 3-6 | `testbench/env/mmu_env.svh` | ✅ | build_phase 实例化 cp0/pmp/sysmap_cfg agents；Phase 5 占位注释 |
+
+### Phase 3 Batch 2（5 文件，工程师 A）
+
+| 步骤 | 交付物 | 状态 | 备注 |
+|------|--------|------|------|
+| 3-7 | `testbench/test/test_base.svh` | ✅ | `class test_base extends uvm_test`；build_phase 创建 env；run_test_body() 钩子 |
+| 3-7 | `testbench/test/basic_tests/test_mmu_sanity_csr_pmp_sysmap.svh` | ✅ | 序列化执行 cp0→pmp→sysmap 三个序列；采样 mmu_xx_mmu_en |
+| 3-7 | `testbench/test/test_pkg.sv` | ✅ | `package test_pkg`：import mmu_env_pkg + include test_base + sanity test |
+| 3-8 | `testbench/Files.f` 更新 | ✅ | 追加 3×agent_pkg + mmu_env_pkg + test_pkg（编译顺序正确）|
+| — | 退出准则验证 | ⏳ | 等待工程师 B 完成步骤 3-4/3-5 后运行 `make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap` |
+
+### Open Items
+
+| ID | 描述 | 状态 |
+|----|------|------|
+| DA-003 | sysmap RTL force 路径（`sysmap_cfg_driver.svh` 中 force 目标路径需设计确认） | 🔒 待设计回复 |
 
 ---
 
@@ -119,7 +136,7 @@
 |--------|---------|------|
 | **M1** — 骨架可编译运行 | Phase 1 退出准则 | ✅ **已达成** |
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
-| **M3** — Sanity Test 通过 | Phase 3 退出准则 | ⏳ |
+| **M3** — Sanity Test 通过 | Phase 3 退出准则 | ⏳ 待工程师 B 步骤 3-4/3-5 完成后验证 |
 | **M4** — 参考模型就绪 | Phase 4 退出准则 | ⏳ |
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | ⏳ |
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |

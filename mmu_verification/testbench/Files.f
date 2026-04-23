@@ -90,4 +90,19 @@ ${TB_DIR}/common/mmu_common_pkg.sv
 # ---------------------------------------------------------------------------
 ${TB_DIR}/test/mmu_base_test.sv
 
-# --- Phase 3+: Agent/Env/Test packages will be added here ---
+# ---------------------------------------------------------------------------
+# Phase 3: Agent packages (must compile before mmu_env_pkg)
+# ---------------------------------------------------------------------------
+${TB_DIR}/cp0_agent/cp0_agent_pkg.sv
+${TB_DIR}/pmp_agent/pmp_agent_pkg.sv
+${TB_DIR}/sysmap_cfg_agent/sysmap_cfg_agent_pkg.sv
+
+# ---------------------------------------------------------------------------
+# Phase 3: Environment package (imports all 3 agent pkgs above)
+# ---------------------------------------------------------------------------
+${TB_DIR}/env/mmu_env_pkg.sv
+
+# ---------------------------------------------------------------------------
+# Phase 3: Test package (imports mmu_env_pkg; includes test_base + sanity tests)
+# ---------------------------------------------------------------------------
+${TB_DIR}/test/test_pkg.sv

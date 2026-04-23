@@ -9,27 +9,31 @@
 
 ## 1. 总览
 
-MMU 验证环境完全对标 hpdcache 的 UVM 框架（见参考图），采用"同心矩形"布局：最外层是 Test 测试层，第二层是 tb_top 仿真顶层，内层是 mmu_env 环境容器，正中心是 DUT（`ct_mmu_top.v`）。所有 Agent 通过各自的 Virtual Interface（vif）与 DUT 双向连接；所有激励由 Virtual Sequencer 统一调度；所有检查收束到底部的 Scoreboard / Reference Model 层。
+MMU 验证环境完全对标 hpdcache 的 UVM 框架（见参考图），采用"同心矩形 + 独立功能带"布局：最外层是 Test 测试层，第二层是 tb_top 仿真顶层，内层是 mmu_env 环境容器，正中心是 DUT（`ct_mmu_top.v`）。所有 Agent 通过各自的 Virtual Interface（vif）与 DUT 双向连接；所有激励由 Virtual Sequencer 统一调度；检查层分为两个**独立**容器——**Reference Model 带**（橙色虚线框）和 **Scoreboard 带**（红色虚线框）——完全对标 hpdcache 参考图中 Reference Model 与 Scoreboard 分离的结构。
 
 ```
 ╔══════════════════════════════════════════════════════════════════════════╗
 ║  Test Layer  (test_base / 14 类 test 子目录)                             ║
 ║  ┌──────────────────────────────────────────────────────────────────┐    ║
-║  │  tb_top.sv                                                       │    ║
+║  │  tb_top.sv                          clk_drv │ rst_drv            │    ║
 ║  │  ┌──────────────────────────────────────────────────────────┐    │    ║
-║  │  │  mmu_env                                                 │    │    ║
+║  │  │  mmu_env (蓝色虚线)                                      │    │    ║
 ║  │  │                                                          │    │    ║
 ║  │  │  ┌─Active Agents(左)─┐   ┌─────DUT─────┐  ┌─Resp(右)─┐ │    │    ║
-║  │  │  │ ifu_agent         │◄─►│             │◄►│ptw_mem   │ │    │    ║
+║  │  │  │ ifu_agent         │◄─►│   SVA bind  │◄►│ptw_mem   │ │    │    ║
 ║  │  │  │ lsu_agent(×5drv)  │◄─►│ct_mmu_top.v │◄►│pmp_agent │ │    │    ║
 ║  │  │  │ cp0_agent         │◄─►│   (Sv39)    │  └──────────┘ │    │    ║
-║  │  │  │ sysmap_cfg_agent  │   │             │   mmu_top_cfg │    │    ║
-║  │  │  │ misc_agent        │   │   SVA bind  │   virt_seqr   │    │    ║
-║  │  │  └───────────────────┘   └─────────────┘               │    │    ║
-║  │  │                                                          │    │    ║
-║  │  │  ┌──────SB / RefModel 带(底部)──────────────────────┐   │    │    ║
-║  │  │  │ PT_mem │ ref_model │ trans_sb │ inv_sb │ credit_sb│   │    │    ║
-║  │  │  └─────────────────────────────────────────────────-─┘   │    │    ║
+║  │  │  │ sysmap_cfg_agent  │   │             │   virt_seqr   │    │    ║
+║  │  │  │ misc_agent        │   └──────┬──────┘   top_cfg     │    │    ║
+║  │  │  └───────────────────┘         │VA观测     watchdog    │    │    ║
+║  │  │                                │                        │    │    ║
+║  │  │  ┌─ Reference Model (橙色虚线)─▼──────────────────┐    │    │    ║
+║  │  │  │  mmu_page_table_mem  │  mmu_ref_model           │    │    │    ║
+║  │  │  └──────────────────────┼──────────────────────────┘    │    │    ║
+║  │  │                         │ expected PA/exc/inv/credit     │    │    ║
+║  │  │  ┌─ Scoreboards (红色虚线)──────────────────────────┐   │    │    ║
+║  │  │  │  trans_sb │ inv_sb │ credit_sb │ perf_mon        │   │    │    ║
+║  │  │  └─────────────────────────────────────────────────-┘   │    │    ║
 ║  │  └──────────────────────────────────────────────────────────┘    │    ║
 ║  └──────────────────────────────────────────────────────────────────┘    ║
 ╚══════════════════════════════════════════════════════════════════════════╝
@@ -130,7 +134,7 @@ Test → vseq → ifu_sequencer → ifu_driver ──(ifu_if)──► DUT[L1 IT
 | Pipe1 | 同 Pipe0，后缀 `1` | 同上，后缀 `1` |
 | Pipe2 (Prefetch) | `lsu_mmu_va2_vld`、`va2[27:0]` | `mmu_lsu_pa2_vld`、`pa2`、`pa2_err` |
 | STAMO | `lsu_mmu_stamo_vld`、`stamo_pa[27:0]` | （仅观测 DUT 内部 TLB 状态） |
-| TLB-INV (SFENCE) | `tlb_va_all_inv`、`tlb_all_inv`、`tlb_va_asid_inv`、`inv_va`、`inv_asid` | `mmu_lsu_tlb_inv_done` |
+| TLB-INV (SFENCE) | `lsu_mmu_tlb_va_all_inv`、`lsu_mmu_tlb_all_inv`、`lsu_mmu_tlb_va_asid_inv`、`lsu_mmu_tlb_asid_all_inv`、`lsu_mmu_tlb_va[26:0]`、`lsu_mmu_tlb_asid[15:0]` | `mmu_lsu_tlb_inv_done` |
 
 ```
 vseq → lsu_sequencer ──(lsu_txn: kind)──►  lsu_driver ──fork──► drive_pipe0 ──(lsu_if)──► DUT
@@ -145,16 +149,17 @@ lsu_monitor.ap_inv      ──────────────────�
 
 #### 2.4.3 cp0_agent（左侧第三块）
 
-驱动 CSR 写入（`satp0/1`、权限模式、`mxr`/`sum`/`mprv`/`ptw_en` 等），采样 `mmu_cp0_cmplt`、`mmu_cp0_data`。
+驱动 CSR 写入（`satp0/1`、权限模式、`mxr`/`sum`/`mprv`/`ptw_en`、`cskyee`、`maee`、`no_op_req` 等），采样 `mmu_cp0_cmplt`、`mmu_cp0_data`、`mmu_cp0_satp_data`、`mmu_cp0_tlb_done`（TLB Oper 完成握手）、`mmu_xx_mmu_en`（全局使能广播）、`mmu_yy_xx_no_op`。
 
 **数据流**：
 ```
 vseq → cp0_sequencer → cp0_driver ──(cp0_if)──► DUT[ct_mmu_regs / tlboper]
-                                                  │
-cp0_monitor.ap ──────────────────────────────────►│──► mmu_ref_model（更新 CSR 镜像）
+
+cp0_monitor.ap ──────────────────────────────────────────────────────────► mmu_ref_model（更新 CSR 镜像）
 ```
 
-> CSR 镜像（satp、priv_mode、mxr、sum 等）是 Reference Model 推导翻译结果的基础。
+> CSR 镜像（satp、priv_mode、mxr、sum 等）是 Reference Model 推导翻译结果的基础。  
+> mmu_ref_model 现在是**独立容器**，cp0_monitor → ref_model 是跨区域的 analysis port 连接。
 
 #### 2.4.4 sysmap_cfg_agent（左侧第四块）
 
@@ -225,7 +230,7 @@ TB  ──(pmp_mmu_flg × 8)──► pmp_if ──► DUT（PMP 结果输入）
 | L1 ITLB | 16 entries 全相联，PLRU，credit_max=8 | Hit/Miss、huge page（2M）、credit 流控 |
 | L1 DTLB | 16 entries，MB_DEPTH=8，dPLRU，双 pipe + STAMO + PFU | 三通道并发、MB 满、替换策略 |
 | L2 TLB | Skew-Assoc 8 way × 256 set × 8 bank，3-bit RRPV（SRRIP） | 替换策略、ReqQ(9深)仲裁、MB(1i+8d) |
-| PTW | 4 TWU + L1/L2 PDE cache + mbuf + 1→4 xbar + PPLRU | 3 级页表行走、OOO 响应、PTE 位检查 |
+| PTW | 4 TWU（**6 级流水线**：FST_PMP→FST_CHK→SCD_PMP→SCD_CHK→THD_PMP→THD_CHK，非状态机）+ L1/L2 PDE cache + MBUF(9 entry) + 1→4 xbar + PPLRU | 3 级页表行走；稳定态每拍可接 1 新请求；单 TWU 可多笔 PTE 读在飞；`twu_mask` 为 per-TWU 自阻塞（PMP/PTE wait），**非 MBUF 满反压**；`mmu_lsu_tlb_busy` 源头为 **L1 DTLB MB 全满**（非 PTW MBUF 满） |
 | TLBOper | 7 FSM（tlbiall/asid/va/p/r/wi/wr） | SFENCE 后残留条目、与 PTW 并发 |
 | SysMap | 8 region，5-bit FLG | 命中优先级、白盒配置路径 |
 | PMP | 8 端口 × 4-bit flag + fetch enable | 拒绝访问、fetch 门控 |
@@ -238,77 +243,109 @@ DUT 内部还 bind 了 5 个 SVA 模块（见 §2.7）。
 
 **位置**：紧贴 DUT 上方小红框，通过 `bind` 无侵入接入，对标参考图 DUT 内的两个 "bind SV ... assertions" 矩形。
 
-| SVA 文件 | 检查内容 |
-|---|---|
-| `mmu_sva.sv` | 顶层端口 X-check、翻译完整性（发出 valid 必有 valid 响应） |
-| `mmu_arb_sva.sv` | arb grant 一热、work-conserving（对标 hpdcache_fxarb_sva） |
-| `mmu_l2tlb_rrpv_sva.sv` | SRRIP 行为：命中时 RRPV→0，First-Free 优先于 Max-RRPV |
-| `mmu_plru_sva.sv` | L1 DTLB dPLRU 替换路数正确性（对标 hpdcache_plru_sva） |
-| `credit_sva.sv` | L1↔L2 outstanding ≤ credit_max |
+| SVA 文件 | 版本 | 检查内容 |
+|---|---|---|
+| `mmu_sva.sv` | 基础 | 顶层端口 X-check、翻译完整性（发出 valid 必有 valid 响应） |
+| `mmu_arb_sva.sv` | 基础 | arb grant 一热、优先级链 PTW>TLBOp>ReqQ>PFU、work-conserving；`sva_ptw_write_pipe_reset_safe`（两拍流水 reset 清零） |
+| `mmu_l2tlb_rrpv_sva.sv` | 基础 | SRRIP 行为：hit 后 RRPV→0、miss 后 +1 饱和、fill 初值=4；`sva_raw_vld_and_gate`、`sva_l2_is_dtlb_match`、`sva_rrpv_inv_state` |
+| `mmu_plru_sva.sv` | 基础 | L1 PLRU 替换路数正确性；`sva_pplru_entry0_first_hit` |
+| `credit_sva.sv` | 基础 | L1↔L2 outstanding ≤ credit_max、credit 守恒 |
+| `mmu_twu_sva.sv` | v3.0 Final | TWU 6级流水线行为：`sva_twu_mask_semantics`（mask 仅由 PMP/PTE wait 驱动，非 MBUF 满）、`sva_twu_pipeline_no_stall_when_unmasked`、`sva_twu_multi_inflight_legal` |
+| `mmu_ptw_lsu_protocol_sva.sv` | v3.0 Final | PTW→LSU 严格串行单 outstanding：`sva_lsu_req_stable_until_vld`、`sva_single_outstanding`、`sva_response_inorder`、`sva_vld_only_when_req` |
+| `mmu_mbuf_invariant_sva.sv` | v3.0 Final | MBUF 不溢出/无 MBUF 满→TWU 反压路径：`sva_ptw_mbuf_no_overflow`、`sva_no_backpressure_to_twu_from_mbuf_full`；`mmu_lsu_tlb_busy` 等价 L1 DTLB MB 全满：`sva_busy_from_dtlb_mb_only` |
+| `one_to_four_xbar_sva.sv` | v3.0 Final（可选） | `sva_twu_ready_equiv`、`sva_xbar_drop_when_all_mask` |
+| `mmu_maee_twu_sva.sv` | v4.0 | MAEE=0/1 双路属性选路互斥：`sva_twu_maee_paths_mutex`、`sva_maee0_triggers_csr_req`、`sva_maee1_skips_csr_fsm` |
+| `mmu_pmp_twu_sva.sv` | v4.0 | PMP 序列化与端口约束：`sva_pmp_check_before_lsu_req`、`sva_pmp_deny_no_refill`、`sva_pmp_grant_onehot`、`sva_ptw_pmp_fetch_zero`（RTL typo `mmu_pmp_fecth7` 保持原名） |
+| `mmu_sysmap_sva.sv` | v4.0 | SysMap flag 替换与跨界降级：`sva_csr_refill_flg_matches_sysmap`、`sva_sysmap_cross_degrade`、`sva_sysmap_no_cross_no_degrade` |
 
 ---
 
-### 2.8 底部：Scoreboard / Reference Model 层
+### 2.8 Reference Model 层（橙色虚线独立容器）
 
-**位置**：框图底部横向排列 6 个块（浅色带），对标参考图上方的 "HPDcache Scoreboard" 横幅及 "Memory Shadow" 角块。
+**位置**：框图中 Agents/DUT 区域正下方，橙色虚线框、淡黄底色，完全独立成带，与 DUT 之间有直接连接箭头。  
+对标参考图中独立于 Scoreboard 的 "Memory Response Model / Reference Model" 块。
 
-#### 2.8.1 mmu_page_table_mem（最左）
+#### 2.8.1 mmu_page_table_mem（左侧）
 
 - 基于 dv_utils `memory_shadow` 的共享页表内存。  
-- 由 `page_table_builder`（ptw_mem_agent 内）写入页表数据。  
+- 由 `page_table_builder`（ptw_mem_agent 内，通过 `page_table_builder` 绿色曲线箭头写入）写入页表数据。  
 - Reference Model 从中读 PTE，推导预期翻译结果。
 
-#### 2.8.2 mmu_ref_model（左二）
+#### 2.8.2 mmu_ref_model（右侧，更宽，突出显示）
 
-核心 SW 参考模型，暴露 `translate(va, priv, csr_ctx)` API：
+核心 SW 参考模型，暴露 `translate(va, priv, csr_ctx)` API。  
+**与 DUT 的直接连接**：Monitor 观测到的 VA 请求（ifu/lsu/cp0 analysis port）直接送入 ref_model；DUT → ref_model 有专用箭头（深橙虚线），表示"monitors 观测 VA req"路径。
+
 1. 读取 CP0 monitor 维护的 CSR 镜像（satp、priv_mode、mxr、sum）。  
 2. 查 `mmu_page_table_mem` 模拟 3 级 Sv39 页表行走。  
 3. 应用 PMP flag 推导最终 PA 或异常类型（`mmu_exc_e`：NONE / PAGE_FAULT / ACCESS_FAULT / PMP_DENY / BUS_ERROR）。  
-4. 将预期结果送往 `mmu_translation_sb`。
+4. 分别将预期结果送往三个 Scoreboard（独立橙色箭头）：
+   - → `mmu_translation_sb`：expected PA / exc
+   - → `mmu_invalidate_sb`：inv expected（失效后预期状态）
+   - → `mmu_credit_sb`：credit expected
 
-#### 2.8.3 mmu_translation_sb（中）
+```
+ifu_monitor.ap_req     ───────────────────────────────┐
+lsu_monitor.ap_pipe0/1 ───────────────────────────────► mmu_ref_model
+cp0_monitor.ap         ───────────────────────────────┤     │ translate(va,priv,csr)
+pmp_monitor.ap         ───（on_pmp_cfg_change）───────┤     ├──► mmu_translation_sb（expected PA/exc）
+sysmap_cfg_monitor     ───（on_sysmap_cfg_change）────┘     ├──► mmu_invalidate_sb（inv expected）
+                                                              └──► mmu_credit_sb（credit expected）
+DUT ──（VA req observed by monitors）──────────────────────────► mmu_ref_model
+page_table_mem ──（PT data）──────────────────────────────────► mmu_ref_model
+```
+
+---
+
+### 2.9 Scoreboard 层（红色虚线独立容器）
+
+**位置**：Reference Model 带正下方，红色虚线框、淡红底色，完全独立成带。  
+对标参考图中独立的 "HPDcache Scoreboard" 横幅，与 Reference Model 区域明确分离。
+
+#### 2.9.1 mmu_translation_sb（最核心，最左）
 
 最核心的 Scoreboard，对标参考图中的 "HPDcache Scoreboard + data check"。
 
 ```
-                  ifu_monitor.ap_rsp  ──────────────────────┐
-                  lsu_monitor.ap_pipe0/1 ────────────────── ▼
-                  ptw_mem_monitor.ap_rsp ─────────────────► [analysis FIFO]
-                  pmp_monitor.ap ──────────────────────────►  mmu_translation_sb
-                                                                │
-              mmu_ref_model（translate 结果）─────────────────► 比对 DUT 输出 vs 预期
-                                                                │
-                                                          PASS / FAIL + report
+ifu_monitor.ap_req/rsp     ────────────────────────────┐
+lsu_monitor.ap_pipe0/1/2   ────────────────────────────► mmu_translation_sb
+ptw_mem_monitor.ap_rsp     ────────────────────────────►   │
+pmp_monitor.ap             ────────────────────────────►   │ 比对 DUT 输出 vs ref expected
+mmu_ref_model（expected PA/exc）───────────────────────►   │
+                                                           ▼
+                                                     PASS / FAIL + report
 ```
 
 比对项：PA 值、pgflt/access_fault/deny 异常标志、属性位（sec/ca/buf/sh/so）。
 
-#### 2.8.4 mmu_invalidate_sb（中右）
+#### 2.9.2 mmu_invalidate_sb（左二）
 
 专项检查 SFENCE.VMA 后 TLB 条目状态：
+
 ```
-lsu_monitor.ap_inv ──────────────────► mmu_invalidate_sb
-                                         │ 触发 inv 操作后
-                                         │ 检查后续访问不命中已失效条目
-                                         ▼
-                                        PASS / FAIL
+lsu_monitor.ap_inv    ────────────────────► mmu_invalidate_sb
+cp0_monitor.ap        ─（TLB-all-inv 路径）►   │ 检查后续访问不命中已失效条目
+mmu_ref_model（inv expected）─────────────►   │
+                                              ▼ PASS / FAIL
 ```
 
-#### 2.8.5 mmu_credit_sb（右二）
+#### 2.9.3 mmu_credit_sb（左三）
 
 守恒性检查：L1↔L2 credit 计数、L2 ReqQ(9 深) 满载、MB 条目总数：
+
 ```
 ptw_mem_monitor.ap_rsp ─────────────► mmu_credit_sb（统计 outstanding 请求数）
-lsu_monitor.ap_pipe0/1 ─────────────►（对比 credit_sva 断言结果）
+lsu_monitor.ap_pipe0/1 ─────────────►
+mmu_ref_model（credit expected）─────►（对比 credit_sva 断言结果）
 ```
 
-#### 2.8.6 mmu_perf_mon（最右）
+#### 2.9.4 mmu_perf_mon（最右）
 
-统计 L1/L2 TLB miss rate 与 PTW walk latency（对标参考图左下的 "Memory Rsp Configuration" + "Scoreboard HWPF Stride" 的性能统计侧）：
+统计 L1/L2 TLB miss rate 与 PTW walk latency（对标参考图 "Scoreboard HWPF Stride" 的性能统计侧）：
+
 ```
 misc_monitor.ap_hpcp ────────────────────────────────────► mmu_perf_mon
-                                                             │
-                                          输出：miss_rate、walk_latency_avg
+                                                             │ 输出：miss_rate、walk_latency_avg
 ```
 
 ---
@@ -396,25 +433,25 @@ uvm_pkg
 
 ## 5. 与 hpdcache 参考图的对位关系
 
-| hpdcache_verification（参考图） | MMU 对应组件 | 位置 |
-|---|---|---|
-| HPDcache Scoreboard（顶部横幅） | mmu_translation_sb / mmu_invalidate_sb / mmu_credit_sb | 底部横向排列 |
-| Memory Shadow（右上角） | mmu_page_table_mem（基于 memory_shadow） | 底部左端 |
-| Watch Dog | dv_utils watchdog_c（在 mmu_env 内） | env 顶部内侧 |
-| Pulse Gen(flush) | misc_agent 内 pulse_gen_driver（RTU flush） | 左侧 misc_agent |
-| Memory Partition | dv_utils memory_partition（可选，页表 / 数据分区） | ptw_mem_agent 配置 |
-| Top Configuration | mmu_top_cfg | env 右侧 |
-| HPDcache Request Agent → vif → DUT | ifu_agent / lsu_agent → ifu_if / lsu_if → DUT | 左侧 |
-| Scoreboard HWPF Stride | mmu_invalidate_sb（TLBOper 后状态） | 底部 |
-| HWPF Stride + CSR | cp0_agent（CSR 写入）+ sysmap_cfg_agent | 左侧 |
-| Memory Agent + Monitor（右侧） | ptw_mem_agent（Responder）+ ptw_mem_monitor | 右侧 |
-| BP Driver | pmp_agent（8 端口 flag responder） | 右侧 |
-| axiomem / Memory Request Arbiter | ptw_mem_responder + page_table_builder | 右侧 |
-| Memory Response Model（底部横幅） | mmu_ref_model（translate API + Sv39 walker） | 底部 |
-| bind SV PLRU MODEL and assertions | mmu_plru_sva.sv（bind 到 DUT） | DUT 内 bind |
-| bind SV arbiter models and assertions | mmu_arb_sva.sv / credit_sva.sv | DUT 内 bind |
-| Reset Driver → vif | dv_utils reset_driver_c（tb_top） | tb_top 底部 |
-| Clock Driver → vif | dv_utils clock_driver_c（tb_top） | tb_top 底部 |
+| hpdcache_verification（参考图） | MMU 对应组件 | 位置 | 备注 |
+|---|---|---|---|
+| HPDcache Scoreboard（顶部横幅，独立） | mmu_translation_sb / mmu_invalidate_sb / mmu_credit_sb | **Scoreboard 独立容器**（红色虚线带） | 与 RefModel 分离，各有独立箭头来自 ref_model |
+| Memory Shadow（右上角） | mmu_page_table_mem（基于 memory_shadow） | **Reference Model 独立容器**（橙色虚线带）左侧 | |
+| Memory Response Model / Reference Model（独立块） | mmu_ref_model | Reference Model 容器右侧，与 DUT 有直连箭头 | **新增**：DUT→ref_model 直连；ref_model→3 个 SB 独立箭头 |
+| Watch Dog | dv_utils watchdog_c（在 mmu_env 内） | env 右侧 | |
+| Pulse Gen(flush) | misc_agent 内 pulse_gen_driver（RTU flush） | 左侧 misc_agent | |
+| Memory Partition | dv_utils memory_partition（可选，页表 / 数据分区） | ptw_mem_agent 配置 | |
+| Top Configuration | mmu_top_cfg | env 右侧 | |
+| HPDcache Request Agent → vif → DUT | ifu_agent / lsu_agent → ifu_if / lsu_if → DUT | 左侧 | |
+| Scoreboard HWPF Stride | mmu_invalidate_sb（TLBOper 后状态）| Scoreboard 容器 | |
+| HWPF Stride + CSR | cp0_agent（CSR 写入）+ sysmap_cfg_agent | 左侧 | |
+| Memory Agent + Monitor（右侧） | ptw_mem_agent（Responder）+ ptw_mem_monitor | 右侧 | |
+| BP Driver | pmp_agent（8 端口 flag responder） | 右侧 | |
+| axiomem / Memory Request Arbiter | ptw_mem_responder + page_table_builder | 右侧，绿色曲线→page_table_mem | |
+| bind SV PLRU MODEL and assertions | mmu_plru_sva.sv（bind 到 DUT） | DUT 内 bind | |
+| bind SV arbiter models and assertions | mmu_arb_sva.sv / credit_sva.sv | DUT 内 bind | |
+| Reset Driver → vif | dv_utils reset_driver_c（tb_top） | tb_top 右下角 | **新增**：显式 rst_drv→DUT 箭头 |
+| Clock Driver → vif | dv_utils clock_driver_c（tb_top） | tb_top 右下角 | **新增**：显式 clk_drv→DUT 箭头 |
 
 ---
 
@@ -422,7 +459,7 @@ uvm_pkg
 
 | 模块层 | 文件数 | 关键文件 |
 |---|---|---|
-| tb_top + SVA | 6 | `tb_top.sv`、5 个 `*_sva.sv` |
+| tb_top + SVA | 12 | `tb_top.sv`、11 个 `*_sva.sv`（基础 5 + v3.0 Final 新增 4 + v4.0 新增 3） |
 | mmu_params / common | 3 | `mmu_params_pkg.sv`、`mmu_common_pkg.sv`、`mmu_types_pkg.sv` |
 | 7 × Agent（八件套 + 工具） | 65 | `*_txn/driver/monitor/seqr/sequences/cov/agent/pkg` |
 | env 层 | 11 | `mmu_env.svh`、3 × SB、ref_model、PT_mem、perf_mon、virt_seqr、vseq_lib、top_cfg、pkg |

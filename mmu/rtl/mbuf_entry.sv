@@ -108,7 +108,7 @@ end
 always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
     if(!cpurst_b)
         mbuf_get <= 1'b0;
-    else if(mbuf_on & lsu_mmu_data_vld & (!write_back_grant))
+    else if(mbuf_on & lsu_mmu_data_vld & (!lsu_mmu_bus_error) & (!write_back_grant))
         mbuf_get <= 1'b1;
     else if(write_back_grant)
         mbuf_get <= 1'b0;
@@ -162,8 +162,8 @@ always_comb begin
         default : idx = 2'b00;
     endcase
 end
-assign write_back_req = mbuf_vld & mbuf_on & (|(twu_data_ready[idx][2:0] & mbuf_lvl[2:0])) & (lsu_mmu_data_vld | mbuf_get);
-assign bus_err_write_back_req = mbuf_vld & mbuf_on & (lsu_mmu_bus_error | mbuf_bus_err_flop) & (!mbuf_entry_bus_err_req_mask);
+assign write_back_req = mbuf_vld & (|(twu_data_ready[idx][2:0] & mbuf_lvl[2:0])) & (mbuf_on & lsu_mmu_data_vld & (!lsu_mmu_bus_error)  | mbuf_get);
+assign bus_err_write_back_req = mbuf_vld & (mbuf_on & lsu_mmu_bus_error | mbuf_bus_err_flop) & (!mbuf_entry_bus_err_req_mask);
 //------------------------------------------------------------
 //                  Output
 //------------------------------------------------------------

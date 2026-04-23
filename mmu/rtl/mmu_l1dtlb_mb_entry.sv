@@ -53,7 +53,7 @@ module mmu_l1dtlb_mb_entry #(
     output logic [PPN_WIDTH-1:0]     entry_ppn,         // Output latched PPN
     output logic [FLG_WIDTH-1:0]     entry_flg,         // Output latched Flags
     output logic [IID_WIDTH-1:0]     entry_iid,
-    output logic [2:0]		     entry_pgs;
+    output logic [2:0]		     entry_pgs,
     //output logic [PORT_WIDTH-1:0]    entry_port_id,
     output logic                     entry_store,       // New: Store attribute output
     output logic                     entry_issued,

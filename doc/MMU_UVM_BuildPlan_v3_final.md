@@ -723,6 +723,9 @@ interface ptw_mem_if(input bit clk_i, input bit rst_ni);
   logic         mmu_lsu_mmu_en;
   // PTW 流控反向
   logic         mmu_lsu_tlb_busy;
+  // ⚠【v3.1 修正】mmu_lsu_tlb_wakeup 由 mmu_l1dtlb_install（非 PTW）驱动：
+  //   wakeup_vec_next = {12{mb_have_free}} | {12{l1dtlb_expt_for_taken}}
+  //   此信号放在 ptw_mem_if 仅为物理信号映射便利；语义含义见 F2.17（L1D TLB install 触发 wakeup）
   logic [11:0]  mmu_lsu_tlb_wakeup;
   // 响应（TB 驱动）
   logic         lsu_mmu_bus_error;
@@ -991,28 +994,43 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   extern task drive_pipe0();
   extern task drive_pipe1();
   extern task drive_pipe2();
-  extern task drive_stamo();
+  extern task drive_stamo();   // ⚠ 仅驱动单一 STAMO 端口；Pipe1 的 STAMO 在 RTL 内部硬接 1'b0（F2.14）
   extern task drive_inv();
   // 子任务（实现工程师按 kind 分发 seq_item）
 endclass
 ```
 
-#### 7.2.3 `lsu_monitor.svh`（4 个 analysis_port）
+#### 7.2.3 `lsu_monitor.svh`（8 个 analysis_port）
+
+> **设计说明**：对齐 hpdcache `hpdcache_monitor`（ap_req / ap_rsp 分离）模式。LSU Pipe0/1 翻译存在多周期延迟（L2 miss 需 PTW 走表），若 req 与 rsp 合并到同一 ap 则监控线程必须阻塞等待响应，导致无法观测请求间时序行为。STAMO 独立 ap 用于 PMP/sysmap 合法性检查。
 
 ```systemverilog
 class lsu_monitor extends uvm_monitor;
   `uvm_component_utils(lsu_monitor)
   virtual lsu_if vif;
-  uvm_analysis_port #(lsu_txn) ap_pipe0;
-  uvm_analysis_port #(lsu_txn) ap_pipe1;
-  uvm_analysis_port #(lsu_txn) ap_pipe2;
+  // Pipe0：请求在 lsu_mmu_va0_vld & ready 握手时发送
+  uvm_analysis_port #(lsu_txn) ap_pipe0_req;
+  // Pipe0：响应在 mmu_lsu_pa0_vld 或 mmu_lsu_page_fault0 时发送
+  uvm_analysis_port #(lsu_txn) ap_pipe0_rsp;
+  // Pipe1：同 Pipe0
+  uvm_analysis_port #(lsu_txn) ap_pipe1_req;
+  uvm_analysis_port #(lsu_txn) ap_pipe1_rsp;
+  // Pipe2（预取）：va2_vld 时发请求，pa2_vld 时发响应
+  uvm_analysis_port #(lsu_txn) ap_pipe2_req;
+  uvm_analysis_port #(lsu_txn) ap_pipe2_rsp;
+  // TLB 无效化：lsu_mmu_tlb_*_inv 拉高时发；mmu_lsu_tlb_inv_done 时附加完成标志
   uvm_analysis_port #(lsu_txn) ap_inv;
+  // STAMO：lsu_mmu_stamo_vld 时发（PA 已知，用于 PMP/sysmap 检查）
+  uvm_analysis_port #(lsu_txn) ap_stamo;
   function new(string name, uvm_component parent);
   extern function void set_lsu_vif(virtual lsu_if v);
   extern function void set_is_active();
   extern task run_phase(uvm_phase phase);
-  extern task collect_pipe(int unsigned p);
+  // fork 中并行运行的 8 个采集子线程
+  extern task collect_pipe_req(int unsigned p);    // p=0,1,2：VA 握手时刻
+  extern task collect_pipe_rsp(int unsigned p);    // p=0,1,2：PA/fault 返回时刻
   extern task collect_inv();
+  extern task collect_stamo();
 endclass
 ```
 
@@ -1115,6 +1133,15 @@ endclass
 ```systemverilog
 class cp0_driver    extends uvm_driver #(cp0_txn);  `uvm_component_utils(cp0_driver)    virtual cp0_if vif; endclass
 class cp0_monitor   extends uvm_monitor;            `uvm_component_utils(cp0_monitor)   virtual cp0_if vif; uvm_analysis_port #(cp0_txn) ap; endclass
+// ★ cp0_monitor.ap 数据流说明：
+//   (1) CSR 写（SATP/priv/MXR/SUM 等）→ invalidate_sb.af_cp0 + m_ref.af_csr_write（ref_model CSR 镜像同步）
+//   (2) CP0_TLB_ALL_INV（cp0_mmu_tlb_all_inv=1）→ DUT TLBOper tlbiall FSM → 全清 → mmu_cp0_tlb_done
+//       → cp0_monitor 采样 tlb_done → ap → invalidate_sb.af_cp0（验证残留不命中）
+//   (3) TLBOper 软件操作（TLBR/TLBWI/TLBWR/TLBP，对应 cp0_mmu_tlb_{r,wi,wr,p} 脉冲）：
+//       → DUT ct_mmu_tlboper.v 读写 L1/L2 TLB entry → mmu_cp0_{entryhi/lo0/lo1/index/random} 回读
+//       → cp0_monitor 采样回读数据打包入 txn.rdata / txn.tlb_done → ap → m_ref 软件 TLB 镜像更新
+//       注意：TLBR/TLBWI/TLBWR/TLBP 使用 cp0_if 中 cp0_mmu_reg_num / cp0_mmu_wdata 等字段区分；
+//             驱动由 cp0_driver 在 CP0_WRITE_REG / CP0_READ_REG 事务中分发
 class cp0_sequencer extends uvm_sequencer #(cp0_txn);`uvm_component_utils(cp0_sequencer) endclass
 // sequences
 class cp0_reg_rw_seq           extends uvm_sequence #(cp0_txn); `uvm_object_utils(cp0_reg_rw_seq)           endclass
@@ -1182,6 +1209,14 @@ endclass
 
 #### 7.4.3 `ptw_mem_responder.svh`
 
+> **PTW PDE Cache 命中层级对 LSU 请求次数的影响（F4.NEW.8）**：
+> `ptw_mem_responder` 通过 `page_table_builder` 查找 PTE，但实际到达 LSU 侧的请求次数取决于 DUT 内部 PDE Cache 命中情况：
+> - **L2 PDE Cache 命中**（3 级 walk 中 L2/L1 PDE 均命中）：PTW 只需 1 次 LSU 内存请求（仅取叶子 PTE）
+> - **L1 PDE Cache 命中**（L2 PDE 命中，L1 miss）：PTW 需要 2 次 LSU 内存请求（L1 PDE + 叶子 PTE）
+> - **全 miss**（L2/L1 PDE 均 miss）：PTW 需要 3 次串行 LSU 内存请求（L2 PDE → L1 PDE → 叶子 PTE）
+> `ptw_mem_responder.handle_request()` 对每次请求独立响应；`page_table_builder` 须预先写入各级 PDE，以便 responder 按地址正确返回 PTE 数据。
+> SVA `sva_ptw_mbuf_no_overflow` 与 `mmu_credit_sb` 验证 PTW MBUF 在 PDE cache miss 时的 outstanding 深度不超过 9。
+
 ```systemverilog
 class ptw_mem_responder extends uvm_component;
   `uvm_component_utils(ptw_mem_responder)
@@ -1240,6 +1275,8 @@ class pmp_txn extends uvm_sequence_item;
 endclass
 
 class pmp_driver    extends uvm_driver #(pmp_txn); `uvm_component_utils(pmp_driver)    virtual pmp_if vif; endclass
+// ap 下游：connect_phase 连接到 m_ref.af_pmp_cfg（驱动 ref_model PMP 镜像更新）
+// 注：PMP flag 是纯配置输入，无 req/rsp 对，单 ap 即可；flg 变化时 monitor 采样打包发出
 class pmp_monitor   extends uvm_monitor;           `uvm_component_utils(pmp_monitor)   virtual pmp_if vif; uvm_analysis_port #(pmp_txn) ap; endclass
 class pmp_sequencer extends uvm_sequencer #(pmp_txn); `uvm_component_utils(pmp_sequencer) endclass
 
@@ -1262,7 +1299,25 @@ class sysmap_cfg_txn extends uvm_sequence_item;
 endclass
 
 class sysmap_cfg_driver  extends uvm_driver #(sysmap_cfg_txn); `uvm_component_utils(sysmap_cfg_driver) virtual sysmap_cfg_if vif; endclass
-class sysmap_cfg_monitor extends uvm_monitor;                  `uvm_component_utils(sysmap_cfg_monitor) endclass
+class sysmap_cfg_monitor extends uvm_monitor;
+  `uvm_component_utils(sysmap_cfg_monitor)
+  virtual sysmap_cfg_if vif;
+  // 每次 sysmap_cfg_driver 完成 force 写入后，monitor 将当前配置快照打包发出
+  // 下游：mmu_env.connect_phase 连接到 ref_model 的 af_sysmap_cfg（见 §8.4）
+  //
+  // ★ SysMap 命中绕过翻译路径说明（数据流 ⑤）：
+  //   sysmap_cfg_driver 通过白盒 force 写入 ct_mmu_sysmap.v 的 base/mask/flg/enable 寄存器
+  //   → DUT ct_mmu_sysmap_hit.v 对 IFU/LSU 物理地址做比对
+  //   → 命中时：PA 由 SysMap adder 直接生成（**优先于 TLB 查找**，不触发 PTW）
+  //   → sysmap_cfg_monitor.ap → m_ref.af_sysmap_cfg（ref_model 同步 SysMap 映射）
+  //   → mmu_translation_sb 调用 ref_model.translate() 时若 SysMap 命中，
+  //     按 sysmap_adder 计算期望 PA，而非 page-table walk 结果
+  //   注意：SysMap 权限标志（flg[4:0]）同时参与 PMP 等效检查，
+  //         sysmap_hit 结果须与 mmu_translation_sb 的 PMP check 路径互斥
+  uvm_analysis_port #(sysmap_cfg_txn) ap;
+  function new(string name, uvm_component parent);
+  extern task run_phase(uvm_phase phase);   // 观测 vif.cfg_enable 变化，ap.write(snapshot)
+endclass
 class sysmap_cfg_sequencer extends uvm_sequencer #(sysmap_cfg_txn); `uvm_component_utils(sysmap_cfg_sequencer) endclass
 
 class sysmap_region_setup_seq    extends uvm_sequence #(sysmap_cfg_txn); `uvm_object_utils(sysmap_region_setup_seq)    endclass
@@ -1428,16 +1483,28 @@ class mmu_ref_model extends uvm_component;
   // 当前各 TLB 镜像（事件驱动更新；用于 invalidate_sb 检查）
   // 实现工程师按需扩展：m_shadow_l1_itlb / m_shadow_l1_dtlb / m_shadow_l2tlb
 
+  // ── TLM 订阅入口（由 mmu_env.connect_phase 连接各 monitor AP）──────────────
+  // 模式：各 monitor 的 analysis_port 通过 analysis_export 推入下面的 FIFO；
+  // ref_model.run_phase 中用 fork 分别 get() 消费，调用对应的 on_* 方法。
+  // 这样 ref_model 自己不需要 uvm_analysis_imp，连接方式与 SB 一致。
+  uvm_tlm_analysis_fifo #(cp0_txn)        af_csr_write;     // ← cp0_monitor.ap fan-out
+  uvm_tlm_analysis_fifo #(lsu_txn)        af_tlb_inv;       // ← lsu_monitor.ap_inv fan-out
+  uvm_tlm_analysis_fifo #(pmp_txn)        af_pmp_cfg;       // ← pmp_monitor.ap fan-out
+  uvm_tlm_analysis_fifo #(sysmap_cfg_txn) af_sysmap_cfg;    // ← sysmap_cfg_monitor.ap
+
   function new(string name, uvm_component parent);
-  // 核心 API
+  // 核心 API（被 SB 的 check_* 任务调用）
   extern function xlation_rsp_t translate(va_t va, acc_type_e acc);
   extern function bit            check_pmp(pa_t pa, acc_type_e acc, int port_idx);
   extern function sysmap_entry_t lookup_sysmap(pa_t pa);
-  // 事件订阅
+  // 内部状态更新（由 run_phase fork 消费 FIFO 后调用，不直接暴露给外部）
   extern function void on_csr_write(cp0_txn tr);
   extern function void on_tlb_inv(lsu_txn tr);
   extern function void on_pmp_cfg_change(pmp_txn tr);
   extern function void on_sysmap_cfg_change(sysmap_cfg_txn tr);
+  // 生命周期
+  extern function void build_phase(uvm_phase phase);
+  extern task          run_phase(uvm_phase phase);  // fork 消费 4 个 FIFO
 endclass
 ```
 
@@ -1445,17 +1512,40 @@ endclass
 
 #### 8.5.1 `mmu_translation_sb.svh`
 
+> **数据流说明**：
+> - IFU 侧：`ifu_monitor.ap_req → af_ifu_req`（VA 握手），`ifu_monitor.ap_rsp → af_ifu_rsp`（PA 返回）
+> - LSU Pipe0/1 侧：`lsu_monitor.ap_pipe{0,1}_req/rsp` 各自对应 req/rsp FIFO（分离模式）
+> - LSU Pipe2（预取）：`lsu_monitor.ap_pipe2_req/rsp`
+> - LSU STAMO：`lsu_monitor.ap_stamo → af_lsu_stamo`（PMP/sysmap 合法性检查）
+> - PTW 内存侧（类比 hpdcache dram_monitor）：`ptw_mem_monitor.ap_req → af_ptw_req`、`ptw_mem_monitor.ap_rsp → af_ptw_rsp`；SB 据此得知实际走表地址与 PTE 内容，与 ref_model shadow PT 对比，验证 walk 结果正确性
+
 ```systemverilog
 class mmu_translation_sb extends uvm_scoreboard;
   `uvm_component_utils(mmu_translation_sb)
-  uvm_tlm_analysis_fifo #(ifu_txn) af_ifu_req, af_ifu_rsp;
-  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe0, af_lsu_pipe1, af_lsu_pipe2;
+  // IFU 侧
+  uvm_tlm_analysis_fifo #(ifu_txn) af_ifu_req;
+  uvm_tlm_analysis_fifo #(ifu_txn) af_ifu_rsp;
+  // LSU Pipe0/1（req/rsp 分离，对齐 hpdcache 双 AP 模式）
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe0_req;
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe0_rsp;
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe1_req;
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe1_rsp;
+  // LSU Pipe2 预取
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe2_req;
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe2_rsp;
+  // LSU STAMO（PA 直通，PMP/sysmap 检查）
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_stamo;
+  // PTW 内存侧（类比 hpdcache af_mem_req/read_rsp）
+  uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_req;   // PTW 发出的 PA 地址请求
+  uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_rsp;   // LSU 返回的 PTE 数据
   mmu_ref_model m_ref;
   function new(string name, uvm_component parent);
   extern function void build_phase(uvm_phase phase);
   extern task run_phase(uvm_phase phase);
   extern task check_ifu();
-  extern task check_lsu_pipe(int unsigned pipe_idx);
+  extern task check_lsu_pipe(int unsigned pipe_idx);  // pipe_idx=0,1,2
+  extern task check_lsu_stamo();
+  extern task check_ptw_walk();   // 对比 PTW 实际读取的 PTE 与 ref_model shadow PT
 endclass
 ```
 
@@ -1474,13 +1564,35 @@ endclass
 
 #### 8.5.3 `mmu_credit_sb.svh`
 
+> **数据流说明**：
+> - `af_ifu_req/rsp` ← `ifu_monitor.ap_req/rsp`：追踪 L1I credit 发出/回收
+> - `af_lsu_pipe0/1_req/rsp` ← `lsu_monitor.ap_pipe{0,1}_req/rsp`：追踪 L1D MB + L2 ReqQ 占用
+> - `af_ptw_req/rsp` ← `ptw_mem_monitor.ap_req/rsp`：追踪 PTW MBUF 发出/回收（验证 MBUF ≤ 9 且 ≤ L2TLB MB 配额）
+> - run_phase 维护计数器，每周期与 SVA `sva_ptw_mbuf_no_overflow` 结论双重保险
+
 ```systemverilog
 // 检查 L1↔L2 credit 守恒、ReqQ/MB 容量上界、PTW MBUF 上界
 class mmu_credit_sb extends uvm_scoreboard;
   `uvm_component_utils(mmu_credit_sb)
-  // 监听点：ifu_req/rsp、lsu_pipe0/1/2 req/rsp、ptw_mem req/rsp
-  // 维护：credit_l1i, credit_l1d, l2_reqq_cnt, l2_mb_cnt, ptw_mbuf_cnt
+  // IFU 侧（L1I credit 追踪）
+  uvm_tlm_analysis_fifo #(ifu_txn) af_ifu_req;
+  uvm_tlm_analysis_fifo #(ifu_txn) af_ifu_rsp;
+  // LSU Pipe0/1（L1D MB + L2 ReqQ 追踪）
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe0_req;
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe0_rsp;
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe1_req;
+  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_pipe1_rsp;
+  // PTW 内存侧（MBUF 占用 / 释放追踪）
+  uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_req;
+  uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_rsp;
+  // 运行时计数器（由 run_phase 维护）
+  int unsigned credit_l1i;        // L1ITLB → L2TLB credit 剩余，上界 CREDIT_MAX=8
+  int unsigned credit_l1d;        // L1DTLB → L2TLB credit 剩余
+  int unsigned l2_reqq_cnt;       // L2 ReqQ 占用，上界 L2_REQQ_DEPTH=9
+  int unsigned l2_mb_cnt;         // L2TLB Miss Buffer 占用，上界 1(ITLB)+8(DTLB)=9
+  int unsigned ptw_mbuf_cnt;      // PTW MBUF 占用，上界 = l2_mb_cnt（一一对应）
   function new(string name, uvm_component parent);
+  extern function void build_phase(uvm_phase phase);
   extern task run_phase(uvm_phase phase);
 endclass
 ```
@@ -1491,15 +1603,19 @@ endclass
 class mmu_perf_mon extends uvm_component;
   `uvm_component_utils(mmu_perf_mon)
   // 复用 dv_utils perf_mon 基类（如有）
-  uvm_tlm_analysis_fifo #(ifu_txn) af_ifu_rsp;
-  uvm_tlm_analysis_fifo #(lsu_txn) af_lsu_rsp[3];
-  uvm_tlm_analysis_fifo #(misc_txn) af_hpcp;
+  // 接收来自各 monitor 的 rsp AP（响应时才有 PA 和延迟数据）
+  uvm_tlm_analysis_fifo #(ifu_txn)     af_ifu_rsp;
+  uvm_tlm_analysis_fifo #(lsu_txn)     af_lsu_pipe0_rsp;   // ← lsu_monitor.ap_pipe0_rsp
+  uvm_tlm_analysis_fifo #(lsu_txn)     af_lsu_pipe1_rsp;   // ← lsu_monitor.ap_pipe1_rsp
+  uvm_tlm_analysis_fifo #(lsu_txn)     af_lsu_pipe2_rsp;   // ← lsu_monitor.ap_pipe2_rsp
+  uvm_tlm_analysis_fifo #(misc_txn)    af_hpcp;             // ← misc_monitor.ap_hpcp
   // 统计
   longint unsigned n_ifu_req, n_ifu_miss;
   longint unsigned n_lsu_req[3], n_lsu_miss[3];
   longint unsigned n_l2_miss, n_walk_complete;
   real             walk_latency_sum;
   function new(string name, uvm_component parent);
+  extern function void build_phase(uvm_phase phase);
   extern task run_phase(uvm_phase phase);
   extern function void report_phase(uvm_phase phase);
 endclass
@@ -1584,13 +1700,73 @@ class mmu_env extends uvm_env;
 
   function new(string name, uvm_component parent);
   extern function void build_phase(uvm_phase phase);
+  // ─────────────────────────────────────────────────────────────────────────
+  // connect_phase：所有 TLM 连线均在此完成（对齐 hpdcache_env.svh 模式）
+  // 规则：ap.connect(fifo.analysis_export)；analysis_port 支持 1→N fan-out，
+  //       只需在同一个 ap 上多次调用 connect() 即可连接多个 FIFO。
+  // ─────────────────────────────────────────────────────────────────────────
+  // ── 数据流 ①：IFU 翻译检查 ────────────────────────────────────────────────
+  //   ifu_monitor.ap_req → translation_sb.af_ifu_req
+  //   ifu_monitor.ap_rsp → translation_sb.af_ifu_rsp [fan-out 1]
+  //                      → perf_mon.af_ifu_rsp       [fan-out 2]
+  //
+  // ── 数据流 ②/③：LSU Pipe0/1/2 翻译检查 ──────────────────────────────────
+  //   lsu_monitor.ap_pipe{0,1}_req → translation_sb.af_lsu_pipe{0,1}_req [fan-out 1]
+  //                                → credit_sb.af_lsu_pipe{0,1}_req      [fan-out 2]
+  //   lsu_monitor.ap_pipe{0,1}_rsp → translation_sb.af_lsu_pipe{0,1}_rsp [fan-out 1]
+  //                                → credit_sb.af_lsu_pipe{0,1}_rsp      [fan-out 2]
+  //                                → perf_mon.af_lsu_pipe{0,1}_rsp       [fan-out 3]
+  //   lsu_monitor.ap_pipe2_req → translation_sb.af_lsu_pipe2_req
+  //   lsu_monitor.ap_pipe2_rsp → translation_sb.af_lsu_pipe2_rsp [fan-out 1]
+  //                            → perf_mon.af_lsu_pipe2_rsp       [fan-out 2]
+  //   lsu_monitor.ap_stamo     → translation_sb.af_lsu_stamo
+  //
+  // ── 数据流 ④：TLB 无效化检查（LSU SFENCE + CP0 全无效化） ────────────────
+  //   lsu_monitor.ap_inv → invalidate_sb.af_inv  [fan-out 1]
+  //                      → m_ref.af_tlb_inv       [fan-out 2]
+  //   cp0_monitor.ap     → invalidate_sb.af_cp0   [fan-out 1]
+  //                      → m_ref.af_csr_write      [fan-out 2]
+  //   ★ CP0 全无效化路径（独立于 LSU SFENCE.VMA）：
+  //     cp0_agent 驱动 cp0_if.cp0_mmu_tlb_all_inv=1（CP0_TLB_ALL_INV 事务）
+  //     → DUT ct_mmu_tlboper.v：tlbiall FSM → L1 ITLB/DTLB + L2 TLB 全清
+  //     → mmu_cp0_tlb_done 握手回应 cp0_agent
+  //     cp0_monitor 采样 tlb_done → ap → invalidate_sb.af_cp0
+  //     invalidate_sb 检查：全无效化后 L1/L2 不得有残留有效 entry（ref_model 同步清空）
+  //
+  // ── 数据流 ⑥：PTW 内存侧监控（类比 hpdcache dram_monitor） ───────────────
+  //   ptw_mem_monitor.ap_req → translation_sb.af_ptw_req [fan-out 1]
+  //                          → credit_sb.af_ptw_req       [fan-out 2]
+  //   ptw_mem_monitor.ap_rsp → translation_sb.af_ptw_rsp [fan-out 1]
+  //                          → credit_sb.af_ptw_rsp       [fan-out 2]
+  //
+  // ── 数据流 ⑦/⑧：配置侧 → ref_model 更新 ────────────────────────────────
+  //   pmp_monitor.ap          → m_ref.af_pmp_cfg
+  //   sysmap_cfg_monitor.ap   → m_ref.af_sysmap_cfg
+  //
+  // ── 数据流 ⑨：MMU 关闭（mmu_xx_mmu_en=0）直通行为 ──────────────────────
+  //   cp0_agent 通过 cp0_if 驱动 mmu_xx_mmu_en=0（misc_if 广播）
+  //   → DUT：MMU off 状态下 IFU/LSU VA 直接作为 PA 输出（passthrough）
+  //     mmu_lsu_mmu_en=0（ptw_mem_if 广播），L1/L2 TLB 查找不触发
+  //   → ref_model.translate()：检查 mmu_en flag，若 0 则直接返回 PA=VA[39:0]（零扩展）
+  //   → mmu_translation_sb 以 mmu_en=0 模式比对，验证 DUT 不产生翻译结果差异
+  //   注意：mmu_xx_mmu_en=0 时 MMU 仍接受请求，但直通；TLB 状态不变（不清空）
+  //
+  // ── 数据流 ⑩：HPCP 性能计数 ─────────────────────────────────────────────
+  //   misc_monitor.ap_hpcp → perf_mon.af_hpcp
+  //
+  // ── Virtual Sequencer 句柄绑定（非 TLM，赋值即可） ─────────────────────
+  //   m_vseqr.ifu_sqr      = m_ifu.m_sequencer
+  //   m_vseqr.lsu_sqr      = m_lsu.m_sequencer
+  //   m_vseqr.cp0_sqr      = m_cp0.m_sequencer
+  //   m_vseqr.pmp_sqr      = m_pmp.m_sequencer
+  //   m_vseqr.sysmap_sqr   = m_sysmap_cfg.m_sequencer
+  //   m_vseqr.misc_sqr     = m_misc.m_sequencer
+  //
+  // ── ref_model / SB 共享句柄（非 TLM，build_phase 或 connect_phase 赋值） ──
+  //   m_trans_sb.m_ref = m_ref;  m_inv_sb.m_ref = m_ref
+  //   m_ref.m_pt       = m_pt_mem;  m_trans_sb.m_pt = m_pt_mem（如需直接查）
   extern function void connect_phase(uvm_phase phase);
 endclass
-```
-
----
-
-## 第 9 章 Top 层与 SVA
 
 ### 9.1 `top/tb_top.sv`
 

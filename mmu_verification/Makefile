@@ -9,7 +9,8 @@
 #===============================================================================
 PROJECT_DIR     ?= $(shell pwd)
 MMU_RTL_DIR     ?= $(PROJECT_DIR)/../mmu/rtl
-CV_DV_UTILS_DIR ?= $(PROJECT_DIR)/modules/dv_utils/lib/cv_dv_utils
+CORE_V_VERIF    ?= $(PROJECT_DIR)/modules/dv_utils
+CV_DV_UTILS_DIR ?= $(CORE_V_VERIF)/lib/cv_dv_utils
 OUTPUT_DIR      ?= $(PROJECT_DIR)/output
 LOG_DIR         ?= $(OUTPUT_DIR)/logs
 WAVE_DIR        ?= $(OUTPUT_DIR)/waves
@@ -164,6 +165,7 @@ help:
 env:
 	@echo "PROJECT_DIR      = $(PROJECT_DIR)"
 	@echo "MMU_RTL_DIR      = $(MMU_RTL_DIR)"
+	@echo "CORE_V_VERIF     = $(CORE_V_VERIF)"
 	@echo "CV_DV_UTILS_DIR  = $(CV_DV_UTILS_DIR)"
 	@echo "OUTPUT_DIR       = $(OUTPUT_DIR)"
 	@echo "TOP_MODULE       = $(TOP_MODULE)"
@@ -171,6 +173,7 @@ env:
 
 check_env:
 	@test -n "$(VCS_HOME)" || (echo "ERROR: VCS_HOME not set"; exit 1)
+	@test -d "$(CORE_V_VERIF)" || (echo "ERROR: CORE_V_VERIF not found: $(CORE_V_VERIF)"; exit 1)
 	@test -d "$(CV_DV_UTILS_DIR)" || (echo "ERROR: CV_DV_UTILS_DIR not found: $(CV_DV_UTILS_DIR)"; exit 1)
 
 setup:
@@ -186,8 +189,9 @@ comp_all: setup
 	@echo "==============================================================================="
 	@echo "Compiling MMU UVM TB (Phase 1 skeleton)..."
 	@echo "TOP_MODULE=$(TOP_MODULE)  UVM_VERSION=$(UVM_VERSION)"
+	@echo "CORE_V_VERIF=$(CORE_V_VERIF)"
 	@echo "==============================================================================="
-	$(VCS) $(VCS_ELAB_OPTS) \
+	CORE_V_VERIF=$(CORE_V_VERIF) $(VCS) $(VCS_ELAB_OPTS) \
 		$(INCDIR) \
 		$(TB_FLIST) \
 		$(TOP_FILE) \

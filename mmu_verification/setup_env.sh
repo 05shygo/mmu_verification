@@ -4,7 +4,8 @@
 
 export PROJECT_DIR=${PWD}
 export MMU_RTL_DIR=${PROJECT_DIR}/../mmu/rtl
-export CV_DV_UTILS_DIR=${PROJECT_DIR}/modules/dv_utils/lib/cv_dv_utils
+export CORE_V_VERIF=${PROJECT_DIR}/modules/dv_utils
+export CV_DV_UTILS_DIR=${CORE_V_VERIF}/lib/cv_dv_utils
 
 echo "PROJECT_DIR      = ${PROJECT_DIR}"
 echo "MMU_RTL_DIR      = ${MMU_RTL_DIR}"

@@ -120,6 +120,10 @@ logic               mbuf_clk                            ;
 logic               mbuf_clk_en                         ;
 logic   [8:0]       mbuf_entry_get                      ;
 logic   [8:0]       mbuf_entry_bus_err_flop              ;
+logic               pde_updata_data_vld                  ;
+logic   [63:0]      pde_updata_data_flop                 ;
+logic   [26:0]      pde_updata_vpn                       ;
+logic   [2:0]       pde_updata_lvl                       ;
 
 
 parameter VADDR_WIDTH = 39;              // VADDR
@@ -567,14 +571,15 @@ always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
 end
 
 always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
-    if(!cpurst_b)
+    if(!cpurst_b) begin
         pde_updata_data_flop[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
         pde_updata_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
         pde_updata_lvl[2:0] <= 3'b0;
-    else if(|write_back_grant[8:0])
+    end else if(|write_back_grant[8:0]) begin
         pde_updata_data_flop[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
         pde_updata_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
         pde_updata_lvl[2:0] <= mbuf_twu_lvl[2:0];
+    end
 end
 
 // 只有同时满足下列条件的 PTE 才能回填 PDE Cache:

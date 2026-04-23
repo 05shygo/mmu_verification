@@ -62,6 +62,11 @@ ${MMU_RTL_DIR}/mmu_l2tlb_reqq.sv
 ${MMU_RTL_DIR}/mmu_l2tlb_rrpv_wbuf.sv
 ${MMU_RTL_DIR}/mmu_l2tlb.sv
 ${MMU_RTL_DIR}/one_to_four_xbar.sv
+${MMU_RTL_DIR}/PDE_cache.sv
+${MMU_RTL_DIR}/pplru.sv
+${MMU_RTL_DIR}/twu.sv
+${MMU_RTL_DIR}/ptw_mbuf.sv
+${MMU_RTL_DIR}/ptw.sv
 ${MMU_RTL_DIR}/ct_mmu_top.v
 
 # ---------------------------------------------------------------------------

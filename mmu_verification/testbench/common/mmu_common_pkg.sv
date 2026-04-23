@@ -26,7 +26,7 @@ package mmu_common_pkg;
     mmu_exc_e             exc;
     logic                 sec;    // Secure
     logic                 ca;     // Cacheable
-    logic                 buf;    // Bufferable
+    logic                 buf_en; // Bufferable
     logic                 sh;     // Shareable
     logic                 so;     // Strongly-ordered
     logic                 deny;   // Sysmap/PMP access denied

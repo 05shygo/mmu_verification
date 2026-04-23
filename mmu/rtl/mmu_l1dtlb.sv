@@ -235,7 +235,7 @@ logic [MB_DEPTH-1:0]                   mb_entry_vld;
 logic [MB_DEPTH-1:0][2:0]              mb_entry_state;
 logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]    mb_entry_vpn;
 logic [MB_DEPTH-1:0][IID_WIDTH-1:0]    mb_entry_iid;
-logic [MB_WIDTH-1:0][PGS_WIDTH-1:0]    mb_entry_pgs;
+logic [MB_DEPTH-1:0][PGS_WIDTH-1:0]    mb_entry_pgs;
 //logic [MB_DEPTH-1:0]                   mb_entry_port_id;
 logic [MB_DEPTH-1:0]                   mb_entry_issued;
 logic [MB_DEPTH-1:0]                   mb_entry_ready;

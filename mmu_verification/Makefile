@@ -84,7 +84,6 @@ VCS_ELAB_OPTS   := -full64 \
                    -debug_region+cell+encrypt \
                    +vcs+fsdbon \
                    +UVM_CONFIG_DB_TRACE \
-                   +define+MB_WIDTH=8 \
                    +define+PA_WIDTH=40 \
                    -Mdir=$(OUTPUT_DIR)/csrc \
                    -o $(OUTPUT_DIR)/simv

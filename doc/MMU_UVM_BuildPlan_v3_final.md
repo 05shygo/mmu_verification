@@ -160,7 +160,7 @@ UVM 代码实现工程师 / Coding AI（具备 SystemVerilog + UVM 1.2 基础，
 | L2 TLB | [mmu_l2tlb.sv](../mmu/rtl/mmu_l2tlb.sv) | Skew-Assoc 8 ways × 256 sets × 8 banks，RRPV 3-bit，MB 1(ITLB)+8(DTLB) |
 | L2 ReqQ | [mmu_l2tlb_reqq.sv](../mmu/rtl/mmu_l2tlb_reqq.sv) | TOTAL_DEPTH=9（1 ITLB + 8 DTLB），FFZ 分配 + FFR 仲裁 |
 | Arb | [mmu_arb.sv](../mmu/rtl/mmu_arb.sv) | 4 源仲裁：PTW(高) > TLBOp > ReqQ > PFU；8 bank skew idx |
-| Replacement | [mmu_l2tlb_replacement_policy.sv](../mmu/rtl/mmu_l2tlb_replacement_policy.sv) | SRRIP，First-Free > Max-RRPV，RRPV_INIT=4(=MAX-3) |
+| Replacement | [mmu_l2tlb_replacement_policy.sv](../mmu/rtl/mmu_l2tlb_replacement_policy.sv) | SRRIP 变体：First-Free 优先 → 否则 RRPV_MAX→0 反向优先编码（不强制等于 MAX）；RRPV_INIT=4(=MAX-3)；**hit 时 hit way→0、其余 valid way 同步 +1 饱和（v3.1 修正，RTL `rrpv_updata[i] = hit_index[i] ? 0 : rrpv_aged[i]`）**。注：RTL 注释 “e.g., 6” 为旧版残留，以参数 RRPV_MAX-3=4 为准。 |
 | PTW | [ptw.sv](../mmu/rtl/ptw.sv) | 4 TWU + ptw_mbuf + L1/L2PDE_cache + xbar 1→4 + pplru |
 | TLBOper | [ct_mmu_tlboper.v](../mmu/rtl/ct_mmu_tlboper.v) | 7 FSM：tlbiall/tlbiasid/tlbiva/tlbp/tlbr/tlbwi/tlbwr |
 | Sysmap | [ct_mmu_sysmap.v](../mmu/rtl/ct_mmu_sysmap.v) + [sysmap.h](../mmu/rtl/sysmap.h) | 8 region，每 region 5-bit FLG |
@@ -1637,7 +1637,7 @@ module tb_top;
     .lsu_mmu_data_vld      (ptw_mem_vif.lsu_mmu_data_vld),
     .lsu_mmu_data          (ptw_mem_vif.lsu_mmu_data),
     .mmu_lsu_tlb_busy      (ptw_mem_vif.mmu_lsu_tlb_busy),
-    .mmu_lsu_tlb_wakeup    (ptw_mem_vif.mmu_lsu_tlb_wakeup),
+    .mmu_lsu_tlb_wakeup    (ptw_mem_vif.mmu_lsu_tlb_wakeup),  // **v3.1 注**：信号实际驱动为 `mmu_l1dtlb_install`（非 PTW），这里仅使用 ptw_mem_vif 作为线杯；由 dtlb monitor / mmu_credit_sb 负责采样与检查（参见 VerificationPlan §2.3 行 7a / F2.17 / F4.23）
     // PMP（8 端口 flag 输入 + 8 PA 输出 + 4 fetch_en 输出）
     .pmp_mmu_flg0          (pmp_vif.pmp_mmu_flg0),
     .pmp_mmu_flg1          (pmp_vif.pmp_mmu_flg1),
@@ -1685,9 +1685,15 @@ endmodule
 |------|---------|---------|
 | `top/mmu_sva.sv` | 所有顶层接口 | va_vld 时 va 不为 X / 同期 stall+pavld 互斥 / abort 后 N cycle 内 pavld 不应继续 |
 | `top/mmu_arb_sva.sv` | `mmu_arb` | grant one-hot / 优先级链严格 PTW>TLBOp>ReqQ>PFU / work-conserving |
-| `top/mmu_l2tlb_rrpv_sva.sv` | `mmu_l2tlb` 内 RRPV 阵列 | hit 后 promote=0 / miss 后 +1 饱和 / new fill 初值=4 |
+| `top/mmu_l2tlb_rrpv_sva.sv` | `mmu_l2tlb` 内 RRPV 阵列 | **【v3.1 修正】** hit 后 hit way RRPV=0、其它所有 valid way 同步 +1 饱和于 7（`rrpv_updata[i] = hit_index[i] ? 0 : rrpv_aged[i]`）；miss 后全部 +1 饱和；new fill 初值=4；victim First-Free 优先 → 否则 RRPV_MAX→0 首个候选 way |
 | `top/mmu_plru_sva.sv` | `mmu_l1itlb` / `mmu_l1dtlb` | PLRU 树更新规则、victim 选择正确 |
 | `top/credit_sva.sv` | L1↔L2 credit / ReqQ / MB | outstanding ≤ MAX、credit 守恒（issue+return-net=0） |
+| `top/mmu_l1dtlb_wakeup_sva.sv` | `mmu_l1dtlb_install` | **v3.1 新增**：`sva_wakeup_uniform`（12 位同值）、`sva_wakeup_broadcast`（`mb_have_free \| l1dtlb_expt_for_taken` 任一拉高全广播） |
+| `top/mmu_l1dtlb_mb_sva.sv` | `mmu_l1dtlb_mb_entry` | **v3.1 新增**：`sva_pgflt_pulse_1cyc`（PGFLT/ACFLT 仅 1 周期）、`sva_abthold_clr`（abort_hold_r 仅 IDLE 窗口清）、`sva_no_install_after_abt`（ABT 后禁 install） |
+| `top/mmu_l1dtlb_install_sva.sv` | `mmu_l1dtlb_install` | **v3.1 新增**：`sva_jtlb_no_acflt`（JTLB 路径不产生 ACFLT）、`sva_install_priority`（PTW>JTLB>WFI）、`sva_isload_polarity`（`is_load == ~store`） |
+| `top/mmu_l1dtlb_sched_sva.sv` | `mmu_l1dtlb_scheduler` | **v3.1 新增**：`sva_bypass_priority`（`bypass_en = ~|mb_entry_ready` 且 sel_mb 优先）、`sva_credit_5bit_bound`（credit_cnt ≤8） |
+| `top/mmu_l1dtlb_lint_sva.sv` | `mmu_l1dtlb` | **v3.1 新增**：`sva_lint_clean`（`MB_WIDTH` 等未定义参数 fix 后守护） |
+| `top/mmu_top_id_sva.sv` | `ct_mmu_top` + `mmu_l1dtlb` | **v3.1 新增**：`sva_ptw_dtlb_id_no_alias`（`ptw_l1dtlb_id[2:0]` 截断后与 MB 8-entry 无 alias） |
 
 每个 SVA 文件采用 `module <name>(...)` 结构，通过 `bind` 绑定到 RTL 实例（参考 [hpdcache_verification/testbench/top/hpdcache_fxarb_sva.sv](../hpdcache_verification/testbench/top/hpdcache_fxarb_sva.sv)）。
 

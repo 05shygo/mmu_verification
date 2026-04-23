@@ -89,6 +89,14 @@
 | GAP-D2.14 | `mmu_l1dtlb` + `ct_mmu_dplru` | 双端口 hit[0]/hit[1] 同时与 pending refill 更新 PLRU 的 race | [ct_mmu_dplru.v#L1-L50](../mmu/rtl/ct_mmu_dplru.v#L1)、[mmu_l1dtlb.sv#L310-L340](../mmu/rtl/mmu_l1dtlb.sv#L310) | P1 |
 | GAP-D2.15 | `mmu_l1dtlb_install` | `mmu_lsu_tlb_wakeup[11:0]` 实为广播：`mb_have_free=1` 时全 1，并非 per-entry onehot | [mmu_l1dtlb_install.sv#L233-L235](../mmu/rtl/mmu_l1dtlb_install.sv#L233) | **P0** |
 | GAP-D2.16 | `mmu_l1dtlb` | `mmu_lsu_tlb_busy` 仅在 `&mb_entry_vld`（全满）时拉起；阈值不可配 | [mmu_l1dtlb.sv#L1229](../mmu/rtl/mmu_l1dtlb.sv#L1229) | P1 |
+| GAP-D2.17 | `mmu_l1dtlb_install` | **【v3.1 新增】wakeup 触发源 OR 通路被原计划遗漏**：`wakeup_vec_next = {12{mb_have_free}} \| {12{l1dtlb_expt_for_taken}}`，**MB 释放空槽 OR PTW/L2 异常返回** 任一即触发；原 GAP-D2.15 仅描述 `mb_have_free` 路径，缺失 `l1dtlb_expt_for_taken = ptw_ref_fault \| l2tlb_ref_fault` 异常路径覆盖 | [mmu_l1dtlb_install.sv#L233-L290](../mmu/rtl/mmu_l1dtlb_install.sv#L233) | **P0** |
+| GAP-D2.18 | `mmu_l1dtlb_install` | **【v3.1 新增】wakeup 信号属性误标**：原 F4.23 / GAP-PX.10 将 `mmu_lsu_tlb_wakeup[11:0]` 归属为 PTW 输出；实际驱动模块为 `mmu_l1dtlb_install`，PTW 仅为刺激源之一；文档已修正归属（M1/F4.23） | [mmu_l1dtlb_install.sv#L233-L290](../mmu/rtl/mmu_l1dtlb_install.sv#L233), [ct_mmu_top.v#L106,L144](../mmu/rtl/ct_mmu_top.v#L106) | P1 |
+| GAP-D2.19 | `mmu_l1dtlb_mb_entry` | **【v3.1 新增】PGFLT/ACFLT 仅持续 1 周期**：状态 `state_nxt` 直接回 `STATE_IDLE`，对 LSU 输出表现为 1-cycle pulse（**非 hold**）；原 GAP-D2.8 描述 hold 与 RTL 不符；需 `sva_pgflt_pulse_1cyc` 守护 | [mmu_l1dtlb_mb_entry.sv#L121-L195](../mmu/rtl/mmu_l1dtlb_mb_entry.sv#L121) | P1 |
+| GAP-D2.20 | `mmu_l1dtlb_install` | **【v3.1 新增】JTLB 路径不会产生 ACFLT**：`req_jtlb_expt = jtlb_dutlb_pgflt;`（`jtlb_dutlb_acc_err` 在 RTL 注释掉），ACFLT 仅来自 PTW；负向覆盖确认设计意图 | [mmu_l1dtlb_install.sv#L260-L290](../mmu/rtl/mmu_l1dtlb_install.sv#L260) | P1 |
+| GAP-D2.21 | `mmu_l1dtlb_scheduler` | **【v3.1 新增 / RTL Lint】顶层 `CREDIT_WIDTH=3` 为死参数**：scheduler 内部 `credit_cnt` 实为 5-bit (`$clog2(9)+1`)，不引用顶层参数；建议 RTL 清理或 sva 守护 `credit_cnt[$bits(credit_cnt)-1:0] <= 8` | [mmu_l1dtlb.sv#L10](../mmu/rtl/mmu_l1dtlb.sv#L10), [mmu_l1dtlb_scheduler.sv#L60-L100](../mmu/rtl/mmu_l1dtlb_scheduler.sv#L60) | P2 |
+| GAP-D2.22 | `mmu_l1dtlb` | **【v3.1 新增 / RTL Lint P1】未定义符号 `MB_WIDTH`**：`mmu_l1dtlb.sv` ~L244 处 `logic [MB_WIDTH-1:0][PGS_WIDTH-1:0] mb_entry_pgs;` 引用未定义参数 `MB_WIDTH`，疑为 `MB_DEPTH-1` 或 `$clog2(MB_DEPTH)` 笔误；需 RTL fix + lint 守护 | [mmu_l1dtlb.sv#L244](../mmu/rtl/mmu_l1dtlb.sv#L244) | **P1** |
+| GAP-D2.23 | `mmu_l1dtlb_install` | **【v3.1 新增 / RTL 死代码 P2】PLRU bank1 路径未连接**：`plru_bank1_refill_way` 在 install 模块未被消费，bank1 PLRU 更新路径疑似缺失或与 bank0 共用；需评估 16-entry PLRU 双 bank 是否对称、是否影响替换公平性 | [mmu_l1dtlb_install.sv](../mmu/rtl/mmu_l1dtlb_install.sv) | P2 |
+| GAP-D2.24 | `ct_mmu_top` | **【v3.1 新增】PTW→DTLB ID 顶层截断**：`ct_mmu_top.v` 实例化 DTLB 时连接 `.ptw_l1dtlb_ref_id (ptw_l1dtlb_id[2:0])`，6→3 bit 截断；需验证截断后 ID 与 DTLB MB 8-entry 索引无 alias、不会误投递 | [ct_mmu_top.v#L106](../mmu/rtl/ct_mmu_top.v#L106) | P1 |
 
 ### 1.3 L1 共性
 
@@ -140,11 +148,11 @@
 |--------|------|------|----------|--------|
 | GAP-MB.1 | `mmu_l2tlb_mb_entry` | Entry FSM 各状态转换的精确周期 | [mmu_l2tlb_mb_entry.sv#L60-L120](../mmu/rtl/mmu_l2tlb_mb_entry.sv#L60) | P1 |
 | GAP-MB.2 | `mmu_l2tlb_mb` + `ptw` | SFENCE 期间 in-flight refill abort：PTW 完成前 MB 清空 | [mmu_l2tlb_mb.sv](../mmu/rtl/mmu_l2tlb_mb.sv)、[ct_mmu_tlboper.v](../mmu/rtl/ct_mmu_tlboper.v) | **P0** |
-| GAP-MB.3 | `mmu_l2tlb_mb` | 同 VPN 不同 hash 槽位 → dedup 逻辑确保单 PTW walk | [mmu_l2tlb_mb.sv#L80-L110](../mmu/rtl/mmu_l2tlb_mb.sv#L80) | P1 |
+| GAP-MB.3 | `mmu_l2tlb_mb` | **【v3.1 已证伪】** 原猜测“同 VPN 不同 hash 槽位 → dedup 逻辑”，实际 RTL `mmu_l2tlb_mb` 不含 VPN/ASID 比较（仅 FFZ）。dedup 验证责任转移到 PTW MBUF (GAP-PM.6)。 | [mmu_l2tlb_mb.sv#L80-L110](../mmu/rtl/mmu_l2tlb_mb.sv#L80) | 证伪完成 |
 | GAP-MB.4 | `mmu_l2tlb_mb_entry` | dealloc 精确时序：alloc/dealloc race 不留孤儿 refill | [mmu_l2tlb_mb_entry.sv#L80-L95](../mmu/rtl/mmu_l2tlb_mb_entry.sv#L80) | P1 |
 | GAP-MB.5 | `mmu_l2tlb_mb` | FFZ 多 free entry 时的偏置（按 index 顺序 vs wrap） | [mmu_l2tlb_mb.sv#L100-L140](../mmu/rtl/mmu_l2tlb_mb.sv#L100) | P2 |
 
-### 2.4 Replacement / RRPV / pplru
+### 2.4 Replacement / RRPV（pplru 已迁移到 PTW 章节）
 
 | GAP-ID | 模块 | 描述 | RTL 证据 | 优先级 |
 |--------|------|------|----------|--------|
@@ -187,7 +195,7 @@
 | GAP-L2X.2 | `mmu_l2tlb` + `ct_mmu_tlboper` | INV_VA 与 in-flight refill 竞争同一 VPN 的精确仲裁 | [mmu_l2tlb.sv](../mmu/rtl/mmu_l2tlb.sv)、[ct_mmu_tlboper.v](../mmu/rtl/ct_mmu_tlboper.v) | **P0** |
 | GAP-L2X.3 | `mmu_l2tlb_reqq` + `mmu_arb` | trans_id 转发延迟 | [mmu_l2tlb_reqq.sv#L180-L220](../mmu/rtl/mmu_l2tlb_reqq.sv#L180) | P1 |
 | GAP-L2X.4 | `mmu_l2tlb` | hit info 返回延迟（cycle 数） | [mmu_l2tlb.sv#L1-L100](../mmu/rtl/mmu_l2tlb.sv#L1) | P1 |
-| GAP-L2X.5 | `ct_mmu_top` + `mmu_l2tlb` | maee/no_op_req 对 L2 TLB 的 gating 范围 | [mmu_l2tlb.sv](../mmu/rtl/mmu_l2tlb.sv)、[ct_mmu_top.v](../mmu/rtl/ct_mmu_top.v) | P2 |
+| GAP-L2X.5 | `ct_mmu_top` + `mmu_l2tlb` | **【v3.1 已证伪】** L2TLB `clk_en` 实际不包含 maee/no_op_req。gating 责任转移到 mmu_arb 侧 `mmu_yy_xx_no_op` 广播路径。 | [mmu_l2tlb.sv](../mmu/rtl/mmu_l2tlb.sv)、[ct_mmu_top.v](../mmu/rtl/ct_mmu_top.v) | 证伪完成 |
 | GAP-L2X.6 | `ct_mmu_regs` + `mmu_l2tlb` | cpurst_b 单脉冲是否清所有 array vld 位 | [mmu_fpga_ram.sv#L33-L42](../mmu/rtl/mmu_fpga_ram.sv#L33) | P1 |
 | GAP-L2X.7 | `mmu_l2tlb_replacement_policy` | RRPV 饱和正确性（formal 推荐） | [mmu_l2tlb_replacement_policy.sv#L115-L130](../mmu/rtl/mmu_l2tlb_replacement_policy.sv#L115) | P1 |
 | GAP-L2X.8 | `mmu_arb` | PTW + TLBOp + ReqQ 同 bank → 严格优先级胜者 | [mmu_arb.sv#L80-L110](../mmu/rtl/mmu_arb.sv#L80) | P1 |
@@ -196,6 +204,16 @@
 | GAP-Hash.2 | `mmu_arb` | 真实 workload 下 hash 冲突分布（熵） | [mmu_arb.sv](../mmu/rtl/mmu_arb.sv) | P2 |
 | GAP-Hash.3 | `mmu_arb` | Hash 可逆性分析（安全/DPA） | [mmu_arb.sv#L350-L450](../mmu/rtl/mmu_arb.sv#L350) | P2 |
 | GAP-Hash.4 | `one_to_four_xbar` + `mmu_arb` | Selector 编码（VPN bit 选 hash 变体） | [one_to_four_xbar.sv](../mmu/rtl/one_to_four_xbar.sv)、[mmu_arb.sv](../mmu/rtl/mmu_arb.sv) | P1 |
+
+### 2.8 【v3.1 新增】L2TLB BUG_HUNT (GAP-L2.NEW)
+
+| GAP-ID | 模块 | 描述 | RTL 证据 | 优先级 |
+|--------|------|------|----------|--------|
+| GAP-L2.NEW.1 | `mmu_l2tlb_reqq` | `ID_W=3` 与 `TOTAL_DEPTH=9` 不匹配：entry 8 的 trans_id (`4'b1000`) 被截断为 `3'b000`，feedback 误命中 entry 0 (ITLB) | [mmu_l2tlb_reqq.sv#L23](../mmu/rtl/mmu_l2tlb_reqq.sv#L23)、[#L194](../mmu/rtl/mmu_l2tlb_reqq.sv#L194) | **P0** |
+| GAP-L2.NEW.2 | `mmu_l2tlb_rrpv_wbuf` | 默认 `RRPV_WIDTH=2` 与顶层实例化 3 不一致（实例化已覆写），可移植性盲点 | [mmu_l2tlb_rrpv_wbuf.sv](../mmu/rtl/mmu_l2tlb_rrpv_wbuf.sv) | P1 |
+| GAP-L2.NEW.3 | `mmu_l2tlb_mb` + `mmu_l2tlb_mb_entry` | mb_entry 未接 abort/sfence，SFENCE 后 in-flight PTW refill 是否仍写 SRAM/dealloc MB 需明确 | [mmu_l2tlb_mb.sv](../mmu/rtl/mmu_l2tlb_mb.sv)、[mmu_l2tlb_mb_entry.sv](../mmu/rtl/mmu_l2tlb_mb_entry.sv) | **P0** |
+| GAP-L2.NEW.4 | `mmu_l2tlb` | `arb_l2tlb_is_dtlb = (acc_type==3'b010) \| (acc_type==3'b010)` 重复表达式 → store(3'b110) 被误判为 ITLB | [mmu_l2tlb.sv](../mmu/rtl/mmu_l2tlb.sv) | **P0** |
+| GAP-L2.NEW.5 | `mmu_l2tlb` | `raw_vld` 触发条件 `acc_type != 3'b101 \|\| acc_type != 3'b000` 恒为真，屏蔽失效，PTW write/refill 也会拉 raw_vld | [mmu_l2tlb.sv](../mmu/rtl/mmu_l2tlb.sv) | P1 |
 
 **L2+Arb 小节合计：40 条（P0=8, P1=29, P2=3）**
 

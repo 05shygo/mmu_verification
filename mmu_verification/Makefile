@@ -43,7 +43,7 @@ TIMESCALE       ?= 1ns/1ps
 # Test Configuration
 #===============================================================================
 # Phase 1 default: UVM built-in base test (0-cycle exit smoke test)
-TEST_NAME       ?= uvm_test_top
+TEST_NAME       ?= mmu_base_test
 SEED            ?= random
 VERBOSITY       ?= UVM_MEDIUM
 TIMEOUT         ?= 10000000

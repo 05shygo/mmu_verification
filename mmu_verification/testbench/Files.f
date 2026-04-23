@@ -85,4 +85,9 @@ ${TB_DIR}/misc_agent/misc_if.sv
 # ---------------------------------------------------------------------------
 ${TB_DIR}/common/mmu_common_pkg.sv
 
+# ---------------------------------------------------------------------------
+# Phase 2: Minimal base test (smoke check)
+# ---------------------------------------------------------------------------
+${TB_DIR}/test/mmu_base_test.sv
+
 # --- Phase 3+: Agent/Env/Test packages will be added here ---

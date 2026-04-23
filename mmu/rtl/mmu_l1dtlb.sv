@@ -1141,10 +1141,7 @@ generate
                                              && (utlb_req_vpn1[VPN_WIDTH-1:0] == l1dtlb_ent_vpn[l1dtlb_ent][VPN_WIDTH-1:0]);
         assign entry_hit1[l1dtlb_ent]        = l1dtlb_vpn_match1[l1dtlb_ent];
         
-        // Read Port Outputs (for debug/ECO)
-        assign entry_vld[l1dtlb_ent] = l1dtlb_ent_vld[l1dtlb_ent];
-        assign entry_ppn[l1dtlb_ent] = l1dtlb_ent_ppn[l1dtlb_ent][PPN_WIDTH-1:0];
-        assign entry_flg[l1dtlb_ent] = l1dtlb_ent_flg[l1dtlb_ent][FLG_WIDTH-1:0];
+        // Read Port Outputs driven by first generate block; removed duplicates here
 
     end
 endgenerate

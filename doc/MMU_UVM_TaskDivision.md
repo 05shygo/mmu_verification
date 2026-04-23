@@ -96,7 +96,17 @@
 
 > B 的 ifu/lsu agent 骨架在 Phase 3 完成，方法体在 Phase 5 填充。
 
-**退出准则（A 主导）**：`test_mmu_sanity_csr_pmp_sysmap`（由 A 编写）通过；`mmu_xx_mmu_en` 拉高
+**退出准则（A 主导，B 确认）**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make compile` **0 errors / 0 warnings**（已知工具告警须在注释中记录） | 编译 log 截图留存 |
+| 2 | A 的三个 Agent（cp0/pmp/sysmap）**8 件套文件全部存在** | `ls testbench/{cp0,pmp,sysmap_cfg}_agent/` 输出核查 |
+| 3 | B 的 ifu/lsu **骨架文件全部存在**，`test_pkg.sv` + `test_base.svh` 编译通过 | 编译 log 无 undefined symbol |
+| 4 | `test_mmu_sanity_csr_pmp_sysmap` 单跑：**UVM_ERROR=0 / UVM_FATAL=0** | 仿真 log 截图留存 |
+| 5 | `mmu_xx_mmu_en` 拉高有**波形或 assertion log 佐证** | Verdi 截图 / log 中打印确认 |
+| 6 | `mmu_env.svh` build 三个 Agent，run_phase **0 cycle 正常退出** | log 中无 phase 超时告警 |
+| 7 | B **签字 Review**：ifu/lsu 骨架的端口 bind 与对应 `*_if.sv` 完全一致 | Code Review 记录（Git comment 或文档注释）|
 
 ---
 
@@ -107,7 +117,17 @@
 | **A** | `ptw_mem_agent` 十件套（responder 完整实现：PTE 响应 + 延迟 + bus_error 注入）；`page_table_builder.svh`（`map_4k()` 等工具方法）；`mmu_page_table_mem.svh`（基于 memory_shadow）；`mmu_ref_model.svh`（`translate()` 4K happy path） | 10+3 = **13** |
 | **B** | 基于 A 的 `page_table_builder` API 草拟 ifu/lsu sequence 伪代码；准备 Phase 5 的 translation 场景列表（来自 VerificationPlan §6.3 F1/F2/F3 功能点） | — |
 
-**退出准则（A 验证）**：`page_table_builder.map_4k()` → `ptw_mem_responder` 正确响应；ref_model `translate()` 结果与 RTL PA 一致
+**退出准则（A 验证）**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make compile` **0 errors** | 编译 log 截图 |
+| 2 | `ptw_mem_agent` **十件套 + `page_table_builder.svh` 全部存在** | `ls testbench/ptw_mem_agent/` 核查 |
+| 3 | `map_4k()` 专用 directed test **≥10 次**，**5 个独立种子**，每次 UVM_ERROR=0 | 仿真 log × 5 份 |
+| 4 | `map_2m()` / `map_1g()` 至少存在骨架（空方法体），**不报编译错误** | 编译通过 |
+| 5 | `ref_model.translate()` **50 次 × 5 种子**（随机 VA），`mismatch=0` | 仿真 log 中 translation_check 打印 |
+| 6 | `mmu_common_pkg.sv` 内所有 `// TODO` 方法体已实现，保留的 TODO **须显式标注目标 Phase** | code review |
+| 7 | A 为 `ref_model` 核心 page walk 算法写**内联注释**（每个决策分支说明），供 B Phase 5 对接 | code review |
 
 ---
 
@@ -118,7 +138,18 @@
 | **B** | 填充 `ifu_driver.svh` + `ifu_monitor.svh` 方法体；填充 `lsu_driver.svh`（`drive_pipe0/1/2/stamo` 四路，inv 子线程留 TODO 至 Phase 6）+ `lsu_monitor.svh`（4 个 ap）；实现 `mmu_translation_sb.svh`（VA→PA + 异常对比）；更新 `mmu_env.svh` 加入 ifu/lsu 两个 agent | 5（新增/修改） |
 | **A** | `misc_agent` 八件套骨架（driver 实现 `rtu_flush` 单脉冲 + `biu_smp_disable` 静态配置）；`mmu_credit_sb.svh`（L1↔L2 credit / ReqQ / MB 容量守恒）；`mmu_perf_mon.svh` 骨架（接口定义，统计 TODO）；更新 `mmu_env.svh` 加入 misc/credit | 9+3 = **12** |
 
-**退出准则**：IFU 单端口随机 VA 100 次全部命中；LSU pipe0 100 次 LD 全部命中；miss→PTW→refill 100 次混合 0 mismatch
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make compile` **0 errors** | 编译 log |
+| 2 | IFU 单端口随机 VA：**5 个种子 × 100 次**，UVM_ERROR=0 | 仿真 log × 5 份 |
+| 3 | LSU pipe0：**5 个种子 × 100 次 LD**，UVM_ERROR=0；pipe1 / pipe2 / stamo **各 ≥20 次**，UVM_ERROR=0 | 仿真 log |
+| 4 | miss→PTW→refill：**3 个种子 × 100 次混合**，`mismatch=0` | 仿真 log 中 SB 打印 |
+| 5 | `mmu_translation_sb` 至少接收 **≥200 笔**比对请求，`mismatch=0` | SB 统计 log |
+| 6 | `mmu_credit_sb` 仿真结束时信用守恒计数 **=0**（无泄露/溢出） | SB 统计 log |
+| 7 | `misc_agent` 八件套**编译通过**；`rtu_flush` + `biu_smp_disable` 在 sanity 用例中被**实际驱动** | log 中信号变化打印 |
+| 8 | `scan_logs.pl` 对全部仿真 log 扫描：**无 `$error` / `$fatal` / 非预期 ERROR / FATAL** | 脚本输出 0 matches |
 
 ---
 
@@ -129,7 +160,15 @@
 | **B** | 实现 `lsu_driver.svh` 的 `drive_inv` 子线程（SFENCE.VMA 4 种模式）；实现 `mmu_invalidate_sb.svh`；编写对应的 invalidate sequence（可放入 `lsu_sequences.svh`） |
 | **A** | 完善 `misc_agent` driver 中的 RTU flush/expt 注入逻辑；完善 `misc_monitor.svh` 中 HPCP cnt_en 采样 |
 
-**退出准则**：SFENCE.VMA 4 种模式各 50 次，invalidate_sb 0 mismatch；RTU flush 下 PTW abort 行为正确
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make compile` **0 errors** | 编译 log |
+| 2 | SFENCE.VMA **4 种模式各 100 次**（从 50 提升）× **3 个种子**，`invalidate_sb mismatch=0` | 仿真 log × 12 份 |
+| 3 | `invalidate_sb` 仿真结束打印统计：**`N_invalidations=XX, mismatch=0`**（XX > 0 以证明路径有效） | SB 统计 log |
+| 4 | RTU flush → PTW abort：**10 次随机时序注入**（flush 与 PTW 完成点不同偏移），abort 行为全部正确 | 仿真 log 中 abort_check 打印 |
+| 5 | B **Code Review + 签字**：`misc_monitor.svh` HPCP `cnt_en` 采样点覆盖所有计数器事件 | Review 记录留存 |
 
 ---
 
@@ -140,7 +179,17 @@
 | **B** | 7 个 `*_covergroups.svh`（覆盖 BuildPlan §10 黑盒部分）；env 内白盒 covergroup 集中文件（hierarchical reference）；更新 `mmu_env.svh` 注册所有 covergroup | 7+1 = **8** |
 | **A** | 5 个 SVA 文件（`mmu_sva.sv` / `mmu_arb_sva.sv` / `mmu_l2tlb_rrpv_sva.sv` / `mmu_plru_sva.sv` / `credit_sva.sv`）；更新 `tb_top.sv` 加入 bind 语句 | **5** |
 
-**退出准则**：编译通过；smoke 测试所有 covergroup 至少 1 hit；SVA 0 fire
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make compile` **0 errors / 0 warnings**（重点检查 SVA bind scope 告警） | 编译 log |
+| 2 | **全部 7 个 `*_covergroups.svh` 文件存在**并编译通过 | `ls testbench/*/` 各含 covergroup 文件 |
+| 3 | smoke 跑 **≥3 个不同 test**，所有 covergroup **每一个 bin 至少 1 hit** | 覆盖率 HTML 报告截图 |
+| 4 | **生成 HTML 覆盖率报告**，确认 covergroup 层次正确激活 | 报告文件路径记录 |
+| 5 | **SVA 0 assertion violations**（log 显式记录 assertion pass/fail 统计） | 仿真 log 中 SVA summary |
+| 6 | A 为每条 SVA property 写**"验证意图"注释**（说明设计规则、何时会 fire），防止逻辑写反 | code review |
+| 7 | B 为每个 covergroup 写 **≥2 行说明注释**（覆盖目标、关键 bin 含义） | code review |
 
 ---
 
@@ -151,7 +200,15 @@
 | **B** | `mmu_virtual_sequencer.svh` + `mmu_vseq_lib.svh`（14 个 vseq 的 `body()` 全实现，参考 VerificationPlan §6.3 功能点对应关系） | **2** |
 | **A** | Review vseq 对 ref_model/SB API 的调用正确性 | — |
 
-**退出准则**：14 个 vseq 各运行一次，0 UVM_ERROR / 0 SVA fail / 全部 SB 0 mismatch
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make compile` **0 errors** | 编译 log |
+| 2 | 14 个 vseq **各跑 3 个种子**，UVM_ERROR=0 / SVA fail=0 / 全部 SB mismatch=0 | 仿真 log × 42 份 |
+| 3 | 每个 vseq 运行后输出统计摘要：**txn 总数、miss 次数、PTW 调用次数**（任何一项为 0 须说明原因） | 仿真 log 中统计打印 |
+| 4 | A **签字 Review**：vseq 对 `ref_model` / SB API 的调用符合 Phase 4 冻结的接口约定 | Review 记录留存 |
+| 5 | B 提交 **vseq ↔ VerificationPlan §6.3 功能点对应映射表**（14 行，每行注明覆盖的 F 编号） | 文档或 vseq 文件头注释 |
 
 ---
 
@@ -162,7 +219,16 @@
 | **B** | 按 VerificationPlan §6.3 TC 详表逐条创建 test class（每个 test < 50 行：1–N vseq + 环境配置 + num_txn）；覆盖 `basic_tests/` `l1itlb_tests/` `l1dtlb_tests/` `l2tlb_tests/` `ptw_tests/` `tlbop_tests/` `pmp_tests/` `sysmap_tests/` `cp0_tests/` `flush_tests/` `cross_tests/` `perf_tests/` `err_tests/` 共 13 个子目录 | **≈120** |
 | **A** | Review pmp_tests / sysmap_tests / ptw_tests 中涉及参考模型精度的测试用例 | — |
 
-**退出准则**：所有 test 单跑通过；冒烟列表 100% 通过
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make compile` **0 errors**，**所有 ~120 个 test class 全部编译通过** | 编译 log 无 undefined class |
+| 2 | 所有 test **seed=1 单跑**：UVM_ERROR=0 / SVA fail=0 | 仿真 log 全量截图 |
+| 3 | smoke 冒烟列表 **3 个种子**各跑，**100% 通过** | 回归报告 × 3 |
+| 4 | test 内**禁止硬编码 `#XXXXXX` 超时**（一律使用 UVM timeout 机制），由 A review 确认 | code review |
+| 5 | `scan_logs.pl` 扫描全部 log：**无 unknown error pattern** | 脚本输出 0 unrecognized errors |
+| 6 | A **Review** pmp_tests / sysmap_tests / ptw_tests 中涉及参考模型精度的用例，**Review 注释留存** | code review 记录 |
 
 ---
 
@@ -173,7 +239,17 @@
 | **A** | 添加 Makefile `regress` target；更新 `scripts/cov_hier.cfg`（改 DUT 路径前缀为 `u_dut`）；裁剪 `scripts/run_test.py`（改默认 TEST_NAME）；裁剪 `scripts/run_vcs_verdi.py`（改 top module + Files.f 路径） |
 | **B** | 整理 `simu/mmu_smoke_list` / `mmu_nightly_list` / `mmu_coverage_list`（内容参照 VerificationPlan §8）；编写 `simu/exclude.do` 覆盖率豁免条目 |
 
-**退出准则**：参照 VerificationPlan §9 签核标准逐项评估
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | `make regress_smoke` **0 errors**，smoke 列表 100% 通过 | 回归报告 |
+| 2 | `make regress_nightly` **≥50% 用例通过**，输出覆盖率初始值（用于基线比对） | 回归报告 + 覆盖率截图 |
+| 3 | 签核标准（VerificationPlan §9）**逐项形成书面清单**（Pass / Fail / Waiver 状态明确） | 签核清单文件 |
+| 4 | `cov_hier.cfg` `u_dut` 前缀在 VCS 报告中**正确显示 DUT 层次** | HTML 报告截图 |
+| 5 | `run_test.py` 能接受 `TEST_NAME` / `SEED` / `PLUS_ARGS` 参数，**命令行测试通过** | 命令行测试记录 |
+| 6 | `exclude.do` **所有豁免条目须有注释**说明豁免理由（不允许无注释豁免） | code review |
+| 7 | B 提交三份回归列表（smoke / nightly / coverage），A **Review 完整性**后签字 | Review 记录 |
 
 ---
 
@@ -184,7 +260,16 @@
 | **B** | 补充 `bug_hunt_tests/`（TC-BUG-005~008, 011~015）；补充 `ptw_lsu_protocol_tests/`（5 个 `tc_pmbuf_*` 用例 F4.42a/b/c）；整理 `simu/mmu_bug_hunt_list` / `mmu_ptw_lsu_protocol_list` / `mmu_v3_regression_list` |
 | **A** | 添加 Makefile `regress_v3_gap` target；配合 JIRA 联动：R19 `tc_bug_011` 设置 `xfail`；R20 SVA 保护确认 |
 
-**退出准则**：R19 关闭或 `tc_bug_011` pass；R20 SVA/cg 无 fire；`mmu_v3_regression_list` 通过率 100%
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | R19 / `tc_bug_011`：须有 **JIRA 关闭截图**或正式关闭记录（不允许仅口头确认） | JIRA 截图存档 |
+| 2 | R20：**10 个种子**分别验证，SVA / covergroup **全部无 fire** | 仿真 log × 10 份 |
+| 3 | `mmu_v3_regression_list` **3 个种子**跑，输出**回归通过率报告** | 回归报告 × 3 |
+| 4 | `tc_bug_005~008` / `tc_bug_011~015` **每条单独运行通过**，0 UVM_ERROR | 仿真 log 全量 |
+| 5 | `tc_pmbuf_*` 5 个用例（F4.42a/b/c）各 **3 个种子**通过 | 仿真 log × 15 份 |
+| 6 | Makefile `regress_v3_gap` target **集成 `scan_logs.pl` 自动检查**，确保无 error 漏过 | make 输出中有扫描结果 |
 
 ---
 
@@ -195,7 +280,16 @@
 | **B** | `testbench/test/maee_twu_tests/` 4 个 TC；`ptw_tests/` 扩充（F4.NEW.6–11, F5.16 共 16+ TC）；对应 covergroup（9 个）；`simu/mmu_v4_phase12_list` |
 | **A** | `testbench/top/mmu_maee_twu_sva.sv`（3 条 SVA）；`testbench/top/mmu_pmp_twu_sva.sv` 骨架；Makefile `regress_v4_maee_ptw` target |
 
-**退出准则**：Phase 12 列表通过率 100%；MAEE + PTW-ready + TWU-bypass SVA 无 fire
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | Phase 12 列表 **3 个种子**，**100% 通过** | 回归报告 × 3 |
+| 2 | 每条 SVA property 至少触发 **20 次**（`cover property` 统计 > 0 证明路径可达，非空验证） | 仿真 log 中 cover 统计 |
+| 3 | `mmu_maee_twu_sva.sv` 3 条 SVA **各有对应 `cover property`** | code review |
+| 4 | `mmu_pmp_twu_sva.sv` 骨架**编译通过，无 undefined reference** | 编译 log |
+| 5 | 9 个 covergroup 在 Phase 12 测试中**每个至少 50% bin 命中** | 覆盖率 HTML 报告 |
+| 6 | B 提交 **MAEE / PTW-ready / TWU bypass 场景矩阵**（每个特性 ≥3 个变量维度） | 场景矩阵文档 / vseq 注释 |
 
 ---
 
@@ -206,7 +300,16 @@
 | **B** | `pmp_twu_tests_v6/` 15+ TC；`sysmap_tests/` 扩充 8+ TC；对应 covergroup（13 个）；`simu/mmu_v4_phase13_list` |
 | **A** | 补全 `testbench/top/mmu_pmp_twu_sva.sv`；新增 `testbench/top/mmu_sysmap_sva.sv`（3 条 SVA）；Makefile `regress_v4_sysmap_pmp` target；DA-003 端口映射确认跟踪 |
 
-**退出准则**：Phase 13 列表通过率 100%；PMP + sysmap SVA 无 fire；DA-003 已确认或有 workaround
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | Phase 13 列表 **3 个种子**，**100% 通过** | 回归报告 × 3 |
+| 2 | 每条 SVA property 至少触发 **20 次**（`cover property` 统计 > 0 证明路径可达） | 仿真 log 中 cover 统计 |
+| 3 | `mmu_sysmap_sva.sv` 3 条 SVA **各有对应 `cover property`** | code review |
+| 4 | `mmu_pmp_twu_sva.sv` **完整实现**，所有 property 语法正确，编译 0 errors | 编译 log |
+| 5 | 13 个 covergroup 在 Phase 13 测试中**每个至少 50% bin 命中** | 覆盖率 HTML 报告 |
+| 6 | DA-003 须有**书面记录**（关闭凭证 / 正式 waiver 文档），**不允许仅口头确认** | 文档存档 / JIRA 截图 |
 
 ---
 
@@ -217,7 +320,17 @@
 | **A** | `simu/mmu_v4_full_regression_list`（Union Phase 1–13）；`simu/mmu_v4_coverage_merge.sh`；`simu/exclude_v4.do`（新增豁免）；Makefile `regress_v4_full` target；签核矩阵更新 |
 | **B** | 补充覆盖率闭合（随机种子扩充 + 漏洞修补 TC）；整理 JIRA 状态（DA-003 / R19 / R20 全部关闭或 waiver） |
 
-**退出准则**：全量列表通过率 100%（DA-003 waiver 除外）；覆盖率达 VerificationPlan §9 签核标准；签核矩阵最终更新
+**退出准则**：
+
+| # | 检查项 | 验证方式 |
+|---|--------|----------|
+| 1 | 全量列表 **5 个种子**，**100% 通过**（DA-003 waiver 除外，须有书面豁免记录） | 回归报告 × 5 |
+| 2 | 覆盖率**数字化列出**：line coverage ≥95%，toggle coverage ≥90%（或 VerificationPlan §9 中实际指标，以严者为准） | 覆盖率报告截图 |
+| 3 | `mmu_v4_coverage_merge.sh` **实际运行成功**，生成合并覆盖率报告 | 报告文件路径记录 |
+| 4 | `exclude_v4.do` 所有豁免条目**引用 JIRA 编号**（格式：`// JIRA-XXX: <原因>`） | code review |
+| 5 | 签核矩阵**所有条目 Pass / Waiver 无空白**，无任何未决状态 | 签核矩阵文件 |
+| 6 | JIRA **DA-003 / R19 / R20 全部关闭**或有正式 waiver 文档（不允许未解决状态合并） | JIRA 截图存档 |
+| 7 | A + B **双方在签核矩阵上 Git commit 留存签字**（commit message 含 `sign-off` 字样） | Git log |
 
 ---
 

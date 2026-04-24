@@ -91,6 +91,9 @@ class ifu_monitor extends uvm_monitor;
       tr.abort = req_tr.abort; // Carry abort for SB context
       `uvm_info(get_type_name(), {"IFU RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_rsp.write(tr);
+      // Edge detection: wait for pavld to deassert before capturing next response.
+      // Prevents double-capture when DUT holds mmu_ifu_pavld for multiple cycles.
+      @(vif.monitor_cb iff !vif.monitor_cb.mmu_ifu_pavld);
     end
   endtask
 

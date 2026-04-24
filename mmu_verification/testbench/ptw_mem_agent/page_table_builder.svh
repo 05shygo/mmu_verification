@@ -46,13 +46,15 @@ class page_table_builder extends uvm_object;
   // Set the root page table (SATP.PPN / SATP.ASID).
   // Resets the auto-allocator so non-leaf pages begin just after the root.
   virtual function void set_root(ppn_t root_ppn, asid_t asid);
+    // Clear stale page table entries from previous tests before rebuilding.
+    m_mem.delete();
     m_root_ppn  = root_ppn;
     m_root_asid = asid;
     // Start auto-alloc above root page to avoid collisions.
     // Root page occupies ppn; we skip a block of 16 pages for safety.
     m_next_ppn  = root_ppn + 28'd16;
     `uvm_info("PAGE_TABLE_BUILDER",
-      $sformatf("set_root: root_ppn=0x%07h asid=0x%04h next_ppn=0x%07h",
+      $sformatf("set_root: root_ppn=0x%07h asid=0x%04h next_ppn=0x%07h (mem cleared)",
         root_ppn, asid, m_next_ppn), UVM_MEDIUM)
   endfunction
 

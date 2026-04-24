@@ -207,6 +207,7 @@ class test_mmu_translation_sanity extends test_base;
   virtual task run_test_body();
 
     cp0_reg_rw_seq          cp0_init;
+    cp0_tlb_allinv_seq      tlb_inv;
     pmp_flg_normal_seq      pmp_seq;
     sysmap_region_setup_seq sysmap_seq;
     ifu_mapped_va_seq       ifu_seq;
@@ -217,6 +218,13 @@ class test_mmu_translation_sanity extends test_base;
 
     `uvm_info(get_type_name(),
       "=== Phase 5 Sanity Test: MMU Translation STARTED ===", UVM_LOW)
+
+    // ── Step 0: TLB all-invalidate — flush stale entries from previous tests
+    `uvm_info(get_type_name(),
+      "Step 0: TLB all-invalidate (flush stale L1+L2 TLB entries)", UVM_MEDIUM)
+    tlb_inv = cp0_tlb_allinv_seq::type_id::create("tlb_inv");
+    tlb_inv.start(m_env.m_cp0.m_sequencer);
+    `uvm_info(get_type_name(), "Step 0 done: TLBs flushed", UVM_MEDIUM)
 
     // ── Step 1: PMP — allow all accesses ──────────────────────────────────
     `uvm_info(get_type_name(), "Step 1a: PMP allow-all (pmp_flg_normal_seq)", UVM_MEDIUM)
@@ -339,8 +347,8 @@ class test_mmu_translation_sanity extends test_base;
 
     // ── Step 9: Settle — allow outstanding PTW misses to complete ────────────
     `uvm_info(get_type_name(),
-      "Step 9: Waiting 5000 ns for PTW miss paths to settle...", UVM_MEDIUM)
-    #5000ns;
+      "Step 9: Waiting 10000 ns for PTW miss paths to settle...", UVM_MEDIUM)
+    #10000ns;
 
     // ── Final status report ──────────────────────────────────────────────────
     `uvm_info(get_type_name(),

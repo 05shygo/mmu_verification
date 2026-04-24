@@ -101,7 +101,10 @@ class cp0_driver extends uvm_driver #(cp0_txn);
     tr.cmplt = 1'b1;
   endtask
 
-  // ── Generic Register Write (mir/mel/meh) ─────────────────────────────────
+  // ── Generic Register Write (mir/mel/meh/mcir) ───────────────────────────
+  // RTL mmu_cp0_cmplt = tlboper_regs_cmplt | mcir_no_op
+  // Only MCIR (reg_num==3) writes generate cmplt. MIR/MEL/MEH writes latch
+  // combinationally and never assert cmplt — waiting for it hangs forever.
   protected task _do_write_reg(cp0_txn tr);
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_wreg    <= 1'b1;
@@ -109,7 +112,11 @@ class cp0_driver extends uvm_driver #(cp0_txn);
     vif.driver_cb.cp0_mmu_wdata   <= tr.wdata;
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_wreg    <= 1'b0;
-    @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
+    if (tr.reg_num == 2'd3) begin  // MCIR — RTL generates cmplt
+      @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
+    end else begin                 // MIR/MEL/MEH — one settle cycle only
+      @(vif.driver_cb);
+    end
     tr.cmplt = 1'b1;
     tr.rdata = vif.driver_cb.mmu_cp0_data;
   endtask
@@ -171,13 +178,30 @@ class cp0_driver extends uvm_driver #(cp0_txn);
   endtask
 
   // ── CP0-path TLB global invalidate (pulse + wait for tlb_done) ───────────
+  // RTL: tlb_invall_cmplt fires when state==IALL_WFC && tlb_inv_cnt==0.
+  // Guard with 512-cycle timeout in case the state machine was not idle
+  // (e.g., concurrent LSU invalidate) and the pulse was missed.
   protected task _do_tlb_all_inv(cp0_txn tr);
+    bit done;
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_tlb_all_inv <= 1'b1;
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_tlb_all_inv <= 1'b0;
-    @(vif.driver_cb iff vif.driver_cb.mmu_cp0_tlb_done);
-    tr.tlb_done = 1'b1;
+    done = 0;
+    fork
+      begin
+        @(vif.driver_cb iff vif.driver_cb.mmu_cp0_tlb_done);
+        done = 1;
+      end
+      begin
+        repeat (512) @(vif.driver_cb);
+      end
+    join_any
+    disable fork;
+    if (!done)
+      `uvm_warning(get_type_name(),
+        "_do_tlb_all_inv: mmu_cp0_tlb_done not seen within 512 cycles — TLB SM may have missed the pulse")
+    tr.tlb_done = done;
   endtask
 
 endclass : cp0_driver

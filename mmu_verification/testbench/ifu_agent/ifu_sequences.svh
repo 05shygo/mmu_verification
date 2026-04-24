@@ -11,7 +11,7 @@ class ifu_base_seq extends uvm_sequence #(ifu_txn);
   `uvm_object_utils(ifu_base_seq)
 
   rand int unsigned num_txn;
-  constraint c_num_txn { num_txn inside {[1:32]}; }
+  constraint c_num_txn { num_txn inside {[1:256]}; }
 
   function new(string name = "ifu_base_seq");
     super.new(name);

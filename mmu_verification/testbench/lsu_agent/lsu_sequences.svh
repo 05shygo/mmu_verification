@@ -12,7 +12,7 @@ class lsu_base_seq extends uvm_sequence #(lsu_txn);
   `uvm_object_utils(lsu_base_seq)
 
   rand int unsigned num_txn;
-  constraint c_num_txn { num_txn inside {[1:32]}; }
+  constraint c_num_txn { num_txn inside {[1:256]}; }
 
   function new(string name = "lsu_base_seq");
     super.new(name);

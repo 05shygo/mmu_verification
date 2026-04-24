@@ -55,7 +55,7 @@ interface cp0_if (
   // Clocking Block — Active Driver
   // =========================================================================
   clocking driver_cb @(posedge clk_i);
-    default input #1step output #1;
+    default input #1step output #1step;
     output cp0_mmu_wreg, cp0_mmu_reg_num, cp0_mmu_satp_sel, cp0_mmu_wdata;
     output cp0_mmu_cskyee, cp0_mmu_icg_en, cp0_mmu_maee;
     output cp0_mmu_mpp, cp0_mmu_mprv, cp0_mmu_mxr;

@@ -52,7 +52,7 @@ interface misc_if (
   // Clocking Block — Active Driver
   // =========================================================================
   clocking driver_cb @(posedge clk_i);
-    default input #1step output #1;
+    default input #1step output #1step;
     output rtu_mmu_bad_vpn, rtu_mmu_expt_vld, rtu_yy_xx_flush;
     output hpcp_mmu_cnt_en;
     output pad_yy_icg_scan_en, biu_mmu_smp_disable;

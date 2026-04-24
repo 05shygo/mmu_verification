@@ -67,7 +67,7 @@ interface pmp_if (
   // Clocking Block — Responder Driver (pmp_driver drives flags)
   // =========================================================================
   clocking driver_cb @(posedge clk_i);
-    default input #1step output #1;
+    default input #1step output #1step;
     input  mmu_pmp_pa0, mmu_pmp_pa1, mmu_pmp_pa2, mmu_pmp_pa3;
     input  mmu_pmp_pa4, mmu_pmp_pa5, mmu_pmp_pa6, mmu_pmp_pa7;
     input  mmu_pmp_fetch3, mmu_pmp_fetch5, mmu_pmp_fetch6, mmu_pmp_fetch7;

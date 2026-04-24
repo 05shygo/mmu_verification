@@ -100,7 +100,7 @@ interface lsu_if (
   // Clocking Block — Active Driver
   // =========================================================================
   clocking driver_cb @(posedge clk_i);
-    default input #1step output #1;
+    default input #1step output #1step;
     // pipe0 drive
     output lsu_mmu_va0_vld, lsu_mmu_id0, lsu_mmu_va0;
     output lsu_mmu_st_inst0, lsu_mmu_abort0, lsu_mmu_vabuf0;

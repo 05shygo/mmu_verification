@@ -33,7 +33,7 @@ interface ifu_if (
   // Clocking Block — Active Driver (ifu_driver uses this)
   // -------------------------------------------------------------------------
   clocking driver_cb @(posedge clk_i);
-    default input  #1step output #1;
+    default input  #1step output #1step;
     output ifu_mmu_va_vld;
     output ifu_mmu_va;
     output ifu_mmu_abort;

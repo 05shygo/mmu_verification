@@ -39,7 +39,7 @@ interface ptw_mem_if (
   // Clocking Block — Responder Driver
   // =========================================================================
   clocking driver_cb @(posedge clk_i);
-    default input #1step output #1;
+    default input #1step output #1step;
     input  mmu_lsu_data_req;
     input  mmu_lsu_data_req_addr;
     input  mmu_lsu_data_req_size;

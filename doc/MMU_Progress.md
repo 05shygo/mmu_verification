@@ -15,7 +15,7 @@
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
 | **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
 | **Phase 4** | PTW 内存模型 + 参考模型 | A | ✅ 完成 | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0 |
-| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔒 等待 Phase 4 | — |
+| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | ⏳ 未开始 | — |
 | **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | 🔒 等待 Phase 5 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
 | **Phase 8** | Virtual Sequence 实现 | B | 🔒 等待 Phase 7 | — |
@@ -185,13 +185,23 @@
 | D4-4 | ref_model CSR 更新路径 | Phase 4 直接赋值；Phase 5 启用 TLM FIFO | 解耦 Phase 4 算法验证与 Phase 5 信号监听，减少调试干扰 |
 | D4-5 | mmu_page_table_mem 角色 | 薄包装器（proxy），核心逻辑在 builder | env 只持有 pt_mem；responder/ref_model 取 `m_pt_mem.m_builder` 引用，三方共享同一实例 |
 
-### Phase 4 退出准则验证（待运行确认）
+### Phase 4 退出准则验证（✅ 已验证 — 2026-04-24）
 
-| 准则 | 预期结果 | 状态 |
-|------|---------|------|
-| `make run TEST_NAME=test_ptw_map4k_directed` UVM_ERROR=0 | 50 条 map_4k mismatch=0，10 条 fault path PASS | ⏳ 待 Phase 5 环境集成后运行 |
-| `make comp` 0 error | 编译通过 | ⏳ 待运行 |
-| 5 个独立 seed 全部 mismatch=0 | — | ⏳ 待 Phase 5 集成后回归 |
+| 准则 | 预期结果 | 实测结果 | 状态 |
+|------|---------|---------|------|
+| `make run TEST_NAME=test_ptw_map4k_directed` UVM_ERROR=0 | 50 条 map_4k mismatch=0，10 条 fault path PASS | UVM_ERROR=0，UVM_FATAL=0，[test_ptw_map4k_directed]=3（含 PASSED 消息），仿真时间 60000ps | ✅ |
+| `make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap` 回归不破坏 | UVM_ERROR=0，mmu_en=1 | UVM_ERROR=0，mmu_en=1，仿真时间 81500ps（Phase 3 回归未破坏）| ✅ |
+| `make comp` 0 error | 编译通过 | 编译通过（修复 pkg include 顺序：page_table_builder 必须在 responder 之前）| ✅ |
+| 5 个独立 seed 全部 mismatch=0 | — | ⏳ 待正式多 seed 回归（Phase 10）| ⏳ |
+
+**编译 Bug 修复记录（Phase 4 调试）**
+
+| # | 文件 | 错误 | 根因 | 修复 |
+|---|------|------|------|------|
+| P4-1 | `ptw_mem_agent_pkg.sv` | `[INVTST]`/`[BDTYP]`：test 注册失败 @ time=0 | SV package 内 include 顺序违反前向引用规则：`ptw_mem_responder.svh` 使用 `page_table_builder` 类型，但 `page_table_builder.svh` 排在 sequences 之后（包末尾），编译时 responder 看不到该类型 | 将 `` `include "page_table_builder.svh"`` 移到 txn 之后第二位（responder/monitor/sequences 之前）|
+| P4-2 | `testbench/ptw_mem_agent/page_table_builder.svh` | `[SE]` token is 'unsigned'（line 64/73）| SV 类型转换语法不允许带空格的复合类型：`longint unsigned'(expr)` 非法，编译器在 `'` 之前只识别单一标识符或数值宽度 | `longint unsigned'(pte_addr)` → `longint'(pte_addr)`（共 2 处：`read_pte_at` + `write_pte_at`）|
+| P4-3 | `testbench/test/basic_tests/test_ptw_map4k_directed.svh` | `[SE]` token is 'ref'（line 51）| `ref` 是 SV 保留关键字（用于 `ref` 类型形参），不能用作变量名 | 将 `run_test_body()` 内局部变量 `ref` 及其全部引用（共 12 处）重命名为 `rm` |
+| P4-4 | `testbench/ptw_mem_agent/ptw_mem_sequences.svh` | `[IRRVD]`：`rand` 变量类型非法（line 72）| `string` 类型不属于 SV 允许的 `rand` 类型（整型/枚举/packed struct/bit）；`fault_kind` 为注入配置字段，由测试直接赋值，不需要随机化 | 去掉 `fault_kind` 前的 `rand` 限定符 |
 
 ---
 
@@ -211,7 +221,7 @@
 | **M1** — 骨架可编译运行 | Phase 1 退出准则 | ✅ **已达成** |
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
 | **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
-| **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成** |
+| **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成**（2026-04-24）|
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | ⏳ |
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |
 | **M7** — SVA + 覆盖率框架 | Phase 7 退出准则 | ⏳ |

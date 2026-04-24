@@ -286,6 +286,22 @@ class test_mmu_translation_sanity extends test_base;
     // Brief settle: allow DUT clocks to stabilise after CSR writes.
     #100ns;
 
+    // ── Debug probe: verify DUT MMU is actually enabled ──────────────────────
+    begin
+      bit mmu_en_xx  = m_env.m_cp0.vif.monitor_cb.mmu_xx_mmu_en;
+      bit mmu_en_lsu = m_env.m_lsu.vif.monitor_cb.mmu_lsu_mmu_en;
+      `uvm_info(get_type_name(),
+        $sformatf("DEBUG MMU STATE: mmu_xx_mmu_en=%0b  mmu_lsu_mmu_en=%0b  (expect both=1)",
+          mmu_en_xx, mmu_en_lsu), UVM_LOW)
+      if (!mmu_en_xx || !mmu_en_lsu)
+        `uvm_warning(get_type_name(),
+          "MMU NOT ENABLED in DUT after SATP write + S-mode — check SATP latch / priv_mode timing")
+      // Also readback SATP to verify the write took effect
+      `uvm_info(get_type_name(),
+        $sformatf("DEBUG SATP readback: mmu_cp0_satp_data=0x%016h",
+          m_env.m_cp0.vif.monitor_cb.mmu_cp0_satp_data), UVM_LOW)
+    end
+
     // ── Step 4: IFU fetch sequence (100 txns to mapped VAs) ─────────────────
     // Each fetch VA is drawn round-robin from m_mapped_va[].
     // The DUT IFU→MMU path handles 1-outstanding; driver/monitor FIFO correlated.

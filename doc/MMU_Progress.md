@@ -260,12 +260,18 @@
 | A5-4b | `mmu_env.svh` 更新 | `testbench/env/` | ✅ | build_phase：实例化 m_misc/m_credit_sb/m_perf；connect_phase：fan-out 连线 8 个 AP → credit_sb，5 个 AP → perf_mon |
 | A5-4c | `Files.f` 更新 | `testbench/` | ✅ | 追加 `${TB_DIR}/misc_agent/misc_agent_pkg.sv` |
 
+### Phase 5 仿真调试 Bug 修复记录（2026-04-24）
+
+| # | 文件 | 错误现象 | 根因 | 修复内容 |
+|---|------|---------|------|---------|
+| P5-1 | `testbench/ifu_agent/ifu_driver.svh`<br>`testbench/ifu_agent/ifu_monitor.svh` | `test_mmu_translation_sanity` 运行：IFU 全部 100 笔翻译均出现 PA 不匹配 — `[IFU] VA=0x000100000x: PA mismatch — ref.ppn=0x0000200  dut.pa=0x0000000`；DUT `mmu_ifu_pavld=1`、`pgflt=0`、`deny=0`，但输出 PA 全为 0 | **VA 编码偏移1位**：DUT 端口 `ifu_mmu_va[62:0]` 定义为 `VA[63:1]`（取指地址右移1位，因取指恒按偶字节对齐），DUT 内部提取 VPN = `ifu_mmu_va[37:11]` = `VA[38:12]`（正确）。但驱动直接发送 `tr.va`（= VA[62:0]），导致 DUT 实际接收 `VA[63:1] = tr.va`，提取 VPN = `VA[37:11]`（整体偏移1位），PTW 在错误地址查找页表返回 V=0 的无效 PTE，最终 DUT 输出 PA=0。监测器对称地存在同一问题：直接把 `ifu_mmu_va` 作为 VA 传给 scoreboard，导致参考模型也在错误 VA 上查表（但参考模型的页表是按真实 VA 建立的），造成系统性全量误报 | **Driver**（[ifu_driver.svh](../mmu_verification/testbench/ifu_agent/ifu_driver.svh)）：`vif.driver_cb.ifu_mmu_va <= tr.va` → `vif.driver_cb.ifu_mmu_va <= tr.va >> 1`（VA[62:0] 右移1位得 VA[63:1] 格式）<br>**Monitor**（[ifu_monitor.svh](../mmu_verification/testbench/ifu_agent/ifu_monitor.svh)）：`tr.va = vif.monitor_cb.ifu_mmu_va` → `tr.va = 63'(vif.monitor_cb.ifu_mmu_va << 1)`（从 VA[63:1] 格式还原真实 VA[62:0]）<br>LSU `lsu_mmu_va0` 为 64 位，使用标准 `va[38:12]` 提取 VPN，无偏移，无需修改 |
+
 ### Phase 5 退出准则
 
 | # | 检查项 | 负责 | 状态 |
 |---|--------|------|------|
 | 1 | `make comp` 0 errors | A+B | ⏳ **待运行**（A/B 编码均已完成，尚未联合编译）|
-| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ⏳ 待运行（test_mmu_translation_sanity 已编码）|
+| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ⏳ 待运行（P5-1 VA 编码 bug 已修复）|
 | 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | ⏳ 待运行 |
 | 4 | miss→PTW→refill 混合，mismatch=0 | B | ⏳ 待运行（SB 接入完成）|
 | 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ⏳ 待运行 |

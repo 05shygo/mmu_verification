@@ -26,9 +26,11 @@ class mmu_env extends uvm_env;
   mmu_page_table_mem m_pt_mem;
   mmu_ref_model    m_ref;
 
-  // ── Phase 5 placeholders (declared as comments to avoid forward-ref errors)
+  // ── Phase 5: Translation scoreboard ─────────────────────────────────────
+  mmu_translation_sb m_translation_sb;
+
+  // ── Phase 5+ placeholders ────────────────────────────────────────────────
   //  misc_agent       m_misc;
-  //  mmu_scoreboard   m_sb;
   //  mmu_vseqr        m_vseqr;
 
   function new(string name, uvm_component parent);
@@ -67,6 +69,10 @@ class mmu_env extends uvm_env;
     // Inject shared page table reference BEFORE run_phase
     m_ref.m_pt = m_pt_mem;
 
+    // Phase 5: Translation scoreboard
+    m_translation_sb        = mmu_translation_sb::type_id::create("m_translation_sb", this);
+    m_translation_sb.m_ref  = m_ref;
+
     // Forward active/passive mode from config
     m_cp0.is_active        = m_cfg.cp0_agent_mode;
     m_pmp.is_active        = m_cfg.pmp_agent_mode;
@@ -80,14 +86,20 @@ class mmu_env extends uvm_env;
     // Phase 4: inject shared page table builder into PTW responder
     m_ptw_mem.m_responder.set_page_table(m_pt_mem.m_builder);
 
-    // Phase 5 TLM connections (placeholders):
-    // m_cp0.m_monitor.ap         → m_sb.af_cp0_txn
-    // m_pmp.m_monitor.ap         → m_sb.af_pmp_txn
-    // m_sysmap_cfg.m_monitor.ap  → m_sb.af_sysmap_cfg
-    // m_ifu.m_monitor.ap_rsp     → m_translation_sb.af_ifu_rsp  (Phase 5)
-    // m_lsu.m_monitor.ap_pipe0_rsp → m_translation_sb.af_lsu_pipe0_rsp (Phase 5)
-    // m_lsu.m_monitor.ap_pipe1_rsp → m_translation_sb.af_lsu_pipe1_rsp (Phase 5)
-    // m_lsu.m_monitor.ap_inv     → m_invalidate_sb.af_lsu_inv          (Phase 6)
+    // Phase 5: Connect monitor APs → ref model TLM FIFOs
+    // (Converts CSR/PMP/SysMap write events into ref model mirror updates)
+    m_cp0.m_monitor.ap.connect(m_ref.af_csr_write.analysis_export);
+    m_pmp.m_monitor.ap.connect(m_ref.af_pmp_cfg.analysis_export);
+    m_sysmap_cfg.m_monitor.ap.connect(m_ref.af_sysmap_cfg.analysis_export);
+
+    // Phase 5: Connect monitor rsp APs → translation scoreboard
+    m_ifu.m_monitor.ap_rsp.connect(m_translation_sb.af_ifu_rsp);
+    m_lsu.m_monitor.ap_pipe0_rsp.connect(m_translation_sb.af_lsu_p0_rsp);
+    m_lsu.m_monitor.ap_pipe1_rsp.connect(m_translation_sb.af_lsu_p1_rsp);
+    m_lsu.m_monitor.ap_pipe2_rsp.connect(m_translation_sb.af_lsu_p2_rsp);
+
+    // Phase 6 placeholder:
+    // m_lsu.m_monitor.ap_inv → m_invalidate_sb.af_lsu_inv
   endfunction
 
 endclass : mmu_env

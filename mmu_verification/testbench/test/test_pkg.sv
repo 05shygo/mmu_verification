@@ -35,6 +35,9 @@ package test_pkg;
   // ── Phase 4: PTW map4k directed test ──────────────────────────────────────
   `include "basic_tests/test_ptw_map4k_directed.svh"
 
+  // ── Phase 5: IFU + LSU Translation Sanity test ────────────────────────────
+  `include "basic_tests/test_mmu_translation_sanity.svh"
+
 endpackage : test_pkg
 
 `endif // TEST_PKG_SV

@@ -1,14 +1,15 @@
 // =============================================================================
 // MMU UVM Verification — testbench/ifu_agent/ifu_driver.svh
-// Phase 3 (Engineer B): IFU driver skeleton
+// Phase 5 (Engineer B): IFU driver — full handshake implementation
 // Drives ifu_mmu_va_vld / ifu_mmu_va / ifu_mmu_abort via clocking block.
 //
-// Phase 3 implementation: single-cycle va_vld pulse (skeleton).
-// TODO (Phase 5): Implement full handshake protocol:
+// Protocol:
 //   1. Insert idle_cycles idle beats before asserting request
-//   2. Assert ifu_mmu_va_vld + present VA; hold until mmu_ifu_pavld/pgflt/deny
-//   3. De-assert valid after response
-//   4. Handle abort: assert ifu_mmu_abort one cycle to cancel in-flight request
+//   2. Assert ifu_mmu_va_vld=1 + va + abort for exactly 1 cycle
+//   3. De-assert va_vld / abort
+//   4. If abort==0: fork { wait mmu_ifu_pavld → fill response fields }
+//                       / { 2000-cycle timeout → UVM_WARNING }
+//                  join_any; disable fork
 // =============================================================================
 `ifndef IFU_DRIVER_SVH
 `define IFU_DRIVER_SVH
@@ -52,18 +53,41 @@ class ifu_driver extends uvm_driver #(ifu_txn);
 
   // ── Drive one IFU request transaction ────────────────────────────────────
   virtual task drive_one(ifu_txn tr);
-    // Insert inter-request idle gap
+    // 1. Insert inter-request idle gap
     repeat (tr.idle_cycles) @(vif.driver_cb);
-    // Assert request for one cycle
+
+    // 2. Assert request for one cycle
     @(vif.driver_cb);
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
     vif.driver_cb.ifu_mmu_va     <= tr.va;
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
+
+    // 3. De-assert valid and abort after one cycle
     @(vif.driver_cb);
-    // De-assert
     vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
     vif.driver_cb.ifu_mmu_abort  <= 1'b0;
-    // TODO (Phase 5): wait for mmu_ifu_pavld and fill tr.pa / tr.pgflt / tr.deny
+
+    // 4. Wait for MMU response (skip if this is an abort transaction)
+    if (tr.abort == 1'b0) begin
+      fork
+        begin : wait_ifu_rsp
+          @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
+          tr.pa      = vif.driver_cb.mmu_ifu_pa;
+          tr.pgflt   = vif.driver_cb.mmu_ifu_pgflt;
+          tr.deny    = vif.driver_cb.mmu_ifu_deny;
+          tr.sec     = vif.driver_cb.mmu_ifu_sec;
+          tr.ca      = vif.driver_cb.mmu_ifu_ca;
+          tr.buf_bit = vif.driver_cb.mmu_ifu_buf;
+          tr.pavld   = 1'b1;
+        end
+        begin : wait_ifu_timeout
+          repeat (2000) @(vif.driver_cb);
+          `uvm_warning(get_type_name(),
+            $sformatf("IFU response timeout: va=0x%016h", {1'b0, tr.va}))
+        end
+      join_any
+      disable fork;
+    end
   endtask
 
 endclass : ifu_driver

@@ -1,16 +1,18 @@
 // =============================================================================
 // MMU UVM Verification — testbench/lsu_agent/lsu_driver.svh
-// Phase 3 (Engineer B): LSU driver skeleton — 5 concurrent sub-channel threads
+// Phase 5 (Engineer B): LSU driver — full handshake for pipe0/pipe1
 //
 // Architecture: one shared seq_item_port feeds all 5 sub-threads;
 //   each thread filters by lsu_txn.kind (see _get_kind()).
 //
-// Phase 3 implementation: skeleton pulse per sub-channel.
-// TODO (Phase 5): Implement full handshake for each sub-channel:
-//   pipe0/1: hold va_vld until mmu_lsu_pa*_vld or stall de-asserts
-//   pipe2:   single-cycle prefetch pulse
-//   stamo:   single-cycle PA check assertion
-//   inv:     assert one of 4 inv signals; wait mmu_lsu_tlb_inv_done
+// Protocol per sub-channel:
+//   pipe0/1: assert va_vld + all fields; if abort==1 pulse 1 cycle;
+//            else fork { wait mmu_lsu_pa*_vld → fill response }
+//                     / { 4000-cycle timeout → UVM_WARNING }
+//                 join_any; disable fork; then de-assert va_vld
+//   pipe2:   single-cycle prefetch pulse (no response wait)
+//   stamo:   single-cycle PA check assertion (no response wait)
+//   inv:     Phase 6 implement
 // =============================================================================
 `ifndef LSU_DRIVER_SVH
 `define LSU_DRIVER_SVH
@@ -106,7 +108,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   endtask
 
   // ── Pipe 0 sub-thread ─────────────────────────────────────────────────────
-  // TODO (Phase 5): hold va0_vld until stall=0; handle abort.
   protected task _drive_pipe0();
     lsu_txn tr;
     forever begin
@@ -120,10 +121,31 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_st_inst0 <= tr.st_inst;
       vif.driver_cb.lsu_mmu_abort0   <= tr.abort;
       vif.driver_cb.lsu_mmu_vabuf0   <= tr.vabuf;
-      @(vif.driver_cb);
-      vif.driver_cb.lsu_mmu_va0_vld  <= 1'b0;
-      vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
-      // TODO (Phase 5): wait mmu_lsu_pa0_vld or page_fault0
+      if (tr.abort == 1'b1) begin
+        // Abort: assert for one cycle then de-assert, no response wait
+        @(vif.driver_cb);
+        vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+        vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
+      end else begin
+        // Hold va0_vld until DUT responds with pa0_vld
+        fork
+          begin : wait_rsp_p0
+            @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa0_vld === 1'b1);
+            tr.pa           = vif.driver_cb.mmu_lsu_pa0;
+            tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
+            tr.access_fault = vif.driver_cb.mmu_lsu_access_fault0;
+            tr.sec          = vif.driver_cb.mmu_lsu_sec0;
+          end
+          begin : wait_timeout_p0
+            repeat (4000) @(vif.driver_cb);
+            `uvm_warning(get_type_name(),
+              $sformatf("Pipe0 response timeout: va=0x%016h id=%0d", tr.va, tr.id))
+          end
+        join_any
+        disable fork;
+        @(vif.driver_cb);
+        vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+      end
     end
   endtask
 
@@ -141,10 +163,31 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_st_inst1 <= tr.st_inst;
       vif.driver_cb.lsu_mmu_abort1   <= tr.abort;
       vif.driver_cb.lsu_mmu_vabuf1   <= tr.vabuf;
-      @(vif.driver_cb);
-      vif.driver_cb.lsu_mmu_va1_vld  <= 1'b0;
-      vif.driver_cb.lsu_mmu_abort1   <= 1'b0;
-      // TODO (Phase 5): wait mmu_lsu_pa1_vld or page_fault1
+      if (tr.abort == 1'b1) begin
+        // Abort: assert for one cycle then de-assert, no response wait
+        @(vif.driver_cb);
+        vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+        vif.driver_cb.lsu_mmu_abort1  <= 1'b0;
+      end else begin
+        // Hold va1_vld until DUT responds with pa1_vld
+        fork
+          begin : wait_rsp_p1
+            @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa1_vld === 1'b1);
+            tr.pa           = vif.driver_cb.mmu_lsu_pa1;
+            tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;
+            tr.access_fault = vif.driver_cb.mmu_lsu_access_fault1;
+            tr.sec          = vif.driver_cb.mmu_lsu_sec1;
+          end
+          begin : wait_timeout_p1
+            repeat (4000) @(vif.driver_cb);
+            `uvm_warning(get_type_name(),
+              $sformatf("Pipe1 response timeout: va=0x%016h id=%0d", tr.va, tr.id))
+          end
+        join_any
+        disable fork;
+        @(vif.driver_cb);
+        vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+      end
     end
   endtask
 
@@ -160,7 +203,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_va2     <= tr.va2;
       @(vif.driver_cb);
       vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
-      // TODO (Phase 5): wait mmu_lsu_pa2_vld
     end
   endtask
 
@@ -182,7 +224,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   endtask
 
   // ── TLB Invalidation sub-thread ───────────────────────────────────────────
-  // TODO (Phase 5): wait mmu_lsu_tlb_inv_done before de-asserting.
+  // Phase 6 implement: assert one of 4 inv signals; wait mmu_lsu_tlb_inv_done
   protected task _drive_inv();
     lsu_txn tr;
     forever begin
@@ -205,7 +247,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
       vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
       vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
-      // TODO (Phase 5): wait mmu_lsu_tlb_inv_done
+      // Phase 6 implement: wait mmu_lsu_tlb_inv_done
     end
   endtask
 

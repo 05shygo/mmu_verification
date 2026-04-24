@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-24
+> **更新**：2026-04-25
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -15,7 +15,7 @@
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
 | **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
 | **Phase 4** | PTW 内存模型 + 参考模型 | A | ✅ 完成 | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0 |
-| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | ⏳ 未开始 | — |
+| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 进行中 | B 任务 ✅（9 文件）；A 任务 ⏳（misc_agent×8 + credit_sb + perf_mon + env 更新，共 12 文件）|
 | **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | 🔒 等待 Phase 5 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
 | **Phase 8** | Virtual Sequence 实现 | B | 🔒 等待 Phase 7 | — |
@@ -205,8 +205,68 @@
 
 ---
 
-## Phase 4–14 工作量汇总
+## Phase 5 详细进度（🔄 进行中）
 
+**负责**：工程师 B（主）/ 工程师 A（misc_agent + credit_sb + perf_mon）
+**B 完成日期**：2026-04-25
+**A 完成日期**：⏳ 待开始
+**退出准则**：⏳ 部分达成（B 任务完成；A 任务 misc_agent×8 + credit_sb + perf_mon + env 更新尚未开始，Phase 5 退出准则第 6/7 项未满足）
+
+### Phase 5 新建文件（2 个）
+
+| # | 交付物 | 位置 | 状态 | 备注 |
+|---|--------|------|------|------|
+| 5-A | `mmu_translation_sb.svh` | `testbench/env/` | ✅ | 4 个 analysis imp（ifu/lsu_p0/lsu_p1/lsu_p2）；`write_ifu`/`write_lsu_p0/1/2` 比对 ppn+exc；`report_phase` 打印统计 |
+| 5-B | `test_mmu_translation_sanity.svh` | `testbench/test/basic_tests/` | ✅ | Phase 5 端到端 sanity test；4 个辅助序列类（ifu_mapped_va_seq / lsu_mapped_va_seq / lsu_p2_sanity_seq / lsu_stamo_sanity_seq）；100 IFU + 100 LSU_P0 + 20 LSU_P1 + 20 P2 + 20 STAMO |
+
+### Phase 5 修改文件（7 个）
+
+| # | 交付物 | 状态 | 修改内容 |
+|---|--------|------|----------|
+| M5-1 | `testbench/ifu_agent/ifu_driver.svh` | ✅ | `drive_one()` 完整实现：1拍 assert + fork/join_any 等 pavld + 2000 cycle 超时 |
+| M5-2 | `testbench/lsu_agent/lsu_driver.svh` | ✅ | `_drive_pipe0/1()` 完整实现：hold va_vld + fork/join_any 等 pa_vld + 4000 cycle 超时；pipe2/stamo 骨架清理；inv 保留 Phase 6 TODO |
+| M5-3 | `testbench/ifu_agent/ifu_monitor.svh` | ✅ | 新增 `m_pending_req[$]` 队列；`_collect_req()` push；`_collect_rsp()` pop+合并 VA，发布含 VA+PA 的 merged txn |
+| M5-4 | `testbench/lsu_agent/lsu_monitor.svh` | ✅ | 新增 `m_pending_p0/p1[$]`；pipe0/1 req push、rsp pop 合并 va/id/st_inst；pipe2 rsp 仅采样 pa（VA 合并留 Phase 6） |
+| M5-5 | `testbench/env/mmu_env_pkg.sv` | ✅ | 追加 `` `include "mmu_translation_sb.svh" `` |
+| M5-6 | `testbench/env/mmu_env.svh` | ✅ | 新增 `m_translation_sb` 声明+创建+注入 `m_ref`；connect_phase 连接 cp0/pmp/sysmap → ref TLM FIFO + ifu/lsu rsp → SB |
+| M5-7 | `testbench/test/test_pkg.sv` | ✅ | 追加 `` `include "basic_tests/test_mmu_translation_sanity.svh" `` |
+
+### Phase 5 设计决策记录
+
+| # | 决策点 | 选择 | 理由 |
+|---|--------|------|------|
+| D5-1 | IFU 驱动策略 | 1-outstanding：assert 1拍，fork/join_any 等 pavld | 匹配 IFU 协议（无 ID，单未决）；monitor FIFO 顺序对齐 |
+| D5-2 | LSU pipe 驱动策略 | hold va_vld 直至 pa_vld，fork/join_any + 4000 cycle 超时 | 忠实协议；超时输出 UVM_WARNING 避免仿真卡死 |
+| D5-3 | SB 比对范围 | Phase 5 只比对 ppn 和 exc（pgflt/access_fault） | sec/ca/buf 属性比对留 Phase 6（SysMap/PMP 全通 stub） |
+| D5-4 | c_kind_default 冲突处理 | 辅助序列中调用 `constraint_mode(0)` | SV LRM §18.7.2：with-clause 追加而非覆盖 class 约束；不修改 lsu_txn 全局约束 |
+| D5-5 | ROOT_PPN=0 | 按任务规格（ppn=0, asid=0）；leaf PPN 从 0x200 起步 | 自动分配 L1=16, L0=17，leaf 从 0x200(512) 起步，三者不冲突 |
+| D5-6 | 映射权限 | r=w=x=1, u=0, a=d=1 | S-mode fetch+load+store 均可通过；a/d=1 避免 ref_model 发出 WARN |
+
+### Phase 5 A 的任务（⏳ 未开始）
+
+| # | 交付物 | 位置 | 状态 | 说明 |
+|---|--------|------|------|------|
+| A5-1 | `misc_agent` 八件套（misc_agent_pkg / if / txn / sequencer / driver / monitor / sequences / agent） | `testbench/misc_agent/` | ⏳ | driver 实现 `rtu_flush` 单脉冲 + `biu_smp_disable` 静态配置 |
+| A5-2 | `mmu_credit_sb.svh` | `testbench/env/` | ⏳ | L1↔L2 credit / ReqQ / MB 容量守恒比对；仿真结束信用守恒计数需 =0 |
+| A5-3 | `mmu_perf_mon.svh` | `testbench/env/` | ⏳ | 骨架：接口定义 + 统计 TODO（统计实现留后续 Phase）|
+| A5-4 | `mmu_env.svh` 更新 | `testbench/env/` | ⏳ | 加入 misc_agent 实例化 + credit_sb 接入 |
+
+### Phase 5 退出准则
+
+| # | 检查项 | 负责 | 状态 |
+|---|--------|------|------|
+| 1 | `make compile` 0 errors | A+B | ⏳（待 A 任务完成后验证）|
+| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ✅ 预期通过（test_mmu_translation_sanity 已覆盖）|
+| 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | ✅ 预期通过 |
+| 4 | miss→PTW→refill 混合，mismatch=0 | B | ✅ 预期通过（SB 接入完成）|
+| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ✅ 预期通过 |
+| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | ⏳ **A 待开始** |
+| 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ⏳ **A 待开始** |
+| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳（待 A 任务完成后验证）|
+
+---
+
+## Phase 4–14 工作量汇总
 | 工程师 | 负责 Phase | 主要文件数 | 核心难点 |
 |--------|-----------|-----------|---------|
 | **A** | 1/2/3(cp0+pmp+sysmap)/4/5(misc)/7(SVA)/10/12(SVA)/13(SVA)/14 | ≈ 110 文件 | ref_model 翻译算法精度；credit_sb；SVA 形式化约束 |
@@ -222,7 +282,7 @@
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
 | **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
 | **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成**（2026-04-24）|
-| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | ⏳ |
+| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | 🔄 **部分达成**（B 任务完成 2026-04-25；A 任务待开始）|
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |
 | **M7** — SVA + 覆盖率框架 | Phase 7 退出准则 | ⏳ |
 | **M8** — 全部 Vseq 可运行 | Phase 8 退出准则 | ⏳ |

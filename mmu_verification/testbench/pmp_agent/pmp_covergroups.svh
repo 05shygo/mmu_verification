@@ -30,13 +30,13 @@ class pmp_cg_wrapper extends uvm_component;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    cg_pmp_flags = new();
+    cg_pmp_fetch = new();
   endfunction
 
   // Call from pmp_agent.connect_phase AFTER vif is assigned
   virtual function void set_vif(virtual pmp_if v);
-    vif          = v;
-    cg_pmp_flags = new();
-    cg_pmp_fetch = new();
+    vif = v;
   endfunction
 
   virtual function void sample();

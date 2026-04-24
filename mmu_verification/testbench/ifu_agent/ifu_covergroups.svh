@@ -38,13 +38,13 @@ class ifu_cg_wrapper extends uvm_component;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    cg_ifu_req = new();
+    cg_ifu_rsp = new();
   endfunction
 
   // Call from ifu_agent.connect_phase AFTER vif is assigned
   virtual function void set_vif(virtual ifu_if v);
-    vif        = v;
-    cg_ifu_req = new();
-    cg_ifu_rsp = new();
+    vif = v;
   endfunction
 
   // Manual sample hooks (also called from run_phase)

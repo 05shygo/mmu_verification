@@ -41,14 +41,14 @@ class cp0_cg_wrapper extends uvm_component;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    cg_cp0_ops    = new();
+    cg_cp0_perms  = new();
+    cg_cp0_global = new();
   endfunction
 
   // Call from cp0_agent.connect_phase AFTER vif is assigned
   virtual function void set_vif(virtual cp0_if v);
-    vif         = v;
-    cg_cp0_ops   = new();
-    cg_cp0_perms = new();
-    cg_cp0_global= new();
+    vif = v;
   endfunction
 
   // Manual sample hooks (called from run_phase or analysis write)

@@ -59,17 +59,17 @@ class lsu_cg_wrapper extends uvm_component;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
-  endfunction
-
-  // Call from lsu_agent.connect_phase AFTER vif is assigned
-  virtual function void set_vif(virtual lsu_if v);
-    vif           = v;
     cg_pipe0_req  = new();
     cg_pipe0_rsp  = new();
     cg_pipe1_req  = new();
     cg_pipe2      = new();
     cg_inv        = new();
     cg_tlb_status = new();
+  endfunction
+
+  // Call from lsu_agent.connect_phase AFTER vif is assigned
+  virtual function void set_vif(virtual lsu_if v);
+    vif = v;
   endfunction
 
   virtual task run_phase(uvm_phase phase);

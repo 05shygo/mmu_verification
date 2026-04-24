@@ -66,7 +66,7 @@ class sysmap_hit_cross_tlb_seq extends sysmap_cfg_base_seq;
   rand bit [27:0] hit_mask;
   rand bit [4:0]  hit_flg;
   rand bit [2:0]  region_idx;
-  constraint c_valid_region { region_idx < 3'd8; }
+  constraint c_valid_region { region_idx <= 3'd7; }
 
   function new(string name = "sysmap_hit_cross_tlb_seq");
     super.new(name);

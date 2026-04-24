@@ -32,12 +32,12 @@ class sysmap_cfg_cg_wrapper extends uvm_component;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    cg_sysmap_regions = new();
+    cg_sysmap_flags   = new();
   endfunction
 
   virtual function void set_vif(virtual sysmap_cfg_if v);
-    vif              = v;
-    cg_sysmap_regions = new();
-    cg_sysmap_flags   = new();
+    vif = v;
   endfunction
 
   virtual function void sample();

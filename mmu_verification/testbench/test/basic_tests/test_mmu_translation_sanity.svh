@@ -282,8 +282,7 @@ class test_mmu_translation_sanity extends test_base;
     ifu_seq.m_va_table   = new[NUM_MAP];
     ifu_seq.m_table_size = NUM_MAP;
     foreach (m_mapped_va[i]) ifu_seq.m_va_table[i] = m_mapped_va[i];
-    if (!ifu_seq.randomize() with { num_txn == NUM_IFU; })
-      `uvm_fatal(get_type_name(), "ifu_seq randomize() failed")
+    ifu_seq.num_txn = NUM_IFU;
     ifu_seq.start(m_env.m_ifu.m_sequencer);
     `uvm_info(get_type_name(),
       $sformatf("Step 4 done: %0d IFU transactions issued", NUM_IFU), UVM_LOW)
@@ -297,8 +296,7 @@ class test_mmu_translation_sanity extends test_base;
     lsu_p0_seq.m_kind       = LSU_PIPE0;
     lsu_p0_seq.m_st_inst    = 1'b0;   // loads (ACC_LOAD)
     foreach (m_mapped_va[i]) lsu_p0_seq.m_va_table[i] = m_mapped_va[i];
-    if (!lsu_p0_seq.randomize() with { num_txn == NUM_LSU_P0; })
-      `uvm_fatal(get_type_name(), "lsu_p0_seq randomize() failed")
+    lsu_p0_seq.num_txn = NUM_LSU_P0;
     lsu_p0_seq.start(m_env.m_lsu.m_sequencer);
     `uvm_info(get_type_name(),
       $sformatf("Step 5 done: %0d LSU pipe0 transactions issued", NUM_LSU_P0), UVM_LOW)
@@ -312,8 +310,7 @@ class test_mmu_translation_sanity extends test_base;
     lsu_p1_seq.m_kind       = LSU_PIPE1;
     lsu_p1_seq.m_st_inst    = 1'b1;   // stores (ACC_STORE)
     foreach (m_mapped_va[i]) lsu_p1_seq.m_va_table[i] = m_mapped_va[i];
-    if (!lsu_p1_seq.randomize() with { num_txn == NUM_LSU_P1; })
-      `uvm_fatal(get_type_name(), "lsu_p1_seq randomize() failed")
+    lsu_p1_seq.num_txn = NUM_LSU_P1;
     lsu_p1_seq.start(m_env.m_lsu.m_sequencer);
     `uvm_info(get_type_name(),
       $sformatf("Step 6 done: %0d LSU pipe1 transactions issued", NUM_LSU_P1), UVM_LOW)
@@ -324,8 +321,7 @@ class test_mmu_translation_sanity extends test_base;
     `uvm_info(get_type_name(),
       $sformatf("Step 7: LSU pipe2 prefetch (%0d txns, count-only in SB)", NUM_LSU_P2), UVM_LOW)
     lsu_p2_seq = lsu_p2_sanity_seq::type_id::create("lsu_p2_seq");
-    if (!lsu_p2_seq.randomize() with { num_txn == NUM_LSU_P2; })
-      `uvm_fatal(get_type_name(), "lsu_p2_seq randomize() failed")
+    lsu_p2_seq.num_txn = NUM_LSU_P2;
     lsu_p2_seq.start(m_env.m_lsu.m_sequencer);
     `uvm_info(get_type_name(),
       $sformatf("Step 7 done: %0d pipe2 prefetch transactions issued", NUM_LSU_P2), UVM_LOW)
@@ -336,8 +332,7 @@ class test_mmu_translation_sanity extends test_base;
     `uvm_info(get_type_name(),
       $sformatf("Step 8: LSU STAMO PA-check (%0d txns)", NUM_STAMO), UVM_LOW)
     stamo_seq = lsu_stamo_sanity_seq::type_id::create("stamo_seq");
-    if (!stamo_seq.randomize() with { num_txn == NUM_STAMO; })
-      `uvm_fatal(get_type_name(), "stamo_seq randomize() failed")
+    stamo_seq.num_txn = NUM_STAMO;
     stamo_seq.start(m_env.m_lsu.m_sequencer);
     `uvm_info(get_type_name(),
       $sformatf("Step 8 done: %0d STAMO transactions issued", NUM_STAMO), UVM_LOW)

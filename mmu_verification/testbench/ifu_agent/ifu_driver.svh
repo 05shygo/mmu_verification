@@ -52,20 +52,27 @@ class ifu_driver extends uvm_driver #(ifu_txn);
   endtask
 
   // ── Drive one IFU request transaction ────────────────────────────────────
+  // IFU protocol: single-cycle pulse on va_vld, then de-assert and wait for
+  // pavld response.  The DUT's L1 ITLB treats each va_vld=1 cycle as a new
+  // lookup; holding va_vld HIGH would cause repeated lookups against empty
+  // TLB entries (returning PA=0 immediately) instead of queuing the miss
+  // to L2/PTW for page-walk.
   virtual task drive_one(ifu_txn tr);
     // 1. Insert inter-request idle gap
     repeat (tr.idle_cycles) @(vif.driver_cb);
 
-    // 2. Assert request and HOLD va_vld until MMU responds (or abort)
-    //    RTL IFU-MMU protocol: va_vld must remain high while MMU processes
-    //    the request (especially during TLB miss + PTW).  This mirrors the
-    //    LSU hold-until-pa_vld protocol.  De-assert occurs after pavld fires.
+    // 2. Assert va_vld for exactly ONE cycle (single-cycle pulse)
     @(vif.driver_cb);
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
-    vif.driver_cb.ifu_mmu_va     <= tr.va >> 1;  // ifu_mmu_va = VA[63:1]; DUT extracts VPN = va[37:11] = VA[38:12]
+    vif.driver_cb.ifu_mmu_va     <= tr.va >> 1;
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
 
-    // 3. Wait for MMU response (skip if this is an abort transaction)
+    // 3. De-assert va_vld on the NEXT cycle so the DUT processes the miss
+    @(vif.driver_cb);
+    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
+    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
+
+    // 4. Wait for MMU response (skip if abort)
     if (tr.abort == 1'b0) begin
       fork
         begin : wait_ifu_rsp
@@ -79,18 +86,13 @@ class ifu_driver extends uvm_driver #(ifu_txn);
           tr.pavld   = 1'b1;
         end
         begin : wait_ifu_timeout
-          repeat (2000) @(vif.driver_cb);
+          repeat (4000) @(vif.driver_cb);
           `uvm_warning(get_type_name(),
             $sformatf("IFU response timeout: va=0x%016h", {1'b0, tr.va}))
         end
       join_any
       disable fork;
     end
-
-    // 4. De-assert va_vld one cycle after response received (or after abort)
-    @(vif.driver_cb);
-    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
-    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
   endtask
 
 endclass : ifu_driver

@@ -91,13 +91,24 @@ VCS_ELAB_OPTS   := -full64 \
 PERF_OPTS       := -j4 -Mupdate
 
 #===============================================================================
+# Fast compile: drop debug/KDB/FSDB for 3-5x speedup (no wave support)
+#===============================================================================
+VCS_FAST_OPTS   := -full64 \
+                   -sverilog \
+                   -timescale=$(TIMESCALE) \
+                   -ntb_opts uvm-$(UVM_VERSION) \
+                   -lca \
+                   +define+PA_WIDTH=40 \
+                   -Mdir=$(OUTPUT_DIR)/csrc \
+                   -o $(OUTPUT_DIR)/simv
+
+#===============================================================================
 # Simulation Options
 #===============================================================================
 RUN_OPTS        := +UVM_TESTNAME=$(TEST_NAME) \
                    +UVM_VERBOSITY=$(VERBOSITY) \
                    +TIMEOUT=$(TIMEOUT) \
-                   $(PLUS_ARGS) \
-                   +UVM_CONFIG_DB_TRACE
+                   $(PLUS_ARGS)
 
 ifeq ($(SEED),random)
   SEED_OPTS     := +ntb_random_seed_automatic
@@ -155,6 +166,9 @@ endef
         clean clean_all clean_wave clean_cov list_tests status info print-%
 
 all: comp run
+
+# Fast: compile without debug + run without FSDB/waves (fastest iteration loop)
+fast: comp_fast run_batch
 
 #===============================================================================
 # Help
@@ -225,6 +239,23 @@ comp_all: setup
 		$(PERF_OPTS) \
 		-l $(LOG_DIR)/comp_all.log
 	@echo "Build done: $(OUTPUT_DIR)/simv"
+
+comp_fast: setup
+	@echo "=== Fast compile (no debug/KDB/FSDB — ~3-5x faster) ==="
+	CORE_V_VERIF=$(CORE_V_VERIF) \
+	MMU_RTL_DIR=$(MMU_RTL_DIR) \
+	RELATE_RTL_DIR="$(RELATE_RTL_DIR)" \
+	MMU_PARAMS_DIR=$(MMU_PARAMS_DIR) \
+	TB_DIR=$(TB_DIR) \
+	CV_DV_UTILS_DIR=$(CV_DV_UTILS_DIR) \
+	$(VCS) $(VCS_FAST_OPTS) \
+		$(INCDIR) \
+		$(TB_FLIST) \
+		$(TOP_FILE) \
+		-top $(TOP_MODULE) \
+		$(PERF_OPTS) \
+		-l $(LOG_DIR)/comp_fast.log
+	@echo "Fast build done: $(OUTPUT_DIR)/simv"
 
 comp_rtl: comp_all
 comp_tb:  comp_all

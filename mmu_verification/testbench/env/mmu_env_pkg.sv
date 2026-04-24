@@ -20,8 +20,7 @@ package mmu_env_pkg;
   import ifu_agent_pkg::*;
   import lsu_agent_pkg::*;
   import ptw_mem_agent_pkg::*;  // Phase 4: PTW memory agent
-  // Phase 5+:
-  //  import misc_agent_pkg::*;
+  import misc_agent_pkg::*;    // Phase 5: misc agent
 
   `include "uvm_macros.svh"
 
@@ -29,6 +28,8 @@ package mmu_env_pkg;
   `include "mmu_page_table_mem.svh"  // Phase 4: shared shadow page table
   `include "mmu_ref_model.svh"       // Phase 4: Sv39 reference model
   `include "mmu_translation_sb.svh"  // Phase 5: translation scoreboard
+  `include "mmu_credit_sb.svh"       // Phase 5: credit / capacity scoreboard
+  `include "mmu_perf_mon.svh"        // Phase 5: performance monitor skeleton
   `include "mmu_env.svh"
 
 endpackage : mmu_env_pkg

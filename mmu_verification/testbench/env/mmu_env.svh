@@ -29,9 +29,10 @@ class mmu_env extends uvm_env;
   // ── Phase 5: Translation scoreboard ─────────────────────────────────────
   mmu_translation_sb m_translation_sb;
 
-  // ── Phase 5+ placeholders ────────────────────────────────────────────────
-  //  misc_agent       m_misc;
-  //  mmu_vseqr        m_vseqr;
+  // ── Phase 5 (Engineer A): misc agent + credit SB + perf monitor ─────────
+  misc_agent         m_misc;
+  mmu_credit_sb      m_credit_sb;
+  mmu_perf_mon       m_perf;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -73,12 +74,19 @@ class mmu_env extends uvm_env;
     m_translation_sb        = mmu_translation_sb::type_id::create("m_translation_sb", this);
     m_translation_sb.m_ref  = m_ref;
 
+    // Phase 5 (Engineer A): misc agent (ACTIVE by default)
+    m_misc    = misc_agent::type_id::create("m_misc",    this);
+    // Phase 5 (Engineer A): credit scoreboard + performance monitor
+    m_credit_sb = mmu_credit_sb::type_id::create("m_credit_sb", this);
+    m_perf      = mmu_perf_mon::type_id::create("m_perf",      this);
+
     // Forward active/passive mode from config
     m_cp0.is_active        = m_cfg.cp0_agent_mode;
     m_pmp.is_active        = m_cfg.pmp_agent_mode;
     m_sysmap_cfg.is_active = m_cfg.sysmap_cfg_agent_mode;
     m_ifu.is_active        = m_cfg.ifu_agent_mode;
     m_lsu.is_active        = m_cfg.lsu_agent_mode;
+    m_misc.is_active       = m_cfg.misc_agent_mode;
   endfunction
 
   // ── Connect phase ─────────────────────────────────────────────────────────
@@ -100,6 +108,27 @@ class mmu_env extends uvm_env;
 
     // Phase 6 placeholder:
     // m_lsu.m_monitor.ap_inv → m_invalidate_sb.af_lsu_inv
+
+    // Phase 5 (Engineer A): IFU/LSU/PTW req+rsp → credit scoreboard
+    // IFU: ap_req (request) + ap_rsp (merged response)
+    m_ifu.m_monitor.ap_req.connect(m_credit_sb.af_ifu_req.analysis_export);
+    m_ifu.m_monitor.ap_rsp.connect(m_credit_sb.af_ifu_rsp.analysis_export);
+    // LSU pipe0
+    m_lsu.m_monitor.ap_pipe0_req.connect(m_credit_sb.af_lsu_p0_req.analysis_export);
+    m_lsu.m_monitor.ap_pipe0_rsp.connect(m_credit_sb.af_lsu_p0_rsp.analysis_export);
+    // LSU pipe1
+    m_lsu.m_monitor.ap_pipe1_req.connect(m_credit_sb.af_lsu_p1_req.analysis_export);
+    m_lsu.m_monitor.ap_pipe1_rsp.connect(m_credit_sb.af_lsu_p1_rsp.analysis_export);
+    // PTW memory channel
+    m_ptw_mem.m_monitor.ap_req.connect(m_credit_sb.af_ptw_req.analysis_export);
+    m_ptw_mem.m_monitor.ap_rsp.connect(m_credit_sb.af_ptw_rsp.analysis_export);
+
+    // Phase 5 (Engineer A): IFU/LSU rsp + misc HPCP → performance monitor
+    m_ifu.m_monitor.ap_rsp.connect(m_perf.af_ifu_rsp.analysis_export);
+    m_lsu.m_monitor.ap_pipe0_rsp.connect(m_perf.af_lsu_p0_rsp.analysis_export);
+    m_lsu.m_monitor.ap_pipe1_rsp.connect(m_perf.af_lsu_p1_rsp.analysis_export);
+    m_lsu.m_monitor.ap_pipe2_rsp.connect(m_perf.af_lsu_p2_rsp.analysis_export);
+    m_misc.m_monitor.ap_hpcp.connect(m_perf.af_hpcp.analysis_export);
   endfunction
 
 endclass : mmu_env

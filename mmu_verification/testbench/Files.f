@@ -99,6 +99,7 @@ ${TB_DIR}/sysmap_cfg_agent/sysmap_cfg_agent_pkg.sv
 ${TB_DIR}/ifu_agent/ifu_agent_pkg.sv
 ${TB_DIR}/lsu_agent/lsu_agent_pkg.sv
 ${TB_DIR}/ptw_mem_agent/ptw_mem_agent_pkg.sv
+${TB_DIR}/misc_agent/misc_agent_pkg.sv
 
 # ---------------------------------------------------------------------------
 # Phase 3: Environment package (imports all 3 agent pkgs above)

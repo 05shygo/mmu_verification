@@ -15,8 +15,8 @@
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
 | **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
 | **Phase 4** | PTW 内存模型 + 参考模型 | A | ✅ 完成 | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0 |
-| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 进行中 | B 任务 ✅（9 文件）；A 任务 ⏳（misc_agent×8 + credit_sb + perf_mon + env 更新，共 12 文件）|
-| **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | 🔒 等待 Phase 5 | — |
+| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 退出准则验证中 | A/B 编码全部完成（22 项交付物）；`make comp` + `make run` 待执行 |
+| **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | ⏳ 等待 Phase 5 编译验证 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
 | **Phase 8** | Virtual Sequence 实现 | B | 🔒 等待 Phase 7 | — |
 | **Phase 9** | 测试用例填充（~120个）| B 主，A Review | 🔒 等待 Phase 8 | — |
@@ -205,12 +205,12 @@
 
 ---
 
-## Phase 5 详细进度（🔄 进行中）
+## Phase 5 详细进度（🔄 进行中 — 编码完成，退出准则验证中）
 
 **负责**：工程师 B（主）/ 工程师 A（misc_agent + credit_sb + perf_mon）
 **B 完成日期**：2026-04-25
-**A 完成日期**：⏳ 待开始
-**退出准则**：⏳ 部分达成（B 任务完成；A 任务 misc_agent×8 + credit_sb + perf_mon + env 更新尚未开始，Phase 5 退出准则第 6/7 项未满足）
+**A 完成日期**：2026-04-24
+**退出准则**：⏳ 编码全部完成（A/B 任务共 22 项交付物均已提交）；待执行 `make comp` + `make run` 联合验证（退出准则 #1/#8 尚未运行）
 
 ### Phase 5 新建文件（2 个）
 
@@ -242,27 +242,36 @@
 | D5-5 | ROOT_PPN=0 | 按任务规格（ppn=0, asid=0）；leaf PPN 从 0x200 起步 | 自动分配 L1=16, L0=17，leaf 从 0x200(512) 起步，三者不冲突 |
 | D5-6 | 映射权限 | r=w=x=1, u=0, a=d=1 | S-mode fetch+load+store 均可通过；a/d=1 避免 ref_model 发出 WARN |
 
-### Phase 5 A 的任务（⏳ 未开始）
+### Phase 5 A 的任务（✅ 已完成，2026-04-24）
 
 | # | 交付物 | 位置 | 状态 | 说明 |
 |---|--------|------|------|------|
-| A5-1 | `misc_agent` 八件套（misc_agent_pkg / if / txn / sequencer / driver / monitor / sequences / agent） | `testbench/misc_agent/` | ⏳ | driver 实现 `rtu_flush` 单脉冲 + `biu_smp_disable` 静态配置 |
-| A5-2 | `mmu_credit_sb.svh` | `testbench/env/` | ⏳ | L1↔L2 credit / ReqQ / MB 容量守恒比对；仿真结束信用守恒计数需 =0 |
-| A5-3 | `mmu_perf_mon.svh` | `testbench/env/` | ⏳ | 骨架：接口定义 + 统计 TODO（统计实现留后续 Phase）|
-| A5-4 | `mmu_env.svh` 更新 | `testbench/env/` | ⏳ | 加入 misc_agent 实例化 + credit_sb 接入 |
+| A5-1a | `misc_txn.svh` | `testbench/misc_agent/` | ✅ | 6 个 op 枚举（FLUSH/EXPT/SMP_DISABLE/HPCP_CNT_EN/DFT_SCAN_EN/IDLE）；驱动字段 + 监测字段 |
+| A5-1b | `misc_sequencer.svh` | `testbench/misc_agent/` | ✅ | `uvm_sequencer #(misc_txn)` 标准实现 |
+| A5-1c | `misc_covergroups.svh` | `testbench/misc_agent/` | ✅ | `misc_cg_wrapper`：cg_misc_hpcp/rtu/debug；P3-3 fix 应用（new() 在 class new() 中）|
+| A5-1d | `misc_driver.svh` | `testbench/misc_agent/` | ✅ | `_do_rtu_flush`：1 cycle 脉冲；`_do_smp_disable`/`_do_hpcp_cnt_en`：level 信号；`_drive_idle` 安全默认 |
+| A5-1e | `misc_monitor.svh` | `testbench/misc_agent/` | ✅ | `ap_hpcp`：每周期采样 miss 信号变化；`ap_debug`：debug_info 变化时发布 |
+| A5-1f | `misc_sequences.svh` | `testbench/misc_agent/` | ✅ | 5 个序列：base/rtu_flush/rtu_expt/smp_disable/hpcp_enable + `misc_init_seq`（复合初始化）|
+| A5-1g | `misc_agent.svh` | `testbench/misc_agent/` | ✅ | 标准 agent：ACTIVE 创建 seq+driver；PASSIVE/ACTIVE 均创建 monitor+cg |
+| A5-1h | `misc_agent_pkg.sv` | `testbench/misc_agent/` | ✅ | package；include 顺序：txn→cg→sequencer→driver→monitor→sequences→agent |
+| A5-2 | `mmu_credit_sb.svh` | `testbench/env/` | ✅ | 8 个 TLM FIFO；4 个计数器（credit_l1i/l1d/l2_reqq/ptw_mbuf）；边界检查 + report_phase 守恒断言 |
+| A5-3 | `mmu_perf_mon.svh` | `testbench/env/` | ✅ | 5 个 FIFO（ifu_rsp/lsu_p0/p1/p2_rsp/hpcp）；统计字段声明；report_phase 摘要打印；统计细化留 Phase 7 |
+| A5-4a | `mmu_env_pkg.sv` 更新 | `testbench/env/` | ✅ | 追加 `import misc_agent_pkg::*`；追加 credit_sb + perf_mon `\`include` |
+| A5-4b | `mmu_env.svh` 更新 | `testbench/env/` | ✅ | build_phase：实例化 m_misc/m_credit_sb/m_perf；connect_phase：fan-out 连线 8 个 AP → credit_sb，5 个 AP → perf_mon |
+| A5-4c | `Files.f` 更新 | `testbench/` | ✅ | 追加 `${TB_DIR}/misc_agent/misc_agent_pkg.sv` |
 
 ### Phase 5 退出准则
 
 | # | 检查项 | 负责 | 状态 |
 |---|--------|------|------|
-| 1 | `make compile` 0 errors | A+B | ⏳（待 A 任务完成后验证）|
-| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ✅ 预期通过（test_mmu_translation_sanity 已覆盖）|
-| 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | ✅ 预期通过 |
-| 4 | miss→PTW→refill 混合，mismatch=0 | B | ✅ 预期通过（SB 接入完成）|
-| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ✅ 预期通过 |
-| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | ⏳ **A 待开始** |
-| 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ⏳ **A 待开始** |
-| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳（待 A 任务完成后验证）|
+| 1 | `make comp` 0 errors | A+B | ⏳ **待运行**（A/B 编码均已完成，尚未联合编译）|
+| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ⏳ 待运行（test_mmu_translation_sanity 已编码）|
+| 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | ⏳ 待运行 |
+| 4 | miss→PTW→refill 混合，mismatch=0 | B | ⏳ 待运行（SB 接入完成）|
+| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ⏳ 待运行 |
+| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | ⏳ 待运行（已实现）|
+| 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ⏳ 待运行（已实现）|
+| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳ **待运行** |
 
 ---
 
@@ -282,7 +291,7 @@
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
 | **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
 | **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成**（2026-04-24）|
-| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | 🔄 **部分达成**（B 任务完成 2026-04-25；A 任务待开始）|
+| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | ⏳ **编码完成，退出准则待验证**（A+B 共 22 项交付物已提交；`make comp` + `make run` 待执行）|
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |
 | **M7** — SVA + 覆盖率框架 | Phase 7 退出准则 | ⏳ |
 | **M8** — 全部 Vseq 可运行 | Phase 8 退出准则 | ⏳ |

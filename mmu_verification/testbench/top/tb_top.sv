@@ -232,19 +232,19 @@ module tb_top;
   initial begin
     // 7 virtual interfaces
     uvm_config_db #(virtual ifu_if)::set(
-      null, "*", "ifu_vif", ifu_if_inst);
+      null, "*", "IFU_VIF", ifu_if_inst);
     uvm_config_db #(virtual lsu_if)::set(
-      null, "*", "lsu_vif", lsu_if_inst);
+      null, "*", "LSU_VIF", lsu_if_inst);
     uvm_config_db #(virtual cp0_if)::set(
-      null, "*", "cp0_vif", cp0_if_inst);
+      null, "*", "CP0_VIF", cp0_if_inst);
     uvm_config_db #(virtual ptw_mem_if)::set(
-      null, "*", "ptw_mem_vif", ptw_mem_if_inst);
+      null, "*", "PTW_MEM_VIF", ptw_mem_if_inst);
     uvm_config_db #(virtual pmp_if)::set(
-      null, "*", "pmp_vif", pmp_if_inst);
+      null, "*", "PMP_VIF", pmp_if_inst);
     uvm_config_db #(virtual sysmap_cfg_if)::set(
-      null, "*", "sysmap_cfg_vif", sysmap_cfg_if_inst);
+      null, "*", "SYSMAP_CFG_VIF", sysmap_cfg_if_inst);
     uvm_config_db #(virtual misc_if)::set(
-      null, "*", "misc_vif", misc_if_inst);
+      null, "*", "MISC_VIF", misc_if_inst);
 
     // Default simulation timeout (overridable by test)
     uvm_config_db #(int)::set(null, "*", "timeout", 100_000);

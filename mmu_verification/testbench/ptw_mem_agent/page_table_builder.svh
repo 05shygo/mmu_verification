@@ -61,7 +61,7 @@ class page_table_builder extends uvm_object;
   // Read PTE at the given physical byte address.
   // Returns 0 (invalid PTE) when address is not yet written.
   virtual function pte_t read_pte_at(pa_t pte_addr);
-    longint unsigned key = longint unsigned'(pte_addr);
+    longint unsigned key = longint'(pte_addr);
     if (m_mem.exists(key))
       return pte_t'(m_mem[key]);
     else
@@ -70,7 +70,7 @@ class page_table_builder extends uvm_object;
 
   // Write PTE at the given physical byte address.
   virtual function void write_pte_at(pa_t pte_addr, pte_t pte);
-    longint unsigned key = longint unsigned'(pte_addr);
+    longint unsigned key = longint'(pte_addr);
     m_mem[key] = 64'(pte);
     `uvm_info("PAGE_TABLE_BUILDER",
       $sformatf("write_pte_at: addr=0x%010h pte=0x%016h", pte_addr, pte),

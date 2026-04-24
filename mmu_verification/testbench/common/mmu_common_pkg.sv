@@ -48,8 +48,20 @@ package mmu_common_pkg;
     bit   a = 1,
     bit   d = 1
   );
-    // TODO (Phase 4)
+    // Phase 4: assemble 64-bit RISC-V SV39 PTE
+    // Bit layout: [63:54] reserved=0, [53:10] PPN (44-bit field, only lower
+    //             PPN_WIDTH=28 used for PA_WIDTH=40), [9:8] RSW=0,
+    //             [7] D, [6] A, [5] G, [4] U, [3] X, [2] W, [1] R, [0] V
     make_pte = '0;
+    make_pte[PTE_V]                            = v;
+    make_pte[PTE_R]                            = r;
+    make_pte[PTE_W]                            = w;
+    make_pte[PTE_X]                            = x;
+    make_pte[PTE_U]                            = u;
+    make_pte[PTE_G]                            = g;
+    make_pte[PTE_A]                            = a;
+    make_pte[PTE_D]                            = d;
+    make_pte[PTE_PPN_LSB +: PPN_WIDTH]         = ppn;  // bits [37:10]
   endfunction
 
   // =========================================================================
@@ -64,8 +76,16 @@ package mmu_common_pkg;
     va_t va,
     int  level
   );
-    // TODO (Phase 4)
-    va_vpn_level = '0;
+    // Phase 4: extract 9-bit VPN index for the given page-table level
+    //   level 2 (root): VA[38:30]
+    //   level 1:        VA[29:21]
+    //   level 0 (leaf): VA[20:12]
+    unique case (level)
+      2: va_vpn_level = va[38:30];
+      1: va_vpn_level = va[29:21];
+      0: va_vpn_level = va[20:12];
+      default: va_vpn_level = '0;
+    endcase
   endfunction
 
   // =========================================================================
@@ -79,8 +99,10 @@ package mmu_common_pkg;
     asid_t      asid,
     ppn_t       ppn
   );
-    // TODO (Phase 4)
-    make_satp = '0;
+    // Phase 4: assemble 64-bit SATP register
+    // SATP64 format: [63:60] MODE(4b), [59:44] ASID(16b), [43:0] PPN(44b)
+    // For SV39: MODE=8(4'b1000), PPN_WIDTH=28, upper 16 bits of 44-bit PPN field are 0
+    make_satp = {mode, asid, 16'b0, ppn};  // {4, 16, 16, 28} = 64 bits
   endfunction
 
 endpackage : mmu_common_pkg

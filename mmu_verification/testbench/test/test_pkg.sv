@@ -21,7 +21,8 @@ package test_pkg;
   import sysmap_cfg_agent_pkg::*;
   import ifu_agent_pkg::*;
   import lsu_agent_pkg::*;
-  import mmu_env_pkg::*;   // mmu_top_cfg, mmu_env
+  import ptw_mem_agent_pkg::*;  // Phase 4
+  import mmu_env_pkg::*;   // mmu_top_cfg, mmu_env, mmu_ref_model, mmu_page_table_mem
 
   `include "uvm_macros.svh"
 
@@ -30,6 +31,9 @@ package test_pkg;
 
   // ── Phase 3: basic sanity tests ───────────────────────────────────────────
   `include "basic_tests/test_mmu_sanity_csr_pmp_sysmap.svh"
+
+  // ── Phase 4: PTW map4k directed test ──────────────────────────────────────
+  `include "basic_tests/test_ptw_map4k_directed.svh"
 
 endpackage : test_pkg
 

@@ -1,0 +1,492 @@
+// =============================================================================
+// MMU UVM Verification — testbench/env/mmu_ref_model.svh
+// Phase 4: MMU software reference model
+//
+// Implements Sv39 3-level page walk in software (4K happy path complete;
+// 2M/1G stubs in Phase 5).  Acts as the golden model for translation_sb.
+//
+// CSR mirror fields are updated via four TLM FIFOs (consumed in run_phase):
+//   af_csr_write    ← cp0_monitor.ap       (fan-out, Phase 5 connect)
+//   af_tlb_inv      ← lsu_monitor.ap_inv   (fan-out, Phase 5 connect)
+//   af_pmp_cfg      ← pmp_monitor.ap       (fan-out, Phase 5 connect)
+//   af_sysmap_cfg   ← sysmap_cfg_monitor.ap(fan-out, Phase 5 connect)
+//
+// In Phase 4 the FIFOs are created but not yet connected; tests set CSR
+// mirror fields directly (m_ref.m_mmu_en = 1, etc.) for directed testing.
+//
+// translate() algorithm (Sv39, 3-level walk):
+//   [Decision 1] If !m_mmu_en or satp_mode==0 → passthrough (PA = {1'b0,VA})
+//   [Decision 2] Walk levels 2→1→0:
+//     · PTE[V]=0            → EXC_PAGE_FAULT
+//     · PTE[W]=1, PTE[R]=0  → EXC_PAGE_FAULT (RISC-V W/O reserved)
+//     · PTE[R]||PTE[X]      → leaf (current level)
+//     · else                → pointer → recurse next level
+//   [Decision 3] At leaf:
+//     · Privilege check (U bit vs priv_mode)
+//     · Permission check (R/W/X per acc_type_e)
+//     · A/D bit enforcement (hardware update expected; Phase 4: warning only)
+//     · Assemble PA from leaf PPN + VA page offset
+// =============================================================================
+`ifndef MMU_REF_MODEL_SVH
+`define MMU_REF_MODEL_SVH
+
+class mmu_ref_model extends uvm_component;
+
+  `uvm_component_utils(mmu_ref_model)
+
+  // =========================================================================
+  // CSR mirror fields (set by on_csr_write() or directly by tests in Phase 4)
+  // =========================================================================
+  // SATP registers (two SATPs: satp0 / satp1)
+  ppn_t     m_satp0_ppn,  m_satp1_ppn;
+  asid_t    m_satp0_asid, m_satp1_asid;
+  bit [3:0] m_satp0_mode, m_satp1_mode;  // 8 = Sv39, 0 = Bare
+  bit       m_satp_sel;                  // 0 = satp0 active, 1 = satp1
+
+  // Privilege and mode bits
+  bit [1:0] m_priv;      // current privilege: 00=U, 01=S, 11=M
+  bit       m_mxr;       // Make eXecutable Readable
+  bit       m_sum;       // Supervisor User Memory access
+  bit       m_mprv;      // Modify PRiVilege
+  bit [1:0] m_mpp;       // Machine Previous Privilege (for MPRV)
+
+  // MMU enable / PTW / misc
+  bit       m_mmu_en;    // combinational: satp_mode==8 && priv != M
+  bit       m_ptw_en;    // PTW hardware walker enable
+  bit       m_maee;      // M-mode Address Extension Enable
+  bit       m_no_op;     // No-op mode (MMU transparent)
+
+  // =========================================================================
+  // PMP / SysMap mirrors (updated by on_pmp_cfg / on_sysmap_cfg)
+  // =========================================================================
+  bit [3:0]  m_pmp_flg [PMP_ENTRIES];
+
+  typedef struct {
+    bit [27:0] base;
+    bit [27:0] mask;
+    bit [4:0]  flg;
+    bit        enable;
+  } sysmap_entry_t;
+  sysmap_entry_t m_sysmap [SYSMAP_REGIONS];
+
+  // =========================================================================
+  // Shared shadow page table (set from env.build_phase)
+  // =========================================================================
+  mmu_page_table_mem m_pt;
+
+  // =========================================================================
+  // TLM FIFOs (Phase 5: connected from env.connect_phase to monitor APs)
+  // =========================================================================
+  uvm_tlm_analysis_fifo #(cp0_txn)        af_csr_write;
+  uvm_tlm_analysis_fifo #(lsu_txn)        af_tlb_inv;
+  uvm_tlm_analysis_fifo #(pmp_txn)        af_pmp_cfg;
+  uvm_tlm_analysis_fifo #(sysmap_cfg_txn) af_sysmap_cfg;
+
+  // ── Statistics ────────────────────────────────────────────────────────────
+  int unsigned m_n_translate_calls;
+  int unsigned m_n_page_faults;
+  int unsigned m_n_passthrough;
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+    // Reset all CSR mirrors to safe defaults
+    m_satp0_ppn   = '0; m_satp1_ppn   = '0;
+    m_satp0_asid  = '0; m_satp1_asid  = '0;
+    m_satp0_mode  = 4'h0; m_satp1_mode = 4'h0;
+    m_satp_sel    = 1'b0;
+    m_priv        = PRIV_M;  // default M-mode (MMU disabled)
+    m_mxr         = 1'b0;
+    m_sum         = 1'b0;
+    m_mprv        = 1'b0;
+    m_mpp         = PRIV_M;
+    m_mmu_en      = 1'b0;
+    m_ptw_en      = 1'b1;
+    m_maee        = 1'b0;
+    m_no_op       = 1'b0;
+    // PMP: default all-pass (flg=4'b1111)
+    foreach (m_pmp_flg[i]) m_pmp_flg[i] = 4'hf;
+    // SysMap: default all disabled
+    foreach (m_sysmap[i]) m_sysmap[i].enable = 1'b0;
+  endfunction
+
+  // =========================================================================
+  // UVM phases
+  // =========================================================================
+
+  virtual function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    af_csr_write  = new("af_csr_write",  this);
+    af_tlb_inv    = new("af_tlb_inv",    this);
+    af_pmp_cfg    = new("af_pmp_cfg",    this);
+    af_sysmap_cfg = new("af_sysmap_cfg", this);
+  endfunction
+
+  // run_phase: consume all four FIFOs concurrently (Phase 5: FIFOs receive
+  // events; Phase 4: FIFOs remain empty — no harm, threads block quietly)
+  virtual task run_phase(uvm_phase phase);
+    fork
+      forever begin
+        cp0_txn tr;
+        af_csr_write.get(tr);
+        on_csr_write(tr);
+      end
+      forever begin
+        lsu_txn tr;
+        af_tlb_inv.get(tr);
+        on_tlb_inv(tr);
+      end
+      forever begin
+        pmp_txn tr;
+        af_pmp_cfg.get(tr);
+        on_pmp_cfg_change(tr);
+      end
+      forever begin
+        sysmap_cfg_txn tr;
+        af_sysmap_cfg.get(tr);
+        on_sysmap_cfg_change(tr);
+      end
+    join_none
+  endtask
+
+  // =========================================================================
+  // Core API: translate()
+  // =========================================================================
+  // Perform a software Sv39 3-level page walk for the given VA and access type.
+  //
+  // [Decision 1] Passthrough conditions:
+  //   a) m_mmu_en == 0 (satp_mode == 0 or M-mode): PA = {1'b0, VA[38:0]}
+  //   b) m_no_op == 1: same passthrough
+  //   c) M-mode with MPRV=0: passthrough (access uses M-mode effective priv)
+  //
+  // [Decision 2] Select active SATP:
+  //   m_satp_sel=0 → satp0; m_satp_sel=1 → satp1
+  //
+  // [Decision 3] 3-level walk (level 2 → 1 → 0):
+  //   · pte_addr = active_ppn_page_base + vpn_level(va, level) * 8
+  //   · pte = m_pt.m_builder.read_pte_at(pte_addr)
+  //   · V=0 → EXC_PAGE_FAULT
+  //   · W=1, R=0 (reserved) → EXC_PAGE_FAULT
+  //   · R=1 or X=1 → leaf (check permissions)
+  //   · else → pointer (continue to next level)
+  //
+  // [Decision 4] Leaf permission checks:
+  //   · U-bit vs privilege mode (SUM handling)
+  //   · R/W/X permission vs acc_type_e (MXR for ACC_LOAD with X=1)
+  //   · A/D bit: Phase 4 — warn if A=0 or (store && D=0); no fault
+  //
+  // [Decision 5] Assemble PA:
+  //   PA = {leaf_ppn[PPN_WIDTH-1:0], VA[11:0]}  (4K page)
+  //   For huge pages (level>0 leaf): also zero the lower PPN bits (Phase 5)
+  //
+  // Returns xlation_rsp_t with ppn, exc, and attribute bits.
+  // sec/ca/buf_en/sh/so are set to 0 in Phase 4 (Phase 5: drive from SysMap)
+  // =========================================================================
+  virtual function xlation_rsp_t translate(va_t va, acc_type_e acc);
+    xlation_rsp_t rsp;
+    ppn_t   active_ppn;
+    bit [3:0] active_mode;
+
+    rsp = '{ppn: '0, exc: EXC_NONE,
+            sec: 0, ca: 0, buf_en: 0, sh: 0, so: 0, deny: 0};
+
+    m_n_translate_calls++;
+
+    // ── [Decision 1] Passthrough ──────────────────────────────────────────
+    // Effective privilege for translation:
+    //   if MPRV=1 and acc != FETCH → use MPP as effective privilege
+    //   otherwise → use current privilege
+    begin
+      bit [1:0] eff_priv = m_priv;
+      if (m_mprv && (acc != ACC_FETCH)) eff_priv = m_mpp;
+
+      // MMU is enabled only when satp_mode=8 AND effective privilege != M
+      m_mmu_en = (m_satp_sel ? (m_satp1_mode == 4'h8) : (m_satp0_mode == 4'h8))
+                 && (eff_priv != PRIV_M);
+
+      if (!m_mmu_en || m_no_op) begin
+        // Phase 4 passthrough: PA = zero-extend VA[38:0] to PA_WIDTH=40
+        rsp.ppn = va_t'(va) >> PAGE_OFFSET;  // VA[39:12] zero-padded
+        m_n_passthrough++;
+        `uvm_info(get_type_name(),
+          $sformatf("translate PASSTHROUGH: va=0x%010h ppn=0x%07h mmu_en=%0b",
+            va, rsp.ppn, m_mmu_en), UVM_HIGH)
+        return rsp;
+      end
+    end
+
+    // ── [Decision 2] Select active SATP ──────────────────────────────────
+    if (m_satp_sel) begin
+      active_ppn  = m_satp1_ppn;
+      active_mode = m_satp1_mode;
+    end else begin
+      active_ppn  = m_satp0_ppn;
+      active_mode = m_satp0_mode;
+    end
+
+    if (active_mode != 4'h8) begin
+      // Non-Sv39 mode → passthrough (should not reach here given m_mmu_en check)
+      rsp.ppn = va >> PAGE_OFFSET;
+      m_n_passthrough++;
+      return rsp;
+    end
+
+    // ── [Decision 3] Sv39 3-level page walk ──────────────────────────────
+    begin
+      automatic ppn_t  cur_ppn = active_ppn;
+      automatic int    level;
+      automatic pa_t   pte_addr;
+      automatic pte_t  pte;
+      automatic bit    is_leaf;
+      automatic ppn_t  leaf_ppn;
+
+      is_leaf = 0;
+
+      for (level = 2; level >= 0; level--) begin
+        automatic logic [PT_LEVEL_BITS-1:0] vpn_idx = va_vpn_level(va, level);
+
+        // Compute PTE address: ppn_page_base + vpn_idx * 8
+        pte_addr = pa_t'({cur_ppn, 12'b0}) + pa_t'({31'b0, vpn_idx, 3'b0});
+        pte      = m_pt.m_builder.read_pte_at(pte_addr);
+
+        `uvm_info(get_type_name(),
+          $sformatf("  walk L%0d: vpn=0x%03h pte_addr=0x%010h pte=0x%016h",
+            level, vpn_idx, pte_addr, pte), UVM_HIGH)
+
+        // ---- Check V bit -----------------------------------------------
+        // Decision: PTE[V]=0 → page fault
+        if (!pte[PTE_V]) begin
+          rsp.exc = EXC_PAGE_FAULT;
+          m_n_page_faults++;
+          `uvm_info(get_type_name(),
+            $sformatf("translate PAGE_FAULT (V=0): va=0x%010h L%0d pte_addr=0x%010h",
+              va, level, pte_addr), UVM_MEDIUM)
+          return rsp;
+        end
+
+        // ---- Check for reserved W/O encoding ---------------------------
+        // Decision: R=0, W=1 is reserved → page fault
+        if (!pte[PTE_R] && pte[PTE_W]) begin
+          rsp.exc = EXC_PAGE_FAULT;
+          m_n_page_faults++;
+          `uvm_info(get_type_name(),
+            $sformatf("translate PAGE_FAULT (R=0,W=1): va=0x%010h L%0d",
+              va, level), UVM_MEDIUM)
+          return rsp;
+        end
+
+        // ---- Leaf detection --------------------------------------------
+        // Decision: R=1 or X=1 → leaf PTE at this level
+        if (pte[PTE_R] || pte[PTE_X]) begin
+          is_leaf  = 1;
+          leaf_ppn = pte[PTE_PPN_LSB +: PPN_WIDTH];
+
+          // ---- [Decision 4] Permission checks -------------------------
+          // Privilege vs U-bit
+          begin
+            bit [1:0] eff_priv = m_priv;
+            if (m_mprv && (acc != ACC_FETCH)) eff_priv = m_mpp;
+
+            if ((eff_priv == PRIV_U) && !pte[PTE_U]) begin
+              // U-mode accessing S-page → page fault
+              rsp.exc = EXC_PAGE_FAULT;
+              m_n_page_faults++;
+              `uvm_info(get_type_name(),
+                $sformatf("translate PAGE_FAULT (U-mode,U=0): va=0x%010h",va),
+                UVM_MEDIUM)
+              return rsp;
+            end
+            if ((eff_priv == PRIV_S) && pte[PTE_U] && !m_sum) begin
+              // S-mode accessing U-page without SUM → page fault
+              rsp.exc = EXC_PAGE_FAULT;
+              m_n_page_faults++;
+              `uvm_info(get_type_name(),
+                $sformatf("translate PAGE_FAULT (S-mode,U=1,SUM=0): va=0x%010h",va),
+                UVM_MEDIUM)
+              return rsp;
+            end
+          end
+
+          // R/W/X permission vs access type
+          // Decision branch: check permission per acc_type_e
+          case (acc)
+            ACC_FETCH: begin
+              // Instruction fetch requires X=1
+              if (!pte[PTE_X]) begin
+                rsp.exc = EXC_PAGE_FAULT;
+                m_n_page_faults++;
+                `uvm_info(get_type_name(),
+                  $sformatf("translate PAGE_FAULT (FETCH,X=0): va=0x%010h",va),
+                  UVM_MEDIUM)
+                return rsp;
+              end
+            end
+            ACC_LOAD, ACC_PFU: begin
+              // Load: R=1; or MXR=1 and X=1 (readable via execute-only mapping)
+              if (!pte[PTE_R] && !(m_mxr && pte[PTE_X])) begin
+                rsp.exc = EXC_PAGE_FAULT;
+                m_n_page_faults++;
+                `uvm_info(get_type_name(),
+                  $sformatf("translate PAGE_FAULT (LOAD,R=0): va=0x%010h",va),
+                  UVM_MEDIUM)
+                return rsp;
+              end
+            end
+            ACC_STORE: begin
+              // Store: R=1 AND W=1
+              if (!pte[PTE_R] || !pte[PTE_W]) begin
+                rsp.exc = EXC_PAGE_FAULT;
+                m_n_page_faults++;
+                `uvm_info(get_type_name(),
+                  $sformatf("translate PAGE_FAULT (STORE,R/W=0): va=0x%010h",va),
+                  UVM_MEDIUM)
+                return rsp;
+              end
+            end
+          endcase
+
+          // A/D bit check: Phase 4 — only warn (hardware sets them; DUT may
+          // trigger page fault if software intends A=0 trapping, but our
+          // reference model assumes hardware-managed A/D)
+          if (!pte[PTE_A])
+            `uvm_info(get_type_name(),
+              $sformatf("translate WARN: A=0 va=0x%010h (phase 4: no fault)",va),
+              UVM_HIGH)
+          if ((acc == ACC_STORE) && !pte[PTE_D])
+            `uvm_info(get_type_name(),
+              $sformatf("translate WARN: D=0 on STORE va=0x%010h (phase 4: no fault)",va),
+              UVM_HIGH)
+
+          // ---- [Decision 5] Assemble PA --------------------------------
+          // For 4K (level=0): PA[39:12] = leaf_ppn[27:0], PA[11:0] = VA[11:0]
+          // For huge pages: Phase 5 (zero lower PPN bits per level)
+          if (level > 0) begin
+            // Huge page detected: Phase 5 TODO
+            // For now: warn and use leaf_ppn directly
+            `uvm_info(get_type_name(),
+              $sformatf("translate HUGE PAGE L%0d va=0x%010h (phase 4: ppn used as-is)",
+                level, va), UVM_LOW)
+          end
+          rsp.ppn = leaf_ppn;
+
+          `uvm_info(get_type_name(),
+            $sformatf("translate OK: va=0x%010h → ppn=0x%07h L%0d pte=0x%016h",
+              va, leaf_ppn, level, pte), UVM_MEDIUM)
+          return rsp;
+        end
+
+        // ---- Pointer PTE: continue to next level ----------------------
+        // Decision: V=1, R=0, X=0 → non-leaf; next_ppn = PTE[53:10]
+        cur_ppn = pte[PTE_PPN_LSB +: PPN_WIDTH];
+
+      end // for level
+
+      // Walked all 3 levels without finding a leaf — should not happen for
+      // correctly structured PT, but guard against it
+      rsp.exc = EXC_PAGE_FAULT;
+      m_n_page_faults++;
+      `uvm_warning(get_type_name(),
+        $sformatf("translate PAGE_FAULT (3-level exhausted): va=0x%010h", va))
+    end
+
+    return rsp;
+  endfunction
+
+  // =========================================================================
+  // PMP check (stub — Phase 5 for full 8-port check)
+  // =========================================================================
+  virtual function bit check_pmp(pa_t pa, acc_type_e acc, int port_idx);
+    // Phase 4: always pass (m_pmp_flg configured from pmp_monitor in Phase 5)
+    // flg bit semantics: [0]=fetch_en, [1]=load_en, [2]=store_en, [3]=valid
+    if (port_idx >= PMP_ENTRIES) return 1'b1;
+    return (m_pmp_flg[port_idx] != 4'h0);
+  endfunction
+
+  // =========================================================================
+  // SysMap lookup (stub — Phase 5 for full base/mask/flag check)
+  // =========================================================================
+  virtual function sysmap_entry_t lookup_sysmap(pa_t pa);
+    sysmap_entry_t hit;
+    hit.enable = 0;
+    foreach (m_sysmap[i]) begin
+      if (m_sysmap[i].enable) begin
+        bit [27:0] masked_pa   = pa[39:12] & m_sysmap[i].mask;
+        bit [27:0] masked_base = m_sysmap[i].base & m_sysmap[i].mask;
+        if (masked_pa == masked_base) begin
+          hit = m_sysmap[i];
+          return hit;
+        end
+      end
+    end
+    return hit;
+  endfunction
+
+  // =========================================================================
+  // Internal state update callbacks (called from run_phase FIFO consumers)
+  // =========================================================================
+
+  // Update CSR mirrors from a cp0_txn (driven by cp0_agent)
+  virtual function void on_csr_write(cp0_txn tr);
+    case (tr.op)
+      CP0_WRITE_SATP: begin
+        if (!tr.satp_sel) begin
+          m_satp0_mode = tr.wdata[63:60];
+          m_satp0_asid = tr.wdata[59:44];
+          m_satp0_ppn  = tr.wdata[PPN_WIDTH-1:0];
+        end else begin
+          m_satp1_mode = tr.wdata[63:60];
+          m_satp1_asid = tr.wdata[59:44];
+          m_satp1_ppn  = tr.wdata[PPN_WIDTH-1:0];
+        end
+      end
+      CP0_SET_PRIV:     m_priv  = tr.priv_mode;
+      CP0_SET_MXR:      m_mxr   = tr.mxr;
+      CP0_SET_SUM:      m_sum   = tr.sum;
+      CP0_SET_MPRV_MPP: begin m_mprv = tr.mprv; m_mpp = tr.mpp; end
+      CP0_SET_PTW_EN:   m_ptw_en = tr.ptw_en;
+      CP0_SET_NO_OP:    m_no_op  = tr.no_op_req;
+      CP0_SET_MAEE:     m_maee   = tr.maee;
+      default: /* other ops don't affect ref model CSR mirror */ ;
+    endcase
+    // Recompute m_mmu_en combinationally based on new CSR state
+    m_mmu_en = (m_satp_sel ? (m_satp1_mode == 4'h8) : (m_satp0_mode == 4'h8))
+               && (m_priv != PRIV_M);
+    `uvm_info(get_type_name(),
+      $sformatf("on_csr_write: op=%s mmu_en=%0b priv=%02b",
+        tr.op.name(), m_mmu_en, m_priv), UVM_HIGH)
+  endfunction
+
+  // Update TLB shadow on invalidation (Phase 5: propagate to TLB mirror)
+  virtual function void on_tlb_inv(lsu_txn tr);
+    // TODO (Phase 5): clear matching entries from shadow TLB arrays
+  endfunction
+
+  // Update PMP flag mirrors
+  virtual function void on_pmp_cfg_change(pmp_txn tr);
+    foreach (tr.flg[i])
+      m_pmp_flg[i] = tr.flg[i];
+    `uvm_info(get_type_name(), "on_pmp_cfg_change: PMP flags updated", UVM_HIGH)
+  endfunction
+
+  // Update SysMap region mirrors
+  virtual function void on_sysmap_cfg_change(sysmap_cfg_txn tr);
+    foreach (m_sysmap[i]) begin
+      m_sysmap[i].base   = tr.base[i];
+      m_sysmap[i].mask   = tr.mask[i];
+      m_sysmap[i].flg    = tr.flg[i];
+      m_sysmap[i].enable = tr.enable[i];
+    end
+    `uvm_info(get_type_name(), "on_sysmap_cfg_change: SysMap updated", UVM_HIGH)
+  endfunction
+
+  // =========================================================================
+  // report_phase: print translation statistics
+  // =========================================================================
+  virtual function void report_phase(uvm_phase phase);
+    `uvm_info(get_type_name(),
+      $sformatf("ref_model stats: calls=%0d page_faults=%0d passthrough=%0d",
+        m_n_translate_calls, m_n_page_faults, m_n_passthrough), UVM_LOW)
+  endfunction
+
+endclass : mmu_ref_model
+
+`endif // MMU_REF_MODEL_SVH

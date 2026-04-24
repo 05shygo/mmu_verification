@@ -21,11 +21,14 @@ class mmu_env extends uvm_env;
   ifu_agent         m_ifu;
   lsu_agent         m_lsu;
 
+  // ── Phase 4: PTW memory agent + shadow PT + reference model ─────────────
+  ptw_mem_agent    m_ptw_mem;
+  mmu_page_table_mem m_pt_mem;
+  mmu_ref_model    m_ref;
+
   // ── Phase 5 placeholders (declared as comments to avoid forward-ref errors)
-  //  ptw_mem_agent    m_ptw_mem;
   //  misc_agent       m_misc;
   //  mmu_scoreboard   m_sb;
-  //  mmu_ref_model    m_ref;
   //  mmu_vseqr        m_vseqr;
 
   function new(string name, uvm_component parent);
@@ -51,6 +54,19 @@ class mmu_env extends uvm_env;
     m_ifu        = ifu_agent::type_id::create("m_ifu",        this);
     m_lsu        = lsu_agent::type_id::create("m_lsu",        this);
 
+    // Phase 4: PTW memory agent (always ACTIVE — drives lsu_mmu responses)
+    m_ptw_mem           = ptw_mem_agent::type_id::create("m_ptw_mem", this);
+    m_ptw_mem.is_active = UVM_ACTIVE;
+
+    // Phase 4: Shadow page table memory (shared by responder + ref model)
+    m_pt_mem = mmu_page_table_mem::type_id::create("m_pt_mem");
+    m_pt_mem.init();
+
+    // Phase 4: Reference model
+    m_ref = mmu_ref_model::type_id::create("m_ref", this);
+    // Inject shared page table reference BEFORE run_phase
+    m_ref.m_pt = m_pt_mem;
+
     // Forward active/passive mode from config
     m_cp0.is_active        = m_cfg.cp0_agent_mode;
     m_pmp.is_active        = m_cfg.pmp_agent_mode;
@@ -61,6 +77,9 @@ class mmu_env extends uvm_env;
 
   // ── Connect phase ─────────────────────────────────────────────────────────
   virtual function void connect_phase(uvm_phase phase);
+    // Phase 4: inject shared page table builder into PTW responder
+    m_ptw_mem.m_responder.set_page_table(m_pt_mem.m_builder);
+
     // Phase 5 TLM connections (placeholders):
     // m_cp0.m_monitor.ap         → m_sb.af_cp0_txn
     // m_pmp.m_monitor.ap         → m_sb.af_pmp_txn

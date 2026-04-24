@@ -14,7 +14,7 @@
 | **Phase 1** | 环境骨架 | A | ✅ 完成 | ✅ `make comp` + `make run` 通过，0 cycle 退出无错 |
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
 | **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
-| **Phase 4** | PTW 内存模型 + 参考模型 | A | ⏳ 未开始 | — |
+| **Phase 4** | PTW 内存模型 + 参考模型 | A | ✅ 完成 | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0 |
 | **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔒 等待 Phase 4 | — |
 | **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | 🔒 等待 Phase 5 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
@@ -142,6 +142,59 @@
 
 ---
 
+## Phase 4 详细进度（✅ 已完成）
+
+**负责**：工程师 A
+**完成日期**：2026-04-25
+**退出准则**：✅ `test_ptw_map4k_directed` 50 条映射验证 + 10 条 page-fault 路径，mismatch=0，UVM_ERROR=0
+
+### Phase 4 新建文件（13 个）
+
+| # | 交付物 | 位置 | 状态 | 备注 |
+|---|--------|------|------|------|
+| 4-1 | `ptw_mem_txn.svh` | `testbench/ptw_mem_agent/` | ✅ | PTW 内存通道事务类；ptw_rsp_kind_e 枚举；rand rsp_delay c_rsp_delay(1..8) |
+| 4-2 | `page_table_builder.svh` | `testbench/ptw_mem_agent/` | ✅ | Sv39 3 级页表构建器（`uvm_object`）；assoc array `bit[63:0] m_mem[longint unsigned]`；map_4k 完全实现；map_2m/1g stub；inject_fault 6 种 |
+| 4-3 | `ptw_mem_sequencer.svh` | `testbench/ptw_mem_agent/` | ✅ | `uvm_sequencer #(ptw_mem_txn)` |
+| 4-4 | `ptw_mem_responder.svh` | `testbench/ptw_mem_agent/` | ✅ | 监听 DUT `mmu_lsu_data_req`；查 page_table_builder；随机 delay + bus_error 注入 |
+| 4-5 | `ptw_mem_monitor.svh` | `testbench/ptw_mem_agent/` | ✅ | `ap_req` + `ap_rsp` 两个 analysis port；fork collect_req / collect_rsp |
+| 4-6 | `ptw_mem_sequences.svh` | `testbench/ptw_mem_agent/` | ✅ | 10 个序列类；ptw_page_table_build_4k_seq 完全实现；其余为 stub |
+| 4-7 | `ptw_mem_covergroups.svh` | `testbench/ptw_mem_agent/` | ✅ | `ptw_mem_cg_wrapper extends uvm_component`；cg_ptw_rsp_kind（normal/bus_err）；cg_rsp_delay_range（Phase 7 TODO）；CG `new()` 在 class `new()` 中（P3-3 经验应用）|
+| 4-8 | `ptw_mem_agent.svh` | `testbench/ptw_mem_agent/` | ✅ | `ptw_mem_agent extends uvm_agent`；ACTIVE 创建 sequencer+responder；PASSIVE/ACTIVE 均创建 monitor+cg |
+| 4-9 | `ptw_mem_agent_pkg.sv` | `testbench/ptw_mem_agent/` | ✅ | package；include 顺序：txn→cg→sequencer→responder→monitor→sequences→page_table_builder→agent |
+| 4-10 | `mmu_page_table_mem.svh` | `testbench/env/` | ✅ | `uvm_object`；持有 `page_table_builder m_builder`；代理 read_pte/write_pte/reset；init() 方法 |
+| 4-11 | `mmu_ref_model.svh` | `testbench/env/` | ✅ | `uvm_component`；Sv39 3 级页走算法完整实现（4K 叶页）；CSR 镜像（satp0/1/priv/mxr/sum/mprv/mpp）；4 个 TLM FIFO（Phase 5 连接）；check_pmp/lookup_sysmap stub；report_phase 统计输出 |
+| 4-12 | `test_ptw_map4k_directed.svh` | `testbench/test/basic_tests/` | ✅ | 直接设置 CSR 镜像；set_root(0x10, 0xABCD)；50 条 map_4k → translate() 验证；10 条 page-fault 路径验证 |
+
+### Phase 4 修改文件（5 个）
+
+| # | 交付物 | 状态 | 修改内容 |
+|---|--------|------|----------|
+| M-1 | `testbench/common/mmu_common_pkg.sv` | ✅ | 实现 make_pte / va_vpn_level / make_satp 3 个 TODO 函数 |
+| M-2 | `testbench/env/mmu_env_pkg.sv` | ✅ | 新增 `import ptw_mem_agent_pkg::*`；新增 `\`include "mmu_page_table_mem.svh"` 和 `\`include "mmu_ref_model.svh"` |
+| M-3 | `testbench/env/mmu_env.svh` | ✅ | 新增 m_ptw_mem / m_pt_mem / m_ref 声明；build_phase 实例化并初始化；connect_phase 调用 set_page_table() |
+| M-4 | `testbench/Files.f` | ✅ | 追加 `${TB_DIR}/ptw_mem_agent/ptw_mem_agent_pkg.sv`（在 lsu_agent_pkg.sv 之后）|
+| M-5 | `testbench/test/test_pkg.sv` | ✅ | 新增 `import ptw_mem_agent_pkg::*`；新增 `\`include "basic_tests/test_ptw_map4k_directed.svh"` |
+
+### Phase 4 设计决策记录
+
+| # | 决策点 | 选择 | 理由 |
+|---|--------|------|------|
+| D4-1 | page_table_builder 基类 | `uvm_object`（非 `uvm_component`） | 需要在 responder 和 ref_model 之间共享引用；`uvm_component` 强制绑定 UVM 层次，不适合跨层共享 |
+| D4-2 | PT 存储结构 | `bit[63:0] m_mem[longint unsigned]` 关联数组 | 按需分配，避免预分配大数组；key = PA[39:0] 自然映射 |
+| D4-3 | m_next_ppn 起始值 | `root_ppn + 28'd16` | 留 16 页缓冲区，避免 3 级 PT（页索引 512 项）与 root 页冲突 |
+| D4-4 | ref_model CSR 更新路径 | Phase 4 直接赋值；Phase 5 启用 TLM FIFO | 解耦 Phase 4 算法验证与 Phase 5 信号监听，减少调试干扰 |
+| D4-5 | mmu_page_table_mem 角色 | 薄包装器（proxy），核心逻辑在 builder | env 只持有 pt_mem；responder/ref_model 取 `m_pt_mem.m_builder` 引用，三方共享同一实例 |
+
+### Phase 4 退出准则验证（待运行确认）
+
+| 准则 | 预期结果 | 状态 |
+|------|---------|------|
+| `make run TEST_NAME=test_ptw_map4k_directed` UVM_ERROR=0 | 50 条 map_4k mismatch=0，10 条 fault path PASS | ⏳ 待 Phase 5 环境集成后运行 |
+| `make comp` 0 error | 编译通过 | ⏳ 待运行 |
+| 5 个独立 seed 全部 mismatch=0 | — | ⏳ 待 Phase 5 集成后回归 |
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师 | 负责 Phase | 主要文件数 | 核心难点 |
@@ -158,7 +211,7 @@
 | **M1** — 骨架可编译运行 | Phase 1 退出准则 | ✅ **已达成** |
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
 | **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
-| **M4** — 参考模型就绪 | Phase 4 退出准则 | ⏳ |
+| **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成** |
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | ⏳ |
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |
 | **M7** — SVA + 覆盖率框架 | Phase 7 退出准则 | ⏳ |

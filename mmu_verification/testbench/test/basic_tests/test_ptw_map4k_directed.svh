@@ -48,27 +48,27 @@ class test_ptw_map4k_directed extends test_base;
   endfunction
 
   virtual task run_test_body();
-    mmu_ref_model      ref;
+    mmu_ref_model      rm;
     mmu_page_table_mem pt;
     xlation_rsp_t      rsp;
     ppn_t              expected_ppn;
 
-    ref = m_env.m_ref;
+    rm = m_env.m_ref;
     pt  = m_env.m_pt_mem;
     m_mismatch = 0;
 
     // ── Step 1: Configure ref_model CSR mirror ────────────────────────────
     // Direct assignment (FIFO path connected in Phase 5)
-    ref.m_satp0_mode = 4'h8;          // Sv39
-    ref.m_satp0_ppn  = ROOT_PPN;
-    ref.m_satp0_asid = ROOT_ASID;
-    ref.m_satp_sel   = 1'b0;          // Use SATP0
-    ref.m_priv       = PRIV_S;        // S-mode (mmu_en = 1)
-    ref.m_ptw_en     = 1'b1;
-    ref.m_mmu_en     = 1'b1;          // Force: mode=Sv39, S-mode → MMU enabled
-    ref.m_no_op      = 1'b0;
-    ref.m_mxr        = 1'b0;
-    ref.m_sum        = 1'b0;
+    rm.m_satp0_mode = 4'h8;          // Sv39
+    rm.m_satp0_ppn  = ROOT_PPN;
+    rm.m_satp0_asid = ROOT_ASID;
+    rm.m_satp_sel   = 1'b0;          // Use SATP0
+    rm.m_priv       = PRIV_S;        // S-mode (mmu_en = 1)
+    rm.m_ptw_en     = 1'b1;
+    rm.m_mmu_en     = 1'b1;          // Force: mode=Sv39, S-mode → MMU enabled
+    rm.m_no_op      = 1'b0;
+    rm.m_mxr        = 1'b0;
+    rm.m_sum        = 1'b0;
 
     // ── Step 2: Set builder root ──────────────────────────────────────────
     pt.m_builder.set_root(ROOT_PPN, ROOT_ASID);
@@ -108,7 +108,7 @@ class test_ptw_map4k_directed extends test_base;
     // ── Step 4: Verify all mappings via ref_model.translate() ────────────
     for (int i = 0; i < NUM_MAP; i++) begin
       expected_ppn = m_pa[i][39:12];   // PA[39:12]
-      rsp = ref.translate(m_va[i], ACC_LOAD);
+      rsp = rm.translate(m_va[i], ACC_LOAD);
 
       if (rsp.exc != EXC_NONE) begin
         `uvm_error(get_type_name(),
@@ -132,7 +132,7 @@ class test_ptw_map4k_directed extends test_base;
       va_t fault_va;
       // Generate a VA unlikely to collide with any mapped entry
       fault_va = va_t'(39'h3_0000_0000 | (j * 39'h1000));
-      rsp = ref.translate(fault_va, ACC_LOAD);
+      rsp = rm.translate(fault_va, ACC_LOAD);
       if (rsp.exc !== EXC_PAGE_FAULT) begin
         `uvm_error(get_type_name(),
           $sformatf("fault_va[%0d]=0x%010h: expected PAGE_FAULT, got exc=%s ppn=0x%07h",

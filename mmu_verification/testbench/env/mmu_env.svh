@@ -18,10 +18,10 @@ class mmu_env extends uvm_env;
   cp0_agent         m_cp0;
   pmp_agent         m_pmp;
   sysmap_cfg_agent  m_sysmap_cfg;
+  ifu_agent         m_ifu;
+  lsu_agent         m_lsu;
 
   // ── Phase 5 placeholders (declared as comments to avoid forward-ref errors)
-  //  ifu_agent        m_ifu;
-  //  lsu_agent        m_lsu;
   //  ptw_mem_agent    m_ptw_mem;
   //  misc_agent       m_misc;
   //  mmu_scoreboard   m_sb;
@@ -48,19 +48,27 @@ class mmu_env extends uvm_env;
     m_cp0        = cp0_agent::type_id::create("m_cp0",        this);
     m_pmp        = pmp_agent::type_id::create("m_pmp",        this);
     m_sysmap_cfg = sysmap_cfg_agent::type_id::create("m_sysmap_cfg", this);
+    m_ifu        = ifu_agent::type_id::create("m_ifu",        this);
+    m_lsu        = lsu_agent::type_id::create("m_lsu",        this);
 
     // Forward active/passive mode from config
     m_cp0.is_active        = m_cfg.cp0_agent_mode;
     m_pmp.is_active        = m_cfg.pmp_agent_mode;
     m_sysmap_cfg.is_active = m_cfg.sysmap_cfg_agent_mode;
+    m_ifu.is_active        = m_cfg.ifu_agent_mode;
+    m_lsu.is_active        = m_cfg.lsu_agent_mode;
   endfunction
 
   // ── Connect phase ─────────────────────────────────────────────────────────
   virtual function void connect_phase(uvm_phase phase);
-    // TLM connections to scoreboard and ref model to be added in Phase 5.
-    // m_cp0.m_monitor.ap    → m_sb.af_cp0_txn
-    // m_pmp.m_monitor.ap    → m_sb.af_pmp_txn
-    // m_sysmap_cfg.m_monitor.ap → m_sb.af_sysmap_cfg
+    // Phase 5 TLM connections (placeholders):
+    // m_cp0.m_monitor.ap         → m_sb.af_cp0_txn
+    // m_pmp.m_monitor.ap         → m_sb.af_pmp_txn
+    // m_sysmap_cfg.m_monitor.ap  → m_sb.af_sysmap_cfg
+    // m_ifu.m_monitor.ap_rsp     → m_translation_sb.af_ifu_rsp  (Phase 5)
+    // m_lsu.m_monitor.ap_pipe0_rsp → m_translation_sb.af_lsu_pipe0_rsp (Phase 5)
+    // m_lsu.m_monitor.ap_pipe1_rsp → m_translation_sb.af_lsu_pipe1_rsp (Phase 5)
+    // m_lsu.m_monitor.ap_inv     → m_invalidate_sb.af_lsu_inv          (Phase 6)
   endfunction
 
 endclass : mmu_env

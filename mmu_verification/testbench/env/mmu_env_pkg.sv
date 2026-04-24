@@ -17,9 +17,9 @@ package mmu_env_pkg;
   import cp0_agent_pkg::*;
   import pmp_agent_pkg::*;
   import sysmap_cfg_agent_pkg::*;
+  import ifu_agent_pkg::*;
+  import lsu_agent_pkg::*;
   // Phase 5+:
-  //  import ifu_agent_pkg::*;
-  //  import lsu_agent_pkg::*;
   //  import ptw_mem_agent_pkg::*;
   //  import misc_agent_pkg::*;
 

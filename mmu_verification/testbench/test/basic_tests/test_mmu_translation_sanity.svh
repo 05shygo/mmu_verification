@@ -110,6 +110,11 @@ class lsu_mapped_va_seq extends lsu_base_seq;
         abort       == 1'b0;
         st_inst     == m_st_inst;
         idle_cycles  inside {[0:3]};
+        // vabuf must equal VA[38:11] — the 28-bit "VA buffer" the DUT miss buffer
+        // uses to tag and wake up outstanding DTLB miss entries.
+        // Random vabuf causes miss-buffer entries to never match the L2-TLB refill,
+        // leading to stall-never-releases, credit leak, and throughput collapse.
+        vabuf       == 28'(({25'b0, m_va_table[idx]}) >> 11);
       }) else `uvm_fatal(get_full_name(), "lsu_mapped_va_seq: randomize() failed")
       `uvm_send(tr)
     end
@@ -346,9 +351,12 @@ class test_mmu_translation_sanity extends test_base;
       $sformatf("Step 8 done: %0d STAMO transactions issued", NUM_STAMO), UVM_LOW)
 
     // ── Step 9: Settle — allow outstanding PTW misses to complete ────────────
+    // Increased from 10000 to 500000 ns: each LSU timeout is 4000 cycles;
+    // with up to 100 pipe0 + 20 pipe1 = 120 transactions, worst-case settle
+    // needs ~120 * 4000 = 480000 cycles.  Add margin for PTW latency.
     `uvm_info(get_type_name(),
-      "Step 9: Waiting 10000 ns for PTW miss paths to settle...", UVM_MEDIUM)
-    #10000ns;
+      "Step 9: Waiting 500000 ns for PTW miss paths to settle...", UVM_MEDIUM)
+    #500000ns;
 
     // ── Final status report ──────────────────────────────────────────────────
     `uvm_info(get_type_name(),

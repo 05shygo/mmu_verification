@@ -56,18 +56,16 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     // 1. Insert inter-request idle gap
     repeat (tr.idle_cycles) @(vif.driver_cb);
 
-    // 2. Assert request for one cycle
+    // 2. Assert request and HOLD va_vld until MMU responds (or abort)
+    //    RTL IFU-MMU protocol: va_vld must remain high while MMU processes
+    //    the request (especially during TLB miss + PTW).  This mirrors the
+    //    LSU hold-until-pa_vld protocol.  De-assert occurs after pavld fires.
     @(vif.driver_cb);
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
     vif.driver_cb.ifu_mmu_va     <= tr.va;
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
 
-    // 3. De-assert valid and abort after one cycle
-    @(vif.driver_cb);
-    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
-    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
-
-    // 4. Wait for MMU response (skip if this is an abort transaction)
+    // 3. Wait for MMU response (skip if this is an abort transaction)
     if (tr.abort == 1'b0) begin
       fork
         begin : wait_ifu_rsp
@@ -88,6 +86,11 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       join_any
       disable fork;
     end
+
+    // 4. De-assert va_vld one cycle after response received (or after abort)
+    @(vif.driver_cb);
+    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
+    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
   endtask
 
 endclass : ifu_driver

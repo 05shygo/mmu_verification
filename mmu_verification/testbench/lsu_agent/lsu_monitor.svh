@@ -121,6 +121,8 @@ class lsu_monitor extends uvm_monitor;
       tr.st_inst  = req_tr.st_inst; // Carry st/ld flag for ACC_STORE/ACC_LOAD
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_pipe0_rsp.write(tr);
+      // Edge detection: wait for pa0_vld to deassert (rising-edge semantics)
+      @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa0_vld);
     end
   endtask
 
@@ -165,6 +167,8 @@ class lsu_monitor extends uvm_monitor;
       tr.id       = req_tr.id;      // Carry LSIQ id for ordering context
       tr.st_inst  = req_tr.st_inst; // Carry st/ld flag for ACC_STORE/ACC_LOAD
       ap_pipe1_rsp.write(tr);
+      // Edge detection: wait for pa1_vld to deassert (rising-edge semantics)
+      @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa1_vld);
     end
   endtask
 

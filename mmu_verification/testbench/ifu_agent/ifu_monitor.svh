@@ -50,6 +50,9 @@ class ifu_monitor extends uvm_monitor;
 
   // ── Collect VA request events ─────────────────────────────────────────────
   // Phase 5: push to m_pending_req queue so _collect_rsp can merge VA fields.
+  // Edge detection: wait for ifu_mmu_va_vld HIGH, sample once, then wait for
+  // LOW before looping.  This prevents duplicate publications when the driver
+  // holds va_vld asserted across multiple cycles (hold-until-pavld protocol).
   protected task _collect_req();
     ifu_txn tr;
     forever begin
@@ -60,6 +63,8 @@ class ifu_monitor extends uvm_monitor;
       `uvm_info(get_type_name(), {"IFU REQ: ", tr.convert2string()}, UVM_HIGH)
       m_pending_req.push_back(tr); // Enqueue for req/rsp correlation
       ap_req.write(tr);
+      // Edge detection: wait for va_vld to deassert (rising-edge semantics)
+      @(vif.monitor_cb iff !vif.monitor_cb.ifu_mmu_va_vld);
     end
   endtask
 

@@ -33,6 +33,8 @@ class cp0_monitor extends uvm_monitor;
     fork
       _collect_csr_writes();
       _collect_tlb_done();
+      _collect_satp_writes();
+      _collect_level_changes();
     join_none
   endtask
 
@@ -93,6 +95,118 @@ class cp0_monitor extends uvm_monitor;
       tr.priv_mode = vif.monitor_cb.cp0_yy_priv_mode;
       `uvm_info(get_type_name(), "Observed TLB-done", UVM_HIGH)
       ap.write(tr);
+    end
+  endtask
+
+  // ── Collect SATP write events (cp0_mmu_satp_sel pulse) ───────────────────
+  // cp0_mmu_satp_sel is the SATP write-enable strobe (always 1 when writing).
+  // The driver always writes SATP0 (cp0_reg_rw_seq sets satp_sel=0 in txn but
+  // drives satp_sel=1 on the interface as write-enable).  We therefore always
+  // publish CP0_WRITE_SATP with tr.satp_sel=0 → on_csr_write() updates satp0.
+  protected task _collect_satp_writes();
+    cp0_txn tr;
+    forever begin
+      @(vif.monitor_cb iff vif.monitor_cb.cp0_mmu_satp_sel);
+      tr          = cp0_txn::type_id::create("satp_wr_mon");
+      tr.op       = CP0_WRITE_SATP;
+      tr.satp_sel = 1'b0;           // write-enable → always targets satp0
+      tr.wdata    = vif.monitor_cb.cp0_mmu_wdata;
+      `uvm_info(get_type_name(),
+        $sformatf("Observed SATP write: wdata=0x%016h", tr.wdata), UVM_HIGH)
+      ap.write(tr);
+      // Edge detection: wait for satp_sel to deassert before next iteration
+      @(vif.monitor_cb iff !vif.monitor_cb.cp0_mmu_satp_sel);
+    end
+  endtask
+
+  // ── Collect level-signal changes ─────────────────────────────────────────
+  // Monitors signals that are driven as persistent levels (not pulse/wreg):
+  //   cp0_yy_priv_mode, cp0_mmu_ptw_en, cp0_mmu_mxr, cp0_mmu_sum,
+  //   cp0_mmu_mprv, cp0_mmu_mpp, cp0_mmu_maee, cp0_mmu_no_op_req
+  // On each change, publishes the corresponding cp0_txn so that the ref_model
+  // TLM FIFO consumer (on_csr_write) can update its CSR mirror state.
+  protected task _collect_level_changes();
+    bit [1:0] prev_priv   = 2'b11;  // default M-mode (matches _drive_idle)
+    bit       prev_ptw_en = 1'b1;
+    bit       prev_mxr    = 1'b0;
+    bit       prev_sum    = 1'b0;
+    bit       prev_mprv   = 1'b0;
+    bit [1:0] prev_mpp    = 2'b11;
+    bit       prev_maee   = 1'b0;
+    bit       prev_no_op  = 1'b0;
+    cp0_txn tr;
+
+    forever begin
+      @(vif.monitor_cb);
+
+      // priv_mode change → CP0_SET_PRIV
+      if (vif.monitor_cb.cp0_yy_priv_mode !== prev_priv) begin
+        tr = cp0_txn::type_id::create("priv_mon");
+        tr.op        = CP0_SET_PRIV;
+        tr.priv_mode = vif.monitor_cb.cp0_yy_priv_mode;
+        prev_priv    = vif.monitor_cb.cp0_yy_priv_mode;
+        `uvm_info(get_type_name(),
+          $sformatf("Observed priv_mode change → %02b", tr.priv_mode), UVM_HIGH)
+        ap.write(tr);
+      end
+
+      // ptw_en change → CP0_SET_PTW_EN
+      if (vif.monitor_cb.cp0_mmu_ptw_en !== prev_ptw_en) begin
+        tr = cp0_txn::type_id::create("ptwen_mon");
+        tr.op     = CP0_SET_PTW_EN;
+        tr.ptw_en = vif.monitor_cb.cp0_mmu_ptw_en;
+        prev_ptw_en = vif.monitor_cb.cp0_mmu_ptw_en;
+        ap.write(tr);
+      end
+
+      // mxr change → CP0_SET_MXR
+      if (vif.monitor_cb.cp0_mmu_mxr !== prev_mxr) begin
+        tr = cp0_txn::type_id::create("mxr_mon");
+        tr.op  = CP0_SET_MXR;
+        tr.mxr = vif.monitor_cb.cp0_mmu_mxr;
+        prev_mxr = vif.monitor_cb.cp0_mmu_mxr;
+        ap.write(tr);
+      end
+
+      // sum change → CP0_SET_SUM
+      if (vif.monitor_cb.cp0_mmu_sum !== prev_sum) begin
+        tr = cp0_txn::type_id::create("sum_mon");
+        tr.op  = CP0_SET_SUM;
+        tr.sum = vif.monitor_cb.cp0_mmu_sum;
+        prev_sum = vif.monitor_cb.cp0_mmu_sum;
+        ap.write(tr);
+      end
+
+      // mprv or mpp change → CP0_SET_MPRV_MPP
+      if (vif.monitor_cb.cp0_mmu_mprv !== prev_mprv ||
+          vif.monitor_cb.cp0_mmu_mpp  !== prev_mpp) begin
+        tr = cp0_txn::type_id::create("mprv_mon");
+        tr.op   = CP0_SET_MPRV_MPP;
+        tr.mprv = vif.monitor_cb.cp0_mmu_mprv;
+        tr.mpp  = vif.monitor_cb.cp0_mmu_mpp;
+        prev_mprv = vif.monitor_cb.cp0_mmu_mprv;
+        prev_mpp  = vif.monitor_cb.cp0_mmu_mpp;
+        ap.write(tr);
+      end
+
+      // maee change → CP0_SET_MAEE
+      if (vif.monitor_cb.cp0_mmu_maee !== prev_maee) begin
+        tr = cp0_txn::type_id::create("maee_mon");
+        tr.op   = CP0_SET_MAEE;
+        tr.maee = vif.monitor_cb.cp0_mmu_maee;
+        prev_maee = vif.monitor_cb.cp0_mmu_maee;
+        ap.write(tr);
+      end
+
+      // no_op_req change → CP0_SET_NO_OP
+      if (vif.monitor_cb.cp0_mmu_no_op_req !== prev_no_op) begin
+        tr = cp0_txn::type_id::create("noop_mon");
+        tr.op        = CP0_SET_NO_OP;
+        tr.no_op_req = vif.monitor_cb.cp0_mmu_no_op_req;
+        prev_no_op   = vif.monitor_cb.cp0_mmu_no_op_req;
+        ap.write(tr);
+      end
+
     end
   endtask
 

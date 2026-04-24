@@ -78,6 +78,9 @@ class lsu_monitor extends uvm_monitor;
 
   // ── Pipe 0 request ────────────────────────────────────────────────────────
   // Phase 5: push to m_pending_p0 so _collect_pipe0_rsp can merge VA fields.
+  // Edge detection: wait for va0_vld HIGH, sample once, then wait for LOW
+  // before looping. This prevents duplicate publications when the driver holds
+  // va0_vld asserted across multiple cycles (stall-until-pa_vld protocol).
   protected task _collect_pipe0_req();
     lsu_txn tr;
     forever begin
@@ -92,6 +95,8 @@ class lsu_monitor extends uvm_monitor;
       `uvm_info(get_type_name(), {"P0 REQ: ", tr.convert2string()}, UVM_HIGH)
       m_pending_p0.push_back(tr); // Enqueue for req/rsp correlation
       ap_pipe0_req.write(tr);
+      // Wait for va0_vld to deassert (rising-edge semantics)
+      @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va0_vld);
     end
   endtask
 
@@ -121,6 +126,7 @@ class lsu_monitor extends uvm_monitor;
 
   // ── Pipe 1 request ────────────────────────────────────────────────────────
   // Phase 5: push to m_pending_p1 so _collect_pipe1_rsp can merge VA fields.
+  // Edge detection: same rising-edge approach as pipe0.
   protected task _collect_pipe1_req();
     lsu_txn tr;
     forever begin
@@ -134,6 +140,8 @@ class lsu_monitor extends uvm_monitor;
       tr.vabuf   = vif.monitor_cb.lsu_mmu_vabuf1;
       m_pending_p1.push_back(tr); // Enqueue for req/rsp correlation
       ap_pipe1_req.write(tr);
+      // Wait for va1_vld to deassert (rising-edge semantics)
+      @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va1_vld);
     end
   endtask
 

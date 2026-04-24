@@ -13,8 +13,8 @@
 |-------|------|--------|------|------------|
 | **Phase 1** | 环境骨架 | A | ✅ 完成 | ✅ `make comp` + `make run` 通过，0 cycle 退出无错 |
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
-| **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | 🔄 进行中（A/B 均已完成文件，待退出准则验证） | 🔄 待运行 `make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap` |
-| **Phase 4** | PTW 内存模型 + 参考模型 | A | 🔒 等待 Phase 3 | — |
+| **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
+| **Phase 4** | PTW 内存模型 + 参考模型 | A | ⏳ 未开始 | — |
 | **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔒 等待 Phase 4 | — |
 | **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | 🔒 等待 Phase 5 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
@@ -84,12 +84,12 @@
 
 ---
 
-## Phase 3 详细进度（🔄 进行中）
+## Phase 3 详细进度（✅ 已完成）
 
 **负责**：工程师 A（主）/ B（并行）
 **工程师 A 完成日期**：2026-04-24（步骤 3-1/2/3/6/7/8）
 **工程师 B 完成日期**：2026-04-24（步骤 3-4/3-5：ifu_agent + lsu_agent 八件套 + 集成更新）
-**退出准则**：🔄 待验证 — 步骤 3-4/3-5 已完成，待运行 `make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap` 确认 UVM_ERROR=0，UVM_FATAL=0
+**退出准则**：✅ **已达成**（2026-04-24）— `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`（Sv39 激活），仿真时间 81500 ps
 
 ### Phase 3 Batch 1（30 文件，工程师 A）
 
@@ -112,13 +112,33 @@
 | 3-7 | `testbench/test/basic_tests/test_mmu_sanity_csr_pmp_sysmap.svh` | ✅ | 序列化执行 cp0→pmp→sysmap 三个序列；采样 mmu_xx_mmu_en |
 | 3-7 | `testbench/test/test_pkg.sv` | ✅ | `package test_pkg`：import mmu_env_pkg + include test_base + sanity test |
 | 3-8 | `testbench/Files.f` 更新 | ✅ | 更新：追加 ifu_agent_pkg + lsu_agent_pkg（共 5×agent_pkg + mmu_env_pkg + test_pkg）|
-| — | 退出准则验证 | 🔄 | 工程师 B 步骤 3-4/3-5 已完成；待运行 `make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap` 验证 |
+| — | 退出准则验证 | ✅ | `make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap`：UVM_ERROR=0，UVM_FATAL=0，`mmu_xx_mmu_en=1` PASS，仿真时间 81500 ps（2026-04-24） |
+
+### Phase 3 退出仿真 Bug 修复记录
+
+| # | 文件 | 错误类型 | 根因 | 修复内容 |
+|---|------|---------|------|---------|
+| P3-1 | `testbench/test/test_pkg.sv` | SE：`cp0_reg_rw_seq` not recognized as a type | SV package import **非传递性**：`test_pkg` 仅 import `mmu_env_pkg::*`，无法看到 `mmu_env_pkg` 内部 import 的 `cp0/pmp/sysmap_cfg_agent_pkg` 符号 | 在 `test_pkg` 中显式追加 `import mmu_params_pkg::*`、`mmu_common_pkg::*`、`cp0_agent_pkg::*`、`pmp_agent_pkg::*`、`sysmap_cfg_agent_pkg::*`、`ifu_agent_pkg::*`、`lsu_agent_pkg::*` |
+| P3-2 | `testbench/top/tb_top.sv` | UVM_FATAL @ time=0：所有 `uvm_config_db::get` 失败 | config_db key 大小写不匹配：`tb_top` set 用小写（`"cp0_vif"`）；所有 agent driver/monitor/agent get 用大写（`"CP0_VIF"`）；UVM config_db key 区分大小写 | 将 `tb_top` 中 7 个 `set()` 的 key 全部改为大写：`"IFU_VIF"`、`"LSU_VIF"`、`"CP0_VIF"`、`"PTW_MEM_VIF"`、`"PMP_VIF"`、`"SYSMAP_CFG_VIF"`、`"MISC_VIF"` |
+
+### Phase 3 仿真调试 Bug 修复记录（2026-04-24）
+
+| # | 文件 | 错误类型 | 根因 | 修复内容 |
+|---|------|---------|------|---------|
+| P3-3 | `cp0_agent/cp0_covergroups.svh`<br>`pmp_agent/pmp_covergroups.svh`<br>`sysmap_cfg_agent/sysmap_cfg_covergroups.svh`<br>`ifu_agent/ifu_covergroups.svh`<br>`lsu_agent/lsu_covergroups.svh` | PCECGNNA（×10）：嵌入式 covergroup `new()` 位置非法 | SV LRM §19.2：嵌入式 covergroup 的 `new()` 只能在该类自身的 `new()` 构造函数中调用；5 个 `*_cg_wrapper` 均将 `cg_xxx = new()` 放在 `set_vif()` 方法内 | 将所有 `cg_xxx = new()` 从 `set_vif()` 移入类 `new()` 构造函数；`set_vif()` 仅保留 `vif = v` |
+| P3-4 | `sysmap_cfg_agent/sysmap_cfg_sequences.svh` | DCTTSW：`3'd8` 截断为 0 | `constraint c_valid_region { region_idx < 3'd8; }`，3-bit 无法表示 8，截断为 0 使约束等价于 `region_idx < 0`（永远假）| `< 3'd8` → `<= 3'd7` |
+| P3-5 | `cp0_agent/cp0_driver.svh`（`_do_write_satp`） | 仿真卡死 | RTL：`mmu_cp0_cmplt = tlboper_regs_cmplt \| mcir_no_op`，SATP 写入**不产生 cmplt 脉冲**；driver 死等 `mmu_cp0_cmplt` | 删除 `@(iff mmu_cp0_cmplt)` 等待，改为写完去除 `satp_sel` 后等一个时钟沿 |
+| P3-6 | `cp0_agent/cp0_driver.svh`（`_do_write_reg`） | 可能卡死 | 同 P3-5：MIR/MEL/MEH（reg_num 0/1/2）写入不产生 cmplt，只有 MCIR（reg_num=3）才有 | 按 reg_num 分支：`==3` 等 cmplt，其余等一个时钟沿 |
+| P3-7 | `cp0_agent/cp0_driver.svh`（`_do_tlb_all_inv`） | 可能卡死 | RTL 触发条件：`cp0_mmu_tlb_all_inv && !lsu_oper_cmplt && tlb_sm_idle`；若 SM 非空闲（并发 LSU 操作），单周期脉冲被丢弃，`mmu_cp0_tlb_done` 永远不来 | 加 512 周期 `fork/join_any` 超时，超时后输出 UVM_WARNING 并继续 |
+| P3-8 | `cp0_agent/cp0_driver.svh`（`_do_write_satp`） | `mmu_xx_mmu_en` 始终为 0 | RTL：`satp_write_en = cp0_mmu_satp_sel`；SATP 写入靠 `satp_sel=1` 触发，与 `wreg/reg_num` 无关；旧代码设 `satp_sel=0` + `wreg=1/reg_num=0`（实际写 MIR，SATP 未被写过）| 修改为：拉高 `cp0_mmu_satp_sel=1` 同时驱动 `wdata`，等一拍锁存，再拉低 `satp_sel` |
+| P3-9 | `test/basic_tests/test_mmu_sanity_csr_pmp_sysmap.svh` | `mmu_xx_mmu_en` 始终为 0 | RTL：`mmu_xx_mmu_en = (satp_mode==4'h8) && (cp0_yy_priv_mode != 2'b11)`；测试约束 `priv_mode==2'b11`（M-mode），M-mode 下该信号恒为 0 | `priv_mode == 2'b11` → `priv_mode == 2'b01`（S-mode） |
+| P3-10 | 所有 6 个 `*_if.sv`（driver_cb） | `mmu_xx_mmu_en` 始终为 0（时序竞争） | `default output #1`：在 `timescale 1ns/1ps` + 1GHz 时钟下，`#1` = 1ns = 1 个时钟周期，driver 驱动信号恰好与下一个时钟上升沿同时到达 RTL（setup/hold violation），ICG 门控和 SATP 触发器采样不稳定 | 所有 `driver_cb` 的 `output #1` → `output #1step`（1ps，符合 SV LRM TB 驱动惯例） |
 
 ### Open Items
 
 | ID | 描述 | 状态 |
 |----|------|------|
-| DA-003 | sysmap RTL force 路径（`sysmap_cfg_driver.svh` 中 force 目标路径需设计确认） | 🔒 待设计回复 |
+| DA-003 | sysmap RTL force 路径（`sysmap_cfg_driver.svh` 中 force 目标路径需设计确认） | ⏳ Phase 3 已退出，留 Phase 6 处理 |
 
 ---
 
@@ -137,7 +157,7 @@
 |--------|---------|------|
 | **M1** — 骨架可编译运行 | Phase 1 退出准则 | ✅ **已达成** |
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
-| **M3** — Sanity Test 通过 | Phase 3 退出准则 | 🔄 B 文件完成（2026-04-24），待仿真验证 |
+| **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
 | **M4** — 参考模型就绪 | Phase 4 退出准则 | ⏳ |
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | ⏳ |
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |

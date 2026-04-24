@@ -62,7 +62,7 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     //    LSU hold-until-pa_vld protocol.  De-assert occurs after pavld fires.
     @(vif.driver_cb);
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
-    vif.driver_cb.ifu_mmu_va     <= tr.va;
+    vif.driver_cb.ifu_mmu_va     <= tr.va >> 1;  // ifu_mmu_va = VA[63:1]; DUT extracts VPN = va[37:11] = VA[38:12]
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
 
     // 3. Wait for MMU response (skip if this is an abort transaction)

@@ -58,7 +58,7 @@ class ifu_monitor extends uvm_monitor;
     forever begin
       @(vif.monitor_cb iff vif.monitor_cb.ifu_mmu_va_vld);
       tr       = ifu_txn::type_id::create("ifu_req_mon");
-      tr.va    = vif.monitor_cb.ifu_mmu_va;
+      tr.va    = 63'(vif.monitor_cb.ifu_mmu_va << 1);  // ifu_mmu_va = VA[63:1]; recover VA[62:0] = ifu_mmu_va << 1
       tr.abort = vif.monitor_cb.ifu_mmu_abort;
       `uvm_info(get_type_name(), {"IFU REQ: ", tr.convert2string()}, UVM_HIGH)
       m_pending_req.push_back(tr); // Enqueue for req/rsp correlation

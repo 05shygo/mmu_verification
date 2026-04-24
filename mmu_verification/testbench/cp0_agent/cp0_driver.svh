@@ -77,18 +77,20 @@ class cp0_driver extends uvm_driver #(cp0_txn);
     endcase
   endtask
 
-  // ── SATP Write: wreg=1 for one cycle, reg_num=00 selects SATP ────────────
-  // RTL mmu_cp0_cmplt = tlboper_regs_cmplt | mcir_no_op — SATP writes do
-  // NOT generate a cmplt pulse.  Wait one settle cycle instead.
+  // ── SATP Write ───────────────────────────────────────────────────────────
+  // RTL: satp_write_en = cp0_mmu_satp_sel  (line 225 of ct_mmu_regs.v)
+  // SATP is written by asserting cp0_mmu_satp_sel=1 for ONE cycle with
+  // cp0_mmu_wdata valid.  cp0_mmu_wreg / reg_num are NOT involved in SATP
+  // writes (reg_num 0-3 address MIR/MEL/MEH/MCIR, not SATP).
+  // No cmplt pulse is generated — wait one settle cycle after de-assert.
   protected task _do_write_satp(cp0_txn tr);
     @(vif.driver_cb);
-    vif.driver_cb.cp0_mmu_satp_sel <= tr.satp_sel;
-    vif.driver_cb.cp0_mmu_wreg     <= 1'b1;
-    vif.driver_cb.cp0_mmu_reg_num  <= 2'b00;
+    vif.driver_cb.cp0_mmu_satp_sel <= 1'b1;   // write-enable: satp_write_en=1
     vif.driver_cb.cp0_mmu_wdata    <= tr.wdata;
-    @(vif.driver_cb);
-    vif.driver_cb.cp0_mmu_wreg     <= 1'b0;
-    @(vif.driver_cb);  // one cycle for the gated-clock flop to capture the write
+    @(vif.driver_cb);                          // gated clock fires, SATP latched
+    vif.driver_cb.cp0_mmu_satp_sel <= 1'b0;   // de-assert write-enable
+    vif.driver_cb.cp0_mmu_wdata    <= 64'h0;
+    @(vif.driver_cb);                          // settle cycle
     tr.cmplt = 1'b1;
   endtask
 

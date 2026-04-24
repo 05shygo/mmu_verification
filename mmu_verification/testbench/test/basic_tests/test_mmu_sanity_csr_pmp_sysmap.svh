@@ -47,11 +47,13 @@ class test_mmu_sanity_csr_pmp_sysmap extends test_base;
 
     // ── Step 1: CP0 init — SATP(Sv39), ICG_EN, PTW_EN, PRIV=M ──────────────
     cp0_seq = cp0_reg_rw_seq::type_id::create("cp0_seq");
+    // RTL: mmu_xx_mmu_en = (satp_mode==4'h8) && (cp0_yy_priv_mode != 2'b11)
+    // M-mode (2'b11) suppresses mmu_xx_mmu_en regardless of SATP — use S-mode.
     if (!cp0_seq.randomize() with {
           satp_val[63:60] == 4'h8;  // Sv39 MODE — drives mmu_xx_mmu_en=1
           ptw_en          == 1'b1;
           icg_en          == 1'b1;
-          priv_mode       == 2'b11; // M-mode
+          priv_mode       == 2'b01; // S-mode: mmu_xx_mmu_en requires priv!=M
         })
       `uvm_fatal(get_type_name(), "cp0_reg_rw_seq randomize() failed")
 

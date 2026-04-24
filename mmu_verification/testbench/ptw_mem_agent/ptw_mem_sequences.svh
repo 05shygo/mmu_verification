@@ -69,7 +69,7 @@ endclass : ptw_mem_bus_error_inject_seq
 class ptw_mem_illegal_pte_seq extends uvm_sequence;
   `uvm_object_utils(ptw_mem_illegal_pte_seq)
   rand va_t target_va;
-  rand string fault_kind;  // "V_OFF" / "RW_RESERVED" / etc.
+  string fault_kind;  // "V_OFF" / "RW_RESERVED" / etc.
   function new(string name = "ptw_mem_illegal_pte_seq"); super.new(name); endfunction
   virtual task body();
     // TODO (Phase 5): call builder.inject_fault(target_va, fault_kind)

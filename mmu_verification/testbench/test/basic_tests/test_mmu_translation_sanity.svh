@@ -257,6 +257,21 @@ class test_mmu_translation_sanity extends test_base;
     cp0_init.start(m_env.m_cp0.m_sequencer);
     `uvm_info(get_type_name(), "Step 2: SATP + CSR init complete", UVM_HIGH)
 
+    // ── Step 2b: SFENCE.VMA INV_ALL via LSU agent ──────────────────────────
+    // The CP0 tlb_all_inv (step 0) may timeout if the TLBOper FSM isn't idle.
+    // The SATP write (step 2) only clears L1 uTLBs (regs_utlb_clr), NOT L2 JTLB.
+    // Issue a SFENCE.VMA via LSU to guarantee L2 JTLB is also invalidated.
+    `uvm_info(get_type_name(),
+      "Step 2b: SFENCE.VMA INV_ALL via LSU (flush L2 JTLB)", UVM_MEDIUM)
+    begin
+      tlb_inv_all_seq sfence_seq;
+      sfence_seq = tlb_inv_all_seq::type_id::create("sfence_seq");
+      sfence_seq.num_txn = 1;
+      sfence_seq.start(m_env.m_lsu.m_sequencer);
+      #200ns;
+      `uvm_info(get_type_name(), "Step 2b done: SFENCE.VMA complete + 200ns settle", UVM_MEDIUM)
+    end
+
     // ── Step 3: Build 100 4K page mappings ──────────────────────────────────
     // The shared page_table_builder is used by both the PTW responder (DUT
     // memory interface) and mmu_ref_model.translate() → consistent view.

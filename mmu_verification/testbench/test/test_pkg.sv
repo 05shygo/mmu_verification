@@ -14,7 +14,14 @@ package test_pkg;
   timeprecision 1ps;
 
   import uvm_pkg::*;
-  import mmu_env_pkg::*;   // re-exports cp0/pmp/sysmap_cfg agent pkgs + env classes
+  import mmu_params_pkg::*;
+  import mmu_common_pkg::*;
+  import cp0_agent_pkg::*;
+  import pmp_agent_pkg::*;
+  import sysmap_cfg_agent_pkg::*;
+  import ifu_agent_pkg::*;
+  import lsu_agent_pkg::*;
+  import mmu_env_pkg::*;   // mmu_top_cfg, mmu_env
 
   `include "uvm_macros.svh"
 

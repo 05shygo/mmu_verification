@@ -14,10 +14,17 @@
 //     lsu p0/p1 ap_rsp → -1
 //     Upper bound  : L1_DTLB_ENTRIES (16)
 //
-//   m_l2_reqq_cnt  — L2 TLB request queue occupancy
-//     lsu p0/p1 ap_req → +1 (enters request queue)
-//     lsu p0/p1 ap_rsp → -1 (leaves request queue on hit/miss completion)
-//     Upper bound  : L2_REQQ_DEPTH (9)
+//   m_l2_reqq_cnt  — L2 TLB request queue occupancy (approximate)
+//     lsu p0/p1 ap_req → +1
+//     lsu p0/p1 ap_rsp → -1
+//     Upper bound  : L1_DTLB_MB_DEPTH (8)
+//
+//     LIMITATION: this counter increments for EVERY LSU request including
+//     L1-DTLB hits that return pa_vld in the same cycle and never enter L2.
+//     The true occupancy (L1-miss requests only) is always ≤ this count.
+//     The overflow check uses L1_DTLB_MB_DEPTH (8) which equals the DUT
+//     miss-buffer depth and the scheduler CREDIT_MAX — the tightest correct
+//     bound reachable without observing internal DUT hit/miss signals.
 //
 //   m_ptw_mbuf_cnt — PTW miss buffer occupancy
 //     ptw_mem ap_req → +1 (new PTW memory read issued)
@@ -240,10 +247,12 @@ class mmu_credit_sb extends uvm_scoreboard;
   endfunction
 
   protected function void _check_l2_reqq_bound();
-    if (m_l2_reqq_cnt > int'(L2_REQQ_DEPTH))
+    // Use L1_DTLB_MB_DEPTH (= scheduler CREDIT_MAX = 8) as the bound.
+    // L2_REQQ_DEPTH (9) includes one ITLB slot; LSU-only peak <= 8.
+    if (m_l2_reqq_cnt > int'(L1_DTLB_MB_DEPTH))
       `uvm_error(get_type_name(),
-        $sformatf("l2_reqq_cnt overflow: %0d > L2_REQQ_DEPTH=%0d",
-          m_l2_reqq_cnt, L2_REQQ_DEPTH))
+        $sformatf("l2_reqq_cnt overflow: %0d > L1_DTLB_MB_DEPTH=%0d",
+          m_l2_reqq_cnt, L1_DTLB_MB_DEPTH))
   endfunction
 
   protected function void _check_l1d_underflow();

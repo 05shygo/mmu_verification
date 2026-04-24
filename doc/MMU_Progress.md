@@ -15,7 +15,7 @@
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
 | **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
 | **Phase 4** | PTW 内存模型 + 参考模型 | A | ✅ 完成 | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0 |
-| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 退出准则验证中 | A/B 编码全部完成（22 项交付物）；首次联合仿真发现 3 个 Bug（P5-2 RTL+P5-3/4 TB），TB 侧已修复；RTL Bug P5-2 待 RTL 团队修复后重跑 |
+| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 退出准则验证中 | A/B 编码全部完成（22 项交付物）；第一轮仿真发现 P5-1/3/4（TB）已修复；P5-2（RTL）待修；第二轮仿真发现 P5-5（driver tlb_busy 协议违反，359 error 根因）和 P5-6（credit_sb 模型边界值）均已修复；等待 P5-2 RTL 修复后重跑 |
 | **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | ⏳ 等待 Phase 5 编译验证 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
 | **Phase 8** | Virtual Sequence 实现 | B | 🔒 等待 Phase 7 | — |
@@ -276,6 +276,15 @@
 | P5-3 | `testbench/test/basic_tests/test_mmu_translation_sanity.svh`<br>`lsu_mapped_va_seq.body()`（TB） | **TB Bug** | `mmu_credit_sb` 报 `credit_l1d=6` / `l2_reqq_cnt=6` 泄漏；`HPCP: dutlb_miss=9996`；仅 13 笔事务完成（预期 120+）；4 个 Pipe0/1 response timeout warning | `lsu_txn.vabuf`（28-bit）完全随机；DUT L1 DTLB miss buffer 用 `vabuf = VA[38:11]` 标识挂起项、匹配 L2 TLB refill wakeup；随机 vabuf 导致 miss buffer 项永远无法被唤醒，6 笔事务永久卡死 | ✅ **已修复**：在 `lsu_mapped_va_seq` 的 randomize with 中增加约束 `vabuf == 28'(({25'b0, m_va_table[idx]}) >> 11)` |
 | P5-4 | 同上，Step 9 settle 等待（TB） | **TB Bug** | `total_checked=131 < 200`，触发 `Translation SB checked only 131 transactions (expected ≥200)` error | `#10000ns` 等待仅 10 个时钟周期；每笔 LSU 超时耗时 4000 cycles（4000ns），120 笔事务最坏情况需要 ~480000ns 才能全部完成或超时 | ✅ **已修复**：`#10000ns` → `#500000ns` |
 
+### Phase 5 第二轮联合验证 Bug 修复记录（第二次运行：UVM_ERROR=359）
+
+> `make run TEST_NAME=test_mmu_translation_sanity` 第二轮运行（P5-1/3/4 修复后，P5-2 RTL bug 待修）发现以下 2 个 TB Bug，共产生 359 个 UVM_ERROR。
+
+| # | 文件 | 类型 | 现象 | 根因 | 修复 |
+|---|------|------|------|------|------|
+| P5-5 | `testbench/lsu_agent/lsu_driver.svh`<br>`_drive_pipe0()` / `_drive_pipe1()`（TB） | **TB Bug — 协议违反** | `mmu_credit_sb` 报 `l2_reqq_cnt overflow: 10→66 > 9`；`credit_l1d overflow`；大量 Pipe0/Pipe1 response timeout（每 4000 cycle 一次）；`mmu_translation_sb` 报 154/171 笔 PA mismatch（`ref.ppn=0x020X dut.pa=0x010X`，偏差 ≈ L2_REQQ_DEPTH=9）；`total_checked=171 < 200` | **驱动未检查 `mmu_lsu_tlb_busy` 背压信号**。RTL：`mmu_lsu_tlb_busy = &mb_entry_vld`（L1 DTLB 8 个 miss buffer 全满）；busy=1 时分配器不接受新条目，PTW 不会为该请求走页表，`pa_vld` 永远不会返回。<br>根因链：① `_fetch_items()` 立即 `item_done` → pipe0(100笔)/pipe1(20笔)同时入 m_pending，两个子线程并发驱动；② 两路并发请求快速耗尽 MB 8个槽（全部 unique page，全部 L1 miss）；③ busy=1 时驱动仍持续持有 va0_vld/va1_vld 长达 4000 cycle，DUT 忽略请求（无分配，无响应）；④ 超时后无 RSP：credit_sb REQ++ 后无 RSP-- → 计数累计溢出；monitor m_pending 乱序（新请求先于旧响应） → PA mismatch | ✅ **已修复**（`lsu_driver.svh`）：在 `_drive_pipe0()` / `_drive_pipe1()` 中，将原来的强制等待 `@(vif.driver_cb)` 替换为 `@(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)`。既保留最少 1-cycle 间隔，又确保 MB 有空闲槽后才发起请求，彻底消除超时根因 |
+| P5-6 | `testbench/env/mmu_credit_sb.svh`<br>`_check_l2_reqq_bound()`（TB） | **TB 模型错误** | `l2_reqq_cnt overflow: N > L2_REQQ_DEPTH=9` — 但实际未溢出硬件 | `m_l2_reqq_cnt` 对**所有** LSU 请求（含 L1 DTLB hit、即时返回的 pa_vld）+1，而实际 L2 REQQ 只接收 L1 miss 请求；L2_REQQ_DEPTH=9（含 1 ITLB 槽），LSU 侧实际 credit = scheduler CREDIT_MAX = `L1_DTLB_MB_DEPTH=8`。模型过计数 + 边界值偏高（应为 8）→ 假报溢出（溢出根因由 P5-5 超时引发，但边界值本身也错） | ✅ **已修复**（`mmu_credit_sb.svh`）：`_check_l2_reqq_bound()` 将上界从 `L2_REQQ_DEPTH(9)` 改为 `L1_DTLB_MB_DEPTH(8)`；顶部 header 注释补充"模型局限性"说明（L1 hit 无法从此层区分，真实 L2 占用 ≤ 计数值） |
+
 ### Phase 5 退出准则
 
 | # | 检查项 | 负责 | 状态 |
@@ -284,10 +293,10 @@
 | 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ⏳ 待运行（P5-1 VA 编码 bug 已修复）|
 | 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | ⏳ 待运行 |
 | 4 | miss→PTW→refill 混合，mismatch=0 | B | ⏳ 待运行（P5-2 RTL bug 待修复后验证）|
-| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ⏳ 待运行（P5-3/P5-4 TB bug 已修复）|
-| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | ⏳ 待运行（P5-3 vabuf 修复后预期恢复正常）|
+| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ⏳ 待运行（P5-5 driver tlb_busy 修复后预期消除所有 PA mismatch）|
+| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | ⏳ 待运行（P5-5 消除超时后 REQ/RSP 配对守恒，P5-6 修正边界值）|
 | 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ⏳ 待运行（已实现）|
-| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳ **待运行**（依赖 P5-2 RTL bug 修复）|
+| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳ **待运行**（依赖 P5-2 RTL bug 修复；P5-5/6 TB 修复已提交）|
 
 ---
 

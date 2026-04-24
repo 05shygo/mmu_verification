@@ -114,7 +114,11 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _get_kind(LSU_PIPE0, tr);
       `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
-      @(vif.driver_cb);
+      // RTL: mmu_lsu_tlb_busy = &mb_entry_vld (all 8 miss-buffer slots occupied).
+      // When busy=1 the allocator refuses new miss entries; the DUT will never
+      // generate pa0_vld for this request, causing a 4000-cycle timeout.
+      // Wait until at least one MB slot is free before presenting va0_vld.
+      @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
       vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
       vif.driver_cb.lsu_mmu_va0      <= tr.va;
       vif.driver_cb.lsu_mmu_id0      <= tr.id;
@@ -156,7 +160,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _get_kind(LSU_PIPE1, tr);
       `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
-      @(vif.driver_cb);
+      // Same backpressure check as pipe0: wait for MB not full.
+      @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
       vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
       vif.driver_cb.lsu_mmu_va1      <= tr.va;
       vif.driver_cb.lsu_mmu_id1      <= tr.id;

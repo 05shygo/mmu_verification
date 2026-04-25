@@ -117,9 +117,11 @@ class mmu_env extends uvm_env;
     // LSU pipe0
     m_lsu.m_monitor.ap_pipe0_req.connect(m_credit_sb.af_lsu_p0_req.analysis_export);
     m_lsu.m_monitor.ap_pipe0_rsp.connect(m_credit_sb.af_lsu_p0_rsp.analysis_export);
+    m_lsu.m_monitor.ap_pipe0_drop.connect(m_credit_sb.af_lsu_p0_drop.analysis_export);
     // LSU pipe1
     m_lsu.m_monitor.ap_pipe1_req.connect(m_credit_sb.af_lsu_p1_req.analysis_export);
     m_lsu.m_monitor.ap_pipe1_rsp.connect(m_credit_sb.af_lsu_p1_rsp.analysis_export);
+    m_lsu.m_monitor.ap_pipe1_drop.connect(m_credit_sb.af_lsu_p1_drop.analysis_export);
     // PTW memory channel
     m_ptw_mem.m_monitor.ap_req.connect(m_credit_sb.af_ptw_req.analysis_export);
     m_ptw_mem.m_monitor.ap_rsp.connect(m_credit_sb.af_ptw_rsp.analysis_export);

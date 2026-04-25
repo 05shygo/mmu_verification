@@ -29,9 +29,11 @@ class lsu_monitor extends uvm_monitor;
   // Pipe 0
   uvm_analysis_port #(lsu_txn) ap_pipe0_req;
   uvm_analysis_port #(lsu_txn) ap_pipe0_rsp;
+  uvm_analysis_port #(lsu_txn) ap_pipe0_drop;
   // Pipe 1
   uvm_analysis_port #(lsu_txn) ap_pipe1_req;
   uvm_analysis_port #(lsu_txn) ap_pipe1_rsp;
+  uvm_analysis_port #(lsu_txn) ap_pipe1_drop;
   // Pipe 2 (prefetch)
   uvm_analysis_port #(lsu_txn) ap_pipe2_req;
   uvm_analysis_port #(lsu_txn) ap_pipe2_rsp;
@@ -61,8 +63,10 @@ class lsu_monitor extends uvm_monitor;
       `uvm_fatal(get_type_name(), "Cannot get LSU_VIF from config_db")
     ap_pipe0_req = new("ap_pipe0_req", this);
     ap_pipe0_rsp = new("ap_pipe0_rsp", this);
+    ap_pipe0_drop = new("ap_pipe0_drop", this);
     ap_pipe1_req = new("ap_pipe1_req", this);
     ap_pipe1_rsp = new("ap_pipe1_rsp", this);
+    ap_pipe1_drop = new("ap_pipe1_drop", this);
     ap_pipe2_req = new("ap_pipe2_req", this);
     ap_pipe2_rsp = new("ap_pipe2_rsp", this);
     ap_inv       = new("ap_inv",       this);
@@ -98,6 +102,8 @@ class lsu_monitor extends uvm_monitor;
       tr.st_inst  = vif.monitor_cb.lsu_mmu_st_inst0;
       tr.abort    = vif.monitor_cb.lsu_mmu_abort0;
       tr.vabuf    = vif.monitor_cb.lsu_mmu_vabuf0;
+      tr.tlb_busy = vif.monitor_cb.mmu_lsu_tlb_busy;
+      tr.tlb_wakeup = vif.monitor_cb.mmu_lsu_tlb_wakeup;
       `uvm_info(get_type_name(),
         $sformatf("[LSU_P0_REQ_DBG] va=0x%010h id=%0d st=%0b abort=%0b mmu_en=%0b tlb_busy=%0b tlb_wakeup=0x%03h",
           {1'b0, tr.va[38:0]}, tr.id, tr.st_inst, tr.abort,
@@ -112,10 +118,12 @@ class lsu_monitor extends uvm_monitor;
       // If va0_vld fell without a matching pa0_vld (driver timeout),
       // discard the pending entry to prevent FIFO desync.
       if (!m_p0_rsp_seen && m_pending_p0.size() > 0) begin
-        void'(m_pending_p0.pop_back());
+        lsu_txn drop_tr;
+        drop_tr = m_pending_p0.pop_back();
         `uvm_info(get_type_name(),
           $sformatf("P0 REQ dropped (no pa0_vld before va0_vld deassert): VA=0x%016h id=%0d",
             tr.va, tr.id), UVM_MEDIUM)
+        ap_pipe0_drop.write(drop_tr);
       end
     end
   endtask
@@ -133,6 +141,8 @@ class lsu_monitor extends uvm_monitor;
       tr.stall        = vif.monitor_cb.mmu_lsu_stall0;
       tr.sec          = vif.monitor_cb.mmu_lsu_sec0;
       tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
+      tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
+      tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
       wait(m_pending_p0.size() > 0);
       req_tr      = m_pending_p0.pop_front();
@@ -141,17 +151,11 @@ class lsu_monitor extends uvm_monitor;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P0_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b replay_suspect=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
+        $sformatf("[LSU_P0_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b expt_replay_rsp=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
-          tr.mmu_en, (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])),
+          tr.mmu_en, (tr.mmu_en && (tr.pgflt || tr.access_fault)),
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p0.size()),
         UVM_MEDIUM)
-      if (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])) begin
-        `uvm_warning(get_type_name(),
-          $sformatf("[LSU_P0_BYPASS_SUSPECT] pa==va_vpn on non-fault rsp: va=0x%010h id=%0d pa=0x%07h stall=%0b busy=%0b wakeup=0x%03h",
-            {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.stall,
-            vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup))
-      end
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_pipe0_rsp.write(tr);
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa0_vld);
@@ -172,6 +176,8 @@ class lsu_monitor extends uvm_monitor;
       tr.st_inst = vif.monitor_cb.lsu_mmu_st_inst1;
       tr.abort   = vif.monitor_cb.lsu_mmu_abort1;
       tr.vabuf   = vif.monitor_cb.lsu_mmu_vabuf1;
+      tr.tlb_busy = vif.monitor_cb.mmu_lsu_tlb_busy;
+      tr.tlb_wakeup = vif.monitor_cb.mmu_lsu_tlb_wakeup;
       `uvm_info(get_type_name(),
         $sformatf("[LSU_P1_REQ_DBG] va=0x%010h id=%0d st=%0b abort=%0b mmu_en=%0b tlb_busy=%0b tlb_wakeup=0x%03h",
           {1'b0, tr.va[38:0]}, tr.id, tr.st_inst, tr.abort,
@@ -182,10 +188,12 @@ class lsu_monitor extends uvm_monitor;
       ap_pipe1_req.write(tr);
       @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va1_vld);
       if (!m_p1_rsp_seen && m_pending_p1.size() > 0) begin
-        void'(m_pending_p1.pop_back());
+        lsu_txn drop_tr;
+        drop_tr = m_pending_p1.pop_back();
         `uvm_info(get_type_name(),
           $sformatf("P1 REQ dropped (no pa1_vld before va1_vld deassert): VA=0x%016h id=%0d",
             tr.va, tr.id), UVM_MEDIUM)
+        ap_pipe1_drop.write(drop_tr);
       end
     end
   endtask
@@ -203,6 +211,8 @@ class lsu_monitor extends uvm_monitor;
       tr.stall        = vif.monitor_cb.mmu_lsu_stall1;
       tr.sec          = vif.monitor_cb.mmu_lsu_sec1;
       tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
+      tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
+      tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
       wait(m_pending_p1.size() > 0);
       req_tr      = m_pending_p1.pop_front();
       m_p1_rsp_seen = 1;
@@ -210,17 +220,11 @@ class lsu_monitor extends uvm_monitor;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P1_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b replay_suspect=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
+        $sformatf("[LSU_P1_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b expt_replay_rsp=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
-          tr.mmu_en, (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])),
+          tr.mmu_en, (tr.mmu_en && (tr.pgflt || tr.access_fault)),
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p1.size()),
         UVM_MEDIUM)
-      if (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])) begin
-        `uvm_warning(get_type_name(),
-          $sformatf("[LSU_P1_BYPASS_SUSPECT] pa==va_vpn on non-fault rsp: va=0x%010h id=%0d pa=0x%07h stall=%0b busy=%0b wakeup=0x%03h",
-            {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.stall,
-            vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup))
-      end
       ap_pipe1_rsp.write(tr);
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa1_vld);
     end

@@ -1249,7 +1249,7 @@ mmu_l1dtlb_install #(
 );
 
 assign mmu_lsu_tlb_wakeup = install_wakeup | expt_wakeup;
-assign mmu_lsu_tlb_busy = &mb_entry_vld;
+assign mmu_lsu_tlb_busy = |mb_entry_vld;
 
 //!************************************************
 //! Status Outputs

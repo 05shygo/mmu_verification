@@ -5,11 +5,10 @@
 //
 // Protocol:
 //   1. Insert idle_cycles idle beats before asserting request
-//   2. Assert ifu_mmu_va_vld=1 + va + abort for exactly 1 cycle
-//   3. De-assert va_vld / abort
-//   4. If abort==0: fork { wait mmu_ifu_pavld → fill response fields }
-//                       / { 2000-cycle timeout → UVM_WARNING }
-//                  join_any; disable fork
+//   2. Assert ifu_mmu_va_vld=1 + va + abort
+//   3. If abort==0, hold the same PC until mmu_ifu_pavld returns
+//      (core miss-hold behavior: no new PC while the miss is pending)
+//   4. If abort==1, deassert after one cycle
 // =============================================================================
 `ifndef IFU_DRIVER_SVH
 `define IFU_DRIVER_SVH
@@ -87,11 +86,10 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       @(vif.driver_cb);
       fork
         begin : wait_ifu_rsp
-          // Avoid level-sensitive false trigger on stale pavld=1:
-          // first wait until pavld is observed low, then wait for next high.
-          // This enforces one clean low->high response edge per request.
-          @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b0);
-          @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
+          // Hit responses can be visible immediately after the request cycle.
+          // Miss responses require holding the same PC until pavld returns.
+          if (vif.driver_cb.mmu_ifu_pavld !== 1'b1)
+            @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
           `uvm_info(get_type_name(),
             $sformatf("[IFU_DRV_RSP_EDGE_DBG] rsp edge: va=0x%010h pavld=%0b pa=0x%07h pgflt=%0b deny=%0b",
               {1'b0, tr.va[38:0]}, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa,

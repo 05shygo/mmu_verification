@@ -85,13 +85,18 @@ interface lsu_if (
   logic        mmu_lsu_tlb_inv_done;
 
   // =========================================================================
-  // L1DTLB → LSU Broadcast Subgroup (v7.3: moved from ptw_mem_if)
-  //   Source: mmu_l1dtlb.sv  (&mb_entry_vld → busy; install → wakeup)
-  //           ct_mmu_regs.v L645 (SATP.mode → mmu_en)
+  // L1DTLB -> LSU Broadcast Subgroup (v7.3: moved from ptw_mem_if)
+  //   Source: mmu_l1dtlb.sv / mmu_l1dtlb_install.sv / ct_mmu_regs.v
   // =========================================================================
-  // mmu_lsu_tlb_busy:    L1 DTLB Miss Buffer全满, 通知 LSU 停止发请求
-  // mmu_lsu_tlb_wakeup:  MB 有空槽 OR L1DTLB page-fault, 唤醒 LSU 12 个 LSIQ entry
-  // mmu_lsu_mmu_en:      MMU 使能广播 (SATP.mode != 0)
+  // mmu_lsu_tlb_busy:
+  //   |mb_entry_vld.  Any in-flight L1DTLB miss/refill tells LSU/IDU LSIQ to
+  //   use the TLB-busy restart path instead of immediate retry.
+  // mmu_lsu_tlb_wakeup:
+  //   Completion/replay release vector.  Broadcast completion events release
+  //   LSIQ tlb_busy latches; exception CAM wakeups may also make LSU retry so
+  //   the request can hit the replay CAM.
+  // mmu_lsu_mmu_en:
+  //   MMU enable broadcast (SATP.mode != 0).
   logic        mmu_lsu_tlb_busy;
   logic [11:0] mmu_lsu_tlb_wakeup;
   logic        mmu_lsu_mmu_en;

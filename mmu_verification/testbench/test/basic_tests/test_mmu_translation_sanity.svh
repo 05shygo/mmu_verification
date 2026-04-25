@@ -452,10 +452,10 @@ class test_mmu_translation_sanity extends test_base;
     // ── Final status report ──────────────────────────────────────────────────
     `uvm_info(get_type_name(),
       $sformatf(
-        "=== Phase 5 Sanity Test COMPLETE ===  SB total_checked=%0d mismatch=%0d replay_suspect=%0d replay_mismatch=%0d",
+        "=== Phase 5 Sanity Test COMPLETE ===  SB total_checked=%0d mismatch=%0d fault_replay_rsp=%0d replay_mismatch=%0d",
         m_env.m_translation_sb.m_total_checked,
         m_env.m_translation_sb.m_mismatch,
-        m_env.m_translation_sb.m_lsu_replay_suspect,
+        m_env.m_translation_sb.m_lsu_fault_replay_rsp,
         m_env.m_translation_sb.m_lsu_replay_mismatch),
       UVM_LOW)
 

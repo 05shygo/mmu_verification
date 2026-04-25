@@ -218,8 +218,8 @@ assign plru_refill_way  = (16'b1 << replace_idx);
 // 3. WFI Entry Wins Arbitration
 
 logic [11:0] wakeup_vec_next;
-logic	     mb_have_free;
-logic	     ptw_ref_fualt;
+logic	     wakeup_event;
+logic	     ptw_ref_fault;
 logic	     l2tlb_ref_fault;
 logic	     l1dtlb_expt_for_taken;
 
@@ -227,11 +227,8 @@ assign ptw_ref_fault = (ptw_l1dtlb_ref_cmplt && req_ptw_expt && !req_ptw_aborted
 assign l2tlb_ref_fault = (jtlb_dutlb_ref_cmplt && req_jtlb_expt && !req_jtlb_aborted);
 
 assign l1dtlb_expt_for_taken = ptw_ref_fault | l2tlb_ref_fault;
-
-assign mb_have_free  =  |(~mb_entry_vld);
-
-assign wakeup_vec_next = {12{mb_have_free}}    & {12{1'b1}}
-		       | {12{l1dtlb_expt_for_taken}} & {12{1'b1}};
+assign wakeup_event = sel_ptw || sel_jtlb || sel_wfi || l1dtlb_expt_for_taken;
+assign wakeup_vec_next = {12{wakeup_event}};
 
 
 

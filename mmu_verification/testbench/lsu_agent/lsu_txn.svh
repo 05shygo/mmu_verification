@@ -44,6 +44,8 @@ class lsu_txn extends uvm_sequence_item;
     `uvm_field_int(stall,            UVM_ALL_ON)
     `uvm_field_int(sec,              UVM_ALL_ON)
     `uvm_field_int(mmu_en,           UVM_ALL_ON)
+    `uvm_field_int(tlb_busy,         UVM_ALL_ON)
+    `uvm_field_int(tlb_wakeup,       UVM_ALL_ON)
     `uvm_field_int(inv_done,         UVM_ALL_ON)
   `uvm_object_utils_end
 
@@ -78,6 +80,8 @@ class lsu_txn extends uvm_sequence_item;
   bit        stall;       // MMU stall (TLB miss)
   bit        sec;         // Secure attribute
   bit        mmu_en;      // Sampled mmu_lsu_mmu_en at response cycle
+  bit        tlb_busy;    // Sampled mmu_lsu_tlb_busy
+  bit [11:0] tlb_wakeup;  // Sampled mmu_lsu_tlb_wakeup
   bit        inv_done;    // TLB invalidation done (inv sub-channel)
 
   // ── Constraints ──────────────────────────────────────────────────────────
@@ -98,8 +102,9 @@ class lsu_txn extends uvm_sequence_item;
     case (kind)
       LSU_PIPE0, LSU_PIPE1:
         return $sformatf(
-          "kind=%s va=0x%016h id=%0d st=%0b abort=%0b | pa=0x%07h pgflt=%0b stall=%0b",
-          kind.name(), va, id, st_inst, abort, pa, pgflt, stall);
+          "kind=%s va=0x%016h id=%0d st=%0b abort=%0b | pa=0x%07h pgflt=%0b acflt=%0b stall=%0b busy=%0b wakeup=0x%03h",
+          kind.name(), va, id, st_inst, abort, pa, pgflt, access_fault,
+          stall, tlb_busy, tlb_wakeup);
       LSU_PIPE2:
         return $sformatf("kind=PIPE2 va2=0x%07h", va2);
       LSU_STAMO:

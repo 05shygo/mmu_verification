@@ -53,8 +53,14 @@ class lsu_cg_wrapper extends uvm_component;
   // ── L1DTLB→LSU broadcast coverage ───────────────────────────────────────
   covergroup cg_tlb_status;
     cp_tlb_busy   : coverpoint vif.mmu_lsu_tlb_busy;
+    cp_wakeup_kind : coverpoint vif.mmu_lsu_tlb_wakeup {
+      bins none      = {12'h000};
+      bins broadcast = {12'hfff};
+      bins targeted  = {[12'h001:12'hffe]};
+    }
     cp_mmu_en     : coverpoint vif.mmu_lsu_mmu_en;
     cx_busy_en    : cross cp_tlb_busy, cp_mmu_en;
+    cx_busy_wakeup : cross cp_tlb_busy, cp_wakeup_kind;
   endgroup
 
   function new(string name, uvm_component parent);

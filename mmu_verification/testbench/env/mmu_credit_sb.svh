@@ -23,8 +23,8 @@
 //     Three categories exist:
 //       (1) L1 DTLB hit → rsp returns same cycle, never enters MB
 //       (2) L1 miss + MB has slot → enters MB, serviced by PTW
-//       (3) L1 miss + MB full → request sleeps at LSU side, awaiting
-//           mmu_lsu_tlb_wakeup before re-issuing to MMU
+//       (3) L1 miss while MMU reports tlb_busy → request sleeps at LSU/LSIQ
+//           side, awaiting mmu_lsu_tlb_wakeup before re-issuing to MMU
 //     This counter includes ALL three categories.  The true MB occupancy
 //     (category 2 only) is always ≤ this count.  Overflow beyond
 //     L1_DTLB_MB_DEPTH is therefore a WARNING (expected under backpressure),
@@ -41,7 +41,8 @@
 //
 // Eight TLM analysis FIFOs (one per AP stream):
 //   af_ifu_req, af_ifu_rsp, af_ifu_drop,
-//   af_lsu_p0_req, af_lsu_p0_rsp, af_lsu_p1_req, af_lsu_p1_rsp,
+//   af_lsu_p0_req, af_lsu_p0_rsp, af_lsu_p0_drop,
+//   af_lsu_p1_req, af_lsu_p1_rsp, af_lsu_p1_drop,
 //   af_ptw_req, af_ptw_rsp
 //
 // Connected in mmu_env::connect_phase (fan-out from monitors).
@@ -61,9 +62,11 @@ class mmu_credit_sb extends uvm_scoreboard;
   // LSU pipe 0
   uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p0_req;
   uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p0_rsp;
+  uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p0_drop;
   // LSU pipe 1
   uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p1_req;
   uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p1_rsp;
+  uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p1_drop;
   // PTW memory channel
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_req;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_rsp;
@@ -99,8 +102,10 @@ class mmu_credit_sb extends uvm_scoreboard;
     af_ifu_drop   = new("af_ifu_drop",   this);
     af_lsu_p0_req = new("af_lsu_p0_req", this);
     af_lsu_p0_rsp = new("af_lsu_p0_rsp", this);
+    af_lsu_p0_drop = new("af_lsu_p0_drop", this);
     af_lsu_p1_req = new("af_lsu_p1_req", this);
     af_lsu_p1_rsp = new("af_lsu_p1_rsp", this);
+    af_lsu_p1_drop = new("af_lsu_p1_drop", this);
     af_ptw_req    = new("af_ptw_req",    this);
     af_ptw_rsp    = new("af_ptw_rsp",    this);
   endfunction
@@ -113,8 +118,10 @@ class mmu_credit_sb extends uvm_scoreboard;
       _consume_ifu_drop();
       _consume_lsu_p0_req();
       _consume_lsu_p0_rsp();
+      _consume_lsu_p0_drop();
       _consume_lsu_p1_req();
       _consume_lsu_p1_rsp();
+      _consume_lsu_p1_drop();
       _consume_ptw_req();
       _consume_ptw_rsp();
     join_none
@@ -221,6 +228,21 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endtask
 
+  // ── LSU pipe0 retry/drop compensation ───────────────────────────────────
+  protected task _consume_lsu_p0_drop();
+    lsu_txn tr;
+    forever begin
+      af_lsu_p0_drop.get(tr);
+      m_credit_l1d--;
+      m_lsu_ext_outstanding--;
+      _check_l1d_underflow();
+      _check_lsu_ext_underflow();
+      `uvm_info(get_type_name(),
+        $sformatf("LSU_P0_DROP: credit_l1d=%0d lsu_ext=%0d",
+          m_credit_l1d, m_lsu_ext_outstanding), UVM_HIGH)
+    end
+  endtask
+
   // ── LSU pipe1 request: credit_l1d +1, lsu_ext_outstanding +1 ────────────
   protected task _consume_lsu_p1_req();
     lsu_txn tr;
@@ -249,6 +271,21 @@ class mmu_credit_sb extends uvm_scoreboard;
       _check_lsu_ext_underflow();
       `uvm_info(get_type_name(),
         $sformatf("LSU_P1_RSP: credit_l1d=%0d lsu_ext=%0d",
+          m_credit_l1d, m_lsu_ext_outstanding), UVM_HIGH)
+    end
+  endtask
+
+  // ── LSU pipe1 retry/drop compensation ───────────────────────────────────
+  protected task _consume_lsu_p1_drop();
+    lsu_txn tr;
+    forever begin
+      af_lsu_p1_drop.get(tr);
+      m_credit_l1d--;
+      m_lsu_ext_outstanding--;
+      _check_l1d_underflow();
+      _check_lsu_ext_underflow();
+      `uvm_info(get_type_name(),
+        $sformatf("LSU_P1_DROP: credit_l1d=%0d lsu_ext=%0d",
           m_credit_l1d, m_lsu_ext_outstanding), UVM_HIGH)
     end
   endtask

@@ -333,6 +333,19 @@ assign mmu_pmp_pa_x[PPN_WIDTH-1:0] = dutlb_pa_buf[PPN_WIDTH-1:0];
 assign utlb_req_vpn_x[VPN_WIDTH-1:0] = lsu_mmu_va_x[VPN_WIDTH+11:12];
 assign mmu_sysmap_pa_x[PPN_WIDTH-1:0] = lsu_mmu_va_x[VPN_WIDTH+12:12];
 
+`ifndef SYNTHESIS
+// Debug: trace why PA path selects bypass (VA[38:12]) vs TLB hit PPN.
+always @(posedge dutlb_clk) begin
+  if (lsu_mmu_va_vld_x) begin
+    $display("[MMU_DTLB_HIT_RD_DBG] t=%0t va=0x%016h id=%0d pre_sel=%0b off_hit=%0b !va_vld=%0b va_illegal=%0b expt_match=%0b stamo_vld=%0b hit_vld=%0b miss=%0b fin_pa=0x%07h off_pa=0x%07h entry_pa=0x%07h",
+      $time, lsu_mmu_va_x, lsu_mmu_id_x,
+      dutlb_pre_sel, dutlb_off_hit, !lsu_mmu_va_vld_x, dutlb_va_illegal, dutlb_expt_match, lsu_mmu_stamo_vld_x,
+      mmu_lsu_pa_vld_x, dutlb_miss_vld_x,
+      dutlb_fin_pa, dutlb_off_pa, dutlb_entry_pa);
+  end
+end
+`endif
+
 endmodule
 
 

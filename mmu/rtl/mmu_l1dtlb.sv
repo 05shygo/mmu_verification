@@ -285,6 +285,18 @@ assign dutlb_ori_read1 = !lsu_mmu_st_inst1;
 assign dutlb_read_type0 = dutlb_ori_read0;
 assign dutlb_read_type1 = dutlb_ori_read1;
 
+`ifndef SYNTHESIS
+// Debug: trace MMU-off decision chain seen by LSU DTLB path.
+always @(posedge dutlb_clk) begin
+  if (lsu_mmu_va0_vld || lsu_mmu_va1_vld) begin
+    $display("[MMU_DTLB_TOP_DBG] t=%0t va0_vld=%0b va1_vld=%0b regs_mmu_en=%0b cp0_mprv=%0b cp0_mpp=%02b cp0_priv=%02b cp0_mach_mode=%0b cp0_supv_mode=%0b cp0_user_mode=%0b dutlb_xx_mmu_off=%0b",
+      $time, lsu_mmu_va0_vld, lsu_mmu_va1_vld,
+      regs_mmu_en, cp0_mmu_mprv, cp0_mmu_mpp, cp0_priv_mode,
+      cp0_mach_mode, cp0_supv_mode, cp0_user_mode, dutlb_xx_mmu_off);
+  end
+end
+`endif
+
 //!************************************************
 //! PLRU Instance
 //!************************************************

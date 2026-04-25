@@ -83,6 +83,10 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       @(vif.driver_cb);
       fork
         begin : wait_ifu_rsp
+          // Avoid level-sensitive false trigger on stale pavld=1:
+          // first wait until pavld is observed low, then wait for next high.
+          // This enforces one clean low->high response edge per request.
+          @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b0);
           @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
           tr.pa      = vif.driver_cb.mmu_ifu_pa;
           tr.pgflt   = vif.driver_cb.mmu_ifu_pgflt;

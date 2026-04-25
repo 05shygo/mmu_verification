@@ -110,24 +110,26 @@ class ifu_monitor extends uvm_monitor;
             {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}))
       end
 
-      // If request disappears without a response, drop it to prevent deadlock.
+      // If request disappears without a response:
+      // - abort req: close immediately (expected)
+      // - non-abort req: keep pending for potential late pavld (debug localization)
       if (m_has_pending && !vif.monitor_cb.ifu_mmu_va_vld) begin
-        ifu_txn drop_tr;
-        drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
-        drop_tr.va    = m_pending_req.va;
-        drop_tr.abort = m_pending_req.abort;
         if (m_pending_req.abort) begin
+          ifu_txn drop_tr;
+          drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
+          drop_tr.va    = m_pending_req.va;
+          drop_tr.abort = m_pending_req.abort;
           // Abort request is allowed to terminate without pavld.
           `uvm_info(get_type_name(),
             $sformatf("IFU abort req closed on va_vld deassert: va=0x%010h",
               {1'b0, m_pending_req.va[38:0]}), UVM_MEDIUM)
+          m_has_pending = 1'b0;
+          ap_drop.write(drop_tr);
         end else begin
           `uvm_warning(get_type_name(),
-            $sformatf("IFU pending req dropped on va_vld deassert: va=0x%010h",
+            $sformatf("IFU pending req kept on va_vld deassert (await late pavld): va=0x%010h",
               {1'b0, m_pending_req.va[38:0]}))
         end
-        m_has_pending = 1'b0;
-        ap_drop.write(drop_tr);
       end
     end
   endtask

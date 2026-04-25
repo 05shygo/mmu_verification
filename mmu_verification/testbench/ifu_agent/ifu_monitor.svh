@@ -116,9 +116,16 @@ class ifu_monitor extends uvm_monitor;
         drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
         drop_tr.va    = m_pending_req.va;
         drop_tr.abort = m_pending_req.abort;
-        `uvm_warning(get_type_name(),
-          $sformatf("IFU pending req dropped on va_vld deassert: va=0x%010h",
-            {1'b0, m_pending_req.va[38:0]}))
+        if (m_pending_req.abort) begin
+          // Abort request is allowed to terminate without pavld.
+          `uvm_info(get_type_name(),
+            $sformatf("IFU abort req closed on va_vld deassert: va=0x%010h",
+              {1'b0, m_pending_req.va[38:0]}), UVM_MEDIUM)
+        end else begin
+          `uvm_warning(get_type_name(),
+            $sformatf("IFU pending req dropped on va_vld deassert: va=0x%010h",
+              {1'b0, m_pending_req.va[38:0]}))
+        end
         m_has_pending = 1'b0;
         ap_drop.write(drop_tr);
       end

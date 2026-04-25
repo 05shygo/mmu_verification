@@ -113,6 +113,7 @@ class mmu_env extends uvm_env;
     // IFU: ap_req (request) + ap_rsp (merged response)
     m_ifu.m_monitor.ap_req.connect(m_credit_sb.af_ifu_req.analysis_export);
     m_ifu.m_monitor.ap_rsp.connect(m_credit_sb.af_ifu_rsp.analysis_export);
+    m_ifu.m_monitor.ap_drop.connect(m_credit_sb.af_ifu_drop.analysis_export);
     // LSU pipe0
     m_lsu.m_monitor.ap_pipe0_req.connect(m_credit_sb.af_lsu_p0_req.analysis_export);
     m_lsu.m_monitor.ap_pipe0_rsp.connect(m_credit_sb.af_lsu_p0_rsp.analysis_export);

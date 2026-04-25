@@ -40,7 +40,7 @@
 // requests were never re-issued (expected under timeout/backpressure).
 //
 // Eight TLM analysis FIFOs (one per AP stream):
-//   af_ifu_req, af_ifu_rsp,
+//   af_ifu_req, af_ifu_rsp, af_ifu_drop,
 //   af_lsu_p0_req, af_lsu_p0_rsp, af_lsu_p1_req, af_lsu_p1_rsp,
 //   af_ptw_req, af_ptw_rsp
 //
@@ -57,6 +57,7 @@ class mmu_credit_sb extends uvm_scoreboard;
   // IFU
   uvm_tlm_analysis_fifo #(ifu_txn)      af_ifu_req;
   uvm_tlm_analysis_fifo #(ifu_txn)      af_ifu_rsp;
+  uvm_tlm_analysis_fifo #(ifu_txn)      af_ifu_drop;
   // LSU pipe 0
   uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p0_req;
   uvm_tlm_analysis_fifo #(lsu_txn)      af_lsu_p0_rsp;
@@ -95,6 +96,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     super.build_phase(phase);
     af_ifu_req    = new("af_ifu_req",    this);
     af_ifu_rsp    = new("af_ifu_rsp",    this);
+    af_ifu_drop   = new("af_ifu_drop",   this);
     af_lsu_p0_req = new("af_lsu_p0_req", this);
     af_lsu_p0_rsp = new("af_lsu_p0_rsp", this);
     af_lsu_p1_req = new("af_lsu_p1_req", this);
@@ -108,6 +110,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     fork
       _consume_ifu_req();
       _consume_ifu_rsp();
+      _consume_ifu_drop();
       _consume_lsu_p0_req();
       _consume_lsu_p0_rsp();
       _consume_lsu_p1_req();
@@ -158,6 +161,31 @@ class mmu_credit_sb extends uvm_scoreboard;
             m_credit_l1i))
       `uvm_info(get_type_name(),
         $sformatf("IFU_RSP: credit_l1i=%0d", m_credit_l1i), UVM_HIGH)
+    end
+  endtask
+
+  // ── IFU dropped pending request: credit_l1i -1 (compensation path) ───────
+  // For IFU hold protocol, a monitor-side dropped pending req means a request
+  // was previously counted at ap_req but finished without a visible ap_rsp.
+  // Compensate credit to keep req/rsp conservation aligned with observed flow.
+  protected task _consume_ifu_drop();
+    ifu_txn tr;
+    forever begin
+      af_ifu_drop.get(tr);
+      if (tr.abort) begin
+        `uvm_info(get_type_name(),
+          "IFU_DROP abort-tagged txn observed: skip credit_l1i accounting", UVM_HIGH)
+        continue;
+      end
+      m_credit_l1i--;
+      if (m_credit_l1i < 0) begin
+        `uvm_warning(get_type_name(),
+          $sformatf("credit_l1i drop-comp underflow: %0d (drop without matching req?)",
+            m_credit_l1i))
+        m_credit_l1i = 0;
+      end
+      `uvm_info(get_type_name(),
+        $sformatf("IFU_DROP: credit_l1i=%0d", m_credit_l1i), UVM_HIGH)
     end
   endtask
 

@@ -29,10 +29,6 @@ class ifu_monitor extends uvm_monitor;
   // IFU is 1-outstanding (no out-of-order), FIFO pop is safe.
   protected ifu_txn m_pending_req[$];
 
-  // Timeout-resilience flag: set by _collect_rsp when pavld arrives,
-  // checked by _collect_req when va_vld deasserts.
-  protected bit m_rsp_seen;
-
   function new(string name, uvm_component parent);
     super.new(name, parent);
   endfunction
@@ -65,17 +61,19 @@ class ifu_monitor extends uvm_monitor;
       tr.va    = 63'(vif.monitor_cb.ifu_mmu_va << 1);
       tr.abort = vif.monitor_cb.ifu_mmu_abort;
       `uvm_info(get_type_name(), {"IFU REQ: ", tr.convert2string()}, UVM_HIGH)
-      m_rsp_seen = 0;
+      // IFU protocol is 1-outstanding. If an old request is still pending here,
+      // it means no response was observed before the next request started.
+      // Drop stale pending entry immediately to prevent req/rsp cross-pairing.
+      if (m_pending_req.size() > 0) begin
+        ifu_txn stale_tr;
+        stale_tr = m_pending_req.pop_front();
+        `uvm_warning(get_type_name(),
+          $sformatf("IFU stale pending req dropped before new req: stale_va=0x%010h new_va=0x%010h",
+            {1'b0, stale_tr.va[38:0]}, {1'b0, tr.va[38:0]}))
+      end
       m_pending_req.push_back(tr);
       ap_req.write(tr);
       @(vif.monitor_cb iff !vif.monitor_cb.ifu_mmu_va_vld);
-      // If va_vld fell without pavld (driver timeout), discard pending entry.
-      if (!m_rsp_seen && m_pending_req.size() > 0) begin
-        void'(m_pending_req.pop_back());
-        `uvm_info(get_type_name(),
-          $sformatf("IFU REQ dropped (no pavld before va_vld deassert): VA=0x%010h",
-            {1'b0, tr.va[38:0]}), UVM_MEDIUM)
-      end
     end
   endtask
 
@@ -84,6 +82,15 @@ class ifu_monitor extends uvm_monitor;
     ifu_txn tr, req_tr;
     forever begin
       @(vif.monitor_cb iff vif.monitor_cb.mmu_ifu_pavld);
+      if (m_pending_req.size() == 0) begin
+        `uvm_warning(get_type_name(),
+          $sformatf("IFU rsp observed without pending req: pa=0x%07h pgflt=%0b deny=%0b",
+            vif.monitor_cb.mmu_ifu_pa,
+            vif.monitor_cb.mmu_ifu_pgflt,
+            vif.monitor_cb.mmu_ifu_deny))
+        @(vif.monitor_cb iff !vif.monitor_cb.mmu_ifu_pavld);
+        continue;
+      end
       tr         = ifu_txn::type_id::create("ifu_rsp_mon");
       tr.pavld   = 1'b1;
       tr.pa      = vif.monitor_cb.mmu_ifu_pa;
@@ -92,9 +99,7 @@ class ifu_monitor extends uvm_monitor;
       tr.sec     = vif.monitor_cb.mmu_ifu_sec;
       tr.ca      = vif.monitor_cb.mmu_ifu_ca;
       tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
-      wait(m_pending_req.size() > 0);
       req_tr   = m_pending_req.pop_front();
-      m_rsp_seen = 1;
       tr.va    = req_tr.va;
       tr.abort = req_tr.abort;
       `uvm_info(get_type_name(), {"IFU RSP: ", tr.convert2string()}, UVM_HIGH)

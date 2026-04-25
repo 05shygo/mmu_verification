@@ -310,6 +310,7 @@ assign expt_wr1_pgflt = jtlb_dutlb_pgflt;
 assign expt_wr1_acflt = 1'b0;
 
 `ifndef SYNTHESIS
+`ifdef MMU_DTLB_DBG_EN
 // Debug: trace MMU-off decision chain seen by LSU DTLB path.
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va0_vld || lsu_mmu_va1_vld) begin
@@ -320,6 +321,7 @@ always @(posedge dutlb_clk) begin
   end
 end
 
+`endif
 `endif
 
 mmu_l1dtlb_expt_cam #(
@@ -510,6 +512,7 @@ assign refill_id_flop[IID_WIDTH-1:0] = refill_type ? refill_id_flop0[IID_WIDTH-1
                                                    : refill_id_flop1[IID_WIDTH-1:0];
 
 `ifndef SYNTHESIS
+`ifdef MMU_DTLB_DBG_EN
 // Debug: trace exception chain source and refill-id correlation basis.
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va0_vld || lsu_mmu_va1_vld || dutlb_expt_for_taken
@@ -524,6 +527,7 @@ always @(posedge dutlb_clk) begin
       dutlb_inst_id_older0, dutlb_inst_id_older1);
   end
 end
+`endif
 `endif
 logic lsu_mmu_stamo_vld0;
 logic [PPN_WIDTH-1:0] lsu_mmu_stamo_pa0;

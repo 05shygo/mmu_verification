@@ -108,7 +108,7 @@ class lsu_monitor extends uvm_monitor;
         $sformatf("[LSU_P0_REQ_DBG] va=0x%010h id=%0d st=%0b abort=%0b mmu_en=%0b tlb_busy=%0b tlb_wakeup=0x%03h",
           {1'b0, tr.va[38:0]}, tr.id, tr.st_inst, tr.abort,
           vif.monitor_cb.mmu_lsu_mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup),
-        UVM_MEDIUM)
+        UVM_DEBUG)
       `uvm_info(get_type_name(), {"P0 REQ: ", tr.convert2string()}, UVM_HIGH)
       m_p0_rsp_seen = 0;
       m_pending_p0.push_back(tr);
@@ -155,7 +155,7 @@ class lsu_monitor extends uvm_monitor;
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
           tr.mmu_en, (tr.mmu_en && (tr.pgflt || tr.access_fault)),
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p0.size()),
-        UVM_MEDIUM)
+        UVM_DEBUG)
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_pipe0_rsp.write(tr);
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa0_vld);
@@ -182,7 +182,7 @@ class lsu_monitor extends uvm_monitor;
         $sformatf("[LSU_P1_REQ_DBG] va=0x%010h id=%0d st=%0b abort=%0b mmu_en=%0b tlb_busy=%0b tlb_wakeup=0x%03h",
           {1'b0, tr.va[38:0]}, tr.id, tr.st_inst, tr.abort,
           vif.monitor_cb.mmu_lsu_mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup),
-        UVM_MEDIUM)
+        UVM_DEBUG)
       m_p1_rsp_seen = 0;
       m_pending_p1.push_back(tr);
       ap_pipe1_req.write(tr);
@@ -224,7 +224,7 @@ class lsu_monitor extends uvm_monitor;
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
           tr.mmu_en, (tr.mmu_en && (tr.pgflt || tr.access_fault)),
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p1.size()),
-        UVM_MEDIUM)
+        UVM_DEBUG)
       ap_pipe1_rsp.write(tr);
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa1_vld);
     end

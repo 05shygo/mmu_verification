@@ -6,9 +6,9 @@
 //   each thread filters by lsu_txn.kind (see _get_kind()).
 //
 // Protocol per sub-channel:
-//   pipe0/1: direct-to-MMU standalone mode. If an issue attempt sees miss/no
-//            pa_vld, deassert and retry the same transaction; do not block
-//            before issue on tlb_busy because there is no real IDU/LSIQ in TB.
+//   pipe0/1: standalone approximation of LSU/LSIQ retry behavior:
+//            issue one-cycle pulse first, if no response then wait for
+//            wakeup-or-busy-clear and retry the same txn with one-cycle pulses.
 //   pipe2:   single-cycle prefetch pulse (no response wait)
 //   stamo:   single-cycle PA check assertion (no response wait)
 //   inv:     Phase 6 implement
@@ -117,6 +117,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   // ── Pipe 0 sub-thread ─────────────────────────────────────────────────────
   protected task _drive_pipe0();
     lsu_txn tr;
+    bit done;
+    int attempts;
     forever begin
       _get_kind(LSU_PIPE0, tr);
       `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_HIGH)
@@ -126,40 +128,50 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       @(vif.driver_cb);
 
       m_dtlb_mutex.get(1);
-
-      vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
-      vif.driver_cb.lsu_mmu_va0      <= tr.va;
-      vif.driver_cb.lsu_mmu_id0      <= tr.id;
-      vif.driver_cb.lsu_mmu_st_inst0 <= tr.st_inst;
-      vif.driver_cb.lsu_mmu_abort0   <= tr.abort;
-      vif.driver_cb.lsu_mmu_vabuf0   <= tr.vabuf;
-      if (tr.abort == 1'b1) begin
+      done     = 1'b0;
+      attempts = 0;
+      do begin
+        attempts++;
+        vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+        vif.driver_cb.lsu_mmu_va0      <= tr.va;
+        vif.driver_cb.lsu_mmu_id0      <= tr.id;
+        vif.driver_cb.lsu_mmu_st_inst0 <= tr.st_inst;
+        vif.driver_cb.lsu_mmu_abort0   <= tr.abort;
+        vif.driver_cb.lsu_mmu_vabuf0   <= tr.vabuf;
         @(vif.driver_cb);
-      end else begin
-        @(vif.driver_cb);
-        fork
-          begin : wait_rsp_p0
-            if (vif.driver_cb.mmu_lsu_pa0_vld !== 1'b1)
-              @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa0_vld === 1'b1);
-            tr.pa           = vif.driver_cb.mmu_lsu_pa0;
-            tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
-            tr.access_fault = vif.driver_cb.mmu_lsu_access_fault0;
-            tr.sec          = vif.driver_cb.mmu_lsu_sec0;
-          end
-          begin : wait_timeout_p0
-            repeat (200000) @(vif.driver_cb);
-            `uvm_warning(get_type_name(),
-              $sformatf("Pipe0 response timeout: va=0x%016h id=%0d busy=%0b wakeup=0x%03h",
-                tr.va, tr.id,
-                vif.driver_cb.mmu_lsu_tlb_busy, vif.driver_cb.mmu_lsu_tlb_wakeup))
-          end
-        join_any
-        disable fork;
-      end
 
-      @(vif.driver_cb);
-      vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
-      vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
+        if (tr.abort == 1'b1) begin
+          done = 1'b1;
+        end else if (vif.driver_cb.mmu_lsu_pa0_vld === 1'b1) begin
+          tr.pa           = vif.driver_cb.mmu_lsu_pa0;
+          tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
+          tr.access_fault = vif.driver_cb.mmu_lsu_access_fault0;
+          tr.sec          = vif.driver_cb.mmu_lsu_sec0;
+          done = 1'b1;
+        end
+
+        vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+        vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
+        @(vif.driver_cb);
+
+        if (!done) begin
+          fork
+            begin : wait_retry_window_p0
+              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_tlb_wakeup != 12'h000) ||
+                                   (vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)));
+            end
+            begin : wait_retry_timeout_p0
+              repeat (200000) @(vif.driver_cb);
+              `uvm_warning(get_type_name(),
+                $sformatf("Pipe0 retry window timeout: va=0x%016h id=%0d attempts=%0d busy=%0b wakeup=0x%03h",
+                  tr.va, tr.id, attempts,
+                  vif.driver_cb.mmu_lsu_tlb_busy, vif.driver_cb.mmu_lsu_tlb_wakeup))
+            end
+          join_any
+          disable fork;
+        end
+      end while (!done);
+
       m_dtlb_mutex.put(1);
     end
   endtask
@@ -167,6 +179,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   // ── Pipe 1 sub-thread ─────────────────────────────────────────────────────
   protected task _drive_pipe1();
     lsu_txn tr;
+    bit done;
+    int attempts;
     forever begin
       _get_kind(LSU_PIPE1, tr);
       `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_HIGH)
@@ -176,40 +190,50 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       @(vif.driver_cb);
 
       m_dtlb_mutex.get(1);
-
-      vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
-      vif.driver_cb.lsu_mmu_va1      <= tr.va;
-      vif.driver_cb.lsu_mmu_id1      <= tr.id;
-      vif.driver_cb.lsu_mmu_st_inst1 <= tr.st_inst;
-      vif.driver_cb.lsu_mmu_abort1   <= tr.abort;
-      vif.driver_cb.lsu_mmu_vabuf1   <= tr.vabuf;
-      if (tr.abort == 1'b1) begin
+      done     = 1'b0;
+      attempts = 0;
+      do begin
+        attempts++;
+        vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
+        vif.driver_cb.lsu_mmu_va1      <= tr.va;
+        vif.driver_cb.lsu_mmu_id1      <= tr.id;
+        vif.driver_cb.lsu_mmu_st_inst1 <= tr.st_inst;
+        vif.driver_cb.lsu_mmu_abort1   <= tr.abort;
+        vif.driver_cb.lsu_mmu_vabuf1   <= tr.vabuf;
         @(vif.driver_cb);
-      end else begin
-        @(vif.driver_cb);
-        fork
-          begin : wait_rsp_p1
-            if (vif.driver_cb.mmu_lsu_pa1_vld !== 1'b1)
-              @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa1_vld === 1'b1);
-            tr.pa           = vif.driver_cb.mmu_lsu_pa1;
-            tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;
-            tr.access_fault = vif.driver_cb.mmu_lsu_access_fault1;
-            tr.sec          = vif.driver_cb.mmu_lsu_sec1;
-          end
-          begin : wait_timeout_p1
-            repeat (200000) @(vif.driver_cb);
-            `uvm_warning(get_type_name(),
-              $sformatf("Pipe1 response timeout: va=0x%016h id=%0d busy=%0b wakeup=0x%03h",
-                tr.va, tr.id,
-                vif.driver_cb.mmu_lsu_tlb_busy, vif.driver_cb.mmu_lsu_tlb_wakeup))
-          end
-        join_any
-        disable fork;
-      end
 
-      @(vif.driver_cb);
-      vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
-      vif.driver_cb.lsu_mmu_abort1  <= 1'b0;
+        if (tr.abort == 1'b1) begin
+          done = 1'b1;
+        end else if (vif.driver_cb.mmu_lsu_pa1_vld === 1'b1) begin
+          tr.pa           = vif.driver_cb.mmu_lsu_pa1;
+          tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;
+          tr.access_fault = vif.driver_cb.mmu_lsu_access_fault1;
+          tr.sec          = vif.driver_cb.mmu_lsu_sec1;
+          done = 1'b1;
+        end
+
+        vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+        vif.driver_cb.lsu_mmu_abort1  <= 1'b0;
+        @(vif.driver_cb);
+
+        if (!done) begin
+          fork
+            begin : wait_retry_window_p1
+              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_tlb_wakeup != 12'h000) ||
+                                   (vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)));
+            end
+            begin : wait_retry_timeout_p1
+              repeat (200000) @(vif.driver_cb);
+              `uvm_warning(get_type_name(),
+                $sformatf("Pipe1 retry window timeout: va=0x%016h id=%0d attempts=%0d busy=%0b wakeup=0x%03h",
+                  tr.va, tr.id, attempts,
+                  vif.driver_cb.mmu_lsu_tlb_busy, vif.driver_cb.mmu_lsu_tlb_wakeup))
+            end
+          join_any
+          disable fork;
+        end
+      end while (!done);
+
       m_dtlb_mutex.put(1);
     end
   endtask

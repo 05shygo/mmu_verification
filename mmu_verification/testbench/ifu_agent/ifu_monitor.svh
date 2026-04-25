@@ -50,16 +50,30 @@ class ifu_monitor extends uvm_monitor;
   // ── Cycle-accurate collector for IFU hold protocol ────────────────────────
   // One request can be outstanding at a time.
   // Same cycle ordering is important:
-  //   1) consume response first (if pavld)
-  //   2) then open next request (if va_vld and no pending)
-  // This supports va_vld staying HIGH across back-to-back requests.
+  //   1) open request first (if va_vld and no pending)
+  //   2) then consume response (if pavld)
+  // Rationale: IFU hit path may return pavld in the same cycle as req visible
+  // to monitor_cb; we must not miss that same-cycle req+rsp pair.
   protected task _collect();
     ifu_txn req_tr, rsp_tr;
     va_t cur_va;
     forever begin
       @(vif.monitor_cb);
 
-      // 1) Consume response first.
+      cur_va = 63'(vif.monitor_cb.ifu_mmu_va << 1);
+
+      // 1) Open next request when VA is valid and there is no outstanding one.
+      if (vif.monitor_cb.ifu_mmu_va_vld && !m_has_pending) begin
+        req_tr       = ifu_txn::type_id::create("ifu_req_mon");
+        req_tr.va    = cur_va;
+        req_tr.abort = vif.monitor_cb.ifu_mmu_abort;
+        m_pending_req = req_tr;
+        m_has_pending = 1'b1;
+        `uvm_info(get_type_name(), {"IFU REQ: ", req_tr.convert2string()}, UVM_HIGH)
+        ap_req.write(req_tr);
+      end
+
+      // 2) Consume response.
       if (vif.monitor_cb.mmu_ifu_pavld) begin
         if (!m_has_pending) begin
           `uvm_warning(get_type_name(),
@@ -82,19 +96,6 @@ class ifu_monitor extends uvm_monitor;
           `uvm_info(get_type_name(), {"IFU RSP: ", rsp_tr.convert2string()}, UVM_HIGH)
           ap_rsp.write(rsp_tr);
         end
-      end
-
-      cur_va = 63'(vif.monitor_cb.ifu_mmu_va << 1);
-
-      // 2) Open next request when VA is valid and there is no outstanding one.
-      if (vif.monitor_cb.ifu_mmu_va_vld && !m_has_pending) begin
-        req_tr       = ifu_txn::type_id::create("ifu_req_mon");
-        req_tr.va    = cur_va;
-        req_tr.abort = vif.monitor_cb.ifu_mmu_abort;
-        m_pending_req = req_tr;
-        m_has_pending = 1'b1;
-        `uvm_info(get_type_name(), {"IFU REQ: ", req_tr.convert2string()}, UVM_HIGH)
-        ap_req.write(req_tr);
       end
 
       // Protocol sanity: VA should stay stable while request is outstanding

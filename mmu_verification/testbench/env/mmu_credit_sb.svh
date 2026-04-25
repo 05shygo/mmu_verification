@@ -122,6 +122,13 @@ class mmu_credit_sb extends uvm_scoreboard;
     ifu_txn tr;
     forever begin
       af_ifu_req.get(tr);
+      // IFU abort has no translation response by definition; do not count it
+      // into conservation credit, otherwise credit_l1i will leak/overflow.
+      if (tr.abort) begin
+        `uvm_info(get_type_name(),
+          "IFU_REQ abort observed: skip credit_l1i accounting", UVM_HIGH)
+        continue;
+      end
       m_credit_l1i++;
       if (m_credit_l1i > int'(L1_ITLB_ENTRIES))
         `uvm_error(get_type_name(),
@@ -138,6 +145,12 @@ class mmu_credit_sb extends uvm_scoreboard;
     ifu_txn tr;
     forever begin
       af_ifu_rsp.get(tr);
+      // Defensive symmetry: if an abort-tagged rsp appears, ignore in credit.
+      if (tr.abort) begin
+        `uvm_info(get_type_name(),
+          "IFU_RSP abort-tagged txn observed: skip credit_l1i accounting", UVM_HIGH)
+        continue;
+      end
       m_credit_l1i--;
       if (m_credit_l1i < 0)
         `uvm_error(get_type_name(),

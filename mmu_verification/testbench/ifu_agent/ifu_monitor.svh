@@ -25,6 +25,8 @@ class ifu_monitor extends uvm_monitor;
   // Analysis port: merged req+rsp (mmu_ifu_pavld assertion, txn contains VA+PA)
   // Phase 5 downstream: ap_rsp → mmu_translation_sb.af_ifu_rsp
   uvm_analysis_port #(ifu_txn) ap_rsp;
+  // Analysis port: pending req dropped without rsp (for credit compensation)
+  uvm_analysis_port #(ifu_txn) ap_drop;
 
   // IFU hold protocol is 1-outstanding: keep a single pending request.
   protected ifu_txn m_pending_req;
@@ -41,6 +43,7 @@ class ifu_monitor extends uvm_monitor;
       `uvm_fatal(get_type_name(), "Cannot get IFU_VIF from config_db")
     ap_req = new("ap_req", this);
     ap_rsp = new("ap_rsp", this);
+    ap_drop = new("ap_drop", this);
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -109,10 +112,15 @@ class ifu_monitor extends uvm_monitor;
 
       // If request disappears without a response, drop it to prevent deadlock.
       if (m_has_pending && !vif.monitor_cb.ifu_mmu_va_vld) begin
+        ifu_txn drop_tr;
+        drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
+        drop_tr.va    = m_pending_req.va;
+        drop_tr.abort = m_pending_req.abort;
         `uvm_warning(get_type_name(),
           $sformatf("IFU pending req dropped on va_vld deassert: va=0x%010h",
             {1'b0, m_pending_req.va[38:0]}))
         m_has_pending = 1'b0;
+        ap_drop.write(drop_tr);
       end
     end
   endtask

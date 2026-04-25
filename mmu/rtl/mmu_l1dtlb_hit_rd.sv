@@ -344,6 +344,19 @@ always @(posedge dutlb_clk) begin
       dutlb_fin_pa, dutlb_off_pa, dutlb_entry_pa);
   end
 end
+
+// Debug: full local exception/id-match chain for this port.
+always @(posedge dutlb_clk) begin
+  if (lsu_mmu_va_vld_x || dutlb_expt_for_taken || dutlb_expt_match) begin
+    $display("[MMU_DTLB_HIT_RD_EXPT_DBG] t=%0t id=%0d refill_id=%0d inst_id_hit=%0b inst_id_match=%0b inst_id_older=%0b expt_for_taken=%0b expt_match=%0b | ref_pgflt=%0b ref_acflt=%0b refill_on=%0b | addr_hit=%0b hit_vld=%0b miss=%0b page_fault=%0b access_fault=%0b",
+      $time, lsu_mmu_id_x, refill_id_flop,
+      dutlb_inst_id_hit, dutlb_inst_id_match_x, dutlb_inst_id_older_x,
+      dutlb_expt_for_taken, dutlb_expt_match,
+      dutlb_ref_pgflt, dutlb_ref_accflt, dutlb_refill_on_x,
+      dutlb_addr_hit, mmu_lsu_pa_vld_x, dutlb_miss_vld_x,
+      mmu_lsu_page_fault_x, mmu_lsu_access_fault_x);
+  end
+end
 `endif
 
 endmodule

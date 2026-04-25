@@ -49,6 +49,7 @@ ${MMU_RTL_DIR}/mmu_arb.sv
 ${MMU_RTL_DIR}/mmu_fpga_ram.sv
 ${MMU_RTL_DIR}/mmu_l1dtlb_allocator.sv
 ${MMU_RTL_DIR}/mmu_l1dtlb_hit_rd.sv
+${MMU_RTL_DIR}/mmu_l1dtlb_expt_cam.sv
 ${MMU_RTL_DIR}/mmu_l1dtlb_install.sv
 ${MMU_RTL_DIR}/mmu_l1dtlb_mb_entry.sv
 ${MMU_RTL_DIR}/mmu_l1dtlb_scheduler.sv

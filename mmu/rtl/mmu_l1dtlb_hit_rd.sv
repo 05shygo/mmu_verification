@@ -341,6 +341,22 @@ assign mmu_sysmap_pa_x[PPN_WIDTH-1:0] = lsu_mmu_va_x[VPN_WIDTH+12:12];
 
 `ifndef SYNTHESIS
 `ifdef MMU_DTLB_DBG_EN
+// One-shot replay correlation trace:
+//   replay_hit(iid,vpn) after CAM lookup/consume path
+always @(posedge dutlb_clk) begin
+  static bit seen_replay[string];
+  string key;
+  if (lsu_mmu_va_vld_x && dutlb_expt_match && !lsu_mmu_abort_x) begin
+    key = $sformatf("RH_iid%0d_vpn%0h", lsu_mmu_id_x, lsu_mmu_va_x[VPN_WIDTH+11:12]);
+    if (!seen_replay.exists(key)) begin
+      seen_replay[key] = 1'b1;
+      $display("[MMU_EXPT_TRACE_ONCE][REPLAY_HIT] t=%0t iid=%0d vpn=0x%0h pa_vld=%0b pgflt=%0b acflt=%0b miss=%0b",
+        $time, lsu_mmu_id_x, lsu_mmu_va_x[VPN_WIDTH+11:12], mmu_lsu_pa_vld_x,
+        mmu_lsu_page_fault_x, mmu_lsu_access_fault_x, dutlb_miss_vld_x);
+    end
+  end
+end
+
 // Debug: trace why PA path selects bypass (VA[38:12]) vs TLB hit PPN.
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va_vld_x) begin

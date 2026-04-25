@@ -173,7 +173,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     if (tr.va2 == '0) begin
       `uvm_info(get_type_name(),
         "write_lsu_p2: va2==0 (no req/rsp VA correlation yet) — count only",
-        UVM_MEDIUM)
+        UVM_DEBUG)
       return;
     end
 

@@ -311,6 +311,73 @@ assign expt_wr1_acflt = 1'b0;
 
 `ifndef SYNTHESIS
 `ifdef MMU_DTLB_DBG_EN
+// One-shot correlation trace:
+//   miss -> ptw/jtlb ref_id -> CAM write
+always @(posedge mb_clk) begin
+  static bit seen_miss[string];
+  static bit seen_ref[string];
+  static bit seen_cam[string];
+  string key;
+
+  if (miss0_vld_q && !miss0_abort_q) begin
+    key = $sformatf("M0_iid%0d_vpn%0h", miss0_iid_q, miss0_vpn_q);
+    if (!seen_miss.exists(key)) begin
+      seen_miss[key] = 1'b1;
+      $display("[MMU_EXPT_TRACE_ONCE][MISS] t=%0t src=p0 iid=%0d vpn=0x%0h store=%0b mb_busy=%0b",
+        $time, miss0_iid_q, miss0_vpn_q, miss0_is_store, (|mb_entry_vld));
+    end
+  end
+
+  if (miss1_vld_q && !miss1_abort_q) begin
+    key = $sformatf("M1_iid%0d_vpn%0h", miss1_iid_q, miss1_vpn_q);
+    if (!seen_miss.exists(key)) begin
+      seen_miss[key] = 1'b1;
+      $display("[MMU_EXPT_TRACE_ONCE][MISS] t=%0t src=p1 iid=%0d vpn=0x%0h store=%0b mb_busy=%0b",
+        $time, miss1_iid_q, miss1_vpn_q, miss1_is_store, (|mb_entry_vld));
+    end
+  end
+
+  if (ptw_l1dtlb_ref_cmplt) begin
+    key = $sformatf("R_PTW_ref%0d_iid%0d_vpn%0h", ptw_l1dtlb_ref_id,
+                    mb_entry_iid[ptw_l1dtlb_ref_id], mb_entry_vpn[ptw_l1dtlb_ref_id]);
+    if (!seen_ref.exists(key)) begin
+      seen_ref[key] = 1'b1;
+      $display("[MMU_EXPT_TRACE_ONCE][REF] t=%0t src=ptw ref_id=%0d iid=%0d vpn=0x%0h pgflt=%0b acerr=%0b mb_vld=%0b",
+        $time, ptw_l1dtlb_ref_id, mb_entry_iid[ptw_l1dtlb_ref_id], mb_entry_vpn[ptw_l1dtlb_ref_id],
+        ptw_l1tlb_pgflt, ptw_l1tlb_acc_err, mb_entry_vld[ptw_l1dtlb_ref_id]);
+    end
+  end
+
+  if (jtlb_dutlb_ref_cmplt) begin
+    key = $sformatf("R_JTLB_ref%0d_iid%0d_vpn%0h", jtlb_dutlb_ref_id,
+                    mb_entry_iid[jtlb_dutlb_ref_id], mb_entry_vpn[jtlb_dutlb_ref_id]);
+    if (!seen_ref.exists(key)) begin
+      seen_ref[key] = 1'b1;
+      $display("[MMU_EXPT_TRACE_ONCE][REF] t=%0t src=jtlb ref_id=%0d iid=%0d vpn=0x%0h pgflt=%0b mb_vld=%0b",
+        $time, jtlb_dutlb_ref_id, mb_entry_iid[jtlb_dutlb_ref_id], mb_entry_vpn[jtlb_dutlb_ref_id],
+        jtlb_dutlb_pgflt, mb_entry_vld[jtlb_dutlb_ref_id]);
+    end
+  end
+
+  if (expt_wr0_vld) begin
+    key = $sformatf("C0_iid%0d_vpn%0h_pg%0b_ac%0b", expt_wr0_iid, expt_wr0_vpn, expt_wr0_pgflt, expt_wr0_acflt);
+    if (!seen_cam.exists(key)) begin
+      seen_cam[key] = 1'b1;
+      $display("[MMU_EXPT_TRACE_ONCE][CAM_WRITE] t=%0t src=ptw iid=%0d vpn=0x%0h pgflt=%0b acflt=%0b",
+        $time, expt_wr0_iid, expt_wr0_vpn, expt_wr0_pgflt, expt_wr0_acflt);
+    end
+  end
+
+  if (expt_wr1_vld) begin
+    key = $sformatf("C1_iid%0d_vpn%0h_pg%0b_ac%0b", expt_wr1_iid, expt_wr1_vpn, expt_wr1_pgflt, expt_wr1_acflt);
+    if (!seen_cam.exists(key)) begin
+      seen_cam[key] = 1'b1;
+      $display("[MMU_EXPT_TRACE_ONCE][CAM_WRITE] t=%0t src=jtlb iid=%0d vpn=0x%0h pgflt=%0b acflt=%0b",
+        $time, expt_wr1_iid, expt_wr1_vpn, expt_wr1_pgflt, expt_wr1_acflt);
+    end
+  end
+end
+
 // Debug: trace MMU-off decision chain seen by LSU DTLB path.
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va0_vld || lsu_mmu_va1_vld) begin

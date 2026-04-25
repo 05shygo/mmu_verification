@@ -76,7 +76,7 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     `uvm_info(get_type_name(),
       $sformatf("[IFU_DRV_REQ_DBG] drive req: va=0x%010h abort=%0b pavld_now=%0b pa_now=0x%07h",
         {1'b0, tr.va[38:0]}, tr.abort, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa),
-      UVM_MEDIUM)
+      UVM_DEBUG)
 
     if (tr.abort == 1'b1) begin
       @(vif.driver_cb);
@@ -94,7 +94,7 @@ class ifu_driver extends uvm_driver #(ifu_txn);
             $sformatf("[IFU_DRV_RSP_EDGE_DBG] rsp edge: va=0x%010h pavld=%0b pa=0x%07h pgflt=%0b deny=%0b",
               {1'b0, tr.va[38:0]}, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa,
               vif.driver_cb.mmu_ifu_pgflt, vif.driver_cb.mmu_ifu_deny),
-            UVM_MEDIUM)
+            UVM_DEBUG)
           tr.pa      = vif.driver_cb.mmu_ifu_pa;
           tr.pgflt   = vif.driver_cb.mmu_ifu_pgflt;
           tr.deny    = vif.driver_cb.mmu_ifu_deny;

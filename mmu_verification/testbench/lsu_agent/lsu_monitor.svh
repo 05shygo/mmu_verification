@@ -122,7 +122,7 @@ class lsu_monitor extends uvm_monitor;
         drop_tr = m_pending_p0.pop_back();
         `uvm_info(get_type_name(),
           $sformatf("P0 REQ dropped (no pa0_vld before va0_vld deassert): VA=0x%016h id=%0d",
-            tr.va, tr.id), UVM_MEDIUM)
+            tr.va, tr.id), UVM_DEBUG)
         ap_pipe0_drop.write(drop_tr);
       end
     end
@@ -192,7 +192,7 @@ class lsu_monitor extends uvm_monitor;
         drop_tr = m_pending_p1.pop_back();
         `uvm_info(get_type_name(),
           $sformatf("P1 REQ dropped (no pa1_vld before va1_vld deassert): VA=0x%016h id=%0d",
-            tr.va, tr.id), UVM_MEDIUM)
+            tr.va, tr.id), UVM_DEBUG)
         ap_pipe1_drop.write(drop_tr);
       end
     end

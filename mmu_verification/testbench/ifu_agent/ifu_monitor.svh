@@ -79,7 +79,7 @@ class ifu_monitor extends uvm_monitor;
           $sformatf("[IFU_MON_REQ_DBG] open pending: va=0x%010h abort=%0b pavld=%0b pa=0x%07h has_pending=%0b",
             {1'b0, cur_va[38:0]}, req_tr.abort, vif.monitor_cb.mmu_ifu_pavld,
             vif.monitor_cb.mmu_ifu_pa, m_has_pending),
-          UVM_MEDIUM)
+          UVM_DEBUG)
         `uvm_info(get_type_name(), {"IFU REQ: ", req_tr.convert2string()}, UVM_HIGH)
         ap_req.write(req_tr);
       end
@@ -107,7 +107,7 @@ class ifu_monitor extends uvm_monitor;
             $sformatf("[IFU_MON_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h pa=0x%07h pavld=%0b pgflt=%0b deny=%0b",
               {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.pa,
               vif.monitor_cb.mmu_ifu_pavld, rsp_tr.pgflt, rsp_tr.deny),
-            UVM_MEDIUM)
+            UVM_DEBUG)
           m_has_pending  = 1'b0;
           `uvm_info(get_type_name(), {"IFU RSP: ", rsp_tr.convert2string()}, UVM_HIGH)
           ap_rsp.write(rsp_tr);

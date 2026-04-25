@@ -23,6 +23,18 @@ class test_base extends uvm_test;
   int unsigned num_txn    = 5000;
   int unsigned timeout_ns = 10_000_000;
 
+  // +UVM_ERR_ONLY or +UVM_ERR_ONLY=1 : hide UVM_INFO / UVM_WARNING under this
+  // test (only UVM_ERROR / UVM_FATAL print; final UVM report summary still runs).
+
+  protected static function void m_apply_error_only_r(uvm_component c);
+    uvm_component ch[$];
+    if (c == null) return;
+    c.set_report_severity_action(UVM_INFO, UVM_NO_ACTION);
+    c.set_report_severity_action(UVM_WARNING, UVM_NO_ACTION);
+    c.get_children(ch);
+    foreach (ch[i]) m_apply_error_only_r(ch[i]);
+  endfunction
+
   // ── Constructor ───────────────────────────────────────────────────────────
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -58,7 +70,16 @@ class test_base extends uvm_test;
 
   // ── End-of-elaboration phase ──────────────────────────────────────────────
   virtual function void end_of_elaboration_phase(uvm_phase phase);
-    uvm_top.print_topology();
+    if (!$test$plusargs("UVM_ERR_ONLY"))
+      uvm_top.print_topology();
+  endfunction
+
+  // ── Before run: optional “errors only” on terminal ───────────────────────
+  virtual function void start_of_simulation_phase(uvm_phase phase);
+    super.start_of_simulation_phase(phase);
+    if ($test$plusargs("UVM_ERR_ONLY")) begin
+      m_apply_error_only_r(this);
+    end
   endfunction
 
   // ── Run phase ─────────────────────────────────────────────────────────────

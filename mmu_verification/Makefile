@@ -47,7 +47,15 @@ TEST_NAME       ?= mmu_base_test
 SEED            ?= random
 VERBOSITY       ?= UVM_MEDIUM
 TIMEOUT         ?= 10000000
+# 1 = quiet console: only UVM_ERROR / UVM_FATAL (+UVM_ERR_ONLY, see test_base.svh)
+UVM_ERR_ONLY    ?= 0
 PLUS_ARGS       ?=
+
+ifeq ($(UVM_ERR_ONLY),1)
+  ERR_ONLY_OPTS := +UVM_ERR_ONLY
+else
+  ERR_ONLY_OPTS :=
+endif
 
 #===============================================================================
 # Include and Source Files
@@ -110,6 +118,7 @@ VCS_FAST_OPTS   := -full64 \
 RUN_OPTS        := +UVM_TESTNAME=$(TEST_NAME) \
                    +UVM_VERBOSITY=$(VERBOSITY) \
                    +TIMEOUT=$(TIMEOUT) \
+                   $(ERR_ONLY_OPTS) \
                    $(PLUS_ARGS)
 
 ifeq ($(SEED),random)
@@ -186,6 +195,8 @@ help:
 	@echo ""
 	@echo "Key variables:"
 	@echo "  TEST_NAME=$(TEST_NAME)  SEED=$(SEED)  VERBOSITY=$(VERBOSITY)"
+	@echo "  UVM_ERR_ONLY=$(UVM_ERR_ONLY)  (1=errors only on console)"
+	@echo "  Example: make run TEST_NAME=... UVM_ERR_ONLY=1"
 
 #===============================================================================
 # Env / Setup

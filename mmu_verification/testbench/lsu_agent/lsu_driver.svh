@@ -6,10 +6,9 @@
 //   each thread filters by lsu_txn.kind (see _get_kind()).
 //
 // Protocol per sub-channel:
-//   pipe0/1: model core LSIQ retry behavior. Assert va_vld for one issue
-//            attempt; if pa*_vld does not return, deassert and retry.  When
-//            mmu_lsu_tlb_busy is high, wait for tlb_wakeup (or busy clear)
-//            before retrying the same transaction.
+//   pipe0/1: direct-to-MMU standalone mode. If an issue attempt sees miss/no
+//            pa_vld, deassert and retry the same transaction; do not block
+//            before issue on tlb_busy because there is no real IDU/LSIQ in TB.
 //   pipe2:   single-cycle prefetch pulse (no response wait)
 //   stamo:   single-cycle PA check assertion (no response wait)
 //   inv:     Phase 6 implement
@@ -84,36 +83,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     end
   endtask
 
-  // Model the core LSIQ retry contract at the MMU boundary.
-  // When tlb_busy is high, a new LSU miss would be parked in IDU/LSIQ until a
-  // wakeup release.  The standalone agent waits for that retry window instead
-  // of requiring busy to become 0, because busy may remain high while another
-  // MB entry is still in flight.
-  protected task _wait_tlb_retry_window(string pipe_name, lsu_txn tr);
-    if (vif.driver_cb.mmu_lsu_tlb_busy !== 1'b1)
-      return;
-
-    `uvm_info(get_type_name(),
-      $sformatf("%s sees tlb_busy=1 before issue: va=0x%016h id=%0d; waiting for wakeup/retry window",
-        pipe_name, tr.va, tr.id),
-      UVM_MEDIUM)
-
-    fork
-      begin : wait_tlb_release
-        @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_tlb_wakeup != 12'h000) ||
-                             (vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)));
-      end
-      begin : wait_tlb_release_timeout
-        repeat (4096) @(vif.driver_cb);
-        `uvm_warning(get_type_name(),
-          $sformatf("%s tlb_busy retry wait timeout: va=0x%016h id=%0d busy=%0b wakeup=0x%03h",
-            pipe_name, tr.va, tr.id,
-            vif.driver_cb.mmu_lsu_tlb_busy, vif.driver_cb.mmu_lsu_tlb_wakeup))
-      end
-    join_any
-    disable fork;
-  endtask
-
   // ── Drive all outputs to safe idle state ─────────────────────────────────
   protected task _drive_idle();
     // Pipe 0
@@ -164,8 +133,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
 
       do begin
         attempts++;
-        _wait_tlb_retry_window("Pipe0", tr);
-
         vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
         vif.driver_cb.lsu_mmu_va0      <= tr.va;
         vif.driver_cb.lsu_mmu_id0      <= tr.id;
@@ -228,8 +195,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
 
       do begin
         attempts++;
-        _wait_tlb_retry_window("Pipe1", tr);
-
         vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
         vif.driver_cb.lsu_mmu_va1      <= tr.va;
         vif.driver_cb.lsu_mmu_id1      <= tr.id;

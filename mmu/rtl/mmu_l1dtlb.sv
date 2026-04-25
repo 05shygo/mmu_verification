@@ -290,6 +290,8 @@ logic [IID_WIDTH-1:0] expt_wr0_iid, expt_wr1_iid;
 logic [VPN_WIDTH-1:0] expt_wr0_vpn, expt_wr1_vpn;
 logic expt_wr0_pgflt, expt_wr1_pgflt;
 logic expt_wr0_acflt, expt_wr1_acflt;
+logic miss0_is_store;
+logic miss1_is_store;
 assign dutlb_ori_read0 = !lsu_mmu_st_inst0;
 assign dutlb_ori_read1 = !lsu_mmu_st_inst1;
 assign dutlb_read_type0 = dutlb_ori_read0;
@@ -782,9 +784,6 @@ mmu_l1dtlb_hit_rd #(
 //!************************************************
 //! T1: Miss Staging (T0->T1 registers)
 //!************************************************
-logic miss0_is_store;
-logic miss1_is_store;
-
 always_ff @(posedge mb_clk or negedge cpurst_b) begin
     if (!cpurst_b) begin
         miss0_vld_q   <= 1'b0;

@@ -632,7 +632,7 @@ module mmu_l2tlb#(
 	end else raw_vld <= 1'b0;
     end	    
 
-    assign arb_l2tlb_is_dtlb = (arb_l2tlb_acc_type == 3'b010) | (arb_l2tlb_acc_type == 3'b010);
+    assign arb_l2tlb_is_dtlb = (arb_l2tlb_acc_type == 3'b010) | (arb_l2tlb_acc_type == 3'b110);
 
     always_ff@(posedge l2tlb_clk or negedge cpurst_b) begin
         if(!cpurst_b) begin

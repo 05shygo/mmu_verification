@@ -37,16 +37,16 @@ class pmp_driver extends uvm_driver #(pmp_txn);
     end
   endtask
 
-  // ── Drive all flags to safe idle (all-allow = 0) ─────────────────────────
+  // R/W/X allow on lower bits; 4'h0 denies PTW table loads in S-mode (twu PMP)
   protected task _drive_idle();
-    vif.driver_cb.pmp_mmu_flg0 <= 4'h0;
-    vif.driver_cb.pmp_mmu_flg1 <= 4'h0;
-    vif.driver_cb.pmp_mmu_flg2 <= 4'h0;
-    vif.driver_cb.pmp_mmu_flg3 <= 4'h0;
-    vif.driver_cb.pmp_mmu_flg4 <= 4'h0;
-    vif.driver_cb.pmp_mmu_flg5 <= 4'h0;
-    vif.driver_cb.pmp_mmu_flg6 <= 4'h0;
-    vif.driver_cb.pmp_mmu_flg7 <= 4'h0;
+    vif.driver_cb.pmp_mmu_flg0 <= 4'h7;
+    vif.driver_cb.pmp_mmu_flg1 <= 4'h7;
+    vif.driver_cb.pmp_mmu_flg2 <= 4'h7;
+    vif.driver_cb.pmp_mmu_flg3 <= 4'h7;
+    vif.driver_cb.pmp_mmu_flg4 <= 4'h7;
+    vif.driver_cb.pmp_mmu_flg5 <= 4'h7;
+    vif.driver_cb.pmp_mmu_flg6 <= 4'h7;
+    vif.driver_cb.pmp_mmu_flg7 <= 4'h7;
   endtask
 
   // ── Drive all 8 flag ports from transaction ───────────────────────────────

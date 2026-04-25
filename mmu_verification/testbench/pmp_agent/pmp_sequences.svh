@@ -19,8 +19,8 @@ class pmp_base_seq extends uvm_sequence #(pmp_txn);
 
 endclass : pmp_base_seq
 
-// ── All-allow (all flags = 0x0) ───────────────────────────────────────────────
-// Phase 3 sanity test uses this to ensure PMP does not block any translation.
+// ── All-allow: R+W+X per TWU/TLB (pmp_mmu_flg[0]=R, [1]=W, [2]=X). Not 0x0.
+//    In S-mode, flg=0 denies loads used by the page-table walker → spurious acc_err.
 class pmp_flg_normal_seq extends pmp_base_seq;
   `uvm_object_utils(pmp_flg_normal_seq)
 
@@ -31,9 +31,8 @@ class pmp_flg_normal_seq extends pmp_base_seq;
   virtual task body();
     pmp_txn tr;
     `uvm_create(tr)
-    // Unlock all constraints then set all flags to all-allow
-    tr.flg[0] = 4'h0; tr.flg[1] = 4'h0; tr.flg[2] = 4'h0; tr.flg[3] = 4'h0;
-    tr.flg[4] = 4'h0; tr.flg[5] = 4'h0; tr.flg[6] = 4'h0; tr.flg[7] = 4'h0;
+    tr.flg[0] = 4'h7; tr.flg[1] = 4'h7; tr.flg[2] = 4'h7; tr.flg[3] = 4'h7;
+    tr.flg[4] = 4'h7; tr.flg[5] = 4'h7; tr.flg[6] = 4'h7; tr.flg[7] = 4'h7;
     `uvm_send(tr)
   endtask
 

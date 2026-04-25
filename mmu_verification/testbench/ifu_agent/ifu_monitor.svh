@@ -65,7 +65,8 @@ class ifu_monitor extends uvm_monitor;
     forever begin
       @(vif.monitor_cb);
 
-      cur_va = 63'(vif.monitor_cb.ifu_mmu_va << 1);
+      // ifu_mmu_va is VA[63:1] on interface, restore byte-address form VA[63:0].
+      cur_va = va_t'({vif.monitor_cb.ifu_mmu_va, 1'b0});
 
       // 1) Open request on va_vld rising edge only.
       //    Strict core protocol: no new IFU request while a miss is pending.
@@ -94,13 +95,16 @@ class ifu_monitor extends uvm_monitor;
               vif.monitor_cb.mmu_ifu_deny))
         end else begin
           rsp_tr         = ifu_txn::type_id::create("ifu_rsp_mon");
+          // mmu_ifu_* is largely combinational from current request.  Wait one
+          // delta to avoid sampling stale PA/fault bits in the same clock tick.
+          #0;
           rsp_tr.pavld   = 1'b1;
-          rsp_tr.pa      = vif.monitor_cb.mmu_ifu_pa;
-          rsp_tr.pgflt   = vif.monitor_cb.mmu_ifu_pgflt;
-          rsp_tr.deny    = vif.monitor_cb.mmu_ifu_deny;
-          rsp_tr.sec     = vif.monitor_cb.mmu_ifu_sec;
-          rsp_tr.ca      = vif.monitor_cb.mmu_ifu_ca;
-          rsp_tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
+          rsp_tr.pa      = vif.mmu_ifu_pa;
+          rsp_tr.pgflt   = vif.mmu_ifu_pgflt;
+          rsp_tr.deny    = vif.mmu_ifu_deny;
+          rsp_tr.sec     = vif.mmu_ifu_sec;
+          rsp_tr.ca      = vif.mmu_ifu_ca;
+          rsp_tr.buf_bit = vif.mmu_ifu_buf;
           rsp_tr.va      = m_pending_req.va;
           rsp_tr.abort   = m_pending_req.abort;
           `uvm_info(get_type_name(),

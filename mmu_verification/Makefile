@@ -85,6 +85,7 @@ VCS_ELAB_OPTS   := -full64 \
                    +vcs+fsdbon \
                    +UVM_CONFIG_DB_TRACE \
                    +define+PA_WIDTH=40 \
+                   +define+MMU_EXPT_TRACE_ONCE_EN \
                    -Mdir=$(OUTPUT_DIR)/csrc \
                    -o $(OUTPUT_DIR)/simv
 
@@ -99,6 +100,7 @@ VCS_FAST_OPTS   := -full64 \
                    -ntb_opts uvm-$(UVM_VERSION) \
                    -lca \
                    +define+PA_WIDTH=40 \
+                   +define+MMU_EXPT_TRACE_ONCE_EN \
                    -Mdir=$(OUTPUT_DIR)/csrc \
                    -o $(OUTPUT_DIR)/simv
 

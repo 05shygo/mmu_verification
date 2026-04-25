@@ -310,7 +310,7 @@ assign expt_wr1_pgflt = jtlb_dutlb_pgflt;
 assign expt_wr1_acflt = 1'b0;
 
 `ifndef SYNTHESIS
-`ifdef MMU_DTLB_DBG_EN
+`ifdef MMU_EXPT_TRACE_ONCE_EN
 // One-shot correlation trace:
 //   miss -> ptw/jtlb ref_id -> CAM write
 always @(posedge mb_clk) begin
@@ -378,6 +378,8 @@ always @(posedge mb_clk) begin
   end
 end
 
+`endif
+`ifdef MMU_DTLB_DBG_EN
 // Debug: trace MMU-off decision chain seen by LSU DTLB path.
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va0_vld || lsu_mmu_va1_vld) begin
@@ -387,7 +389,6 @@ always @(posedge dutlb_clk) begin
       cp0_mach_mode, cp0_supv_mode, cp0_user_mode, dutlb_xx_mmu_off);
   end
 end
-
 `endif
 `endif
 

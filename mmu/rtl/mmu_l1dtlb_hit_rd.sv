@@ -340,7 +340,7 @@ assign utlb_req_vpn_x[VPN_WIDTH-1:0] = lsu_mmu_va_x[VPN_WIDTH+11:12];
 assign mmu_sysmap_pa_x[PPN_WIDTH-1:0] = lsu_mmu_va_x[VPN_WIDTH+12:12];
 
 `ifndef SYNTHESIS
-`ifdef MMU_DTLB_DBG_EN
+`ifdef MMU_EXPT_TRACE_ONCE_EN
 // One-shot replay correlation trace:
 //   replay_hit(iid,vpn) after CAM lookup/consume path
 always @(posedge dutlb_clk) begin
@@ -357,6 +357,8 @@ always @(posedge dutlb_clk) begin
   end
 end
 
+`endif
+`ifdef MMU_DTLB_DBG_EN
 // Debug: trace why PA path selects bypass (VA[38:12]) vs TLB hit PPN.
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va_vld_x) begin

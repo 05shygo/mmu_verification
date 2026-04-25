@@ -109,7 +109,7 @@ class ifu_driver extends uvm_driver #(ifu_txn);
           repeat (4000) @(vif.driver_cb);
           `uvm_warning(get_type_name(),
             $sformatf("IFU response timeout: va=0x%016h va_vld=%0b pavld=%0b pa=0x%07h",
-              {1'b0, tr.va}, vif.driver_cb.ifu_mmu_va_vld,
+              {1'b0, tr.va}, vif.ifu_mmu_va_vld,
               vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa))
         end
       join_any

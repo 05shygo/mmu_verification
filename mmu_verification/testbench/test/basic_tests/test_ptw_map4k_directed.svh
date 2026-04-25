@@ -47,6 +47,20 @@ class test_ptw_map4k_directed extends test_base;
     super.new(name, parent);
   endfunction
 
+  // Keep ref_model in a deterministic Sv39 config for this pure-software test.
+  // Phase 5+ monitor->ref FIFO updates can otherwise overwrite mirrors in-flight.
+  protected function void apply_ref_cfg(mmu_ref_model rm);
+    rm.m_satp0_mode = 4'h8;          // Sv39
+    rm.m_satp0_ppn  = ROOT_PPN;
+    rm.m_satp0_asid = ROOT_ASID;
+    rm.m_satp_sel   = 1'b0;          // Use SATP0
+    rm.m_priv       = PRIV_S;        // S-mode (MMU enabled when mode=Sv39)
+    rm.m_ptw_en     = 1'b1;
+    rm.m_no_op      = 1'b0;
+    rm.m_mprv       = 1'b0;
+    rm.m_mpp        = PRIV_M;
+  endfunction
+
   virtual task run_test_body();
     mmu_ref_model      rm;
     mmu_page_table_mem pt;
@@ -58,15 +72,8 @@ class test_ptw_map4k_directed extends test_base;
     m_mismatch = 0;
 
     // ── Step 1: Configure ref_model CSR mirror ────────────────────────────
-    // Direct assignment (FIFO path connected in Phase 5)
-    rm.m_satp0_mode = 4'h8;          // Sv39
-    rm.m_satp0_ppn  = ROOT_PPN;
-    rm.m_satp0_asid = ROOT_ASID;
-    rm.m_satp_sel   = 1'b0;          // Use SATP0
-    rm.m_priv       = PRIV_S;        // S-mode (mmu_en = 1)
-    rm.m_ptw_en     = 1'b1;
-    rm.m_mmu_en     = 1'b1;          // Force: mode=Sv39, S-mode → MMU enabled
-    rm.m_no_op      = 1'b0;
+    // Direct assignment (FIFO path connected in Phase 5, so re-apply later too)
+    apply_ref_cfg(rm);
     rm.m_mxr        = 1'b0;
     rm.m_sum        = 1'b0;
 
@@ -107,6 +114,7 @@ class test_ptw_map4k_directed extends test_base;
 
     // ── Step 4: Verify all mappings via ref_model.translate() ────────────
     for (int i = 0; i < NUM_MAP; i++) begin
+      apply_ref_cfg(rm);
       expected_ppn = m_pa[i][39:12];   // PA[39:12]
       rsp = rm.translate(m_va[i], ACC_LOAD);
 
@@ -130,6 +138,7 @@ class test_ptw_map4k_directed extends test_base;
     // ── Step 5: Verify page-fault path for unmapped VAs ──────────────────
     for (int j = 0; j < NUM_FAULT; j++) begin
       va_t fault_va;
+      apply_ref_cfg(rm);
       // Generate a VA unlikely to collide with any mapped entry
       fault_va = va_t'(39'h3_0000_0000 | (j * 39'h1000));
       rsp = rm.translate(fault_va, ACC_LOAD);

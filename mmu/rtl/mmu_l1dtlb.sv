@@ -296,20 +296,6 @@ always @(posedge dutlb_clk) begin
   end
 end
 
-// Debug: trace exception chain source and refill-id correlation basis.
-always @(posedge dutlb_clk) begin
-  if (lsu_mmu_va0_vld || lsu_mmu_va1_vld || dutlb_expt_for_taken
-      || ptw_l1dtlb_ref_cmplt || jtlb_dutlb_ref_cmplt) begin
-    $display("[MMU_DTLB_EXPT_CHAIN_DBG] t=%0t ptw_cmplt=%0b ptw_id=%0d ptw_pgflt=%0b ptw_accerr=%0b | jtlb_cmplt=%0b jtlb_id=%0d jtlb_pgflt=%0b | ref_pgflt=%0b ref_acflt=%0b expt_for_taken=%0b refill_on=%0b refill_type=%0b refill_id0=%0d refill_id1=%0d refill_id_sel=%0d | miss0=%0b miss1=%0b upd0=%0b upd1=%0b older0=%0b older1=%0b",
-      $time,
-      ptw_l1dtlb_ref_cmplt, ptw_l1dtlb_ref_id, ptw_l1tlb_pgflt, ptw_l1tlb_acc_err,
-      jtlb_dutlb_ref_cmplt, jtlb_dutlb_ref_id, jtlb_dutlb_pgflt,
-      dutlb_ref_pgflt, dutlb_ref_acflt, dutlb_expt_for_taken, l1dtlb_refill_on,
-      refill_type, refill_id_flop0, refill_id_flop1, refill_id_flop,
-      dutlb_miss_vld0, dutlb_miss_vld1, dutlb_refill_upd0, dutlb_refill_upd1,
-      dutlb_inst_id_older0, dutlb_inst_id_older1);
-  end
-end
 `endif
 
 //!************************************************
@@ -449,6 +435,23 @@ begin
 end 
 assign refill_id_flop[IID_WIDTH-1:0] = refill_type ? refill_id_flop0[IID_WIDTH-1:0]
                                                    : refill_id_flop1[IID_WIDTH-1:0];
+
+`ifndef SYNTHESIS
+// Debug: trace exception chain source and refill-id correlation basis.
+always @(posedge dutlb_clk) begin
+  if (lsu_mmu_va0_vld || lsu_mmu_va1_vld || dutlb_expt_for_taken
+      || ptw_l1dtlb_ref_cmplt || jtlb_dutlb_ref_cmplt) begin
+    $display("[MMU_DTLB_EXPT_CHAIN_DBG] t=%0t ptw_cmplt=%0b ptw_id=%0d ptw_pgflt=%0b ptw_accerr=%0b | jtlb_cmplt=%0b jtlb_id=%0d jtlb_pgflt=%0b | ref_pgflt=%0b ref_acflt=%0b expt_for_taken=%0b refill_on=%0b refill_type=%0b refill_id0=%0d refill_id1=%0d refill_id_sel=%0d | miss0=%0b miss1=%0b upd0=%0b upd1=%0b older0=%0b older1=%0b",
+      $time,
+      ptw_l1dtlb_ref_cmplt, ptw_l1dtlb_ref_id, ptw_l1tlb_pgflt, ptw_l1tlb_acc_err,
+      jtlb_dutlb_ref_cmplt, jtlb_dutlb_ref_id, jtlb_dutlb_pgflt,
+      dutlb_ref_pgflt, dutlb_ref_acflt, dutlb_expt_for_taken, l1dtlb_refill_on,
+      refill_type, refill_id_flop0, refill_id_flop1, refill_id_flop,
+      dutlb_miss_vld0, dutlb_miss_vld1, dutlb_refill_upd0, dutlb_refill_upd1,
+      dutlb_inst_id_older0, dutlb_inst_id_older1);
+  end
+end
+`endif
 logic lsu_mmu_stamo_vld0;
 logic [PPN_WIDTH-1:0] lsu_mmu_stamo_pa0;
 

@@ -193,7 +193,7 @@ endef
         run run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
-        phase5_scan_logs phase5_ptw4k print-phase5
+        phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5
 
 all: comp run
 
@@ -236,7 +236,17 @@ phase5_check:
 phase5_scan_logs:
 	@test -f $(PROJECT_DIR)/scripts/scan_logs.pl || (echo "No scripts/scan_logs.pl"; exit 1)
 	@set -e; for f in $(PHASE5_LOGS); do test -f "$$f" || (echo "Missing: $$f"; exit 1); done
-	$(PERL) $(PROJECT_DIR)/scripts/scan_logs.pl $(PHASE5_LOGS)
+	@if $(PERL) -MText::Table -e 1 >/dev/null 2>&1; then \
+		$(PERL) $(PROJECT_DIR)/scripts/scan_logs.pl $(PHASE5_LOGS); \
+	else \
+		echo "[phase5_scan_logs] WARN: perl module Text::Table missing; fallback to grep UVM_ERROR/UVM_FATAL scan."; \
+		if grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*[1-9]|UVM_FATAL[[:space:]]*:[[:space:]]*[1-9]' $(PHASE5_LOGS) >/dev/null 2>&1; then \
+			echo "[phase5_scan_logs] FAIL: non-zero UVM_ERROR/UVM_FATAL summary found."; \
+			exit 1; \
+		else \
+			echo "[phase5_scan_logs] PASS (fallback): all logs show UVM_ERROR=0 and UVM_FATAL=0"; \
+		fi; \
+	fi
 
 # Optional: Phase 4 reference PTW/页表 定向（与 Phase 5 端到端互补）
 phase5_ptw4k:
@@ -250,6 +260,10 @@ phase5: comp phase5_run_5seed phase5_run_3seed phase5_check
 # Same, but comp_fast
 phase5_fast: comp_fast phase5_run_5seed phase5_run_3seed phase5_check
 	@echo "=== phase5_fast finished OK (comp_fast + 5+3 seeds + UVM 0/0) ==="
+
+# Final closeout gate: phase5 + ptw directed + scan logs (with fallback)
+phase5_fullgate: phase5 phase5_ptw4k phase5_scan_logs
+	@echo "=== phase5_fullgate finished OK (phase5 + ptw4k + scan_logs) ==="
 
 #===============================================================================
 # Help
@@ -276,8 +290,9 @@ help:
 	@echo "  make phase5_run_5seed         # 仅 5 个 SEED 回归（需已有 simv）"
 	@echo "  make phase5_run_3seed         # 仅 3 个 SEED 回归"
 	@echo "  make phase5_check             # 仅检查 8 个 log 中 UVM_ERROR/FATAL=0"
-	@echo "  make phase5_scan_logs         # 可选：scan_logs.pl 扫 8 个 log"
+	@echo "  make phase5_scan_logs         # 可选：scan_logs.pl 扫 8 个 log（缺 Text::Table 自动降级）"
 	@echo "  make phase5_ptw4k             # 可选：test_ptw_map4k_directed 定向一条"
+	@echo "  make phase5_fullgate          # phase5 + phase5_ptw4k + phase5_scan_logs"
 	@echo "  覆盖: PHASE5_TEST=test_mmu_translation_sanity  PHASE5_SEEDS5/SEEDS3 可改"
 
 #===============================================================================

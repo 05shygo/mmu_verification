@@ -343,6 +343,8 @@
 | P5-30 | 同上 + `mmu_verification/Makefile` | **RTL 调试/流程** | 一次性 **miss→ref_id→cam_write→replay_hit** 日志挂在 **`MMU_DTLB_DBG_EN`** 下时，`make fast` **不定义该宏** → 日志**从不出现** | 将四段 **one-shot** 打印改由独立宏 **`MMU_EXPT_TRACE_ONCE_EN`** 控制；**Makefile** 的 **`VCS_ELAB_OPTS` / `VCS_FAST_OPTS`** 默认 `+define+MMU_EXPT_TRACE_ONCE_EN`；与粗粒度 DBG 解耦 |
 | P5-31 | （仿真 log + `ptw.sv` 路径） | **现象 / 分析** | **IFU** 全量 `fault mismatch`（ref **EXC_NONE**，DUT `dut_fault=1`）；**LSU** `EXPT_REPLAY` 上 **access_fault=1** 与 ref 矛盾；`[MMU_EXPT_TRACE_ONCE][REF] … acerr=1`、`[CAM_WRITE]… acflt=1`、`[REPLAY_HIT]… acflt=1` | 证据链表明 **`ptw_l1tlb_acc_err`（→ `expt_wr0_acflt`）在 PTW 完成路径上被错误置 1**（而 ref_model 用页表得合法 PTE/rwx）。`ptw.sv`：`ptw_l1dtlb_ref_acc_err` 与 **`acc_err_grant`** 及 L2 类型从 TWU 侧 **PMP deny / mbuf_bus_error** 等汇拢相关。**归类为 DUT/PTW+TWU+TB 一致性待修**，**非** DTLB expt_CAM「纯 consume」逻辑在 trace 上首先暴露的矛盾（trace 先证明 **异常源来自 PTW acc_err**） |
 | P5-32 | （`testbench` 侧，与 P5-31 并行） | **待办 / 调试验证** | HPCP 日志中 **`dutlb_miss` 数量异常**、**IFU monitor「rsp 无 pending req」** 等与 IFU/perf 统计仍不一致 | 在 **P5-31 修复或旁路** 后复测；若 IFU 仍 fault，**单独**查 **ITLB/IFU 路径** 与 PMP/PTW 对 **fetch** 的 acc_err 语义 |
+| P5-33 | `testbench/env/mmu_translation_sb.svh` | **TB/SB 误判** | `phase5` 多 seed 仅剩 1 个 UVM_ERROR：`[LSU_P0] STAMO vld: expected dut.pa==stamo_pa`。日志显示同拍 `ref.ppn` 与 `dut.pa` 一致、而 `stamo_pa` 为另一条路径值。根因：`lsu_mmu_stamo_vld` 为接口级全局信号，P0 不应被强制按 STAMO mux 语义解释 | 去掉 **LSU_P0** 上 `dut.pa == stamo_pa` 的强校验与 `skip_ref_ppn_check`；保留 P1 的 STAMO 特判。修后 `make phase5` 8 seed 均 `UVM_ERROR=0/UVM_FATAL=0` |
+| P5-34 | `testbench/test/basic_tests/test_ptw_map4k_directed.svh` | **TB Directed Test 回归 bug** | 运行 `make phase5_ptw4k` 出现 60 个 mismatch，`got_ppn` 全等于 `VA[38:12]`，`fault_va` 也返回 `EXC_NONE`；表现为 ref_model 进入 passthrough | 新增 `apply_ref_cfg()` 并在每次 `translate()` 前重置 ref CSR 镜像（Sv39/S-mode/no-op=0/mprv=0），避免运行时镜像被 monitor/FIFO 事件覆盖。修后 `test_ptw_map4k_directed_30001.log`：`UVM_ERROR=0`、`UVM_FATAL=0`、`passthrough=0` |
 
 **P5-19~P5-32 与旧轮关系**：P5-1~P5-18 解决的是**当时** TB/监控/ PMP-idle/IFU 协议/ STAMO 等导致的 **0-mismatch** 路径；本轮设计变更后 **回归标准需重新以当前 RTL 为准验收**。
 
@@ -351,13 +353,13 @@
 | # | 检查项 | 负责 | 状态 |
 |---|--------|------|------|
 | 1 | `make comp` 0 errors | A+B | ✅ sanity 重编译路径已验证（`make fast`） |
-| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ⏳ 多 seed 正式回归见 Phase 10；**v7.1 子轮次当前未清零**（见 P5-31） |
-| 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | 历史：✅（2026-04-26 早先轮次）；**当前**：⏳ 待 P5-31 后重验 |
-| 4 | miss→PTW→refill 混合，mismatch=0 | B | 历史：✅；**当前**：⏳ PTW `acc_err` 误报时 SB 与 IFU/LSU 全路径异常 |
-| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | 历史：✅（P5-17 后）；**当前**：⏳ 日志曾出现 `total_checked<200` 与 100+ mismatch（与 **P5-31** 同批） |
-| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | 历史：✅；**当前**：可能出现 **end-of-sim 非 0 警告**（与 LSU 超时/挂起 相关，见 P5-27、P5-32） |
+| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ✅ `make phase5`（5+3 seed）已通过，8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0` |
+| 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | ✅ 同上（`test_mmu_translation_sanity` 覆盖并通过） |
+| 4 | miss→PTW→refill 混合，mismatch=0 | B | ✅ 同上（3 seed tranche 通过） |
+| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ✅ 已达成（phase5_check 通过；P5-33 误判已修） |
+| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | ✅ phase5 log 统计归零；`phase5_ptw4k` 亦 PASS |
 | 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ✅ 随 env 构建；专项用例 ⏳ Phase 6+ |
-| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳ CI 中可选；**人工 log**：P5-1~P5-18 轮次曾 UVM_ERROR=0；**v7.1 联调当前非 0**（待 P5-31/32 后回归） |
+| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⚠️ 环境依赖：服务器缺 `Text::Table`（`phase5_scan_logs` 报模块缺失）；Makefile 已加 fallback grep 检查，当前 8 份 phase5 log 均 0/0 |
 
 ---
 
@@ -377,7 +379,7 @@
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
 | **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
 | **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成**（2026-04-24）|
-| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | 🔄 **分阶段**：**(a)** 2026-04-26 早先轮次 + P5-11~P5-18 曾达成 **0 mismatch**；**(b)** v7.1 busy/wakeup+expt_CAM 后 **尚未再次达成**（见 P5-19~P5-32：**PTW acc_err** 与 IFU/LSU 全路径 fault 待修），以 **(b) 重跑清零** 为当前签核条件 |
+| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | ✅ **已再次达成**（2026-04-26）：`make phase5` 完整通过（comp + 5+3 seed + phase5_check 0/0）；随后 `make phase5_ptw4k` 通过（P5-34 修复后 `passthrough=0`） |
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |
 | **M7** — SVA + 覆盖率框架 | Phase 7 退出准则 | ⏳ |
 | **M8** — 全部 Vseq 可运行 | Phase 8 退出准则 | ⏳ |

@@ -29,6 +29,10 @@ class ifu_monitor extends uvm_monitor;
   // IFU is 1-outstanding (no out-of-order), FIFO pop is safe.
   protected ifu_txn m_pending_req[$];
 
+  // Timeout-resilience flag: set by _collect_rsp when pavld arrives,
+  // checked by _collect_req when va_vld deasserts.
+  protected bit m_rsp_seen;
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
   endfunction
@@ -58,19 +62,24 @@ class ifu_monitor extends uvm_monitor;
     forever begin
       @(vif.monitor_cb iff vif.monitor_cb.ifu_mmu_va_vld);
       tr       = ifu_txn::type_id::create("ifu_req_mon");
-      tr.va    = 63'(vif.monitor_cb.ifu_mmu_va << 1);  // ifu_mmu_va = VA[63:1]; recover VA[62:0] = ifu_mmu_va << 1
+      tr.va    = 63'(vif.monitor_cb.ifu_mmu_va << 1);
       tr.abort = vif.monitor_cb.ifu_mmu_abort;
       `uvm_info(get_type_name(), {"IFU REQ: ", tr.convert2string()}, UVM_HIGH)
-      m_pending_req.push_back(tr); // Enqueue for req/rsp correlation
+      m_rsp_seen = 0;
+      m_pending_req.push_back(tr);
       ap_req.write(tr);
-      // Edge detection: wait for va_vld to deassert (rising-edge semantics)
       @(vif.monitor_cb iff !vif.monitor_cb.ifu_mmu_va_vld);
+      // If va_vld fell without pavld (driver timeout), discard pending entry.
+      if (!m_rsp_seen && m_pending_req.size() > 0) begin
+        void'(m_pending_req.pop_back());
+        `uvm_info(get_type_name(),
+          $sformatf("IFU REQ dropped (no pavld before va_vld deassert): VA=0x%010h",
+            {1'b0, tr.va[38:0]}), UVM_MEDIUM)
+      end
     end
   endtask
 
   // ── Collect PA response events ────────────────────────────────────────────
-  // Phase 5: Pop oldest pending req (FIFO), merge VA/abort into the response
-  //   txn so that ap_rsp subscribers (mmu_translation_sb) have both VA and PA.
   protected task _collect_rsp();
     ifu_txn tr, req_tr;
     forever begin
@@ -83,16 +92,13 @@ class ifu_monitor extends uvm_monitor;
       tr.sec     = vif.monitor_cb.mmu_ifu_sec;
       tr.ca      = vif.monitor_cb.mmu_ifu_ca;
       tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
-      // --- Req/rsp correlation (FIFO, 1-outstanding) ---
-      // Wait until the corresponding request has been captured.
       wait(m_pending_req.size() > 0);
       req_tr   = m_pending_req.pop_front();
-      tr.va    = req_tr.va;    // Carry VA for ref_model.translate()
-      tr.abort = req_tr.abort; // Carry abort for SB context
+      m_rsp_seen = 1;
+      tr.va    = req_tr.va;
+      tr.abort = req_tr.abort;
       `uvm_info(get_type_name(), {"IFU RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_rsp.write(tr);
-      // Edge detection: wait for pavld to deassert before capturing next response.
-      // Prevents double-capture when DUT holds mmu_ifu_pavld for multiple cycles.
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_ifu_pavld);
     end
   endtask

@@ -193,8 +193,9 @@ class cp0_no_op_seq extends cp0_base_seq;
 
 endclass : cp0_no_op_seq
 
-// ── Composite init sequence: ICG_EN → SATP(Sv39) → PTW_EN → PRIV ─────────────
-// Phase 3 sanity test uses this to bring the MMU online.
+// ── Composite init sequence: ICG_EN → PRIV → SATP(Sv39) → PTW_EN ─────────────
+// Phase 3+ sanity tests use this to bring the MMU online.
+// PRIV is set BEFORE SATP so mmu_en=1 the instant satp_mode is latched.
 class cp0_reg_rw_seq extends cp0_base_seq;
   `uvm_object_utils(cp0_reg_rw_seq)
 
@@ -222,23 +223,27 @@ class cp0_reg_rw_seq extends cp0_base_seq;
     tr.icg_en = icg_en;
     `uvm_send(tr)
 
-    // 2. Write SATP → activates MMU (mmu_xx_mmu_en = 1)
+    // 2. Set privilege mode BEFORE SATP write.
+    //    RTL: mmu_xx_mmu_en = (satp_mode==4'h8) && (priv_mode != 2'b11).
+    //    Setting S-mode first ensures mmu_en becomes 1 the instant SATP.mode
+    //    is latched, avoiding any transient window where satp_mode=8 but
+    //    mmu_en=0 (which can leave internal DUT state in bare-mode paths).
+    `uvm_create(tr)
+    tr.op        = CP0_SET_PRIV;
+    tr.priv_mode = priv_mode;
+    `uvm_send(tr)
+
+    // 3. Write SATP → mmu_en immediately becomes 1 (priv already S-mode)
     `uvm_create(tr)
     tr.op       = CP0_WRITE_SATP;
     tr.satp_sel = 1'b0;
     tr.wdata    = satp_val;
     `uvm_send(tr)
 
-    // 3. Enable PTW
+    // 4. Enable PTW
     `uvm_create(tr)
     tr.op     = CP0_SET_PTW_EN;
     tr.ptw_en = ptw_en;
-    `uvm_send(tr)
-
-    // 4. Set privilege mode
-    `uvm_create(tr)
-    tr.op        = CP0_SET_PRIV;
-    tr.priv_mode = priv_mode;
     `uvm_send(tr)
   endtask
 

@@ -298,23 +298,56 @@ class test_mmu_translation_sanity extends test_base;
         UVM_LOW)
     end
 
-    // Brief settle: allow DUT clocks to stabilise after CSR writes.
-    #100ns;
+    // Settle: allow DUT clocks to stabilise after CSR writes + page table build.
+    #500ns;
 
-    // ── Debug probe: verify DUT MMU is actually enabled ──────────────────────
+    // ── Hard assertion: verify DUT MMU is actually enabled ──────────────────
+    // If mmu_en=0 at this point, all translations will fail (bare-mode bypass).
+    // Promote from UVM_WARNING to UVM_ERROR and retry SATP write once.
     begin
       bit mmu_en_xx  = m_env.m_cp0.vif.monitor_cb.mmu_xx_mmu_en;
       bit mmu_en_lsu = m_env.m_lsu.vif.monitor_cb.mmu_lsu_mmu_en;
+      bit [63:0] satp_rb = m_env.m_cp0.vif.monitor_cb.mmu_cp0_satp_data;
       `uvm_info(get_type_name(),
         $sformatf("DEBUG MMU STATE: mmu_xx_mmu_en=%0b  mmu_lsu_mmu_en=%0b  (expect both=1)",
-          mmu_en_xx, mmu_en_lsu), UVM_LOW)
-      if (!mmu_en_xx || !mmu_en_lsu)
-        `uvm_warning(get_type_name(),
-          "MMU NOT ENABLED in DUT after SATP write + S-mode — check SATP latch / priv_mode timing")
-      // Also readback SATP to verify the write took effect
+          mmu_en_xx, mmu_en_lsu), UVM_NONE)
       `uvm_info(get_type_name(),
-        $sformatf("DEBUG SATP readback: mmu_cp0_satp_data=0x%016h",
-          m_env.m_cp0.vif.monitor_cb.mmu_cp0_satp_data), UVM_LOW)
+        $sformatf("DEBUG SATP readback: mmu_cp0_satp_data=0x%016h  (expect 0x8000000000000000)",
+          satp_rb), UVM_NONE)
+      `uvm_info(get_type_name(),
+        $sformatf("DEBUG PRIV readback: cp0_yy_priv_mode=%02b  (expect 01=S-mode)",
+          m_env.m_cp0.vif.monitor_cb.cp0_yy_priv_mode), UVM_NONE)
+
+      if (!mmu_en_xx || !mmu_en_lsu) begin
+        `uvm_warning(get_type_name(),
+          "MMU NOT ENABLED — retrying SATP write + SFENCE")
+        begin
+          cp0_reg_rw_seq cp0_retry;
+          tlb_inv_all_seq sfence_retry;
+          cp0_retry = cp0_reg_rw_seq::type_id::create("cp0_retry");
+          if (!cp0_retry.randomize() with {
+                satp_val  == {4'h8, 16'(ROOT_ASID), 44'(ROOT_PPN)};
+                priv_mode == 2'b01;
+                ptw_en    == 1'b1;
+                icg_en    == 1'b1;
+              })
+            `uvm_fatal(get_type_name(), "cp0_retry randomize() failed")
+          cp0_retry.start(m_env.m_cp0.m_sequencer);
+          sfence_retry = tlb_inv_all_seq::type_id::create("sfence_retry");
+          sfence_retry.num_txn = 1;
+          sfence_retry.start(m_env.m_lsu.m_sequencer);
+          #500ns;
+
+          mmu_en_xx  = m_env.m_cp0.vif.monitor_cb.mmu_xx_mmu_en;
+          mmu_en_lsu = m_env.m_lsu.vif.monitor_cb.mmu_lsu_mmu_en;
+          `uvm_info(get_type_name(),
+            $sformatf("RETRY MMU STATE: mmu_xx_mmu_en=%0b  mmu_lsu_mmu_en=%0b",
+              mmu_en_xx, mmu_en_lsu), UVM_NONE)
+        end
+        if (!mmu_en_xx || !mmu_en_lsu)
+          `uvm_error(get_type_name(),
+            "MMU STILL NOT ENABLED after retry — all translations will fail (bare-mode)")
+      end
     end
 
     // ── Step 4: IFU fetch sequence (100 txns to mapped VAs) ─────────────────

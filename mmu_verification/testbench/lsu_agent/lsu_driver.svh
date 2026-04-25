@@ -114,9 +114,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _get_kind(LSU_PIPE0, tr);
       `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
-      // RTL: mmu_lsu_tlb_busy = &mb_entry_vld (all 8 miss-buffer slots occupied).
-      // When busy=1 the allocator refuses new miss entries; the DUT will never
-      // generate pa0_vld for this request, causing a 4000-cycle timeout.
+
+      // Guard: ensure va0_vld is LOW for at least one cycle before the new request.
+      // Clears any residual combinational pa0_vld from the prior transaction,
+      // preventing the @(iff pa0_vld) from triggering on stale data.
+      vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+      @(vif.driver_cb);
+
       // Wait until at least one MB slot is free before presenting va0_vld.
       @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
       vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
@@ -126,12 +130,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_abort0   <= tr.abort;
       vif.driver_cb.lsu_mmu_vabuf0   <= tr.vabuf;
       if (tr.abort == 1'b1) begin
-        // Abort: assert for one cycle then de-assert, no response wait
         @(vif.driver_cb);
         vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
         vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
       end else begin
-        // Hold va0_vld until DUT responds with pa0_vld
+        // Wait one full cycle with va0_vld=1 before sampling pa0_vld,
+        // so the DUT has time to compute the combinational TLB hit/miss.
+        @(vif.driver_cb);
         fork
           begin : wait_rsp_p0
             @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa0_vld === 1'b1);
@@ -160,6 +165,11 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _get_kind(LSU_PIPE1, tr);
       `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
+
+      // Guard: ensure va1_vld is LOW for at least one cycle before the new request.
+      vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+      @(vif.driver_cb);
+
       // Same backpressure check as pipe0: wait for MB not full.
       @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
       vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
@@ -169,12 +179,12 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_abort1   <= tr.abort;
       vif.driver_cb.lsu_mmu_vabuf1   <= tr.vabuf;
       if (tr.abort == 1'b1) begin
-        // Abort: assert for one cycle then de-assert, no response wait
         @(vif.driver_cb);
         vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
         vif.driver_cb.lsu_mmu_abort1  <= 1'b0;
       end else begin
-        // Hold va1_vld until DUT responds with pa1_vld
+        // Wait one full cycle with va1_vld=1 before sampling pa1_vld.
+        @(vif.driver_cb);
         fork
           begin : wait_rsp_p1
             @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa1_vld === 1'b1);
@@ -229,7 +239,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   endtask
 
   // ── TLB Invalidation sub-thread ───────────────────────────────────────────
-  // Phase 6 implement: assert one of 4 inv signals; wait mmu_lsu_tlb_inv_done
   protected task _drive_inv();
     lsu_txn tr;
     forever begin
@@ -239,7 +248,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       @(vif.driver_cb);
       vif.driver_cb.lsu_mmu_tlb_va   <= tr.inv_va;
       vif.driver_cb.lsu_mmu_tlb_asid <= tr.inv_asid;
-      // Assert the appropriate invalidation type for one cycle
       case (tr.inv_kind)
         INV_ALL:      vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b1;
         INV_VA_ALL:   vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b1;
@@ -247,12 +255,23 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         INV_VA_ASID:  vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b1;
       endcase
       @(vif.driver_cb);
-      // De-assert all inv signals
       vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b0;
       vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
       vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
       vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
-      // Phase 6 implement: wait mmu_lsu_tlb_inv_done
+      // Wait for DUT to acknowledge invalidation completion (with timeout)
+      fork
+        begin : wait_inv_done
+          @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
+        end
+        begin : wait_inv_timeout
+          repeat (1024) @(vif.driver_cb);
+          `uvm_warning(get_type_name(),
+            $sformatf("TLB INV response timeout (inv_kind=%s) — DUT may not have completed invalidation",
+              tr.inv_kind.name()))
+        end
+      join_any
+      disable fork;
     end
   endtask
 

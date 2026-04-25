@@ -45,6 +45,12 @@ class lsu_monitor extends uvm_monitor;
   protected lsu_txn m_pending_p0[$];
   protected lsu_txn m_pending_p1[$];
 
+  // Timeout-resilience flags: set by _collect_pipeN_rsp when pa_vld arrives,
+  // checked by _collect_pipeN_req when va_vld deasserts.  If the flag is still
+  // 0 when va_vld falls, the driver timed out → discard the pending entry.
+  protected bit m_p0_rsp_seen;
+  protected bit m_p1_rsp_seen;
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
   endfunction
@@ -77,10 +83,10 @@ class lsu_monitor extends uvm_monitor;
   endtask
 
   // ── Pipe 0 request ────────────────────────────────────────────────────────
-  // Phase 5: push to m_pending_p0 so _collect_pipe0_rsp can merge VA fields.
   // Edge detection: wait for va0_vld HIGH, sample once, then wait for LOW
-  // before looping. This prevents duplicate publications when the driver holds
-  // va0_vld asserted across multiple cycles (stall-until-pa_vld protocol).
+  // before looping.  When va0_vld falls, check if a matching pa0_vld was
+  // received.  If not (driver timeout), pop the stale entry to keep the
+  // m_pending_p0 FIFO in sync and prevent downstream PA mismatch cascades.
   protected task _collect_pipe0_req();
     lsu_txn tr;
     forever begin
@@ -93,15 +99,23 @@ class lsu_monitor extends uvm_monitor;
       tr.abort    = vif.monitor_cb.lsu_mmu_abort0;
       tr.vabuf    = vif.monitor_cb.lsu_mmu_vabuf0;
       `uvm_info(get_type_name(), {"P0 REQ: ", tr.convert2string()}, UVM_HIGH)
-      m_pending_p0.push_back(tr); // Enqueue for req/rsp correlation
+      m_p0_rsp_seen = 0;
+      m_pending_p0.push_back(tr);
       ap_pipe0_req.write(tr);
       // Wait for va0_vld to deassert (rising-edge semantics)
       @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va0_vld);
+      // If va0_vld fell without a matching pa0_vld (driver timeout),
+      // discard the pending entry to prevent FIFO desync.
+      if (!m_p0_rsp_seen && m_pending_p0.size() > 0) begin
+        void'(m_pending_p0.pop_back());
+        `uvm_info(get_type_name(),
+          $sformatf("P0 REQ dropped (no pa0_vld before va0_vld deassert): VA=0x%016h id=%0d",
+            tr.va, tr.id), UVM_MEDIUM)
+      end
     end
   endtask
 
   // ── Pipe 0 response ───────────────────────────────────────────────────────
-  // Phase 5: Pop oldest pending p0 req (FIFO), merge VA/id/st_inst into rsp_tr.
   protected task _collect_pipe0_rsp();
     lsu_txn tr, req_tr;
     forever begin
@@ -116,19 +130,19 @@ class lsu_monitor extends uvm_monitor;
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
       wait(m_pending_p0.size() > 0);
       req_tr      = m_pending_p0.pop_front();
-      tr.va       = req_tr.va;      // Carry VA for ref_model.translate()
-      tr.id       = req_tr.id;      // Carry LSIQ id for ordering context
-      tr.st_inst  = req_tr.st_inst; // Carry st/ld flag for ACC_STORE/ACC_LOAD
+      m_p0_rsp_seen = 1;
+      tr.va       = req_tr.va;
+      tr.id       = req_tr.id;
+      tr.st_inst  = req_tr.st_inst;
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_pipe0_rsp.write(tr);
-      // Edge detection: wait for pa0_vld to deassert (rising-edge semantics)
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa0_vld);
     end
   endtask
 
   // ── Pipe 1 request ────────────────────────────────────────────────────────
-  // Phase 5: push to m_pending_p1 so _collect_pipe1_rsp can merge VA fields.
-  // Edge detection: same rising-edge approach as pipe0.
+  // Same timeout-resilient approach as pipe0: track va1_vld deassert without
+  // pa1_vld and discard the stale pending entry if so.
   protected task _collect_pipe1_req();
     lsu_txn tr;
     forever begin
@@ -140,15 +154,20 @@ class lsu_monitor extends uvm_monitor;
       tr.st_inst = vif.monitor_cb.lsu_mmu_st_inst1;
       tr.abort   = vif.monitor_cb.lsu_mmu_abort1;
       tr.vabuf   = vif.monitor_cb.lsu_mmu_vabuf1;
-      m_pending_p1.push_back(tr); // Enqueue for req/rsp correlation
+      m_p1_rsp_seen = 0;
+      m_pending_p1.push_back(tr);
       ap_pipe1_req.write(tr);
-      // Wait for va1_vld to deassert (rising-edge semantics)
       @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va1_vld);
+      if (!m_p1_rsp_seen && m_pending_p1.size() > 0) begin
+        void'(m_pending_p1.pop_back());
+        `uvm_info(get_type_name(),
+          $sformatf("P1 REQ dropped (no pa1_vld before va1_vld deassert): VA=0x%016h id=%0d",
+            tr.va, tr.id), UVM_MEDIUM)
+      end
     end
   endtask
 
   // ── Pipe 1 response ───────────────────────────────────────────────────────
-  // Phase 5: Pop oldest pending p1 req (FIFO), merge VA/id/st_inst into rsp_tr.
   protected task _collect_pipe1_rsp();
     lsu_txn tr, req_tr;
     forever begin
@@ -160,14 +179,13 @@ class lsu_monitor extends uvm_monitor;
       tr.access_fault = vif.monitor_cb.mmu_lsu_access_fault1;
       tr.stall        = vif.monitor_cb.mmu_lsu_stall1;
       tr.sec          = vif.monitor_cb.mmu_lsu_sec1;
-      // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
       wait(m_pending_p1.size() > 0);
       req_tr      = m_pending_p1.pop_front();
-      tr.va       = req_tr.va;      // Carry VA for ref_model.translate()
-      tr.id       = req_tr.id;      // Carry LSIQ id for ordering context
-      tr.st_inst  = req_tr.st_inst; // Carry st/ld flag for ACC_STORE/ACC_LOAD
+      m_p1_rsp_seen = 1;
+      tr.va       = req_tr.va;
+      tr.id       = req_tr.id;
+      tr.st_inst  = req_tr.st_inst;
       ap_pipe1_rsp.write(tr);
-      // Edge detection: wait for pa1_vld to deassert (rising-edge semantics)
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa1_vld);
     end
   endtask

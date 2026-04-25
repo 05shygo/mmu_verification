@@ -136,6 +136,7 @@ class cp0_driver extends uvm_driver #(cp0_txn);
   protected task _do_set_priv(cp0_txn tr);
     @(vif.driver_cb);
     vif.driver_cb.cp0_yy_priv_mode <= tr.priv_mode;
+    @(vif.driver_cb); // settle: ensure RTL latches the new priv_mode
   endtask
 
   protected task _do_set_mxr(cp0_txn tr);
@@ -157,6 +158,7 @@ class cp0_driver extends uvm_driver #(cp0_txn);
   protected task _do_set_ptw_en(cp0_txn tr);
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_ptw_en <= tr.ptw_en;
+    @(vif.driver_cb); // settle: ensure RTL latches ptw_en
   endtask
 
   protected task _do_set_no_op(cp0_txn tr);
@@ -172,6 +174,7 @@ class cp0_driver extends uvm_driver #(cp0_txn);
   protected task _do_set_icg_en(cp0_txn tr);
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_icg_en <= tr.icg_en;
+    @(vif.driver_cb); // settle: allow gated clocks to propagate
   endtask
 
   protected task _do_set_cskyee(cp0_txn tr);

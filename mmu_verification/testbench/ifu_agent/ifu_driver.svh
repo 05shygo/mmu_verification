@@ -53,16 +53,24 @@ class ifu_driver extends uvm_driver #(ifu_txn);
 
   // ── Drive one IFU request transaction ────────────────────────────────────
   // IFU protocol: hold va_vld HIGH until DUT responds with pavld.
-  // RTL: mmu_ifu_pavld = iutlb_hit_vld || ... where
-  //   iutlb_hit_vld = ifu_mmu_va_vld && iutlb_addr_hit (combinational).
-  // After an L1 miss → L2/PTW refill writes the entry into L1 ITLB,
-  // iutlb_addr_hit goes HIGH.  pavld fires only if va_vld is still held.
-  // De-asserting va_vld before refill completion prevents pavld from ever
-  // firing, causing the driver to hang or return stale PA=0.
+  // RTL: mmu_ifu_pavld is combinational from (ifu_mmu_va_vld && iutlb_addr_hit)
+  //   among other paths.  After an L1 miss the refill FSM requests L2/PTW,
+  //   and pavld fires only when the entry has been filled AND va_vld is held.
+  //
+  // IMPORTANT: Before asserting the new request we must wait one cycle with
+  //   va_vld=0 so the combinational pavld from the PREVIOUS request is cleared.
+  //   Without this guard the @(iff pavld===1) can trigger immediately on stale
+  //   pavld → samples leftover PA (typically 0) from the previous de-assert
+  //   window, producing a systematic "PA=0" mismatch for every IFU request.
   virtual task drive_one(ifu_txn tr);
     repeat (tr.idle_cycles) @(vif.driver_cb);
 
+    // Ensure va_vld is LOW for at least one cycle before the new request.
+    // This clears any residual combinational pavld from the prior transaction.
+    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
     @(vif.driver_cb);
+
+    // Assert the new request
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
     vif.driver_cb.ifu_mmu_va     <= tr.va >> 1;
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
@@ -72,6 +80,9 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
       vif.driver_cb.ifu_mmu_abort  <= 1'b0;
     end else begin
+      // Wait at least one full cycle with va_vld=1 BEFORE sampling pavld,
+      // so the DUT has time to compute the combinational TLB hit/miss.
+      @(vif.driver_cb);
       fork
         begin : wait_ifu_rsp
           @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);

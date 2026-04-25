@@ -16,8 +16,10 @@
 //   2. Call m_ref.translate(va, acc_type) to get golden result.
 //   3. Exception check: ref.exc!=EXC_NONE  vs  DUT fault signals (pgflt/deny).
 //   4. PA check (only when no fault on either side): ref.ppn vs tr.pa.
-//      Exception: tr.stamo_vld_at_rsp → DUT muxes dut.pa from STAMO, not DTLB;
-//      SB checks dut.pa==stamo_pa_at_rsp and skips ref PPN compare.
+//      Exception (LSU_P1 only): tr.stamo_vld_at_rsp → st_ag can mux dut.pa1 from
+//      STAMO (lm), not DTLB; SB checks dut.pa==stamo_pa and skips ref PPN.
+//      LSU_P0: lsu_mmu_stamo_vld may be global; pa0 is still the DTLB PPN for
+//      this pipe — do not equate mmu_lsu_pa0 to lsu_mmu_stamo_pa.
 //   5. Mismatch → uvm_error; match → uvm_info (UVM_HIGH).
 //
 // Pipe2 note: monitor does not yet merge VA into pipe2 rsp txn (Phase 6).
@@ -120,18 +122,11 @@ class mmu_translation_sb extends uvm_scoreboard;
     ref_rsp   = m_ref.translate(va, acc);
     dut_fault = tr.pgflt | tr.access_fault;
 
-    if (tr.stamo_vld_at_rsp && (tr.pa !== tr.stamo_pa_at_rsp)) begin
-      `uvm_error(get_type_name(),
-        $sformatf("[LSU_P0] STAMO vld: expected dut.pa=lsu_mmu_stamo_pa, got pa=0x%07h stamo=0x%07h (VA=0x%010h)",
-          tr.pa, tr.stamo_pa_at_rsp, {1'b0, va}))
-    end
-
     _compare(.channel("LSU_P0"), .va(va), .ref_rsp(ref_rsp),
              .dut_pa(tr.pa),     .dut_fault(dut_fault),
              .req_vpn(va[38:12]), .dbg_valid(1'b1),
              .tr_stall(tr.stall), .tr_pgflt(tr.pgflt),
-             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en),
-             .skip_ref_ppn_check(tr.stamo_vld_at_rsp));
+             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en));
   endfunction
 
   // =========================================================================

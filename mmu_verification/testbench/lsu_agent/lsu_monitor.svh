@@ -129,9 +129,12 @@ class lsu_monitor extends uvm_monitor;
   endtask
 
   // ── Pipe 0 response ───────────────────────────────────────────────────────
+  // Wait for a matching req in the queue before latching pa_vld, so tr.pa
+  // cannot be sampled while the FIFO is empty (race with the req process).
   protected task _collect_pipe0_rsp();
     lsu_txn tr, req_tr;
     forever begin
+      wait(m_pending_p0.size() > 0);
       @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa0_vld);
       tr              = lsu_txn::type_id::create("lsu_p0_rsp");
       tr.kind         = LSU_PIPE0;
@@ -144,7 +147,6 @@ class lsu_monitor extends uvm_monitor;
       tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
       tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
-      wait(m_pending_p0.size() > 0);
       req_tr      = m_pending_p0.pop_front();
       m_p0_rsp_seen = 1;
       tr.va       = req_tr.va;
@@ -198,10 +200,11 @@ class lsu_monitor extends uvm_monitor;
     end
   endtask
 
-  // ── Pipe 1 response ───────────────────────────────────────────────────────
+  // ── Pipe 1 response (same req-before-pa ordering as pipe0) ────────────────
   protected task _collect_pipe1_rsp();
     lsu_txn tr, req_tr;
     forever begin
+      wait(m_pending_p1.size() > 0);
       @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa1_vld);
       tr              = lsu_txn::type_id::create("lsu_p1_rsp");
       tr.kind         = LSU_PIPE1;
@@ -213,7 +216,6 @@ class lsu_monitor extends uvm_monitor;
       tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
       tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
       tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
-      wait(m_pending_p1.size() > 0);
       req_tr      = m_pending_p1.pop_front();
       m_p1_rsp_seen = 1;
       tr.va       = req_tr.va;

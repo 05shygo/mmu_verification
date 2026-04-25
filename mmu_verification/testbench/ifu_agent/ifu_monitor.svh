@@ -31,12 +31,10 @@ class ifu_monitor extends uvm_monitor;
   // IFU hold protocol is 1-outstanding: keep a single pending request.
   protected ifu_txn m_pending_req;
   protected bit     m_has_pending;
-  protected bit     m_prev_va_vld;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
     m_has_pending = 1'b0;
-    m_prev_va_vld = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -53,12 +51,11 @@ class ifu_monitor extends uvm_monitor;
   endtask
 
   // ── Cycle-accurate collector for IFU hold protocol ────────────────────────
-  // One request can be outstanding at a time.
-  // Same cycle ordering is important:
-  //   1) open request first (if va_vld and no pending)
-  //   2) then consume response (if pavld)
-  // Rationale: IFU hit path may return pavld in the same cycle as req visible
-  // to monitor_cb; we must not miss that same-cycle req+rsp pair.
+  // One request can be outstanding at a time. IFU may hold va_vld high across
+  // consecutive fetches. Open when (va_vld && !has_pending) — not only on a
+  // rising edge of va_vld — or pavld would fire with m_has_pending==0.
+  // Ordering each cycle: (1) open new request if bus shows va_vld and idle,
+  // (2) consume pavld (same-cycle hit: open first, then pavld in one tick).
   protected task _collect();
     ifu_txn req_tr, rsp_tr;
     va_t cur_va;
@@ -68,9 +65,9 @@ class ifu_monitor extends uvm_monitor;
       // ifu_mmu_va is VA[63:1] on interface, restore byte-address form VA[63:0].
       cur_va = va_t'({vif.monitor_cb.ifu_mmu_va, 1'b0});
 
-      // 1) Open request on va_vld rising edge only.
-      //    Strict core protocol: no new IFU request while a miss is pending.
-      if (vif.monitor_cb.ifu_mmu_va_vld && !m_prev_va_vld && !m_has_pending) begin
+      // 1) Open request whenever the bus is presenting a VA and we have no
+      //    outstanding request (covers first fetch and back-to-back with va_vld held).
+      if (vif.monitor_cb.ifu_mmu_va_vld && !m_has_pending) begin
         req_tr       = ifu_txn::type_id::create("ifu_req_mon");
         req_tr.va    = cur_va;
         req_tr.abort = vif.monitor_cb.ifu_mmu_abort;
@@ -155,8 +152,6 @@ class ifu_monitor extends uvm_monitor;
         end
       end
 
-      // Update edge detector state.
-      m_prev_va_vld = vif.monitor_cb.ifu_mmu_va_vld;
     end
   endtask
 

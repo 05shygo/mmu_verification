@@ -59,11 +59,16 @@ class ptw_mem_responder extends uvm_component;
     wait (vif.rst_ni === 1'b1);
     @(vif.driver_cb);
 
-    // Strictly serial: process one request at a time (protocol guarantee)
+    // Strictly serial: one completion per mmu_lsu_data_req phase. If the DUT
+    // leaves req high, do not re-arm until it falls — otherwise we issue
+    // extra lsu_mmu_data_vld while ptw_mem_monitor only counted one ap_req
+    // (stuck waiting for deassert) → ptw_mbuf_cnt underflow in mmu_credit_sb.
     forever begin
-      // Wait for DUT to assert request
       @(vif.driver_cb iff vif.driver_cb.mmu_lsu_data_req === 1'b1);
       handle_request(vif.driver_cb.mmu_lsu_data_req_addr);
+      if (vif.driver_cb.mmu_lsu_data_req === 1'b1) begin
+        @(vif.driver_cb iff vif.driver_cb.mmu_lsu_data_req === 1'b0);
+      end
     end
   endtask
 

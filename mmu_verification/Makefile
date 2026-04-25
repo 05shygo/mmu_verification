@@ -58,6 +58,23 @@ else
 endif
 
 #===============================================================================
+# Phase 5 sign-off (doc/MMU_UVM_TaskDivision.md §5 exit criteria)
+#   - #2: IFU  multi-seed  → 5 fixed seeds, same end-to-end test
+#   - #3: LSU p0/p1/p2/stamo ≥20 each → covered by that test
+#   - #4: miss→PTW→refill 3 seeds   → 3 additional seeds, same test
+#   - #5..8: UVM 0/0 in logs; optional scan_logs | optional Phase 4 PTW
+#  Override: make phase5 PHASE5_SEEDS5="1 2 3 4 5" PHASE5_SEEDS3="6 7 8"
+#===============================================================================
+PHASE5_TEST      ?= test_mmu_translation_sanity
+# five seeds: criterion #2 (×100 IFU) + #3 (LSU) per TaskDivision
+PHASE5_SEEDS5    ?= 10001 10002 10003 10004 10005
+# three seeds:  criterion #4 (miss/PTW/refill mix, same testbench scenario)
+PHASE5_SEEDS3    ?= 20101 20102 20103
+PHASE4_PTW_TEST  ?= test_ptw_map4k_directed
+PHASE5_LOGS      := $(foreach s,$(PHASE5_SEEDS5) $(PHASE5_SEEDS3),$(LOG_DIR)/$(PHASE5_TEST)_$(s).log)
+PERL             ?= perl
+
+#===============================================================================
 # Include and Source Files
 #===============================================================================
 INCDIR          := +incdir+$(TB_DIR)/common \
@@ -174,12 +191,65 @@ endef
 #===============================================================================
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
-        clean clean_all clean_wave clean_cov list_tests status info print-%
+        clean clean_all clean_wave clean_cov list_tests status info print-% \
+        phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
+        phase5_scan_logs phase5_ptw4k print-phase5
 
 all: comp run
 
 # Fast: compile without debug + run without FSDB/waves (fastest iteration loop)
 fast: comp_fast run_batch
+
+#===============================================================================
+# Phase 5 regression (MMU_UVM_TaskDivision.md §5 — 一次签核)
+#  phase5: comp + 5 seeds + 3 seeds + UVM ERROR/FATAL 报告检查
+#  phase5_fast: 同上但 comp_fast（开发迭代，签核可改用 phase5 全量 comp）
+#===============================================================================
+print-phase5:
+	@echo "PHASE5_TEST    = $(PHASE5_TEST)"
+	@echo "PHASE5_SEEDS5  = $(PHASE5_SEEDS5)"
+	@echo "PHASE5_SEEDS3  = $(PHASE5_SEEDS3)"
+	@echo "PHASE5_LOGS     = (8 files) $(LOG_DIR)/$(PHASE5_TEST)_<seed>.log"
+
+phase5_run_5seed:
+	@set -e; for s in $(PHASE5_SEEDS5); do \
+		echo "=== $(PHASE5_TEST)  SEED=$$s  (5-seed tranche) ==="; \
+		$(MAKE) run TEST_NAME=$(PHASE5_TEST) SEED=$$s; \
+	done
+
+phase5_run_3seed:
+	@set -e; for s in $(PHASE5_SEEDS3); do \
+		echo "=== $(PHASE5_TEST)  SEED=$$s  (3-seed tranche) ==="; \
+		$(MAKE) run TEST_NAME=$(PHASE5_TEST) SEED=$$s; \
+	done
+
+# TaskDivision #5-8: 在报告摘要中须为 UVM_ERROR:0, UVM_FATAL:0
+phase5_check:
+	@set -e; for f in $(PHASE5_LOGS); do \
+		test -f "$$f" || (echo "Missing log: $$f  (run phase5_run_5seed phase5_run_3seed first)"; exit 1); \
+		grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — UVM_ERROR is not 0"; exit 1); \
+		grep -E 'UVM_FATAL[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — UVM_FATAL is not 0"; exit 1); \
+	done
+	@echo "phase5_check: UVM report summary — ERROR=0 and FATAL=0 in all 8 $(PHASE5_TEST) seed logs"
+
+# Optional: scripts/scan_logs.pl (stricter, may count warnings — use waivers if needed)
+phase5_scan_logs:
+	@test -f $(PROJECT_DIR)/scripts/scan_logs.pl || (echo "No scripts/scan_logs.pl"; exit 1)
+	@set -e; for f in $(PHASE5_LOGS); do test -f "$$f" || (echo "Missing: $$f"; exit 1); done
+	$(PERL) $(PROJECT_DIR)/scripts/scan_logs.pl $(PHASE5_LOGS)
+
+# Optional: Phase 4 reference PTW/页表 定向（与 Phase 5 端到端互补）
+phase5_ptw4k:
+	$(MAKE) run TEST_NAME=$(PHASE4_PTW_TEST) SEED=30001
+
+# Full gate: full compile + 8 sims + UVM 0/0 检查
+phase5: comp phase5_run_5seed phase5_run_3seed phase5_check
+	@echo "=== phase5 finished OK (comp + 5+3 seeds + UVM 0/0) ==="
+	@echo "     Optional: make phase5_scan_logs   |   make phase5_ptw4k"
+
+# Same, but comp_fast
+phase5_fast: comp_fast phase5_run_5seed phase5_run_3seed phase5_check
+	@echo "=== phase5_fast finished OK (comp_fast + 5+3 seeds + UVM 0/0) ==="
 
 #===============================================================================
 # Help
@@ -198,6 +268,17 @@ help:
 	@echo "  UVM_ERR_ONLY=$(UVM_ERR_ONLY)  (1=errors only on console)"
 	@echo "  Example: make run TEST_NAME=... UVM_ERR_ONLY=1"
 	@echo "  PLUS_ARGS: e.g. PLUS_ARGS=+MMU_LSU_MON_DBG  (P1 RSP bus snapshot, lsu_monitor.svh)"
+	@echo ""
+	@echo "Phase 5 (MMU_UVM_TaskDivision.md §5):"
+	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"
+	@echo "  make phase5_fast               # comp_fast + 5+3 SEEDs + UVM 0/0 检查（日常）"
+	@echo "  make phase5                    # comp + 5+3 SEEDs + UVM 0/0 检查（签核/CI）"
+	@echo "  make phase5_run_5seed         # 仅 5 个 SEED 回归（需已有 simv）"
+	@echo "  make phase5_run_3seed         # 仅 3 个 SEED 回归"
+	@echo "  make phase5_check             # 仅检查 8 个 log 中 UVM_ERROR/FATAL=0"
+	@echo "  make phase5_scan_logs         # 可选：scan_logs.pl 扫 8 个 log"
+	@echo "  make phase5_ptw4k             # 可选：test_ptw_map4k_directed 定向一条"
+	@echo "  覆盖: PHASE5_TEST=test_mmu_translation_sanity  PHASE5_SEEDS5/SEEDS3 可改"
 
 #===============================================================================
 # Env / Setup

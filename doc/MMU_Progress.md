@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-24
+> **更新**：2026-04-26
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -15,8 +15,8 @@
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
 | **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
 | **Phase 4** | PTW 内存模型 + 参考模型 | A | ✅ 完成 | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0 |
-| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 退出准则验证中 | 22 项交付物完成；8 个 Bug（P5-1/3/4/5/6/8/9 TB 已修复，P5-2 确认非 Bug）；P5-8（lsu_sequences 约束冲突）+ P5-9（IFU driver 协议错误）修复后需 `make comp` 重编译验证 |
-| **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | ⏳ 等待 Phase 5 编译验证 | — |
+| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 迭代中（2026-04-26 起 v7.1 设计/异常 CAM 联调） | 早期轮次见 P5-1~P5-18 已曾达成 UVM_ERROR=0；**当前** busy/wakeup + expt_CAM 更新后又暴露 PTW `acc_err` 假造访存类 fault（见 P5-19~P5-32），**Translation SB 尚未清零**；根因待 RTL/TB 闭环 |
+| **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | ⏳ 待开始 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
 | **Phase 8** | Virtual Sequence 实现 | B | 🔒 等待 Phase 7 | — |
 | **Phase 9** | 测试用例填充（~120个）| B 主，A Review | 🔒 等待 Phase 8 | — |
@@ -205,12 +205,14 @@
 
 ---
 
-## Phase 5 详细进度（🔄 进行中 — 编码完成，退出准则验证中）
+## Phase 5 详细进度（🔄 持续迭代；早期里程碑 ✅，当前 v7.1 子轮次调试验证中）
 
 **负责**：工程师 B（主）/ 工程师 A（misc_agent + credit_sb + perf_mon）
 **B 完成日期**：2026-04-25
 **A 完成日期**：2026-04-24
-**退出准则**：⏳ 编码全部完成（A/B 任务共 22 项交付物均已提交）；待执行 `make comp` + `make run` 联合验证（退出准则 #1/#8 尚未运行）
+**退出准则（sanity 路径）**：
+- **历史达成（P5-1~P5-18 轮次后）**：曾验证 `test_mmu_translation_sanity` UVM_ERROR=0、Translation SB mismatch=0（见下文旧记录）。
+- **当前（2026-04-26+，busy/wakeup + L1D expt_CAM 设计对齐后）**：`make fast TEST_NAME=test_mmu_translation_sanity` 仍大量 **IFU/LSU fault 与 ref 不一致**、部分 **LSU 超时/信用泄漏**；经 `[MMU_EXPT_TRACE_ONCE]*` 关联，PTW 完成时 **`acerr=1`** 触发异常 CAM 写 **`acflt=1`**，与页表/参考模型 **EXC_NONE** 矛盾（见 **P5-28~P5-32**）。**未重新声明 Phase 5 签核通过**，直至 DUT/TB 侧 acc_err 根因修复。
 
 ### Phase 5 新建文件（2 个）
 
@@ -306,18 +308,56 @@
 
 > **P5-10（衍生）**：40 个 LSU Pipe0/Pipe1 response timeout + 171 个 credit overflow/leak + 181 个 PA mismatch + `total_checked=200 mismatch=181` → 全部为 P5-8（SFENCE 失败 → 垃圾请求污染 monitor FIFO）和 P5-9（IFU PA=0 ×100）的衍生错误。P5-8/P5-9 修复后预期全部消除。
 
+### Phase 5 第五轮及后续修 Bug 记录（2026-04-25 ~ 2026-04-26）
+
+> 联调 `test_mmu_translation_sanity` 与 PMP/PTW/Monitor/SB 过程中记录的增量修复。最后一轮 `make fast TEST_NAME=test_mmu_translation_sanity`：`UVM_ERROR=0`，Translation SB 无 PA mismatch 误报。
+
+| # | 文件 / 位置 | 类型 | 现象 / 根因 | 修复内容 |
+|---|-------------|------|-------------|----------|
+| P5-11 | `mmu/rtl/mmu_l2tlb.sv` | **RTL** | 仲裁/类型区分错误：`arb_l2tlb_is_dtlb` 中 store 项误为与 load 重复（`3'b010`） | 将 store 对应项改为 `3'b110`（与 DTLB 微架构编码一致） |
+| P5-12 | `testbench/pmp_agent/pmp_*.svh`（`pmp_flg_normal_seq`、driver idle 等） | **TB** | S-mode 下 PTW 取页表被 PMP **全 deny**（idle 为 0 时） | 默认 / idle PMP 标志使用 **`4'h7`（R/W/X allow）**；注释说明为何不能用 0（否则 PTW 无法访问根页表） |
+| P5-13 | `testbench/ifu_agent/ifu_monitor.svh` | **TB** | 未决请求与 RSP 关联异常 | 在 **`ifu_mmu_va_vld && !m_has_pending`** 时开 pending，而非仅靠 `va_vld` 边沿；删除易错的 `m_prev_va_vld` 机制 |
+| P5-14 | `testbench/lsu_agent/lsu_monitor.svh` | **TB** | Pipe0/1 RSP 可能在 FIFO 空时采样，导致 PA/VA 配对错误 | **`wait(m_pending_*)`** 在 **`@(paN_vld)`** 之前；再采 PA 并 `pop` |
+| P5-15 | `testbench/ptw_mem_agent/ptw_mem_responder.svh` | **TB** | `handle_request` 返回过早，`lsu_mmu_data_vld` 多拍 → credit / 记分牌 **REQ/RSP 信用下溢** | 若 `handle_request` 后 `mmu_lsu_data_req` 仍为 1，**等待到 0** 再结束本次处理 |
+| P5-16 | `testbench/test/test_base.svh`<br>`mmu_verification/Makefile` | **TB / flow** | 需要快速只看 **UVM_ERROR/UVM_FATAL** 的回归日志 | `+UVM_ERR_ONLY`：在 test 中递归对 test 树设 `INFO/WARNING = NO_ACTION`；存在 plusarg 时 **跳过** `print_topology()`。Makefile：变量 **`UVM_ERR_ONLY ?= 0`**，为 1 时向 **`RUN_OPTS`** 注入 **`+UVM_ERR_ONLY`**；`help` 中说明；用法示例 `make run UVM_ERR_ONLY=1` |
+| P5-17 | `testbench/lsu_agent/lsu_txn.svh`<br>`lsu_monitor.svh`<br>`testbench/env/mmu_translation_sb.svh` | **TB / 模型** | 偶发 **`[LSU_P1] PA mismatch`**：`ref.ppn=0x0205`，`dut.pa` 为「随机」大数；同拍打印显示 **`stamo: v=1` 且 `P1: pa == stamo pa`**。根因：RTL `mmu_l1dtlb_hit_rd` 中 **`dutlb_pre_pa = lsu_mmu_stamo_vld ? lsu_mmu_stamo_pa : …`**，STAMO 有效时 **DUT 总线不是 Sv39 翻译 PPN** | RSP 拍采样 `stamo_vld_at_rsp`、`stamo_pa_at_rsp`；SB 在 stamo 时 **校验 `dut.pa === stamo_pa_at_rsp`**，并对 **ref PPN 比对 `skip_ref_ppn_check`**；UVM_INFO 说明 STAMO mux 路径 |
+| P5-18 | `testbench/lsu_agent/lsu_monitor.svh`<br>`Makefile` `help` | **TB 调试** | 需同拍总线判断 P0/P1/STAMO/TLB 行为 | 可选 **`+MMU_LSU_MON_DBG`**：在 P1 RSP 处打印 P0/P1/STAMO/`mmu_en`/`tlb_busy` 等快照；`make help` 中 **`PLUS_ARGS` 示例** |
+
+### Phase 5 第六轮：设计文档 + expt_CAM + busy/wakeup 联调修复记录（2026-04-26 起）
+
+> 背景：IFU **miss-hold**、LSU **busy/wakeup** 与 L1D **expt_CAM**（产生→挂起→唤醒→命中回放→消费删除）设计更新后，对工程做**编译/文档/TB/RTL 调试手段**与**回归问题**的集中记录。部分为**已修复**，部分为**日志/证据链已闭合、RTL 根因待修**。
+
+| # | 文件 / 范围 | 类型 | 现象 / 根因 | 修复或结论 |
+|---|----------------|------|-------------|------------|
+| P5-19 | `testbench/Files.f` | **编译** | VCS `CFCILFBI`：`mmu_l1dtlb` 内 bind 的 **`mmu_l1dtlb_expt_cam` 在 liblist 中找不到** | 在 DTLB 之前显式加入 `${MMU_RTL_DIR}/mmu_l1dtlb_expt_cam.sv` |
+| P5-20 | `doc/MMU_VerificationPlan_final.md`<br>`doc/MMU_UVM_BuildPlan_v3_final.md` | **文档** | 与最新 RTL 行为不一致 | 以 v7.1 为准：更新 **`mmu_lsu_tlb_busy=\|mb_entry_vld\|`**、**wakeup 完成事件广播**、**expt_CAM + install_wakeup OR**、异常测试点/SVA/CG 命名；**删除**旧版 busy/「仅 MB 满」等过时表述 |
+| P5-21 | `testbench/lsu_agent/lsu_if.sv` | **TB** | 信号语义注释落后 | 更新 `tlb_busy` / `tlb_wakeup` 协议说明与最新设计一致 |
+| P5-22 | `testbench/lsu_agent/lsu_txn.svh` | **TB** | 事务未携带 busy/wakeup，难比对分 | 增加 **`tlb_busy` / `tlb_wakeup` 采样**；`convert2string` 可打印 |
+| P5-23 | `testbench/ifu_agent/ifu_driver.svh` | **TB 协议** | 与 **IFU miss-hold** 不一致 | **非 abort**：保持 `ifu_mmu_va_vld` 直到 **`mmu_ifu_pavld`** 返回；降低无关 log 等级 |
+| P5-24 | `testbench/lsu_agent/lsu_driver.svh` | **TB 协议/鲁棒** | 早期等 wakeup 单一路径在 TB 中 **tlb_busy=1 且 wakeup=0 死等超时**、请求被 **drop** | 改为 **单拍请求**后等待 **`tlb_busy==0` 或 `tlb_wakeup` 非零边沿** 再重试同笔事务；降低 log；缓解 standalone TB 下 **早醒/不唤醒** 死锁（仍依赖 DUT 侧最终完成语义） |
+| P5-25 | `testbench/lsu_agent/lsu_monitor.svh` | **TB** | 需观测 busy/wakeup；drop 与 **expt 回放** 区分 | 采样 **busy/wakeup**；增加 **`ap_pipe0_drop` / `ap_pipe1_drop`**；**`replay_suspect` → `expt_replay_rsp`** 等命名与行为对齐；降低 UVM 噪声 |
+| P5-26 | `testbench/env/mmu_translation_sb.svh` | **TB/SB** | 异常 CAM **回放响应** 不应与常规模型比 PA | 引入 **`m_lsu_fault_replay_rsp`**；`_compare` 在 fault 回放时 **按 fault 语义**比对，**跳过**与 ref 的 PA 全等检查（若设计如此） |
+| P5-27 | `testbench/env/mmu_credit_sb.svh`<br>`testbench/env/mmu_env.svh` | **TB** | `pipe` **REQ 被 drop** 时仍按 REQ 记账 → 信用**不守恒** | credit_sb 增加 **drop FIFO** 与 **consume 路径**；env **连接** `m_lsu.m_monitor.ap_pipe0_drop/1` |
+| P5-28 | `testbench/lsu_agent/lsu_covergroups.svh` | **功能覆盖** | 新 busy/wakeup 行为未采 | 增加 **`cp_wakeup_kind`**、**`cx_busy_wakeup`** 等 |
+| P5-29 | `mmu/rtl/mmu_l1dtlb.sv`<br>`mmu/rtl/mmu_l1dtlb_hit_rd.sv` | **RTL 调试/噪声** | 大量 `[MMU_DTLB_*_DBG] $display` 淹没回归 | 既有噪声 **`ifdef MMU_DTLB_DBG_EN`** 门控；**不**在默认 `fast` 中打开（避免刷屏） |
+| P5-30 | 同上 + `mmu_verification/Makefile` | **RTL 调试/流程** | 一次性 **miss→ref_id→cam_write→replay_hit** 日志挂在 **`MMU_DTLB_DBG_EN`** 下时，`make fast` **不定义该宏** → 日志**从不出现** | 将四段 **one-shot** 打印改由独立宏 **`MMU_EXPT_TRACE_ONCE_EN`** 控制；**Makefile** 的 **`VCS_ELAB_OPTS` / `VCS_FAST_OPTS`** 默认 `+define+MMU_EXPT_TRACE_ONCE_EN`；与粗粒度 DBG 解耦 |
+| P5-31 | （仿真 log + `ptw.sv` 路径） | **现象 / 分析** | **IFU** 全量 `fault mismatch`（ref **EXC_NONE**，DUT `dut_fault=1`）；**LSU** `EXPT_REPLAY` 上 **access_fault=1** 与 ref 矛盾；`[MMU_EXPT_TRACE_ONCE][REF] … acerr=1`、`[CAM_WRITE]… acflt=1`、`[REPLAY_HIT]… acflt=1` | 证据链表明 **`ptw_l1tlb_acc_err`（→ `expt_wr0_acflt`）在 PTW 完成路径上被错误置 1**（而 ref_model 用页表得合法 PTE/rwx）。`ptw.sv`：`ptw_l1dtlb_ref_acc_err` 与 **`acc_err_grant`** 及 L2 类型从 TWU 侧 **PMP deny / mbuf_bus_error** 等汇拢相关。**归类为 DUT/PTW+TWU+TB 一致性待修**，**非** DTLB expt_CAM「纯 consume」逻辑在 trace 上首先暴露的矛盾（trace 先证明 **异常源来自 PTW acc_err**） |
+| P5-32 | （`testbench` 侧，与 P5-31 并行） | **待办 / 调试验证** | HPCP 日志中 **`dutlb_miss` 数量异常**、**IFU monitor「rsp 无 pending req」** 等与 IFU/perf 统计仍不一致 | 在 **P5-31 修复或旁路** 后复测；若 IFU 仍 fault，**单独**查 **ITLB/IFU 路径** 与 PMP/PTW 对 **fetch** 的 acc_err 语义 |
+
+**P5-19~P5-32 与旧轮关系**：P5-1~P5-18 解决的是**当时** TB/监控/ PMP-idle/IFU 协议/ STAMO 等导致的 **0-mismatch** 路径；本轮设计变更后 **回归标准需重新以当前 RTL 为准验收**。
+
 ### Phase 5 退出准则
 
 | # | 检查项 | 负责 | 状态 |
 |---|--------|------|------|
-| 1 | `make comp` 0 errors | A+B | ⏳ **待运行** |
-| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ⏳ 待重编译验证 |
-| 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | ⏳ 待重编译验证 |
-| 4 | miss→PTW→refill 混合，mismatch=0 | B | ⏳ 待重编译验证（P5-2 已确认非 Bug；P5-5 修复后预期 PASS） |
-| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | ⏳ 待重编译验证（P5-5 修复后 FIFO 关联正确，预期 mismatch=0） |
-| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | ⏳ 待重编译验证（P5-5 消除 timeout，P5-6 修正边界） |
-| 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ⏳ 待重编译验证 |
-| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳ 待重编译验证（无 RTL 阻塞项） |
+| 1 | `make comp` 0 errors | A+B | ✅ sanity 重编译路径已验证（`make fast`） |
+| 2 | IFU 单端口随机 VA：5 种子×100次，UVM_ERROR=0 | B | ⏳ 多 seed 正式回归见 Phase 10；**v7.1 子轮次当前未清零**（见 P5-31） |
+| 3 | LSU pipe0：5×100次 LD，pipe1/2/stamo 各≥20次，UVM_ERROR=0 | B | 历史：✅（2026-04-26 早先轮次）；**当前**：⏳ 待 P5-31 后重验 |
+| 4 | miss→PTW→refill 混合，mismatch=0 | B | 历史：✅；**当前**：⏳ PTW `acc_err` 误报时 SB 与 IFU/LSU 全路径异常 |
+| 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0 | B | 历史：✅（P5-17 后）；**当前**：⏳ 日志曾出现 `total_checked<200` 与 100+ mismatch（与 **P5-31** 同批） |
+| 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0 | **A** | 历史：✅；**当前**：可能出现 **end-of-sim 非 0 警告**（与 LSU 超时/挂起 相关，见 P5-27、P5-32） |
+| 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ✅ 随 env 构建；专项用例 ⏳ Phase 6+ |
+| 8 | `scan_logs.pl` 无非预期 ERROR/FATAL | A+B | ⏳ CI 中可选；**人工 log**：P5-1~P5-18 轮次曾 UVM_ERROR=0；**v7.1 联调当前非 0**（待 P5-31/32 后回归） |
 
 ---
 
@@ -337,7 +377,7 @@
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
 | **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
 | **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成**（2026-04-24）|
-| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | 🔄 **TB 侧 7 个 Bug 全部修复**（P5-1/3/4/5/6/8/9）；P5-2 确认非 Bug；P5-8（SFENCE 约束冲突）+ P5-9（IFU hold 协议）修复后需 `make comp` 重编译验证 |
+| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | 🔄 **分阶段**：**(a)** 2026-04-26 早先轮次 + P5-11~P5-18 曾达成 **0 mismatch**；**(b)** v7.1 busy/wakeup+expt_CAM 后 **尚未再次达成**（见 P5-19~P5-32：**PTW acc_err** 与 IFU/LSU 全路径 fault 待修），以 **(b) 重跑清零** 为当前签核条件 |
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |
 | **M7** — SVA + 覆盖率框架 | Phase 7 退出准则 | ⏳ |
 | **M8** — 全部 Vseq 可运行 | Phase 8 退出准则 | ⏳ |

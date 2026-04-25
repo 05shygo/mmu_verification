@@ -16,6 +16,8 @@
 //   2. Call m_ref.translate(va, acc_type) to get golden result.
 //   3. Exception check: ref.exc!=EXC_NONE  vs  DUT fault signals (pgflt/deny).
 //   4. PA check (only when no fault on either side): ref.ppn vs tr.pa.
+//      Exception: tr.stamo_vld_at_rsp → DUT muxes dut.pa from STAMO, not DTLB;
+//      SB checks dut.pa==stamo_pa_at_rsp and skips ref PPN compare.
 //   5. Mismatch → uvm_error; match → uvm_info (UVM_HIGH).
 //
 // Pipe2 note: monitor does not yet merge VA into pipe2 rsp txn (Phase 6).
@@ -118,11 +120,18 @@ class mmu_translation_sb extends uvm_scoreboard;
     ref_rsp   = m_ref.translate(va, acc);
     dut_fault = tr.pgflt | tr.access_fault;
 
+    if (tr.stamo_vld_at_rsp && (tr.pa !== tr.stamo_pa_at_rsp)) begin
+      `uvm_error(get_type_name(),
+        $sformatf("[LSU_P0] STAMO vld: expected dut.pa=lsu_mmu_stamo_pa, got pa=0x%07h stamo=0x%07h (VA=0x%010h)",
+          tr.pa, tr.stamo_pa_at_rsp, {1'b0, va}))
+    end
+
     _compare(.channel("LSU_P0"), .va(va), .ref_rsp(ref_rsp),
              .dut_pa(tr.pa),     .dut_fault(dut_fault),
              .req_vpn(va[38:12]), .dbg_valid(1'b1),
              .tr_stall(tr.stall), .tr_pgflt(tr.pgflt),
-             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en));
+             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en),
+             .skip_ref_ppn_check(tr.stamo_vld_at_rsp));
   endfunction
 
   // =========================================================================
@@ -148,11 +157,18 @@ class mmu_translation_sb extends uvm_scoreboard;
     ref_rsp   = m_ref.translate(va, acc);
     dut_fault = tr.pgflt | tr.access_fault;
 
+    if (tr.stamo_vld_at_rsp && (tr.pa !== tr.stamo_pa_at_rsp)) begin
+      `uvm_error(get_type_name(),
+        $sformatf("[LSU_P1] STAMO vld: expected dut.pa=lsu_mmu_stamo_pa, got pa=0x%07h stamo=0x%07h (VA=0x%010h)",
+          tr.pa, tr.stamo_pa_at_rsp, {1'b0, va}))
+    end
+
     _compare(.channel("LSU_P1"), .va(va), .ref_rsp(ref_rsp),
              .dut_pa(tr.pa),     .dut_fault(dut_fault),
              .req_vpn(va[38:12]), .dbg_valid(1'b1),
              .tr_stall(tr.stall), .tr_pgflt(tr.pgflt),
-             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en));
+             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en),
+             .skip_ref_ppn_check(tr.stamo_vld_at_rsp));
   endfunction
 
   // =========================================================================
@@ -223,6 +239,8 @@ class mmu_translation_sb extends uvm_scoreboard;
   //
   //   ref_rsp.exc != EXC_NONE → expect dut_fault == 1
   //   ref_rsp.exc == EXC_NONE → expect dut_fault == 0 AND ref.ppn == dut_pa
+  //   skip_ref_ppn_check: DUT muxes PPN from STAMO (lsu_mmu_stamo_*) at rsp —
+  //   not comparable to mmu_ref_model.translate() (see mmu_l1dtlb dutlb_pre_pa).
   // =========================================================================
   protected function void _compare(
     string        channel,
@@ -235,7 +253,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit           tr_stall = 1'b0,
     bit           tr_pgflt = 1'b0,
     bit           tr_access_fault = 1'b0,
-    bit           tr_mmu_en = 1'b0
+    bit           tr_mmu_en = 1'b0,
+    bit           skip_ref_ppn_check = 1'b0
   );
     bit exp_fault = (ref_rsp.exc != EXC_NONE);
     bit local_mismatch = 0;
@@ -267,7 +286,7 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     // ── PA check — only when both ref and DUT predict no fault ────────────
     if (!exp_fault && !dut_fault) begin
-      if (ref_rsp.ppn !== dut_pa) begin
+      if (!skip_ref_ppn_check && (ref_rsp.ppn !== dut_pa)) begin
         `uvm_error(get_type_name(),
           $sformatf("[%s] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h",
             channel, {1'b0, va}, ref_rsp.ppn, dut_pa))
@@ -284,10 +303,17 @@ class mmu_translation_sb extends uvm_scoreboard;
       end
       m_mismatch++;
     end else begin
-      `uvm_info(get_type_name(),
-        $sformatf("[%s] VA=0x%010h  ref.ppn=0x%07h  dut.pa=0x%07h  exc=%s  PASS",
-          channel, {1'b0, va}, ref_rsp.ppn, dut_pa, ref_rsp.exc.name()),
-        UVM_HIGH)
+      if (skip_ref_ppn_check) begin
+        `uvm_info(get_type_name(),
+          $sformatf("[%s] VA=0x%010h  STAMO mux: fault check PASS (dut.pa=0x%07h; ref not compared)  exc=%s",
+            channel, {1'b0, va}, dut_pa, ref_rsp.exc.name()),
+          UVM_MEDIUM)
+      end else begin
+        `uvm_info(get_type_name(),
+          $sformatf("[%s] VA=0x%010h  ref.ppn=0x%07h  dut.pa=0x%07h  exc=%s  PASS",
+            channel, {1'b0, va}, ref_rsp.ppn, dut_pa, ref_rsp.exc.name()),
+          UVM_HIGH)
+      end
     end
   endfunction
 

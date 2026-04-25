@@ -146,6 +146,8 @@ class lsu_monitor extends uvm_monitor;
       tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
       tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
       tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+      tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
+      tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
       req_tr      = m_pending_p0.pop_front();
       m_p0_rsp_seen = 1;
@@ -216,6 +218,8 @@ class lsu_monitor extends uvm_monitor;
       tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
       tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
       tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+      tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
+      tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
       req_tr      = m_pending_p1.pop_front();
       m_p1_rsp_seen = 1;
       tr.va       = req_tr.va;

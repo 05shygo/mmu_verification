@@ -47,6 +47,8 @@ class lsu_txn extends uvm_sequence_item;
     `uvm_field_int(tlb_busy,         UVM_ALL_ON)
     `uvm_field_int(tlb_wakeup,       UVM_ALL_ON)
     `uvm_field_int(inv_done,         UVM_ALL_ON)
+    `uvm_field_int(stamo_vld_at_rsp, UVM_ALL_ON)
+    `uvm_field_int(stamo_pa_at_rsp,  UVM_ALL_ON)
   `uvm_object_utils_end
 
   // ── Sub-channel selector ─────────────────────────────────────────────────
@@ -83,6 +85,10 @@ class lsu_txn extends uvm_sequence_item;
   bit        tlb_busy;    // Sampled mmu_lsu_tlb_busy
   bit [11:0] tlb_wakeup;  // Sampled mmu_lsu_tlb_wakeup
   bit        inv_done;    // TLB invalidation done (inv sub-channel)
+  // Pipe0/1 rsp: when 1, DUT muxes PA from STAMO (lm) path, not DTLB PPN
+  // (see mmu_l1dtlb_hit_rd dutlb_pre_pa = stamo ? stamo_pa : tlb_pa).
+  bit        stamo_vld_at_rsp;
+  bit [27:0] stamo_pa_at_rsp;
 
   // ── Constraints ──────────────────────────────────────────────────────────
   // Sv39 canonical VA (pipe0/1): bits[63:39] == {25{va[38]}}

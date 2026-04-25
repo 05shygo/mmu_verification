@@ -38,6 +38,9 @@ module mmu_l1dtlb_hit_rd #(
     // DUTLB Control
     input  logic         biu_mmu_smp_disable,
     input  logic         dutlb_expt_for_taken,
+    input  logic         expt_match_x,
+    input  logic         expt_pgflt_x,
+    input  logic         expt_acflt_x,
     input  logic         dutlb_off_hit,
     input  logic         dutlb_ori_read_x,
     input  logic         dutlb_read_type_x,
@@ -178,7 +181,7 @@ assign dutlb_page_fault = ( !dutlb_fin_flg[0]
                          || !dutlb_fin_flg[6] && !dutlb_read_type_x
                           )
                           && dutlb_addr_hit
-                          || dutlb_ref_pgflt && dutlb_refill_on_x && dutlb_inst_id_hit
+                          || expt_match_x && expt_pgflt_x
                           || dutlb_va_illegal;
 
 assign mmu_lsu_page_fault_x = dutlb_page_fault && !dutlb_off_hit;
@@ -189,7 +192,8 @@ assign mmu_lsu_access_fault_x = jtlb_acc_fault_flop
                                && pmp_flg_vld
                             || !pmp_mmu_flg_x[1] && !pmp_read_type
                                && !(cp0_mach_mode && !pmp_mmu_flg_x[3])
-                               && pmp_flg_vld;
+                               && pmp_flg_vld
+                            || expt_match_x && expt_acflt_x;
 
 assign dutlb_acc_flt_x = jtlb_acc_fault_flop;
 
@@ -227,7 +231,7 @@ ct_rtu_compare_iid  x_mmu_dutlb_read_compare_req_iid (
 );
 
 assign dutlb_inst_id_older_x = dutlb_req_id_older && lsu_mmu_va_vld_x && !lsu_mmu_abort_x;
-assign dutlb_expt_match = dutlb_expt_for_taken && dutlb_inst_id_hit;
+assign dutlb_expt_match = expt_match_x;
 
 //==========================================================
 //                  Data Muxing (Parameterized)
@@ -281,7 +285,9 @@ assign dutlb_fin_pgs[PGS_WIDTH-1:0] = dutlb_pre_sel ? dutlb_pre_pgs[PGS_WIDTH-1:
 //----------------------------------------------------------
 //                  JTLB Access Fault Latch
 //----------------------------------------------------------
-assign jtlb_acc_fault = dutlb_ref_accflt & dutlb_refill_on_x ; //????????????????
+// Legacy refill-global access-fault path disabled.
+// Access fault is replayed by CAM ownership on expt_match.
+assign jtlb_acc_fault = expt_match_x & expt_acflt_x;
 
 always @(posedge dutlb_clk or negedge cpurst_b) begin
   if(!cpurst_b)

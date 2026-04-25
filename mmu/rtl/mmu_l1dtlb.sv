@@ -280,10 +280,34 @@ assign dutlb_off_hit = dutlb_xx_mmu_off;
 
 logic dutlb_ori_read0, dutlb_ori_read1;
 logic dutlb_read_type0, dutlb_read_type1;
+logic expt_match0, expt_match1;
+logic expt_pgflt0, expt_pgflt1;
+logic expt_acflt0, expt_acflt1;
+logic [11:0] expt_wakeup;
+logic [11:0] install_wakeup;
+logic expt_wr0_vld, expt_wr1_vld;
+logic [IID_WIDTH-1:0] expt_wr0_iid, expt_wr1_iid;
+logic [VPN_WIDTH-1:0] expt_wr0_vpn, expt_wr1_vpn;
+logic expt_wr0_pgflt, expt_wr1_pgflt;
+logic expt_wr0_acflt, expt_wr1_acflt;
 assign dutlb_ori_read0 = !lsu_mmu_st_inst0;
 assign dutlb_ori_read1 = !lsu_mmu_st_inst1;
 assign dutlb_read_type0 = dutlb_ori_read0;
 assign dutlb_read_type1 = dutlb_ori_read1;
+
+assign expt_wr0_vld   = ptw_l1dtlb_ref_cmplt && (ptw_l1tlb_pgflt || ptw_l1tlb_acc_err)
+                      && mb_entry_vld[ptw_l1dtlb_ref_id];
+assign expt_wr0_iid   = mb_entry_iid[ptw_l1dtlb_ref_id];
+assign expt_wr0_vpn   = mb_entry_vpn[ptw_l1dtlb_ref_id];
+assign expt_wr0_pgflt = ptw_l1tlb_pgflt;
+assign expt_wr0_acflt = ptw_l1tlb_acc_err;
+
+assign expt_wr1_vld   = jtlb_dutlb_ref_cmplt && jtlb_dutlb_pgflt
+                      && mb_entry_vld[jtlb_dutlb_ref_id];
+assign expt_wr1_iid   = mb_entry_iid[jtlb_dutlb_ref_id];
+assign expt_wr1_vpn   = mb_entry_vpn[jtlb_dutlb_ref_id];
+assign expt_wr1_pgflt = jtlb_dutlb_pgflt;
+assign expt_wr1_acflt = 1'b0;
 
 `ifndef SYNTHESIS
 // Debug: trace MMU-off decision chain seen by LSU DTLB path.
@@ -297,6 +321,46 @@ always @(posedge dutlb_clk) begin
 end
 
 `endif
+
+mmu_l1dtlb_expt_cam #(
+    .CAM_DEPTH (MB_DEPTH),
+    .IID_WIDTH (IID_WIDTH),
+    .VPN_WIDTH (VPN_WIDTH)
+) x_l1dtlb_expt_cam (
+    .clk                    (mb_clk),
+    .rst_b                  (cpurst_b),
+    .rtu_yy_xx_flush        (rtu_yy_xx_flush),
+    .tlboper_utlb_clr       (tlboper_utlb_clr),
+    .tlboper_utlb_inv_va_req(tlboper_utlb_inv_va_req),
+
+    .expt_wr0_vld           (expt_wr0_vld),
+    .expt_wr0_iid           (expt_wr0_iid),
+    .expt_wr0_vpn           (expt_wr0_vpn),
+    .expt_wr0_pgflt         (expt_wr0_pgflt),
+    .expt_wr0_acflt         (expt_wr0_acflt),
+    .expt_wr1_vld           (expt_wr1_vld),
+    .expt_wr1_iid           (expt_wr1_iid),
+    .expt_wr1_vpn           (expt_wr1_vpn),
+    .expt_wr1_pgflt         (expt_wr1_pgflt),
+    .expt_wr1_acflt         (expt_wr1_acflt),
+
+    .lsu_mmu_va0_vld        (lsu_mmu_va0_vld),
+    .lsu_mmu_abort0         (lsu_mmu_abort0),
+    .lsu_mmu_id0            (lsu_mmu_id0),
+    .lsu_mmu_vpn0           (lsu_mmu_va0[VPN_WIDTH+11:12]),
+    .lsu_mmu_va1_vld        (lsu_mmu_va1_vld),
+    .lsu_mmu_abort1         (lsu_mmu_abort1),
+    .lsu_mmu_id1            (lsu_mmu_id1),
+    .lsu_mmu_vpn1           (lsu_mmu_va1[VPN_WIDTH+11:12]),
+
+    .expt_match0            (expt_match0),
+    .expt_pgflt0            (expt_pgflt0),
+    .expt_acflt0            (expt_acflt0),
+    .expt_match1            (expt_match1),
+    .expt_pgflt1            (expt_pgflt1),
+    .expt_acflt1            (expt_acflt1),
+    .expt_wakeup            (expt_wakeup)
+);
 
 //!************************************************
 //! PLRU Instance
@@ -388,7 +452,9 @@ logic [IID_WIDTH-1:0] refill_id_flop1;
 logic [IID_WIDTH-1:0] refill_id_flop;
 
 
-assign dutlb_expt_for_taken = dutlb_ref_pgflt | dutlb_ref_acflt;
+// Legacy exception-chain signal is kept only for compatibility/debug visibility.
+// Exception ownership/replay is now handled by mmu_l1dtlb_expt_cam.
+assign dutlb_expt_for_taken = expt_wr0_vld | expt_wr1_vld;
 
 assign l1dtlb_refill_on = |mb_entry_vld;
 
@@ -413,11 +479,18 @@ begin
     refill_type <= 1'b0;
 end
 
-assign dutlb_ref_pgflt = ptw_l1tlb_pgflt    |    jtlb_dutlb_pgflt;
-assign dutlb_ref_acflt = ptw_l1tlb_acc_err;
+// ---------------------------------------------------------------------------
+// Legacy (pre-CAM) exception handling path intentionally disabled:
+//   dutlb_ref_pgflt/ref_acflt global OR + refill_id_flop based ownership
+//   is not safe with outstanding misses.
+// CAM now owns exception attribution, replay, and consume.
+// ---------------------------------------------------------------------------
+assign dutlb_ref_pgflt = 1'b0;
+assign dutlb_ref_acflt = 1'b0;
 
-assign dutlb_refill_upd0  = (~l1dtlb_refill_on) || (dutlb_ref_pgflt || dutlb_ref_acflt) && dutlb_inst_id_older0;
-assign dutlb_refill_upd1  = (~l1dtlb_refill_on) || (dutlb_ref_pgflt || dutlb_ref_acflt) && dutlb_inst_id_older1;
+// Keep refill_id_flop update as a compatibility/debug-only path.
+assign dutlb_refill_upd0  = ~l1dtlb_refill_on;
+assign dutlb_refill_upd1  = ~l1dtlb_refill_on;
 
 always @(posedge dutlb_clk or negedge cpurst_b)
 begin
@@ -491,6 +564,9 @@ mmu_l1dtlb_hit_rd #(
     // DUTLB Specifics
     .biu_mmu_smp_disable        (biu_mmu_smp_disable),
     .dutlb_expt_for_taken       (dutlb_expt_for_taken),
+    .expt_match_x               (expt_match0),
+    .expt_pgflt_x               (expt_pgflt0),
+    .expt_acflt_x               (expt_acflt0),
     .dutlb_off_hit              (dutlb_off_hit),
     .dutlb_ori_read_x           (dutlb_ori_read0),
     .dutlb_read_type_x          (dutlb_read_type0),
@@ -579,6 +655,9 @@ mmu_l1dtlb_hit_rd #(
     // DUTLB Specifics
     .biu_mmu_smp_disable        (biu_mmu_smp_disable),
     .dutlb_expt_for_taken       (dutlb_expt_for_taken),
+    .expt_match_x               (expt_match1),
+    .expt_pgflt_x               (expt_pgflt1),
+    .expt_acflt_x               (expt_acflt1),
     .dutlb_off_hit              (dutlb_off_hit),
     .dutlb_ori_read_x           (dutlb_ori_read1),    // Port 1 Read Logic
     .dutlb_read_type_x          (dutlb_read_type1),   // Port 1 Read Type
@@ -1166,9 +1245,10 @@ mmu_l1dtlb_install #(
     .plru_bank1_refill_way(plru_bank1_refill_way),
     .plru_refill_updt(plru_refill_updt),
     .plru_refill_way(plru_refill_way),
-    .mmu_lsu_tlb_wakeup(mmu_lsu_tlb_wakeup)
+    .mmu_lsu_tlb_wakeup(install_wakeup)
 );
 
+assign mmu_lsu_tlb_wakeup = install_wakeup | expt_wakeup;
 assign mmu_lsu_tlb_busy = &mb_entry_vld;
 
 //!************************************************

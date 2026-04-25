@@ -141,9 +141,10 @@ class lsu_monitor extends uvm_monitor;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P0_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
+        $sformatf("[LSU_P0_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b replay_suspect=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
-          tr.mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p0.size()),
+          tr.mmu_en, (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])),
+          vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p0.size()),
         UVM_MEDIUM)
       if (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])) begin
         `uvm_warning(get_type_name(),
@@ -209,9 +210,10 @@ class lsu_monitor extends uvm_monitor;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P1_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
+        $sformatf("[LSU_P1_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b replay_suspect=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
-          tr.mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p1.size()),
+          tr.mmu_en, (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])),
+          vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p1.size()),
         UVM_MEDIUM)
       if (tr.mmu_en && !tr.pgflt && !tr.access_fault && (tr.pa == tr.va[38:12])) begin
         `uvm_warning(get_type_name(),

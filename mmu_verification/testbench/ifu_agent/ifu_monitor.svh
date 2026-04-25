@@ -31,10 +31,12 @@ class ifu_monitor extends uvm_monitor;
   // IFU hold protocol is 1-outstanding: keep a single pending request.
   protected ifu_txn m_pending_req;
   protected bit     m_has_pending;
+  protected bit     m_prev_va_vld;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
     m_has_pending = 1'b0;
+    m_prev_va_vld = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -65,8 +67,9 @@ class ifu_monitor extends uvm_monitor;
 
       cur_va = 63'(vif.monitor_cb.ifu_mmu_va << 1);
 
-      // 1) Open next request when VA is valid and there is no outstanding one.
-      if (vif.monitor_cb.ifu_mmu_va_vld && !m_has_pending) begin
+      // 1) Open request on va_vld rising edge only.
+      //    Strict core protocol: no new IFU request while a miss is pending.
+      if (vif.monitor_cb.ifu_mmu_va_vld && !m_prev_va_vld && !m_has_pending) begin
         req_tr       = ifu_txn::type_id::create("ifu_req_mon");
         req_tr.va    = cur_va;
         req_tr.abort = vif.monitor_cb.ifu_mmu_abort;
@@ -115,14 +118,14 @@ class ifu_monitor extends uvm_monitor;
       // and before response returns.
       if (m_has_pending && vif.monitor_cb.ifu_mmu_va_vld &&
           !vif.monitor_cb.mmu_ifu_pavld && (cur_va !== m_pending_req.va)) begin
-        `uvm_warning(get_type_name(),
-          $sformatf("IFU VA changed before rsp: pending_va=0x%010h cur_va=0x%010h",
+        `uvm_error(get_type_name(),
+          $sformatf("[IFU_HOLD_PROTOCOL] VA changed before rsp: pending_va=0x%010h cur_va=0x%010h",
             {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}))
       end
 
       // If request disappears without a response:
       // - abort req: close immediately (expected)
-      // - non-abort req: keep pending for potential late pavld (debug localization)
+      // - non-abort req: strict protocol violation, close and report error.
       if (m_has_pending && !vif.monitor_cb.ifu_mmu_va_vld) begin
         if (m_pending_req.abort) begin
           ifu_txn drop_tr;
@@ -136,12 +139,21 @@ class ifu_monitor extends uvm_monitor;
           m_has_pending = 1'b0;
           ap_drop.write(drop_tr);
         end else begin
-          `uvm_warning(get_type_name(),
-            $sformatf("IFU pending req kept on va_vld deassert (await late pavld): pending_va=0x%010h cur_va=0x%010h pavld=%0b pa=0x%07h has_pending=%0b",
+          ifu_txn drop_tr;
+          drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
+          drop_tr.va    = m_pending_req.va;
+          drop_tr.abort = m_pending_req.abort;
+          `uvm_error(get_type_name(),
+            $sformatf("[IFU_HOLD_PROTOCOL] pending req dropped: va_vld deasserted before rsp for non-abort req. pending_va=0x%010h cur_va=0x%010h pavld=%0b pa=0x%07h",
               {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]},
-              vif.monitor_cb.mmu_ifu_pavld, vif.monitor_cb.mmu_ifu_pa, m_has_pending))
+              vif.monitor_cb.mmu_ifu_pavld, vif.monitor_cb.mmu_ifu_pa))
+          m_has_pending = 1'b0;
+          ap_drop.write(drop_tr);
         end
       end
+
+      // Update edge detector state.
+      m_prev_va_vld = vif.monitor_cb.ifu_mmu_va_vld;
     end
   endtask
 

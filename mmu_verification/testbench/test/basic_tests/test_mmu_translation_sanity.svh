@@ -348,6 +348,9 @@ class test_mmu_translation_sanity extends test_base;
     end
 
     // ── Step 4: IFU fetch sequence (100 txns to mapped VAs) ─────────────────
+    // v3.1 strict IFU hold protocol:
+    //   no new PC request is legal while previous miss is pending.
+    //   protocol violations are reported by ifu_monitor as UVM_ERROR.
     // Each fetch VA is drawn round-robin from m_mapped_va[].
     // The DUT IFU→MMU path handles 1-outstanding; driver/monitor FIFO correlated.
     `uvm_info(get_type_name(),
@@ -386,6 +389,33 @@ class test_mmu_translation_sanity extends test_base;
     foreach (m_mapped_va[i]) lsu_p1_seq.m_va_table[i] = m_mapped_va[i];
     lsu_p1_seq.num_txn = NUM_LSU_P1;
     lsu_p1_seq.start(m_env.m_lsu.m_sequencer);
+    // ── Step 6b: LSU expt lifecycle focus (short directed burst) ────────────
+    // v3.1 replay visibility:
+    //   run short same-VA bursts on both pipes to force
+    //   create/pend/wakeup/replay/consume patterns to appear in logs.
+    `uvm_info(get_type_name(),
+      "Step 6b: LSU expt lifecycle focus (pipe0/pipe1 same-VA short bursts)", UVM_MEDIUM)
+    begin
+      lsu_mapped_va_seq lsu_p0_focus;
+      lsu_mapped_va_seq lsu_p1_focus;
+      lsu_p0_focus = lsu_mapped_va_seq::type_id::create("lsu_p0_focus");
+      lsu_p1_focus = lsu_mapped_va_seq::type_id::create("lsu_p1_focus");
+      lsu_p0_focus.m_va_table   = new[1];
+      lsu_p1_focus.m_va_table   = new[1];
+      lsu_p0_focus.m_va_table[0] = m_mapped_va[0];
+      lsu_p1_focus.m_va_table[0] = m_mapped_va[0];
+      lsu_p0_focus.m_table_size = 1;
+      lsu_p1_focus.m_table_size = 1;
+      lsu_p0_focus.m_kind       = LSU_PIPE0;
+      lsu_p1_focus.m_kind       = LSU_PIPE1;
+      lsu_p0_focus.m_st_inst    = 1'b0;
+      lsu_p1_focus.m_st_inst    = 1'b1;
+      lsu_p0_focus.num_txn      = 4;
+      lsu_p1_focus.num_txn      = 4;
+      lsu_p0_focus.start(m_env.m_lsu.m_sequencer);
+      lsu_p1_focus.start(m_env.m_lsu.m_sequencer);
+    end
+
     `uvm_info(get_type_name(),
       $sformatf("Step 6 done: %0d LSU pipe1 transactions issued", NUM_LSU_P1), UVM_LOW)
 
@@ -422,9 +452,11 @@ class test_mmu_translation_sanity extends test_base;
     // ── Final status report ──────────────────────────────────────────────────
     `uvm_info(get_type_name(),
       $sformatf(
-        "=== Phase 5 Sanity Test COMPLETE ===  SB total_checked=%0d  mismatch=%0d",
+        "=== Phase 5 Sanity Test COMPLETE ===  SB total_checked=%0d mismatch=%0d replay_suspect=%0d replay_mismatch=%0d",
         m_env.m_translation_sb.m_total_checked,
-        m_env.m_translation_sb.m_mismatch),
+        m_env.m_translation_sb.m_mismatch,
+        m_env.m_translation_sb.m_lsu_replay_suspect,
+        m_env.m_translation_sb.m_lsu_replay_mismatch),
       UVM_LOW)
 
     if (m_env.m_translation_sb.m_total_checked < 200)

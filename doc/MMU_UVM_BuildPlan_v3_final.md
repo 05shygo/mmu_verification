@@ -14,6 +14,7 @@
 | v3.0 Final                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | 2026-04-22 | Verification Team | 对齐 `MMU_VerificationPlan_v3.md`：吸收 plan_v1/v2/v3 三轮完善（6 条错判降级、2 条删除、4 条真实缺陷 P0 升级、5 条 v3 新缺陷、F4.42a/b/c PTW→LSU 协议补强、接口表第 13/14 组补齐、5 个新 covergroup、9 条新 SVA、R19/R20 风险新增）。新增 `bug_hunt_tests/` 与 `ptw_lsu_protocol_tests/` 测试子目录、`mmu_ptw_lsu_protocol_sva.sv`、`mmu_twu_sva.sv`；§13 追加 Phase 11 v3.0 Gap-driven 回归。                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | v3.0 Final+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | 2026-04-22 | Verification Team | **TWU/MBUF 架构澄清增量**（对齐 MMU_VerificationPlan_v3.md F4.5/F4.6/F4.24/F4.52/F4.53/F4.NEW.2 同步修订）：TWU 6 级流水线权威定义（非状态机，稳定态每周期 1 入，单 TWU 多笔 PTE 读在飞）；`twu_mask[3:0]` 语义修正为 **per-TWU 自阻塞**（PMP/PTE wait，非 MBUF 满反压）；PTW MBUF 与 L2TLB Miss Buffer entry **一对一不溢出**，RTL **无"MBUF 满→阻塞 TWU"反压路径**；`mmu_lsu_tlb_busy` 源头澄清为 **L1 DTLB MB 全满**（非 PTW MBUF 满）。新增 4 个 covergroup（`cg_twu_pipeline_occupancy` / `cg_twu_mask_per_twu` / `cg_mbuf_no_overflow` / `cg_tlb_busy_source`）、5 条新 SVA（`sva_twu_mask_semantics` / `sva_twu_pipeline_no_stall_when_unmasked` / `sva_twu_multi_inflight_legal` / `sva_twu_ready_equiv` / `sva_xbar_drop_when_all_mask` / `sva_ptw_mbuf_no_overflow` / `sva_no_backpressure_to_twu_from_mbuf_full` / `sva_busy_from_dtlb_mb_only`）、新 SVA 文件 `mmu_mbuf_invariant_sva.sv`、新测试子目录 `ptw_twu_arch_tests/`（6 个 TC）、ptw_mem_agent 新增 3 类保护性 checker 和 3 类压测 sequence。 |
 | （对齐 MMU_VerificationPlan_v3.md F2.NEW.3-6 / F3.NEW.2-5 / F4.NEW.6-14 / F5.16 / F6.NEW.1-7 / F7.NEW.3-9）：新增 76 条 TC（含 L1DTLB MMU-off 广播、L2TLB req_is_load 标志、双信号回填语义、PTW ready 反压、TWU MAEE 双路属性选路、PMP 三级序列化、sysmap flag 替换与跨界降级、PTW PMP 端口映射等）；新增 SVA 文件 `mmu_maee_twu_sva.sv` / `mmu_pmp_twu_sva.sv` / `mmu_sysmap_sva.sv`；新增 30+ covergroup；新增测试子目录 `maee_twu_tests/` / `pmp_twu_tests_v6/`；`pmp_if.sv` 修正 RTL typo `mmu_pmp_fecth7`（ptw.sv:L62）并添加 DA-003 端口分配注释；§13 追加 Phase 12/13/14。 |            |                   |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| v3.1                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 2026-04-25 | Verification Team | 新增 IFU miss-hold 与 LSU expt lifecycle UVM 实现约束：IFU non-abort miss pending 期间禁止新 PC 请求（严格 hold）；LSU 异常处理采用“产生→挂起→唤醒→回放命中→消费删除”语义，并在 scoreboard 中区分 replay fault 与普通翻译比较路径。 |
 
 ---
 
@@ -799,6 +800,15 @@ endinterface
 
 > 每个 agent 八件套；以下仅给出**类签名与字段**，方法体留空。
 
+### 7.0a v3.1 协议增量（实现约束）
+
+- IFU 严格 miss-hold（core 场景）：
+  - non-abort 请求在 response 前必须保持有效，不允许 pending 未完成时发新 PC 请求。
+  - monitor 发现 pending 期间 VA 前推/去使能且无 rsp，按协议错误归类，避免误记为 PA mismatch。
+- LSU expt lifecycle（UVM 判定口径）：
+  - replay fault 返回与普通翻译返回分开比较；
+  - replay 路径优先比较 fault 语义（pgflt/acflt）和消费语义，避免把旁路 PA 当普通翻译 PA 做硬比较。
+
 ### 7.1 `ifu_agent/`
 
 #### 7.1.1 `ifu_txn.svh`
@@ -810,11 +820,15 @@ class ifu_txn extends uvm_sequence_item;
   rand bit [62:0] va;
   rand bit        abort;
   rand int        idle_cycles;
+  // v3.1 协议控制字段
+  rand bit        hold_mode_en;       // 1=严格 hold
+  rand int        min_hold_cycles;    // miss-hold 最小保持周期
   // 响应字段（monitor 回填）
   bit [27:0] pa;
   bit        pgflt, deny, sec, ca, buf_bit;
   // 约束
   constraint c_idle { idle_cycles inside {[0:10]}; }
+  constraint c_hold_default { hold_mode_en == 1'b1; min_hold_cycles inside {[0:64]}; }
   function new(string name = "ifu_txn");
   extern function string convert2string();
 endclass
@@ -1524,6 +1538,11 @@ endclass
 > - LSU Pipe2（预取）：`lsu_monitor.ap_pipe2_req/rsp`
 > - LSU STAMO：`lsu_monitor.ap_stamo → af_lsu_stamo`（PMP/sysmap 合法性检查）
 > - PTW 内存侧（类比 hpdcache dram_monitor）：`ptw_mem_monitor.ap_req → af_ptw_req`、`ptw_mem_monitor.ap_rsp → af_ptw_rsp`；SB 据此得知实际走表地址与 PTE 内容，与 ref_model shadow PT 对比，验证 walk 结果正确性
+>
+> **v3.1 增量通道**：
+>
+> - IFU miss-hold 协议检查：pending 生命周期 + request stability（禁止 pending 期间新请求）。
+> - LSU expt replay 分类检查：普通翻译 vs replay fault 双路径比较（replay 以 fault/消费语义为主）。
 
 ```systemverilog
 class mmu_translation_sb extends uvm_scoreboard;
@@ -2112,6 +2131,8 @@ endclass
 | `err_tests/`                                           | F12/异常                                             | ≈8                             |
 | **`bug_hunt_tests/`【v3.0 Final 新增】**         | **Gap-Driven TC-BUG-* 专项**                     | **13（含升/降级与新增）** |
 | **`ptw_lsu_protocol_tests/`【v3.0 Final 新增】** | **F4.42a/b/c PTW→LSU 严格串行握手**           | **5**                     |
+| **`ifu_hold_tests/`【v3.1 新增】**               | **IFU miss-hold 严格协议（core 行为）**            | **4**                     |
+| **`lsu_expt_lifecycle_tests/`【v3.1 新增】**     | **LSU expt 生命周期（产生/挂起/唤醒/回放/消费）**   | **6**                     |
 | `maee_twu_tests/`【v4.0 新增】                         | F4.NEW.12 TWU MAEE 双路属性选路                      | 4                               |
 | `pmp_twu_tests_v6/`【v4.0 新增】                       | F4.NEW.13/14 / F7.NEW.3-9 PMP 序列化与端口映射       | ≈18                            |
 | `sysmap_tests/`（v4.0 扩充）                           | F6 / F6.NEW.1-7 sysmap flag 替换、跨界降级           | ≈22（原≈4+18新增）            |

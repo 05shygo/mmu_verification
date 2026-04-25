@@ -47,11 +47,15 @@ class mmu_translation_sb extends uvm_scoreboard;
   // ── Statistics ────────────────────────────────────────────────────────────
   int unsigned m_total_checked;
   int unsigned m_mismatch;
+  int unsigned m_lsu_replay_suspect;
+  int unsigned m_lsu_replay_mismatch;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
     m_total_checked = 0;
     m_mismatch      = 0;
+    m_lsu_replay_suspect  = 0;
+    m_lsu_replay_mismatch = 0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -206,8 +210,8 @@ class mmu_translation_sb extends uvm_scoreboard;
   // =========================================================================
   virtual function void report_phase(uvm_phase phase);
     `uvm_info(get_type_name(),
-      $sformatf("Translation SB summary: total_checked=%0d  mismatch=%0d",
-        m_total_checked, m_mismatch),
+      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_replay_suspect=%0d lsu_replay_mismatch=%0d",
+        m_total_checked, m_mismatch, m_lsu_replay_suspect, m_lsu_replay_mismatch),
       UVM_NONE)
     if (m_mismatch > 0)
       `uvm_error(get_type_name(),
@@ -235,21 +239,48 @@ class mmu_translation_sb extends uvm_scoreboard;
   );
     bit exp_fault = (ref_rsp.exc != EXC_NONE);
     bit local_mismatch = 0;
+    bit replay_suspect = 0;
+
+    // Replay-suspect heuristic for LSU:
+    // mmu enabled + non-fault DUT response + dut_pa equals VA VPN.
+    // This indicates bypass-style completion and should be classified separately
+    // from ordinary translation mismatch.
+    replay_suspect = dbg_valid
+                  && tr_mmu_en
+                  && !tr_pgflt
+                  && !tr_access_fault
+                  && (dut_pa == req_vpn);
+    if (replay_suspect)
+      m_lsu_replay_suspect++;
 
     // ── Exception / fault check ───────────────────────────────────────────
     if (exp_fault !== dut_fault) begin
-      `uvm_error(get_type_name(),
-        $sformatf("[%s] VA=0x%010h: fault mismatch — ref.exc=%s (exp_fault=%0b)  dut_fault=%0b",
-          channel, {1'b0, va}, ref_rsp.exc.name(), exp_fault, dut_fault))
+      if (replay_suspect) begin
+        `uvm_error(get_type_name(),
+          $sformatf("[%s][REPLAY] VA=0x%010h: fault mismatch on replay-suspect response — ref.exc=%s (exp_fault=%0b) dut_fault=%0b dut.pa=0x%07h req_vpn=0x%07h",
+            channel, {1'b0, va}, ref_rsp.exc.name(), exp_fault, dut_fault, dut_pa, req_vpn))
+        m_lsu_replay_mismatch++;
+      end else begin
+        `uvm_error(get_type_name(),
+          $sformatf("[%s] VA=0x%010h: fault mismatch — ref.exc=%s (exp_fault=%0b)  dut_fault=%0b",
+            channel, {1'b0, va}, ref_rsp.exc.name(), exp_fault, dut_fault))
+      end
       local_mismatch = 1;
     end
 
     // ── PA check — only when both ref and DUT predict no fault ────────────
     if (!exp_fault && !dut_fault) begin
       if (ref_rsp.ppn !== dut_pa) begin
-        `uvm_error(get_type_name(),
-          $sformatf("[%s] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h",
-            channel, {1'b0, va}, ref_rsp.ppn, dut_pa))
+        if (replay_suspect) begin
+          `uvm_error(get_type_name(),
+            $sformatf("[%s][REPLAY] VA=0x%010h: replay-suspect PA mismatch — ref.ppn=0x%07h dut.pa=0x%07h req_vpn=0x%07h",
+              channel, {1'b0, va}, ref_rsp.ppn, dut_pa, req_vpn))
+          m_lsu_replay_mismatch++;
+        end else begin
+          `uvm_error(get_type_name(),
+            $sformatf("[%s] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h",
+              channel, {1'b0, va}, ref_rsp.ppn, dut_pa))
+        end
         local_mismatch = 1;
       end
     end

@@ -74,6 +74,10 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
     vif.driver_cb.ifu_mmu_va     <= tr.va >> 1;
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
+    `uvm_info(get_type_name(),
+      $sformatf("[IFU_DRV_REQ_DBG] drive req: va=0x%010h abort=%0b pavld_now=%0b pa_now=0x%07h",
+        {1'b0, tr.va[38:0]}, tr.abort, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa),
+      UVM_MEDIUM)
 
     if (tr.abort == 1'b1) begin
       @(vif.driver_cb);
@@ -88,6 +92,11 @@ class ifu_driver extends uvm_driver #(ifu_txn);
           // This enforces one clean low->high response edge per request.
           @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b0);
           @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
+          `uvm_info(get_type_name(),
+            $sformatf("[IFU_DRV_RSP_EDGE_DBG] rsp edge: va=0x%010h pavld=%0b pa=0x%07h pgflt=%0b deny=%0b",
+              {1'b0, tr.va[38:0]}, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa,
+              vif.driver_cb.mmu_ifu_pgflt, vif.driver_cb.mmu_ifu_deny),
+            UVM_MEDIUM)
           tr.pa      = vif.driver_cb.mmu_ifu_pa;
           tr.pgflt   = vif.driver_cb.mmu_ifu_pgflt;
           tr.deny    = vif.driver_cb.mmu_ifu_deny;
@@ -99,7 +108,9 @@ class ifu_driver extends uvm_driver #(ifu_txn);
         begin : wait_ifu_timeout
           repeat (4000) @(vif.driver_cb);
           `uvm_warning(get_type_name(),
-            $sformatf("IFU response timeout: va=0x%016h", {1'b0, tr.va}))
+            $sformatf("IFU response timeout: va=0x%016h va_vld=%0b pavld=%0b pa=0x%07h",
+              {1'b0, tr.va}, vif.driver_cb.ifu_mmu_va_vld,
+              vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa))
         end
       join_any
       disable fork;

@@ -127,6 +127,7 @@ class lsu_monitor extends uvm_monitor;
       tr.access_fault = vif.monitor_cb.mmu_lsu_access_fault0;
       tr.stall        = vif.monitor_cb.mmu_lsu_stall0;
       tr.sec          = vif.monitor_cb.mmu_lsu_sec0;
+      tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
       wait(m_pending_p0.size() > 0);
       req_tr      = m_pending_p0.pop_front();
@@ -179,6 +180,7 @@ class lsu_monitor extends uvm_monitor;
       tr.access_fault = vif.monitor_cb.mmu_lsu_access_fault1;
       tr.stall        = vif.monitor_cb.mmu_lsu_stall1;
       tr.sec          = vif.monitor_cb.mmu_lsu_sec1;
+      tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
       wait(m_pending_p1.size() > 0);
       req_tr      = m_pending_p1.pop_front();
       m_p1_rsp_seen = 1;

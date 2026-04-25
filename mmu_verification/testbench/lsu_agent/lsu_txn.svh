@@ -43,6 +43,7 @@ class lsu_txn extends uvm_sequence_item;
     `uvm_field_int(access_fault,     UVM_ALL_ON)
     `uvm_field_int(stall,            UVM_ALL_ON)
     `uvm_field_int(sec,              UVM_ALL_ON)
+    `uvm_field_int(mmu_en,           UVM_ALL_ON)
     `uvm_field_int(inv_done,         UVM_ALL_ON)
   `uvm_object_utils_end
 
@@ -76,6 +77,7 @@ class lsu_txn extends uvm_sequence_item;
   bit        access_fault;// Access fault (PMP deny)
   bit        stall;       // MMU stall (TLB miss)
   bit        sec;         // Secure attribute
+  bit        mmu_en;      // Sampled mmu_lsu_mmu_en at response cycle
   bit        inv_done;    // TLB invalidation done (inv sub-channel)
 
   // ── Constraints ──────────────────────────────────────────────────────────

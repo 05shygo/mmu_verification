@@ -115,7 +115,10 @@ class mmu_translation_sb extends uvm_scoreboard;
     dut_fault = tr.pgflt | tr.access_fault;
 
     _compare(.channel("LSU_P0"), .va(va), .ref_rsp(ref_rsp),
-             .dut_pa(tr.pa),     .dut_fault(dut_fault));
+             .dut_pa(tr.pa),     .dut_fault(dut_fault),
+             .req_vpn(va[38:12]), .dbg_valid(1'b1),
+             .tr_stall(tr.stall), .tr_pgflt(tr.pgflt),
+             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en));
   endfunction
 
   // =========================================================================
@@ -142,7 +145,10 @@ class mmu_translation_sb extends uvm_scoreboard;
     dut_fault = tr.pgflt | tr.access_fault;
 
     _compare(.channel("LSU_P1"), .va(va), .ref_rsp(ref_rsp),
-             .dut_pa(tr.pa),     .dut_fault(dut_fault));
+             .dut_pa(tr.pa),     .dut_fault(dut_fault),
+             .req_vpn(va[38:12]), .dbg_valid(1'b1),
+             .tr_stall(tr.stall), .tr_pgflt(tr.pgflt),
+             .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en));
   endfunction
 
   // =========================================================================
@@ -219,7 +225,13 @@ class mmu_translation_sb extends uvm_scoreboard;
     va_t          va,
     xlation_rsp_t ref_rsp,
     bit [27:0]    dut_pa,
-    bit           dut_fault
+    bit           dut_fault,
+    bit [27:0]    req_vpn = '0,
+    bit           dbg_valid = 1'b0,
+    bit           tr_stall = 1'b0,
+    bit           tr_pgflt = 1'b0,
+    bit           tr_access_fault = 1'b0,
+    bit           tr_mmu_en = 1'b0
   );
     bit exp_fault = (ref_rsp.exc != EXC_NONE);
     bit local_mismatch = 0;
@@ -243,6 +255,12 @@ class mmu_translation_sb extends uvm_scoreboard;
     end
 
     if (local_mismatch) begin
+      if (dbg_valid) begin
+        `uvm_error(get_type_name(),
+          $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h req_vpn(va[38:12])=0x%07h | stall=%0b pgflt=%0b access_fault=%0b mmu_lsu_mmu_en=%0b",
+            channel, {1'b0, va}, dut_pa, req_vpn,
+            tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en))
+      end
       m_mismatch++;
     end else begin
       `uvm_info(get_type_name(),

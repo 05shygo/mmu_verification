@@ -121,7 +121,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     int attempts;
     forever begin
       _get_kind(LSU_PIPE0, tr);
-      `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_HIGH)
+      `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_DEBUG)
       repeat (tr.idle_cycles) @(vif.driver_cb);
 
       vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
@@ -155,10 +155,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         @(vif.driver_cb);
 
         if (!done) begin
+          logic [11:0] wakeup_prev;
+          wakeup_prev = vif.driver_cb.mmu_lsu_tlb_wakeup;
           fork
             begin : wait_retry_window_p0
-              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_tlb_wakeup != 12'h000) ||
-                                   (vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)));
+              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0) ||
+                                   ((wakeup_prev == 12'h000) &&
+                                    (vif.driver_cb.mmu_lsu_tlb_wakeup != 12'h000))));
             end
             begin : wait_retry_timeout_p0
               repeat (200000) @(vif.driver_cb);
@@ -183,7 +186,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     int attempts;
     forever begin
       _get_kind(LSU_PIPE1, tr);
-      `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_HIGH)
+      `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_DEBUG)
       repeat (tr.idle_cycles) @(vif.driver_cb);
 
       vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
@@ -217,10 +220,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         @(vif.driver_cb);
 
         if (!done) begin
+          logic [11:0] wakeup_prev;
+          wakeup_prev = vif.driver_cb.mmu_lsu_tlb_wakeup;
           fork
             begin : wait_retry_window_p1
-              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_tlb_wakeup != 12'h000) ||
-                                   (vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)));
+              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0) ||
+                                   ((wakeup_prev == 12'h000) &&
+                                    (vif.driver_cb.mmu_lsu_tlb_wakeup != 12'h000))));
             end
             begin : wait_retry_timeout_p1
               repeat (200000) @(vif.driver_cb);

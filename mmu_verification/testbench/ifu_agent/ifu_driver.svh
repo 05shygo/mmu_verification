@@ -52,28 +52,26 @@ class ifu_driver extends uvm_driver #(ifu_txn);
   endtask
 
   // ── Drive one IFU request transaction ────────────────────────────────────
-  // IFU protocol: single-cycle pulse on va_vld, then de-assert and wait for
-  // pavld response.  The DUT's L1 ITLB treats each va_vld=1 cycle as a new
-  // lookup; holding va_vld HIGH would cause repeated lookups against empty
-  // TLB entries (returning PA=0 immediately) instead of queuing the miss
-  // to L2/PTW for page-walk.
+  // IFU protocol: hold va_vld HIGH until DUT responds with pavld.
+  // RTL: mmu_ifu_pavld = iutlb_hit_vld || ... where
+  //   iutlb_hit_vld = ifu_mmu_va_vld && iutlb_addr_hit (combinational).
+  // After an L1 miss → L2/PTW refill writes the entry into L1 ITLB,
+  // iutlb_addr_hit goes HIGH.  pavld fires only if va_vld is still held.
+  // De-asserting va_vld before refill completion prevents pavld from ever
+  // firing, causing the driver to hang or return stale PA=0.
   virtual task drive_one(ifu_txn tr);
-    // 1. Insert inter-request idle gap
     repeat (tr.idle_cycles) @(vif.driver_cb);
 
-    // 2. Assert va_vld for exactly ONE cycle (single-cycle pulse)
     @(vif.driver_cb);
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
     vif.driver_cb.ifu_mmu_va     <= tr.va >> 1;
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
 
-    // 3. De-assert va_vld on the NEXT cycle so the DUT processes the miss
-    @(vif.driver_cb);
-    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
-    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
-
-    // 4. Wait for MMU response (skip if abort)
-    if (tr.abort == 1'b0) begin
+    if (tr.abort == 1'b1) begin
+      @(vif.driver_cb);
+      vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
+      vif.driver_cb.ifu_mmu_abort  <= 1'b0;
+    end else begin
       fork
         begin : wait_ifu_rsp
           @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
@@ -92,6 +90,8 @@ class ifu_driver extends uvm_driver #(ifu_txn);
         end
       join_any
       disable fork;
+      @(vif.driver_cb);
+      vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
     end
   endtask
 

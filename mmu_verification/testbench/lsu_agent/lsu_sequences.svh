@@ -55,6 +55,7 @@ class lsu_pipe1_only_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with { kind == LSU_PIPE1; });
       `uvm_send(tr)
     end
@@ -89,6 +90,7 @@ class lsu_prefetch_pipe2_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with { kind == LSU_PIPE2; });
       `uvm_send(tr)
     end
@@ -108,6 +110,7 @@ class lsu_stamo_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with { kind == LSU_STAMO; });
       `uvm_send(tr)
     end
@@ -161,6 +164,8 @@ class lsu_abort_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
+      tr.c_no_abort.constraint_mode(0);
       assert(tr.randomize() with { kind inside {LSU_PIPE0, LSU_PIPE1}; abort == 1'b1; });
       `uvm_send(tr)
     end
@@ -248,6 +253,7 @@ class tlb_inv_all_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with { kind == LSU_INV; inv_kind == INV_ALL; });
       `uvm_send(tr)
     end
@@ -267,6 +273,7 @@ class tlb_inv_va_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with { kind == LSU_INV; inv_kind == INV_VA_ALL; });
       `uvm_send(tr)
     end
@@ -286,6 +293,7 @@ class tlb_inv_asid_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with { kind == LSU_INV; inv_kind == INV_ASID_ALL; });
       `uvm_send(tr)
     end
@@ -305,6 +313,7 @@ class tlb_inv_va_asid_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with { kind == LSU_INV; inv_kind == INV_VA_ASID; });
       `uvm_send(tr)
     end

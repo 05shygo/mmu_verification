@@ -15,7 +15,7 @@
 | **Phase 2** | DUT 接入 + Interface | A 主，B Review | ✅ 完成 | ✅ `make comp` 0 error；`make run TEST_NAME=mmu_base_test` UVM_FATAL=0，UVM_ERROR=0 |
 | **Phase 3** | 最简 Active Agent + Sanity Test | A/B 并行 | ✅ 完成 | ✅ `UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24） |
 | **Phase 4** | PTW 内存模型 + 参考模型 | A | ✅ 完成 | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0 |
-| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 退出准则验证中 | 22 项交付物完成；6 个 Bug（P5-1/3/4/5/6 TB 已修复，P5-2 确认非 Bug — 误诊已纠正）；所有修复已在源码中，需 `make comp` 重编译后验证退出准则 |
+| **Phase 5** | IFU + LSU Agent + Translation SB | B 主，A 配合 | 🔄 退出准则验证中 | 22 项交付物完成；8 个 Bug（P5-1/3/4/5/6/8/9 TB 已修复，P5-2 确认非 Bug）；P5-8（lsu_sequences 约束冲突）+ P5-9（IFU driver 协议错误）修复后需 `make comp` 重编译验证 |
 | **Phase 6** | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合 | ⏳ 等待 Phase 5 编译验证 | — |
 | **Phase 7** | Covergroup + SVA bind | A/B 并行 | 🔒 等待 Phase 6 | — |
 | **Phase 8** | Virtual Sequence 实现 | B | 🔒 等待 Phase 7 | — |
@@ -294,6 +294,18 @@
 |---|------|------|------|
 | P5-7 | 115 个 timeout + 208 个 credit overflow/leak + 105 个 PA mismatch + `total_checked=122 < 200` | **全部为 P5-5 衍生问题 + 未重编译**。① driver 未检查 `tlb_busy` → DUT 忽略请求 → timeout → credit 不守恒。② timeout 后 monitor FIFO 关联错乱 → 响应配对到错误 VA → PA mismatch。③ binary 是 P5-5/P5-6 修复前旧版本（证据：`L2_REQQ_DEPTH=9`） | ⚠️ **需 `make comp` 重编译**（P5-5/P5-6 源码已修复；重编译后预期 314 个 ERROR 全部消除） |
 
+### Phase 5 第四轮联合验证 Bug 修复记录（`make fast` 重编译后：UVM_ERROR=352）
+
+> `make fast TEST_NAME=test_mmu_translation_sanity` 重编译后运行，352 个 UVM_ERROR。
+> P5-5/P5-6 源码修复已生效（`L1_DTLB_MB_DEPTH=8` 正确），但暴露了 2 个新根因 Bug。
+
+| # | 文件 | 类型 | 现象 | 根因 | 修复 |
+|---|------|------|------|------|------|
+| P5-8 | `testbench/lsu_agent/lsu_sequences.svh`<br>8 个序列类（TB） | **TB Bug — 约束冲突** | `Error-[CNST-CIF]` @ 284500ps：`tlb_inv_all_seq.body()` randomize 失败 → SFENCE.VMA（Step 2b）未执行 → L2 JTLB 未清空 → 发出 kind=LSU_PIPE0/VA=0 的垃圾请求 → SB 收到 `[LSU_P0] VA=0x0: fault mismatch`；后续 LSU PA mismatch（ref.ppn=0x239 vs dut.pa=0x157）衍生自 monitor FIFO 与此垃圾请求的关联错位 | `lsu_txn.c_kind_default { kind == LSU_PIPE0; }` 永远生效。`randomize() with { kind == LSU_INV; }` 与其矛盾导致约束不可解。<br>**修复**：在 `lsu_pipe1_only_seq`、`lsu_prefetch_pipe2_seq`、`lsu_stamo_seq`、`lsu_abort_seq` 及全部 4 个 `tlb_inv_*_seq` 中，`randomize()` 前调用 `tr.c_kind_default.constraint_mode(0)` |
+| P5-9 | `testbench/ifu_agent/ifu_driver.svh`<br>`drive_one()` 协议（TB） | **TB Bug — IFU 协议错误** | 全部 100 笔 IFU 翻译 DUT 返回 PA=0（无 fault）：`[IFU] VA=0x100000: PA mismatch — ref.ppn=0x200 dut.pa=0x000`（×100） | RTL：`mmu_ifu_pavld = iutlb_hit_vld \|\| ...`，其中 `iutlb_hit_vld = ifu_mmu_va_vld && iutlb_addr_hit`（组合逻辑）。L1 ITLB miss → L2/PTW refill 将正确 PPN 写入 L1 条目后，`iutlb_addr_hit=1`；但 `pavld` 需要 `va_vld=1` 才能拉高。旧驱动在 `va_vld` 仅保持 1 个时钟周期后立即拉低，refill 完成时 `va_vld=0` → `pavld` 永远无法正确拉高，DUT 返回默认 PA=0。<br>**修复**：将 IFU driver 从 single-cycle pulse 改为 **hold-until-pavld** 协议（与 LSU pipe0/1 一致）：保持 `ifu_mmu_va_vld=1` 直到 `mmu_ifu_pavld=1`，然后在下一个时钟沿拉低 `va_vld` |
+
+> **P5-10（衍生）**：40 个 LSU Pipe0/Pipe1 response timeout + 171 个 credit overflow/leak + 181 个 PA mismatch + `total_checked=200 mismatch=181` → 全部为 P5-8（SFENCE 失败 → 垃圾请求污染 monitor FIFO）和 P5-9（IFU PA=0 ×100）的衍生错误。P5-8/P5-9 修复后预期全部消除。
+
 ### Phase 5 退出准则
 
 | # | 检查项 | 负责 | 状态 |
@@ -325,7 +337,7 @@
 | **M2** — DUT elaboration 通过 | Phase 2 退出准则 | ✅ **已达成**（2026-04-23） |
 | **M3** — Sanity Test 通过 | Phase 3 退出准则 | ✅ **已达成**（2026-04-24）|
 | **M4** — 参考模型就绪 | Phase 4 退出准则 | ✅ **已达成**（2026-04-24）|
-| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | 🔄 **TB 侧 5 个 Bug 全部修复**（P5-1/3/4/5/6）；P5-2 确认非 Bug（误诊已纠正）；需 `make comp` 重编译后验证退出准则（无阻塞项） |
+| **M5** — Translation SB 0 mismatch | Phase 5 退出准则 | 🔄 **TB 侧 7 个 Bug 全部修复**（P5-1/3/4/5/6/8/9）；P5-2 确认非 Bug；P5-8（SFENCE 约束冲突）+ P5-9（IFU hold 协议）修复后需 `make comp` 重编译验证 |
 | **M6** — 全功能验证 | Phase 6 退出准则 | ⏳ |
 | **M7** — SVA + 覆盖率框架 | Phase 7 退出准则 | ⏳ |
 | **M8** — 全部 Vseq 可运行 | Phase 8 退出准则 | ⏳ |

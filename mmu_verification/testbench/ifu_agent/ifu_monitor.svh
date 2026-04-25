@@ -5,8 +5,9 @@
 //   ap_req: fires when ifu_mmu_va_vld=1 (request observed)
 //   ap_rsp: fires when mmu_ifu_pavld=1 (merged req+rsp txn containing VA+PA)
 //
-// Phase 5 (Engineer B): Added m_pending_req queue for req/rsp correlation.
-//   IFU is 1-outstanding: FIFO order is guaranteed.
+// Phase 5 (Engineer B): Added req/rsp correlation.
+//   IFU uses 1-outstanding hold protocol: va_vld may stay HIGH continuously,
+//   and VA updates only after current response returns.
 //   ap_rsp txn carries both VA (from req) and PA/pgflt/deny (from DUT response)
 //   → mmu_translation_sb.af_ifu_rsp can directly call ref_model.translate().
 // =============================================================================
@@ -25,12 +26,13 @@ class ifu_monitor extends uvm_monitor;
   // Phase 5 downstream: ap_rsp → mmu_translation_sb.af_ifu_rsp
   uvm_analysis_port #(ifu_txn) ap_rsp;
 
-  // Phase 5: Outstanding request FIFO for req/rsp correlation.
-  // IFU is 1-outstanding (no out-of-order), FIFO pop is safe.
-  protected ifu_txn m_pending_req[$];
+  // IFU hold protocol is 1-outstanding: keep a single pending request.
+  protected ifu_txn m_pending_req;
+  protected bit     m_has_pending;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    m_has_pending = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -42,69 +44,75 @@ class ifu_monitor extends uvm_monitor;
   endfunction
 
   virtual task run_phase(uvm_phase phase);
-    fork
-      _collect_req();
-      _collect_rsp();
-    join_none
+    _collect();
   endtask
 
-  // ── Collect VA request events ─────────────────────────────────────────────
-  // Phase 5: push to m_pending_req queue so _collect_rsp can merge VA fields.
-  // Edge detection: wait for ifu_mmu_va_vld HIGH, sample once, then wait for
-  // LOW before looping.  This prevents duplicate publications when the driver
-  // holds va_vld asserted across multiple cycles (hold-until-pavld protocol).
-  protected task _collect_req();
-    ifu_txn tr;
+  // ── Cycle-accurate collector for IFU hold protocol ────────────────────────
+  // One request can be outstanding at a time.
+  // Same cycle ordering is important:
+  //   1) consume response first (if pavld)
+  //   2) then open next request (if va_vld and no pending)
+  // This supports va_vld staying HIGH across back-to-back requests.
+  protected task _collect();
+    ifu_txn req_tr, rsp_tr;
+    va_t cur_va;
     forever begin
-      @(vif.monitor_cb iff vif.monitor_cb.ifu_mmu_va_vld);
-      tr       = ifu_txn::type_id::create("ifu_req_mon");
-      tr.va    = 63'(vif.monitor_cb.ifu_mmu_va << 1);
-      tr.abort = vif.monitor_cb.ifu_mmu_abort;
-      `uvm_info(get_type_name(), {"IFU REQ: ", tr.convert2string()}, UVM_HIGH)
-      // IFU protocol is 1-outstanding. If an old request is still pending here,
-      // it means no response was observed before the next request started.
-      // Drop stale pending entry immediately to prevent req/rsp cross-pairing.
-      if (m_pending_req.size() > 0) begin
-        ifu_txn stale_tr;
-        stale_tr = m_pending_req.pop_front();
-        `uvm_warning(get_type_name(),
-          $sformatf("IFU stale pending req dropped before new req: stale_va=0x%010h new_va=0x%010h",
-            {1'b0, stale_tr.va[38:0]}, {1'b0, tr.va[38:0]}))
-      end
-      m_pending_req.push_back(tr);
-      ap_req.write(tr);
-      @(vif.monitor_cb iff !vif.monitor_cb.ifu_mmu_va_vld);
-    end
-  endtask
+      @(vif.monitor_cb);
 
-  // ── Collect PA response events ────────────────────────────────────────────
-  protected task _collect_rsp();
-    ifu_txn tr, req_tr;
-    forever begin
-      @(vif.monitor_cb iff vif.monitor_cb.mmu_ifu_pavld);
-      if (m_pending_req.size() == 0) begin
-        `uvm_warning(get_type_name(),
-          $sformatf("IFU rsp observed without pending req: pa=0x%07h pgflt=%0b deny=%0b",
-            vif.monitor_cb.mmu_ifu_pa,
-            vif.monitor_cb.mmu_ifu_pgflt,
-            vif.monitor_cb.mmu_ifu_deny))
-        @(vif.monitor_cb iff !vif.monitor_cb.mmu_ifu_pavld);
-        continue;
+      // 1) Consume response first.
+      if (vif.monitor_cb.mmu_ifu_pavld) begin
+        if (!m_has_pending) begin
+          `uvm_warning(get_type_name(),
+            $sformatf("IFU rsp observed without pending req: pa=0x%07h pgflt=%0b deny=%0b",
+              vif.monitor_cb.mmu_ifu_pa,
+              vif.monitor_cb.mmu_ifu_pgflt,
+              vif.monitor_cb.mmu_ifu_deny))
+        end else begin
+          rsp_tr         = ifu_txn::type_id::create("ifu_rsp_mon");
+          rsp_tr.pavld   = 1'b1;
+          rsp_tr.pa      = vif.monitor_cb.mmu_ifu_pa;
+          rsp_tr.pgflt   = vif.monitor_cb.mmu_ifu_pgflt;
+          rsp_tr.deny    = vif.monitor_cb.mmu_ifu_deny;
+          rsp_tr.sec     = vif.monitor_cb.mmu_ifu_sec;
+          rsp_tr.ca      = vif.monitor_cb.mmu_ifu_ca;
+          rsp_tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
+          rsp_tr.va      = m_pending_req.va;
+          rsp_tr.abort   = m_pending_req.abort;
+          m_has_pending  = 1'b0;
+          `uvm_info(get_type_name(), {"IFU RSP: ", rsp_tr.convert2string()}, UVM_HIGH)
+          ap_rsp.write(rsp_tr);
+        end
       end
-      tr         = ifu_txn::type_id::create("ifu_rsp_mon");
-      tr.pavld   = 1'b1;
-      tr.pa      = vif.monitor_cb.mmu_ifu_pa;
-      tr.pgflt   = vif.monitor_cb.mmu_ifu_pgflt;
-      tr.deny    = vif.monitor_cb.mmu_ifu_deny;
-      tr.sec     = vif.monitor_cb.mmu_ifu_sec;
-      tr.ca      = vif.monitor_cb.mmu_ifu_ca;
-      tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
-      req_tr   = m_pending_req.pop_front();
-      tr.va    = req_tr.va;
-      tr.abort = req_tr.abort;
-      `uvm_info(get_type_name(), {"IFU RSP: ", tr.convert2string()}, UVM_HIGH)
-      ap_rsp.write(tr);
-      @(vif.monitor_cb iff !vif.monitor_cb.mmu_ifu_pavld);
+
+      cur_va = 63'(vif.monitor_cb.ifu_mmu_va << 1);
+
+      // 2) Open next request when VA is valid and there is no outstanding one.
+      if (vif.monitor_cb.ifu_mmu_va_vld && !m_has_pending) begin
+        req_tr       = ifu_txn::type_id::create("ifu_req_mon");
+        req_tr.va    = cur_va;
+        req_tr.abort = vif.monitor_cb.ifu_mmu_abort;
+        m_pending_req = req_tr;
+        m_has_pending = 1'b1;
+        `uvm_info(get_type_name(), {"IFU REQ: ", req_tr.convert2string()}, UVM_HIGH)
+        ap_req.write(req_tr);
+      end
+
+      // Protocol sanity: VA should stay stable while request is outstanding
+      // and before response returns.
+      if (m_has_pending && vif.monitor_cb.ifu_mmu_va_vld &&
+          !vif.monitor_cb.mmu_ifu_pavld && (cur_va !== m_pending_req.va)) begin
+        `uvm_warning(get_type_name(),
+          $sformatf("IFU VA changed before rsp: pending_va=0x%010h cur_va=0x%010h",
+            {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}))
+      end
+
+      // If request disappears without a response, drop it to prevent deadlock.
+      if (m_has_pending && !vif.monitor_cb.ifu_mmu_va_vld) begin
+        `uvm_warning(get_type_name(),
+          $sformatf("IFU pending req dropped on va_vld deassert: va=0x%010h",
+            {1'b0, m_pending_req.va[38:0]}))
+        m_has_pending = 1'b0;
+      end
     end
   endtask
 

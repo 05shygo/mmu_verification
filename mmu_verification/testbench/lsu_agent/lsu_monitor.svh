@@ -227,6 +227,21 @@ class lsu_monitor extends uvm_monitor;
           tr.mmu_en, (tr.mmu_en && (tr.pgflt || tr.access_fault)),
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p1.size()),
         UVM_DEBUG)
+      // Same-cycle bus snapshot (enable with +MMU_LSU_MON_DBG) to correlate P1 PA
+      // with P0 / STAMO and spot mux or STAMO overlay issues vs translation_sb.
+      if ($test$plusargs("MMU_LSU_MON_DBG")) begin
+        `uvm_info("LSU_MON_DBG",
+          $sformatf(
+            "[P1] t=%0t VA=%010h VPN=%07h id=%0d st=%0b | P1: pa=%07h pav=%0b pg=%0b af=%0b st=%0b va1v=%0b vabuf=%07h | P0: pa=%07h pav=%0b va0v=%0b | stamo: v=%0b pa=%07h | mmu_en=%0b tlb_b=%0b tlb_wk=0x%03h",
+            $time, {1'b0, tr.va[38:0]}, tr.va[38:12], tr.id, tr.st_inst,
+            vif.monitor_cb.mmu_lsu_pa1, vif.monitor_cb.mmu_lsu_pa1_vld,
+            vif.monitor_cb.mmu_lsu_page_fault1, vif.monitor_cb.mmu_lsu_access_fault1,
+            vif.monitor_cb.mmu_lsu_stall1, vif.monitor_cb.lsu_mmu_va1_vld, vif.monitor_cb.lsu_mmu_vabuf1,
+            vif.monitor_cb.mmu_lsu_pa0, vif.monitor_cb.mmu_lsu_pa0_vld, vif.monitor_cb.lsu_mmu_va0_vld,
+            vif.monitor_cb.lsu_mmu_stamo_vld, vif.monitor_cb.lsu_mmu_stamo_pa,
+            vif.monitor_cb.mmu_lsu_mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup),
+          UVM_NONE)
+      end
       ap_pipe1_rsp.write(tr);
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa1_vld);
     end

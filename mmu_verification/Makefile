@@ -197,6 +197,7 @@ help:
 	@echo "  TEST_NAME=$(TEST_NAME)  SEED=$(SEED)  VERBOSITY=$(VERBOSITY)"
 	@echo "  UVM_ERR_ONLY=$(UVM_ERR_ONLY)  (1=errors only on console)"
 	@echo "  Example: make run TEST_NAME=... UVM_ERR_ONLY=1"
+	@echo "  PLUS_ARGS: e.g. PLUS_ARGS=+MMU_LSU_MON_DBG  (P1 RSP bus snapshot, lsu_monitor.svh)"
 
 #===============================================================================
 # Env / Setup

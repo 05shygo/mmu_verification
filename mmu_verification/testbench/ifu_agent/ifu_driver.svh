@@ -80,8 +80,6 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
       vif.driver_cb.ifu_mmu_abort  <= 1'b0;
     end else begin
-      // Wait at least one full cycle with va_vld=1 BEFORE sampling pavld,
-      // so the DUT has time to compute the combinational TLB hit/miss.
       @(vif.driver_cb);
       fork
         begin : wait_ifu_rsp

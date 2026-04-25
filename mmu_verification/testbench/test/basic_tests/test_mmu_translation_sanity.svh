@@ -255,12 +255,9 @@ class test_mmu_translation_sanity extends test_base;
         })
       `uvm_fatal(get_type_name(), "cp0_reg_rw_seq randomize() failed")
     cp0_init.start(m_env.m_cp0.m_sequencer);
-    `uvm_info(get_type_name(), "Step 2: SATP + CSR init complete", UVM_HIGH)
+    `uvm_info(get_type_name(), "Step 2: SATP + CSR init complete", UVM_MEDIUM)
 
     // ── Step 2b: SFENCE.VMA INV_ALL via LSU agent ──────────────────────────
-    // The CP0 tlb_all_inv (step 0) may timeout if the TLBOper FSM isn't idle.
-    // The SATP write (step 2) only clears L1 uTLBs (regs_utlb_clr), NOT L2 JTLB.
-    // Issue a SFENCE.VMA via LSU to guarantee L2 JTLB is also invalidated.
     `uvm_info(get_type_name(),
       "Step 2b: SFENCE.VMA INV_ALL via LSU (flush L2 JTLB)", UVM_MEDIUM)
     begin

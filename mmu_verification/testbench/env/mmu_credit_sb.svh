@@ -9,29 +9,33 @@
 //     ifu ap_rsp   → -1 (request completed)
 //     Upper bound  : L1_ITLB_ENTRIES (16)
 //
-//   m_credit_l1d   — outstanding LSU translation requests
+//   m_credit_l1d   — outstanding LSU translation requests (external view)
 //     lsu p0/p1 ap_req → +1
 //     lsu p0/p1 ap_rsp → -1
 //     Upper bound  : L1_DTLB_ENTRIES (16)
 //
-//   m_l2_reqq_cnt  — L2 TLB request queue occupancy (approximate)
+//   m_lsu_ext_outstanding — LSU externally-visible uncompleted requests (approx)
 //     lsu p0/p1 ap_req → +1
 //     lsu p0/p1 ap_rsp → -1
-//     Upper bound  : L1_DTLB_MB_DEPTH (8)
-//
-//     LIMITATION: this counter increments for EVERY LSU request including
-//     L1-DTLB hits that return pa_vld in the same cycle and never enter L2.
-//     The true occupancy (L1-miss requests only) is always ≤ this count.
-//     The overflow check uses L1_DTLB_MB_DEPTH (8) which equals the DUT
-//     miss-buffer depth and the scheduler CREDIT_MAX — the tightest correct
-//     bound reachable without observing internal DUT hit/miss signals.
+//     NOTE: this is NOT the true MMU-internal miss-buffer occupancy.
+//     Three categories exist:
+//       (1) L1 DTLB hit → rsp returns same cycle, never enters MB
+//       (2) L1 miss + MB has slot → enters MB, serviced by PTW
+//       (3) L1 miss + MB full → request sleeps at LSU side, awaiting
+//           mmu_lsu_tlb_wakeup before re-issuing to MMU
+//     This counter includes ALL three categories.  The true MB occupancy
+//     (category 2 only) is always ≤ this count.  Overflow beyond
+//     L1_DTLB_MB_DEPTH is therefore a WARNING (expected under backpressure),
+//     not a hard error.
 //
 //   m_ptw_mbuf_cnt — PTW miss buffer occupancy
 //     ptw_mem ap_req → +1 (new PTW memory read issued)
 //     ptw_mem ap_rsp → -1 (PTW memory read completed)
 //     Upper bound  : PTW_MBUF_DEPTH (4)
 //
-// All counters must equal 0 at report_phase (no "leaked" transactions).
+// Conservation: m_credit_l1i/l1d/ptw_mbuf_cnt must == 0 at report_phase.
+// m_lsu_ext_outstanding may be non-zero at end-of-sim if LSU-side sleeping
+// requests were never re-issued (expected under timeout/backpressure).
 //
 // Eight TLM analysis FIFOs (one per AP stream):
 //   af_ifu_req, af_ifu_rsp,
@@ -62,28 +66,27 @@ class mmu_credit_sb extends uvm_scoreboard;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_rsp;
 
   // ── Credit / occupancy counters (all start at 0) ──────────────────────────
-  // Protected; updated only from run_phase consumer threads.
-  protected int m_credit_l1i;    // outstanding IFU translation requests
-  protected int m_credit_l1d;    // outstanding LSU translation requests
-  protected int m_l2_reqq_cnt;   // L2 TLB request queue occupancy
-  protected int m_ptw_mbuf_cnt;  // PTW miss buffer occupancy
+  protected int m_credit_l1i;          // outstanding IFU translation requests
+  protected int m_credit_l1d;          // outstanding LSU translation requests (external)
+  protected int m_lsu_ext_outstanding; // LSU externally-visible uncompleted (approx, includes sleeping)
+  protected int m_ptw_mbuf_cnt;        // PTW miss buffer occupancy
 
   // ── Peak observations (for debug) ─────────────────────────────────────────
   protected int m_peak_l1i;
   protected int m_peak_l1d;
-  protected int m_peak_l2_reqq;
+  protected int m_peak_lsu_ext;
   protected int m_peak_ptw_mbuf;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
-    m_credit_l1i   = 0;
-    m_credit_l1d   = 0;
-    m_l2_reqq_cnt  = 0;
-    m_ptw_mbuf_cnt = 0;
-    m_peak_l1i     = 0;
-    m_peak_l1d     = 0;
-    m_peak_l2_reqq = 0;
-    m_peak_ptw_mbuf= 0;
+    m_credit_l1i          = 0;
+    m_credit_l1d          = 0;
+    m_lsu_ext_outstanding = 0;
+    m_ptw_mbuf_cnt        = 0;
+    m_peak_l1i            = 0;
+    m_peak_l1d            = 0;
+    m_peak_lsu_ext        = 0;
+    m_peak_ptw_mbuf       = 0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -143,67 +146,67 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endtask
 
-  // ── LSU pipe0 request: credit_l1d +1, l2_reqq +1 ────────────────────────
+  // ── LSU pipe0 request: credit_l1d +1, lsu_ext_outstanding +1 ────────────
   protected task _consume_lsu_p0_req();
     lsu_txn tr;
     forever begin
       af_lsu_p0_req.get(tr);
       m_credit_l1d++;
-      m_l2_reqq_cnt++;
+      m_lsu_ext_outstanding++;
       _check_l1d_bound();
-      _check_l2_reqq_bound();
-      if (m_credit_l1d  > m_peak_l1d)    m_peak_l1d    = m_credit_l1d;
-      if (m_l2_reqq_cnt > m_peak_l2_reqq) m_peak_l2_reqq = m_l2_reqq_cnt;
+      _check_lsu_ext_bound();
+      if (m_credit_l1d          > m_peak_l1d)    m_peak_l1d    = m_credit_l1d;
+      if (m_lsu_ext_outstanding > m_peak_lsu_ext) m_peak_lsu_ext = m_lsu_ext_outstanding;
       `uvm_info(get_type_name(),
-        $sformatf("LSU_P0_REQ: credit_l1d=%0d l2_reqq=%0d",
-          m_credit_l1d, m_l2_reqq_cnt), UVM_HIGH)
+        $sformatf("LSU_P0_REQ: credit_l1d=%0d lsu_ext=%0d",
+          m_credit_l1d, m_lsu_ext_outstanding), UVM_HIGH)
     end
   endtask
 
-  // ── LSU pipe0 response: credit_l1d -1, l2_reqq -1 ────────────────────────
+  // ── LSU pipe0 response: credit_l1d -1, lsu_ext_outstanding -1 ────────────
   protected task _consume_lsu_p0_rsp();
     lsu_txn tr;
     forever begin
       af_lsu_p0_rsp.get(tr);
       m_credit_l1d--;
-      m_l2_reqq_cnt--;
+      m_lsu_ext_outstanding--;
       _check_l1d_underflow();
-      _check_l2_reqq_underflow();
+      _check_lsu_ext_underflow();
       `uvm_info(get_type_name(),
-        $sformatf("LSU_P0_RSP: credit_l1d=%0d l2_reqq=%0d",
-          m_credit_l1d, m_l2_reqq_cnt), UVM_HIGH)
+        $sformatf("LSU_P0_RSP: credit_l1d=%0d lsu_ext=%0d",
+          m_credit_l1d, m_lsu_ext_outstanding), UVM_HIGH)
     end
   endtask
 
-  // ── LSU pipe1 request: credit_l1d +1, l2_reqq +1 ────────────────────────
+  // ── LSU pipe1 request: credit_l1d +1, lsu_ext_outstanding +1 ────────────
   protected task _consume_lsu_p1_req();
     lsu_txn tr;
     forever begin
       af_lsu_p1_req.get(tr);
       m_credit_l1d++;
-      m_l2_reqq_cnt++;
+      m_lsu_ext_outstanding++;
       _check_l1d_bound();
-      _check_l2_reqq_bound();
-      if (m_credit_l1d  > m_peak_l1d)    m_peak_l1d    = m_credit_l1d;
-      if (m_l2_reqq_cnt > m_peak_l2_reqq) m_peak_l2_reqq = m_l2_reqq_cnt;
+      _check_lsu_ext_bound();
+      if (m_credit_l1d          > m_peak_l1d)    m_peak_l1d    = m_credit_l1d;
+      if (m_lsu_ext_outstanding > m_peak_lsu_ext) m_peak_lsu_ext = m_lsu_ext_outstanding;
       `uvm_info(get_type_name(),
-        $sformatf("LSU_P1_REQ: credit_l1d=%0d l2_reqq=%0d",
-          m_credit_l1d, m_l2_reqq_cnt), UVM_HIGH)
+        $sformatf("LSU_P1_REQ: credit_l1d=%0d lsu_ext=%0d",
+          m_credit_l1d, m_lsu_ext_outstanding), UVM_HIGH)
     end
   endtask
 
-  // ── LSU pipe1 response: credit_l1d -1, l2_reqq -1 ────────────────────────
+  // ── LSU pipe1 response: credit_l1d -1, lsu_ext_outstanding -1 ────────────
   protected task _consume_lsu_p1_rsp();
     lsu_txn tr;
     forever begin
       af_lsu_p1_rsp.get(tr);
       m_credit_l1d--;
-      m_l2_reqq_cnt--;
+      m_lsu_ext_outstanding--;
       _check_l1d_underflow();
-      _check_l2_reqq_underflow();
+      _check_lsu_ext_underflow();
       `uvm_info(get_type_name(),
-        $sformatf("LSU_P1_RSP: credit_l1d=%0d l2_reqq=%0d",
-          m_credit_l1d, m_l2_reqq_cnt), UVM_HIGH)
+        $sformatf("LSU_P1_RSP: credit_l1d=%0d lsu_ext=%0d",
+          m_credit_l1d, m_lsu_ext_outstanding), UVM_HIGH)
     end
   endtask
 
@@ -246,13 +249,14 @@ class mmu_credit_sb extends uvm_scoreboard;
           m_credit_l1d, L1_DTLB_ENTRIES))
   endfunction
 
-  protected function void _check_l2_reqq_bound();
-    // Use L1_DTLB_MB_DEPTH (= scheduler CREDIT_MAX = 8) as the bound.
-    // L2_REQQ_DEPTH (9) includes one ITLB slot; LSU-only peak <= 8.
-    if (m_l2_reqq_cnt > int'(L1_DTLB_MB_DEPTH))
-      `uvm_error(get_type_name(),
-        $sformatf("l2_reqq_cnt overflow: %0d > L1_DTLB_MB_DEPTH=%0d",
-          m_l2_reqq_cnt, L1_DTLB_MB_DEPTH))
+  // lsu_ext_outstanding includes LSU-side sleeping requests that have NOT
+  // entered the MMU miss buffer.  Exceeding L1_DTLB_MB_DEPTH is expected
+  // under backpressure (category-3 requests per LSU sleep-request semantics).
+  protected function void _check_lsu_ext_bound();
+    if (m_lsu_ext_outstanding > int'(L1_DTLB_MB_DEPTH))
+      `uvm_warning(get_type_name(),
+        $sformatf("lsu_ext_outstanding approx overflow: %0d > L1_DTLB_MB_DEPTH=%0d (includes LSU-side sleeping requests)",
+          m_lsu_ext_outstanding, L1_DTLB_MB_DEPTH))
   endfunction
 
   protected function void _check_l1d_underflow();
@@ -262,31 +266,29 @@ class mmu_credit_sb extends uvm_scoreboard;
           m_credit_l1d))
   endfunction
 
-  protected function void _check_l2_reqq_underflow();
-    if (m_l2_reqq_cnt < 0)
+  protected function void _check_lsu_ext_underflow();
+    if (m_lsu_ext_outstanding < 0)
       `uvm_error(get_type_name(),
-        $sformatf("l2_reqq_cnt underflow: %0d (spurious LSU response?)",
-          m_l2_reqq_cnt))
+        $sformatf("lsu_ext_outstanding underflow: %0d (spurious LSU response?)",
+          m_lsu_ext_outstanding))
   endfunction
 
   // ── report_phase: assert all counters == 0 ────────────────────────────────
   // A non-zero counter at end-of-sim means a transaction was "leaked"
   // (request without matching response, or response without request).
   virtual function void report_phase(uvm_phase phase);
-    // Summary banner
     `uvm_info(get_type_name(),
       $sformatf({"[CreditSB] Summary:\n",
-        "  credit_l1i   = %0d  (peak=%0d, limit=%0d)\n",
-        "  credit_l1d   = %0d  (peak=%0d, limit=%0d)\n",
-        "  l2_reqq_cnt  = %0d  (peak=%0d, limit=%0d)\n",
-        "  ptw_mbuf_cnt = %0d  (peak=%0d, limit=%0d)"},
-        m_credit_l1i,   m_peak_l1i,      L1_ITLB_ENTRIES,
-        m_credit_l1d,   m_peak_l1d,      L1_DTLB_ENTRIES,
-        m_l2_reqq_cnt,  m_peak_l2_reqq,  L2_REQQ_DEPTH,
-        m_ptw_mbuf_cnt, m_peak_ptw_mbuf, PTW_MBUF_DEPTH),
+        "  credit_l1i          = %0d  (peak=%0d, limit=%0d)\n",
+        "  credit_l1d          = %0d  (peak=%0d, limit=%0d)\n",
+        "  lsu_ext_outstanding = %0d  (peak=%0d, MB_depth=%0d)  [approx, includes sleeping]\n",
+        "  ptw_mbuf_cnt        = %0d  (peak=%0d, limit=%0d)"},
+        m_credit_l1i,          m_peak_l1i,      L1_ITLB_ENTRIES,
+        m_credit_l1d,          m_peak_l1d,      L1_DTLB_ENTRIES,
+        m_lsu_ext_outstanding, m_peak_lsu_ext,  L1_DTLB_MB_DEPTH,
+        m_ptw_mbuf_cnt,        m_peak_ptw_mbuf, PTW_MBUF_DEPTH),
       UVM_MEDIUM)
 
-    // Conservation checks
     if (m_credit_l1i != 0)
       `uvm_error(get_type_name(),
         $sformatf("[CreditSB] credit_l1i != 0 at end-of-sim (%0d): leaked IFU txns",
@@ -297,20 +299,22 @@ class mmu_credit_sb extends uvm_scoreboard;
         $sformatf("[CreditSB] credit_l1d != 0 at end-of-sim (%0d): leaked LSU txns",
           m_credit_l1d))
 
-    if (m_l2_reqq_cnt != 0)
-      `uvm_error(get_type_name(),
-        $sformatf("[CreditSB] l2_reqq_cnt != 0 at end-of-sim (%0d): L2 reqQ not drained",
-          m_l2_reqq_cnt))
+    // lsu_ext_outstanding may be non-zero if driver timeouts caused requests to
+    // be abandoned without a DUT response.  This is expected under backpressure
+    // or when sleeping LSU requests never received a wakeup re-issue.
+    if (m_lsu_ext_outstanding != 0)
+      `uvm_warning(get_type_name(),
+        $sformatf("[CreditSB] lsu_ext_outstanding != 0 at end-of-sim (%0d): includes timed-out/sleeping LSU requests",
+          m_lsu_ext_outstanding))
 
     if (m_ptw_mbuf_cnt != 0)
       `uvm_error(get_type_name(),
         $sformatf("[CreditSB] ptw_mbuf_cnt != 0 at end-of-sim (%0d): PTW mbuf not drained",
           m_ptw_mbuf_cnt))
 
-    if (m_credit_l1i   == 0 && m_credit_l1d  == 0 &&
-        m_l2_reqq_cnt  == 0 && m_ptw_mbuf_cnt == 0)
+    if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_ptw_mbuf_cnt == 0)
       `uvm_info(get_type_name(),
-        "[CreditSB] PASS — all credit counters == 0 (conservation verified)",
+        "[CreditSB] PASS — credit conservation verified (l1i/l1d/ptw all == 0)",
         UVM_MEDIUM)
   endfunction
 

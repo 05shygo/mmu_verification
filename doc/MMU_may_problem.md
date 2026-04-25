@@ -48,7 +48,12 @@
 @ 601000:  [IFU] VA=0x0000101000: PA mismatch — ref.ppn=0x0000201  dut.pa=0x0000000
 @ 608000:  [IFU] VA=0x0000102000: PA mismatch — ref.ppn=0x0000202  dut.pa=0x0000000
   ... (100 笔，PA 全为 0)
+@ 1634000: [IFU] VA=0x000015b000: PA mismatch — ref.ppn=0x000025b  dut.pa=0x0000000
 ```
+
+> 上述 `@1634000` 的 VA=0x15b000 进一步确认：该问题不限于早期阶段，后期新 VA 仍持续复现 `dut.pa=0`。
+> 结合 IFU 串行协议（`ifu_mmu_va_vld` 持高、`va` 仅在 `pavld` 后更新），说明每笔请求
+> 都走完了握手闭环（收到了 `pavld`），但 **PA 始终输出 0**。
 
 **猜测根因**
 
@@ -61,6 +66,13 @@ P5-9 修复（IFU driver 从单周期脉冲改为 hold-until-pavld）已编译�
 | 1c | **PTW responder 未响应 IFU 发起的页表遍历请求** | 若 IFU 通道的 L1 ITLB miss → L2 miss → PTW walk 请求从未被 ptw_mem_responder 正确服务（例如 IFU/LSU 共享的 PTW 入口竞争、或 IFU miss 请求被 LSU 请求挤占），则 ITLB 永远不会被填充，每次访问都"命中"初始值 PPN=0 |
 | 1d | **IFU PA 输出多路选择器 Bug** | `mmu_ifu_pa` 的来源可能有多个（ITLB hit、PTW direct refill、bypass 等），若 MUX 选择信号不正确，即使 ITLB 已被正确填充，PA 输出仍为 0 |
 | 1e | **monitor 采样时序问题** | `driver_cb` 的 input sampling 可能在组合逻辑稳定之前读取 PA，导致采样到全 0 |
+| 1f | **PTW refill 未回写 ITLB** | PTW 完成页表遍历后，回写路径可能只填了 L2/JTLB 而未刷入 L1 ITLB；后续 IFU 访问仍命中初始值 PPN=0 的条目 |
+| 1g | **IFU 串行协议下的累积效应** | IFU 是 1-outstanding 串行：每笔 VA 必须等 `pavld` 才换下一笔。若第一笔就因 ITLB 命中无效条目而快速返回 PA=0，后续每笔都重复同样的错误路径（miss→未 refill→命中初值），导致全量 PA=0 |
+
+> **`@1634000 VA=0x15b000` 新增证据结论**：  
+> ref_model 正常翻译（`ppn=0x25b`），DUT 在握手闭环完成后仍输出 `pa=0`。  
+> 由于 IFU 串行协议保证了此时 `ifu_mmu_va` 就是 `0x15b000`，排除了 req/rsp 配对错位的可能。  
+> **最大概率根因**：DUT IFU 输出路径问题（1a/1b/1d），或 PTW refill 从未真正写入 ITLB（1c/1f）。
 
 **建议排查步骤**
 
@@ -178,6 +190,80 @@ P5-9 修复（IFU driver 从单周期脉冲改为 hold-until-pavld）已编译�
                                                │         │
                                                │         └──→ HPCP dutlb_miss=216771
 ```
+
+---
+
+## LSU 休眠请求语义补充（与 `m_l2_reqq_cnt` 相关）
+
+根据当前 DUT 的 LSU↔MMU 接口设计，LSU 请求在送入 MMU 后有三种状态需要区分：
+
+1. **L1 DTLB hit**：可快速返回 rsp。  
+2. **L1 DTLB miss 且 miss buffer 有空位**：请求进入 L1 DTLB miss buffer，由 MMU/PTW 路径处理，后续返回 rsp。  
+3. **L1 DTLB miss 且 miss buffer 已满**：请求无法进入 MMU 内部 miss buffer，需在 LSU 侧 buffer 休眠；仅当 MMU 通过 `mmu_lsu_tlb_wakeup` 通知有空闲 entry 后，LSU 才会把该请求重新发起到 MMU。
+
+> 关键语义：第 3 类“LSU 侧休眠请求”尚未进入 MMU 内部处理队列，**不应**计入“MMU 内部 L2 reqQ 占用”。
+
+### `mmu_lsu_tlb_busy` 判定语义（新增）
+
+- `mmu_lsu_tlb_busy` 用于指示 **L1 DTLB miss buffer 是否还有空位**。  
+- 当 `mmu_lsu_tlb_busy==0`：表示仍可接收新的 miss 请求，请求可继续在 MMU 内部处理（进入 miss buffer 路径）。  
+- 当 `mmu_lsu_tlb_busy==1`：表示 miss buffer 无空位；该请求不能继续在 MMU 内部处理，应在 LSU buffer 休眠，等待 `mmu_lsu_tlb_wakeup` 后重发。  
+- 因此，是否计入“MMU 内部在途占用”的分界应基于 busy/wakeup 语义，而不是仅基于 LSU 对外发起过一次 req。
+
+### 对现有 `m_l2_reqq_cnt` 模型的影响
+
+当前 `mmu_credit_sb` 的 `m_l2_reqq_cnt` 采用外部 req/rsp 事件近似计数：
+
+- `lsu_p0/p1 ap_req` 就 `+1`
+- `lsu_p0/p1 ap_rsp` 才 `-1`
+
+该口径会把“尚未进入 MMU、仅在 LSU 休眠等待 wakeup 的请求”也提前计入在途，导致计数偏大。  
+因此当 backpressure 严重或 wakeup 存在延迟时，可能出现：
+
+- `l2_reqq_cnt overflow: N > L1_DTLB_MB_DEPTH(8)` 的**假阳性**；
+- `l2_reqq_cnt` 长时间不回落（看似“MMU 内部队列未排空”），但真实原因是 LSU 侧休眠请求未被唤醒重发；
+- 与真实 miss buffer 占用不一致，削弱 `m_l2_reqq_cnt` 对 MB 饱和问题的定位精度。
+
+### 由该口径偏差可能引入的错误记录
+
+| 错误类型 | 触发条件 | 现象 |
+|---|---|---|
+| `l2_reqq_cnt overflow` 误报 | LSU 持续发请求，部分请求因 MB 满而在 LSU 休眠 | SB 报超过 8，但 MMU 内 MB 实际未超过 8 |
+| `l2_reqq_cnt != 0` 结束态误报 | 仿真结束时仍有 LSU 侧休眠请求未 wakeup 重发 | SB 认为 L2 reqQ 泄漏 |
+| 二次衍生 mismatch 噪声 | SB 依据偏大的在途计数触发容量异常链路分析 | 将“LSU 休眠等待”误判为“MMU 内部处理堵塞” |
+
+### 建议的后续修正方向（文档级）
+
+1. 给 `m_l2_reqq_cnt` 明确改名/注释为“LSU 外部可见未完成请求数（近似）”，避免误解为真实 MB 占用。  
+2. 若要统计“MMU 内部真实占用”，需引入额外可观测事件（例如：请求成功进入 MB、或 wakeup/重发握手闭环）。  
+3. 在问题分析中将“LSU 休眠请求数”与“MMU 内部 MB 占用”分开记录，避免把第 3 类请求算入 L2 reqQ。
+
+---
+
+## IFU 串行请求语义补充（新增）
+
+根据当前 IFU↔MMU 接口约束，IFU 请求是严格串行的：
+
+- `ifu_mmu_va_vld` 在当前请求完成前可持续保持为高；
+- `ifu_mmu_va[62:0]` 在当前请求完成前保持不变；
+- 只有当 MMU 返回 `mmu_ifu_pavld`（当前请求完成）后，IFU 才会更新到下一个 VA 并继续请求。
+
+> 关键语义：IFU 通道在协议上是“1-outstanding 串行握手”，不存在多笔 IFU 请求并发进入 MMU 的正常场景。
+
+### 该语义下可能导致的错误记录
+
+| 错误类型 | 触发条件 | 现象 |
+|---|---|---|
+| IFU PA 持续为 0 的系统性错误 | MMU 在 `mmu_ifu_pavld=1` 时输出路径异常（默认值/旁路/命中判定错误） | 连续 VA 都出现 `PA mismatch`，且 `dut.pa=0x0` |
+| IFU 请求“伪超发”误判 | 误把 `va_vld` 持高理解为多笔请求 | 分析中错误归因为并发拥塞，而真实是单请求未正确完成 |
+| req/rsp 对齐误判 | 未按“同一 VA 保持到 `pavld`”口径检查波形 | 将稳定 VA 的多拍等待误判为 monitor 配对错误 |
+| `pavld` 与 `pa` 同拍稳定性问题 | `pavld` 拉高拍 `pa` 尚未稳定 | SB 采到旧值（如 0），出现间歇或连续 mismatch |
+
+### 调试关注点（IFU 串行协议）
+
+1. 检查每次 `mmu_ifu_pavld` 拉高时，`ifu_mmu_va` 是否仍是该笔请求 VA（未提前跳变）。  
+2. 检查 `mmu_ifu_pavld` 拉高同拍的 `mmu_ifu_pa` 是否已稳定且非默认值。  
+3. 若出现连续 `dut.pa=0`，优先排查 IFU 命中/旁路输出路径，而非“IFU 并发请求过多”。
 
 ---
 

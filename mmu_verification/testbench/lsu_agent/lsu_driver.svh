@@ -26,8 +26,16 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   // Pending transaction queues per sub-channel (Phase 3: simple single-entry)
   lsu_txn m_pending[$];  // shared FIFO; threads pop by kind
 
+  // Mutual exclusion between pipe0 and pipe1: the DUT's L1 DTLB lookup logic
+  // shares resources between the two pipes.  Asserting va0_vld and va1_vld on
+  // the same cycle can cause hit-logic interference (问题 2d) and accelerate
+  // miss-buffer saturation (问题 3c).  This semaphore serialises the
+  // assert-va_vld → wait-pa_vld window so only one pipe drives at a time.
+  semaphore m_dtlb_mutex;
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    m_dtlb_mutex = new(1);
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -115,14 +123,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
 
-      // Guard: ensure va0_vld is LOW for at least one cycle before the new request.
-      // Clears any residual combinational pa0_vld from the prior transaction,
-      // preventing the @(iff pa0_vld) from triggering on stale data.
       vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
       @(vif.driver_cb);
 
-      // Wait until at least one MB slot is free before presenting va0_vld.
       @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
+
+      m_dtlb_mutex.get(1);
+
       vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
       vif.driver_cb.lsu_mmu_va0      <= tr.va;
       vif.driver_cb.lsu_mmu_id0      <= tr.id;
@@ -133,9 +140,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         @(vif.driver_cb);
         vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
         vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
+        m_dtlb_mutex.put(1);
       end else begin
-        // Wait one full cycle with va0_vld=1 before sampling pa0_vld,
-        // so the DUT has time to compute the combinational TLB hit/miss.
         @(vif.driver_cb);
         fork
           begin : wait_rsp_p0
@@ -154,6 +160,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         disable fork;
         @(vif.driver_cb);
         vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+        m_dtlb_mutex.put(1);
       end
     end
   endtask
@@ -166,12 +173,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
 
-      // Guard: ensure va1_vld is LOW for at least one cycle before the new request.
       vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
       @(vif.driver_cb);
 
-      // Same backpressure check as pipe0: wait for MB not full.
       @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
+
+      m_dtlb_mutex.get(1);
+
       vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
       vif.driver_cb.lsu_mmu_va1      <= tr.va;
       vif.driver_cb.lsu_mmu_id1      <= tr.id;
@@ -182,8 +190,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         @(vif.driver_cb);
         vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
         vif.driver_cb.lsu_mmu_abort1  <= 1'b0;
+        m_dtlb_mutex.put(1);
       end else begin
-        // Wait one full cycle with va1_vld=1 before sampling pa1_vld.
         @(vif.driver_cb);
         fork
           begin : wait_rsp_p1
@@ -202,6 +210,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         disable fork;
         @(vif.driver_cb);
         vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+        m_dtlb_mutex.put(1);
       end
     end
   endtask

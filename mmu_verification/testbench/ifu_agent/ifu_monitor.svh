@@ -95,16 +95,15 @@ class ifu_monitor extends uvm_monitor;
               vif.monitor_cb.mmu_ifu_deny))
         end else begin
           rsp_tr         = ifu_txn::type_id::create("ifu_rsp_mon");
-          // mmu_ifu_* is largely combinational from current request.  Wait one
-          // delta to avoid sampling stale PA/fault bits in the same clock tick.
-          #0;
           rsp_tr.pavld   = 1'b1;
-          rsp_tr.pa      = vif.mmu_ifu_pa;
-          rsp_tr.pgflt   = vif.mmu_ifu_pgflt;
-          rsp_tr.deny    = vif.mmu_ifu_deny;
-          rsp_tr.sec     = vif.mmu_ifu_sec;
-          rsp_tr.ca      = vif.mmu_ifu_ca;
-          rsp_tr.buf_bit = vif.mmu_ifu_buf;
+          // Keep all response fields in the same sampling domain (monitor_cb)
+          // to avoid mixed-time snapshots on combinational outputs.
+          rsp_tr.pa      = vif.monitor_cb.mmu_ifu_pa;
+          rsp_tr.pgflt   = vif.monitor_cb.mmu_ifu_pgflt;
+          rsp_tr.deny    = vif.monitor_cb.mmu_ifu_deny;
+          rsp_tr.sec     = vif.monitor_cb.mmu_ifu_sec;
+          rsp_tr.ca      = vif.monitor_cb.mmu_ifu_ca;
+          rsp_tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
           rsp_tr.va      = m_pending_req.va;
           rsp_tr.abort   = m_pending_req.abort;
           `uvm_info(get_type_name(),

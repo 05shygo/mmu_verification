@@ -1008,8 +1008,8 @@ generate
             // Default to JTLB to prevent latch (though logic covers all valid cases)
             entry_ref_ppn   = jtlb_utlb_ref_ppn;
             entry_ref_flg   = jtlb_utlb_ref_flg;
-            entry_ref_pgflt = jtlb_dutlb_pgflt;
-            entry_ref_acflt = ptw_l1tlb_acc_err;
+            entry_ref_pgflt = 1'b0;
+            entry_ref_acflt = 1'b0;
 	    entry_ref_pgs   = jtlb_utlb_ref_pgs;
 
             if (is_ptw_refill) begin
@@ -1021,7 +1021,8 @@ generate
             end else if (is_jtlb_refill) begin
                 entry_ref_ppn   = jtlb_utlb_ref_ppn;
                 entry_ref_flg   = jtlb_utlb_ref_flg;
-                entry_ref_pgflt = jtlb_dutlb_pgflt;
+                entry_ref_pgflt = 1'b0;
+                entry_ref_acflt = 1'b0;
 		entry_ref_pgs   = jtlb_utlb_ref_pgs;
                 //entry_ref_acflt = jtlb_dutlb_acc_err;
             end

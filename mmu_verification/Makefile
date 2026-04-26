@@ -394,6 +394,7 @@ phase6_full_fast: comp_fast phase6_run_matrix phase6_check phase6_rtu_ptw_run ph
 #===============================================================================
 help:
 	@echo "Usage:"
+	@echo "  make check_env                     # VCS in PATH? (comp/comp_fast run this first)"
 	@echo "  make comp                          # Compile + elaborate"
 	@echo "  make run TEST_NAME=uvm_test_top    # Run simulation"
 	@echo "  make all                           # comp + run"
@@ -445,13 +446,18 @@ env:
 	@echo "TOP_MODULE       = $(TOP_MODULE)"
 	@echo "TEST_NAME        = $(TEST_NAME)"
 
+# VCS (Synopsys) must be on PATH or passed as a full path: make comp VCS=/.../bin/vcs
+# Without this, comp fails with: /bin/sh: vcs: command not found (exit 127) — an environment issue, not RTL.
 check_env:
-	@which vcs >/dev/null 2>&1 || \
-	  (echo ""; \
-	   echo "ERROR: 'vcs' not found in PATH."; \
-	   echo "  bash users: cp setup.local.sh.example setup.local.sh  # set VCS_HOME, then re-source setup_env.sh"; \
-	   echo "  csh  users: cp setup.local.csh.example setup.local.csh  # set VCS_HOME, then re-source setup_env.csh"; \
-	   echo ""; exit 1)
+	@which "$(VCS)" >/dev/null 2>&1 || test -x "$(VCS)" || ( \
+	  echo ""; \
+	  echo "ERROR: VCS not found: make variable VCS=$(VCS)"; \
+	  echo "  (Shell exit 127 = command not found. Install Synopsys VCS or fix PATH.)"; \
+	  echo "  1) From mmu_verification:  source setup_env.sh   # after setup.local.sh with VCS_HOME if needed"; \
+	  echo "  2) Or:  export VCS_HOME=<install> && export PATH=\$$VCS_HOME/bin:\$$PATH"; \
+	  echo "  3) Or:  make comp VCS=/path/to/vcs"; \
+	  echo "  See also: setup.local.sh.example"; \
+	  echo ""; exit 1)
 	@test -d "$(CORE_V_VERIF)" || (echo "ERROR: CORE_V_VERIF not found: $(CORE_V_VERIF)"; exit 1)
 	@test -d "$(CV_DV_UTILS_DIR)" || (echo "ERROR: CV_DV_UTILS_DIR not found: $(CV_DV_UTILS_DIR)"; exit 1)
 
@@ -466,7 +472,7 @@ setup:
 comp: setup comp_all
 	@echo "Compilation completed."
 
-comp_all: setup
+comp_all: setup check_env
 	@echo "==============================================================================="
 	@echo "Compiling MMU UVM TB (Phase 2: DUT + interfaces + packages)..."
 	@echo "TOP_MODULE=$(TOP_MODULE)  UVM_VERSION=$(UVM_VERSION)"
@@ -488,7 +494,7 @@ comp_all: setup
 		-l $(LOG_DIR)/comp_all.log
 	@echo "Build done: $(OUTPUT_DIR)/simv"
 
-comp_fast: setup
+comp_fast: setup check_env
 	@echo "=== Fast compile (no debug/KDB/FSDB — ~3-5x faster) ==="
 	CORE_V_VERIF=$(CORE_V_VERIF) \
 	MMU_RTL_DIR=$(MMU_RTL_DIR) \

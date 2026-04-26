@@ -1,0 +1,15 @@
+#!/bin/bash
+# Copy to setup.local.sh (gitignored) and set your site’s Synopsys install paths.
+# Usage from mmu_verification/:  source setup_env.sh
+#
+# Example:
+#   export VCS_HOME=/tools/synopsys/vcs/R-2020.12
+#   export PATH="${VCS_HOME}/bin:${PATH}"
+#
+# Optional: Verdi / URG (waveform / coverage)
+#   export VERDI_HOME=/tools/synopsys/verdi/R-2020.12
+#   export PATH="${VERDI_HOME}/bin:${PATH}"
+
+# export VCS_HOME=
+# export VERDI_HOME=
+# export PATH="${VCS_HOME}/bin:${PATH}"

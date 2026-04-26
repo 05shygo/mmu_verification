@@ -148,6 +148,7 @@ class lsu_monitor extends uvm_monitor;
       tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
       tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
       tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
+      tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match0;
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
       req_tr      = m_pending_p0.pop_front();
       m_p0_rsp_seen = 1;
@@ -155,9 +156,9 @@ class lsu_monitor extends uvm_monitor;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P0_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b expt_replay_rsp=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
+        $sformatf("[LSU_P0_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
-          tr.mmu_en, (tr.mmu_en && (tr.pgflt || tr.access_fault)),
+          tr.mmu_en, tr.dtlb_expt_match,
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p0.size()),
         UVM_DEBUG)
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
@@ -220,15 +221,16 @@ class lsu_monitor extends uvm_monitor;
       tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
       tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
       tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
+      tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match1;
       req_tr      = m_pending_p1.pop_front();
       m_p1_rsp_seen = 1;
       tr.va       = req_tr.va;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P1_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b expt_replay_rsp=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
+        $sformatf("[LSU_P1_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
-          tr.mmu_en, (tr.mmu_en && (tr.pgflt || tr.access_fault)),
+          tr.mmu_en, tr.dtlb_expt_match,
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p1.size()),
         UVM_DEBUG)
       // Same-cycle bus snapshot (enable with +MMU_LSU_MON_DBG) to correlate P1 PA

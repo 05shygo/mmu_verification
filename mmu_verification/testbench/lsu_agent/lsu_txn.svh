@@ -49,6 +49,7 @@ class lsu_txn extends uvm_sequence_item;
     `uvm_field_int(inv_done,         UVM_ALL_ON)
     `uvm_field_int(stamo_vld_at_rsp, UVM_ALL_ON)
     `uvm_field_int(stamo_pa_at_rsp,  UVM_ALL_ON)
+    `uvm_field_int(dtlb_expt_match,  UVM_ALL_ON)
   `uvm_object_utils_end
 
   // ── Sub-channel selector ─────────────────────────────────────────────────
@@ -89,6 +90,8 @@ class lsu_txn extends uvm_sequence_item;
   // (see mmu_l1dtlb_hit_rd dutlb_pre_pa = stamo ? stamo_pa : tlb_pa).
   bit        stamo_vld_at_rsp;
   bit [27:0] stamo_pa_at_rsp;
+  // Sampled with rsp: mmu_l1dtlb expt CAM consumer (pipe0→0, pipe1→1)
+  bit        dtlb_expt_match;
 
   // ── Constraints ──────────────────────────────────────────────────────────
   // Sv39 canonical VA (pipe0/1): bits[63:39] == {25{va[38]}}

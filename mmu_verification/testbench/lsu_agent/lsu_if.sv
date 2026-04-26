@@ -101,6 +101,11 @@ interface lsu_if (
   logic [11:0] mmu_lsu_tlb_wakeup;
   logic        mmu_lsu_mmu_en;
 
+  // Testbench: hierarchical assign from mmu_l1dtlb (expt CAM consumer).
+  // Not a DUT top-level port; used by lsu_monitor + mmu_translation_sb.
+  logic        mmu_lsu_dtlb_expt_match0;
+  logic        mmu_lsu_dtlb_expt_match1;
+
   // =========================================================================
   // Clocking Block — Active Driver
   // =========================================================================
@@ -155,6 +160,7 @@ interface lsu_if (
     input mmu_lsu_pa2_vld, mmu_lsu_pa2, mmu_lsu_sec2, mmu_lsu_pa2_err, mmu_lsu_share2;
     input mmu_lsu_tlb_inv_done;
     input mmu_lsu_tlb_busy, mmu_lsu_tlb_wakeup, mmu_lsu_mmu_en;
+    input mmu_lsu_dtlb_expt_match0, mmu_lsu_dtlb_expt_match1;
   endclocking
 
 endinterface : lsu_if

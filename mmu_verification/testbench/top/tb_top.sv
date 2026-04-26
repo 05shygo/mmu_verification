@@ -251,6 +251,11 @@ module tb_top;
                                          | u_dut.x_ct_mmu_ptw.acc_err_vld;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
 
+  // DTLB expt CAM (mmu_l1dtlb_expt_cam): on consume, mmu_l1dtlb_hit_rd muxes
+  // PPN=VPN and ORs (expt_match & expt_{pg,ac}flt). Software ref has no CAM.
+  assign lsu_if_inst.mmu_lsu_dtlb_expt_match0 = u_dut.u_mmu_l1dtlb.expt_match0;
+  assign lsu_if_inst.mmu_lsu_dtlb_expt_match1 = u_dut.u_mmu_l1dtlb.expt_match1;
+
   //=========================================================================
   // UVM Config DB — Publish Virtual Interfaces
   //=========================================================================

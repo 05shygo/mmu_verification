@@ -91,6 +91,8 @@ ${TB_DIR}/sysmap_cfg_agent/sysmap_cfg_if.sv
 ${TB_DIR}/misc_agent/misc_if.sv
 # Phase 7: DUT 内部探针（层次仅在 tb_top 中 assign；mmu_env_cg_whitebox 用 virtual if）
 ${TB_DIR}/env/mmu_dut_probes_if.sv
+# cv_dv_utils: satisfy VCS UII-L for interfaces only in the shared library file list
+${TB_DIR}/top/cv_dv_utils_unref_if_instances.sv
 
 # ---------------------------------------------------------------------------
 # Phase 2: Common utilities package

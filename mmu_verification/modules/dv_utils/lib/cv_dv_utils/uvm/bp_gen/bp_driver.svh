@@ -26,7 +26,7 @@ class bp_driver extends uvm_driver #( bp_txn, bp_txn ) ;
     `uvm_component_utils( bp_driver  )
 
     // Virtual Interface
-    virtual bp_vif  #( .is_active( 1 ) ) m_v_bp_vif;
+    virtual bp_vif  #( .p_is_active( 1 ) ) m_v_bp_vif;
 
     // Events to handle reset
     event m_start_driver;
@@ -50,7 +50,7 @@ class bp_driver extends uvm_driver #( bp_txn, bp_txn ) ;
     function void build_phase( uvm_phase phase );
         super.build_phase( phase);
 
-        if(!uvm_config_db #( virtual bp_vif #( .is_active( 1 ) )  )::get(this, "", get_parent().get_name(), m_v_bp_vif )) begin
+        if(!uvm_config_db #( virtual bp_vif #( .p_is_active( 1 ) )  )::get(this, "", get_parent().get_name(), m_v_bp_vif )) begin
             `uvm_fatal("BUILD_PHASE", $sformatf("Unable to get bp_vif for %s from configuration database", get_parent().get_name() ) );
         end
 

@@ -46,6 +46,13 @@ module tb_top;
   misc_if       misc_if_inst       (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   mmu_dut_probes_if dut_probes_if   (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
 
+  // cv_dv_utils shared library: elaborate xrtl_reset_vif, generic_if,
+  // memory_response_if, axi_if (avoids UII-L when those sources are compiled)
+  cv_dv_utils_unref_if_instances u_cv_dv_utils_unref_if (
+      .clk_i(forever_cpuclk),
+      .rst_ni(cpurst_b)
+  );
+
   //=========================================================================
   // DUT Instantiation — ct_mmu_top
   //=========================================================================

@@ -28,6 +28,7 @@ class mmu_env extends uvm_env;
 
   // ── Phase 5: Translation scoreboard ─────────────────────────────────────
   mmu_translation_sb m_translation_sb;
+  mmu_invalidate_sb  m_invalidate_sb;
 
   // ── Phase 5 (Engineer A): misc agent + credit SB + perf monitor ─────────
   misc_agent         m_misc;
@@ -73,6 +74,8 @@ class mmu_env extends uvm_env;
     // Phase 5: Translation scoreboard
     m_translation_sb        = mmu_translation_sb::type_id::create("m_translation_sb", this);
     m_translation_sb.m_ref  = m_ref;
+    if (m_cfg.en_invalidate_sb)
+      m_invalidate_sb = mmu_invalidate_sb::type_id::create("m_invalidate_sb", this);
 
     // Phase 5 (Engineer A): misc agent (ACTIVE by default)
     m_misc    = misc_agent::type_id::create("m_misc",    this);
@@ -97,6 +100,7 @@ class mmu_env extends uvm_env;
     // Phase 5: Connect monitor APs → ref model TLM FIFOs
     // (Converts CSR/PMP/SysMap write events into ref model mirror updates)
     m_cp0.m_monitor.ap.connect(m_ref.af_csr_write.analysis_export);
+    m_lsu.m_monitor.ap_inv.connect(m_ref.af_tlb_inv.analysis_export);
     m_pmp.m_monitor.ap.connect(m_ref.af_pmp_cfg.analysis_export);
     m_sysmap_cfg.m_monitor.ap.connect(m_ref.af_sysmap_cfg.analysis_export);
 
@@ -106,8 +110,11 @@ class mmu_env extends uvm_env;
     m_lsu.m_monitor.ap_pipe1_rsp.connect(m_translation_sb.af_lsu_p1_rsp);
     m_lsu.m_monitor.ap_pipe2_rsp.connect(m_translation_sb.af_lsu_p2_rsp);
 
-    // Phase 6 placeholder:
-    // m_lsu.m_monitor.ap_inv → m_invalidate_sb.af_lsu_inv
+    // Phase 6: Connect invalidate paths into invalidate scoreboard.
+    if (m_invalidate_sb != null) begin
+      m_lsu.m_monitor.ap_inv.connect(m_invalidate_sb.af_inv.analysis_export);
+      m_cp0.m_monitor.ap.connect(m_invalidate_sb.af_cp0.analysis_export);
+    end
 
     // Phase 5 (Engineer A): IFU/LSU/PTW req+rsp → credit scoreboard
     // IFU: ap_req (request) + ap_rsp (merged response)

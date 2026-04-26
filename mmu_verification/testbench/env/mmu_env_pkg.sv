@@ -28,6 +28,7 @@ package mmu_env_pkg;
   `include "mmu_page_table_mem.svh"  // Phase 4: shared shadow page table
   `include "mmu_ref_model.svh"       // Phase 4: Sv39 reference model
   `include "mmu_translation_sb.svh"  // Phase 5: translation scoreboard
+  `include "mmu_invalidate_sb.svh"   // Phase 6: invalidate scoreboard
   `include "mmu_credit_sb.svh"       // Phase 5: credit / capacity scoreboard
   `include "mmu_perf_mon.svh"        // Phase 5: performance monitor skeleton
   `include "mmu_env.svh"

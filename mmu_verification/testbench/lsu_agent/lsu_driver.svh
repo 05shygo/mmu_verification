@@ -255,6 +255,10 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _get_kind(LSU_INV, tr);
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
+      // Avoid issuing a new invalidate when DTLB is still busy.  In that case
+      // the request can be delayed or merged by DUT side state machines.
+      if (vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)
+        @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
       @(vif.driver_cb);
       vif.driver_cb.lsu_mmu_tlb_va   <= tr.inv_va;
       vif.driver_cb.lsu_mmu_tlb_asid <= tr.inv_asid;
@@ -273,6 +277,11 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       fork
         begin : wait_inv_done
           @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
+          tr.inv_done = 1'b1;
+          `uvm_info(get_type_name(),
+            $sformatf("TLB INV done observed: kind=%s va=0x%07h asid=0x%04h",
+              tr.inv_kind.name(), tr.inv_va, tr.inv_asid),
+            UVM_HIGH)
         end
         begin : wait_inv_timeout
           repeat (1024) @(vif.driver_cb);

@@ -38,6 +38,10 @@ package test_pkg;
   // ── Phase 5: IFU + LSU Translation Sanity test ────────────────────────────
   `include "basic_tests/test_mmu_translation_sanity.svh"
 
+  // ── Phase 6: SFENCE.VMA invalidate matrix test ────────────────────────────
+  `include "basic_tests/test_mmu_invalidate_sfence_matrix.svh"
+  `include "basic_tests/test_mmu_phase6_misc_inv_smoke.svh"
+
 endpackage : test_pkg
 
 `endif // TEST_PKG_SV

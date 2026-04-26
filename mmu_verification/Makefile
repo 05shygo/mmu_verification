@@ -75,6 +75,17 @@ PHASE5_LOGS      := $(foreach s,$(PHASE5_SEEDS5) $(PHASE5_SEEDS3),$(LOG_DIR)/$(P
 PERL             ?= perl
 
 #===============================================================================
+# Phase 6 regression (MMU_UVM_TaskDivision.md §6 exit criteria)
+#   - SFENCE.VMA 4 modes × 100 txns × 3 seeds
+#   - invalidate_sb summary must show mismatch=0 and N_invalidations>0
+#===============================================================================
+PHASE6_TEST       ?= test_mmu_invalidate_sfence_matrix
+PHASE6_SEEDS      ?= 61001 61002 61003
+PHASE6_MODES      ?= 0 1 2 3
+PHASE6_INV_NUM    ?= 100
+PHASE6_LOGS       := $(foreach m,$(PHASE6_MODES),$(foreach s,$(PHASE6_SEEDS),$(LOG_DIR)/$(PHASE6_TEST)_m$(m)_s$(s).log))
+
+#===============================================================================
 # Include and Source Files
 #===============================================================================
 INCDIR          := +incdir+$(TB_DIR)/common \
@@ -193,7 +204,8 @@ endef
         run run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
-        phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5
+        phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
+        phase6 phase6_fast phase6_run_matrix phase6_check print-phase6
 
 all: comp run
 
@@ -266,6 +278,40 @@ phase5_fullgate: phase5 phase5_ptw4k phase5_scan_logs
 	@echo "=== phase5_fullgate finished OK (phase5 + ptw4k + scan_logs) ==="
 
 #===============================================================================
+# Phase 6 regression
+#===============================================================================
+print-phase6:
+	@echo "PHASE6_TEST    = $(PHASE6_TEST)"
+	@echo "PHASE6_MODES   = $(PHASE6_MODES)"
+	@echo "PHASE6_SEEDS   = $(PHASE6_SEEDS)"
+	@echo "PHASE6_INV_NUM = $(PHASE6_INV_NUM)"
+	@echo "PHASE6_LOGS    = $(PHASE6_LOGS)"
+
+phase6_run_matrix:
+	@set -e; for m in $(PHASE6_MODES); do \
+	  for s in $(PHASE6_SEEDS); do \
+		echo "=== $(PHASE6_TEST) INV_MODE=$$m INV_NUM=$(PHASE6_INV_NUM) SEED=$$s ==="; \
+		$(MAKE) run TEST_NAME=$(PHASE6_TEST) SEED=$$s PLUS_ARGS="+INV_MODE=$$m +INV_NUM=$(PHASE6_INV_NUM)"; \
+		cp -f "$(LOG_DIR)/$(PHASE6_TEST)_$$s.log" "$(LOG_DIR)/$(PHASE6_TEST)_m$${m}_s$${s}.log"; \
+	  done; \
+	done
+
+phase6_check:
+	@set -e; for f in $(PHASE6_LOGS); do \
+		test -f "$$f" || (echo "Missing log: $$f  (run phase6_run_matrix first)"; exit 1); \
+		grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — UVM_ERROR is not 0"; exit 1); \
+		grep -E 'UVM_FATAL[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — UVM_FATAL is not 0"; exit 1); \
+		grep -E 'Invalidate SB summary:.*N_invalidations=[1-9][0-9]*.*mismatch=0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — invalidate summary missing or mismatch!=0"; exit 1); \
+	done
+	@echo "phase6_check: all matrix logs show UVM_ERROR=0 UVM_FATAL=0 and Invalidate SB mismatch=0 with non-zero invalidations"
+
+phase6: comp phase6_run_matrix phase6_check
+	@echo "=== phase6 finished OK (comp + 4 modes x 3 seeds x $(PHASE6_INV_NUM) txns + checks) ==="
+
+phase6_fast: comp_fast phase6_run_matrix phase6_check
+	@echo "=== phase6_fast finished OK (comp_fast + matrix + checks) ==="
+
+#===============================================================================
 # Help
 #===============================================================================
 help:
@@ -294,6 +340,14 @@ help:
 	@echo "  make phase5_ptw4k             # 可选：test_ptw_map4k_directed 定向一条"
 	@echo "  make phase5_fullgate          # phase5 + phase5_ptw4k + phase5_scan_logs"
 	@echo "  覆盖: PHASE5_TEST=test_mmu_translation_sanity  PHASE5_SEEDS5/SEEDS3 可改"
+	@echo ""
+	@echo "Phase 6 (MMU_UVM_TaskDivision.md §6):"
+	@echo "  make print-phase6              # show mode/seed matrix and logs"
+	@echo "  make phase6_fast               # comp_fast + (4 modes x 3 seeds) + checks"
+	@echo "  make phase6                    # comp + (4 modes x 3 seeds) + checks"
+	@echo "  make phase6_run_matrix         # only run matrix (requires simv)"
+	@echo "  make phase6_check              # check UVM 0/0 + invalidate summary"
+	@echo "  Override: PHASE6_INV_NUM=100 PHASE6_SEEDS='61001 61002 61003'"
 
 #===============================================================================
 # Env / Setup

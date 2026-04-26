@@ -322,7 +322,6 @@ class tlb_inv_va_asid_seq extends lsu_base_seq;
 endclass : tlb_inv_va_asid_seq
 
 // ── Stress: rapid back-to-back SFENCE.VMA ─────────────────────────────────────
-// TODO (Phase 5): Interleave all 4 invalidation modes.
 class sfence_vma_stress_seq extends lsu_base_seq;
   `uvm_object_utils(sfence_vma_stress_seq)
 
@@ -331,7 +330,17 @@ class sfence_vma_stress_seq extends lsu_base_seq;
   endfunction
 
   virtual task body();
-    // TODO (Phase 5): rotate through INV_ALL / INV_VA_ALL / INV_ASID_ALL / INV_VA_ASID
+    lsu_txn tr;
+    for (int i = 0; i < int'(num_txn); i++) begin
+      `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
+      assert(tr.randomize() with {
+        kind == LSU_INV;
+        inv_kind == lsu_inv_kind_e'(i % 4);
+        idle_cycles inside {[0:1]};
+      }) else `uvm_fatal(get_full_name(), "sfence_vma_stress_seq: randomize() failed")
+      `uvm_send(tr)
+    end
   endtask
 
 endclass : sfence_vma_stress_seq

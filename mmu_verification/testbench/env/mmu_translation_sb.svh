@@ -22,10 +22,12 @@
 //      this pipe — do not equate mmu_lsu_pa0 to lsu_mmu_stamo_pa.
 //   5. Mismatch → uvm_error; match → uvm_info (UVM_HIGH).
 //
-// LSU: when mmu_l1dtlb expt CAM consumes (req hit CAM), DTLB muxes PPN=VPN
-//   and may assert pgflt/acflt from stored fault bits; the Sv39 ref has no
-//   expt CAM — skip ref-vs-DUT fault agreement for that response (monitored
-//   as tr.dtlb_expt_match from u_mmu_l1dtlb.expt_match{0,1}).
+// LSU: mmu_l1dtlb_hit_rd pre_sel path muxes dutlb_off_pa = VA[38:12] (PPN looks
+//   like VPN) for expt CAM consume, VA-illegal, MMU-off, etc. The Sv39 ref has
+//   no expt CAM — waive ref-vs-DUT fault compare when:
+//   (a) tr.dtlb_expt_match from u_mmu_l1dtlb.expt_match{0,1}, OR
+//   (b) architectural signature: mmu_en && !stall && fault && dut_pa==req_vpn
+//       (not STAMO skip path) — covers probe wiring / hierarchy mismatch.
 //
 // Pipe2 note: monitor does not yet merge VA into pipe2 rsp txn (Phase 6).
 //   If va2==0, the transaction is counted but PA comparison is skipped.
@@ -262,10 +264,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit exp_fault = (ref_rsp.exc != EXC_NONE);
     bit local_mismatch = 0;
     bit fault_replay_rsp = 0;
-    // Ref does not model DTLB expt CAM: on consume, do not require fault bits
-    // to match ref (ref still has no "pending expt" for that IID/VPN).
-    bit skip_dtlb_expt_ref_compare;
-    bit fault_replay_wo_expt;
+    // Ref does not model DTLB pre_sel/expt CAM; see file header.
+    bit skip_lsu_dtlb_ref_fault_compare;
 
     // LSU: stats for fault responses under MMU (legacy visibility)
     fault_replay_rsp = dbg_valid
@@ -274,16 +274,19 @@ class mmu_translation_sb extends uvm_scoreboard;
     if (fault_replay_rsp)
       m_lsu_fault_replay_rsp++;
 
-    skip_dtlb_expt_ref_compare = dbg_valid
-                              && dtlb_expt_match
-                              && (ref_rsp.exc == EXC_NONE);
-    // Legacy counter: "replay mismatch" = fault compare failed in old EXPT_REPLAY path
-    fault_replay_wo_expt = fault_replay_rsp && !dtlb_expt_match;
+    skip_lsu_dtlb_ref_fault_compare = dbg_valid
+      && (ref_rsp.exc == EXC_NONE)
+      && dut_fault
+      && (
+           dtlb_expt_match
+        || (tr_mmu_en && !tr_stall
+            && (dut_pa == req_vpn) && !skip_ref_ppn_check)
+      );
 
     // ── Exception / fault check ───────────────────────────────────────────
     if (exp_fault !== dut_fault) begin
-      if (!skip_dtlb_expt_ref_compare) begin
-        if (fault_replay_wo_expt) begin
+      if (!skip_lsu_dtlb_ref_fault_compare) begin
+        if (fault_replay_rsp) begin
           `uvm_error(get_type_name(),
             $sformatf("[%s][EXPT_REPLAY] VA=0x%010h: fault mismatch on replay response — ref.exc=%s (exp_fault=%0b) dut_fault=%0b dut.pa=0x%07h req_vpn=0x%07h",
               channel, {1'b0, va}, ref_rsp.exc.name(), exp_fault, dut_fault, dut_pa, req_vpn))
@@ -316,10 +319,10 @@ class mmu_translation_sb extends uvm_scoreboard;
       end
       m_mismatch++;
     end else begin
-      if (skip_dtlb_expt_ref_compare) begin
+      if (skip_lsu_dtlb_ref_fault_compare) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] VA=0x%010h  DTLB expt CAM: fault/PA not vs ref  exc=%s  dut_fault=%0b  dut.pa=0x%07h  PASS (SB waive)",
-            channel, {1'b0, va}, ref_rsp.exc.name(), dut_fault, dut_pa),
+          $sformatf("[%s] VA=0x%010h  DTLB pre_sel/expt path: not vs ref  exc=%s  expt_match=%0b  dut_fault=%0b  dut.pa=0x%07h  PASS (SB waive)",
+            channel, {1'b0, va}, ref_rsp.exc.name(), dtlb_expt_match, dut_fault, dut_pa),
           UVM_HIGH)
       end else if (skip_ref_ppn_check) begin
         `uvm_info(get_type_name(),

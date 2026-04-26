@@ -162,7 +162,7 @@ class mmu_base_vseq extends uvm_sequence #(uvm_sequence_item);
   endfunction
 
   protected virtual function int unsigned _scale(int unsigned base, int unsigned pct);
-    longint t = (longint'(base) * longint'(pct)) / 100L;
+    longint t = (longint'(base) * longint'(pct)) / longint'(100);
     if (t < 1) return 1;
     return int'(t);
   endfunction

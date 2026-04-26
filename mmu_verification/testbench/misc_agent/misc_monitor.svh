@@ -56,17 +56,31 @@ class misc_monitor extends uvm_monitor;
   endtask
 
   // ── Collect HPCP miss events ──────────────────────────────────────────────
-  // Samples every clock cycle; publishes a misc_txn whenever at least one of
-  // the three miss signals is asserted high.  This gives a pulse-per-miss
-  // granularity that the perf_mon can count.
+  // Distinguish two views:
+  //   1) Raw miss signal changes (for debug observability)
+  //   2) Count-valid miss events (only when hpcp_mmu_cnt_en=1, published to ap_hpcp)
   protected task _collect_hpcp();
     misc_txn tr;
+    bit prev_dutlb_miss;
+    bit prev_iutlb_miss;
+    bit prev_jtlb_miss;
+    bit prev_cnt_en;
+    bit miss_event;
+    bit raw_changed;
     forever begin
       @(vif.monitor_cb);
-      // Only publish when a miss event is visible
-      if (vif.monitor_cb.mmu_hpcp_dutlb_miss ||
-          vif.monitor_cb.mmu_hpcp_iutlb_miss ||
-          vif.monitor_cb.mmu_hpcp_jtlb_miss) begin
+      // Edge-based observation: avoid over-counting on multi-cycle high level.
+      miss_event =
+        ((vif.monitor_cb.mmu_hpcp_dutlb_miss === 1'b1) && (prev_dutlb_miss !== 1'b1)) ||
+        ((vif.monitor_cb.mmu_hpcp_iutlb_miss === 1'b1) && (prev_iutlb_miss !== 1'b1)) ||
+        ((vif.monitor_cb.mmu_hpcp_jtlb_miss  === 1'b1) && (prev_jtlb_miss  !== 1'b1));
+      raw_changed =
+        (vif.monitor_cb.mmu_hpcp_dutlb_miss !== prev_dutlb_miss) ||
+        (vif.monitor_cb.mmu_hpcp_iutlb_miss !== prev_iutlb_miss) ||
+        (vif.monitor_cb.mmu_hpcp_jtlb_miss  !== prev_jtlb_miss) ||
+        (vif.monitor_cb.hpcp_mmu_cnt_en     !== prev_cnt_en);
+
+      if (miss_event && (vif.monitor_cb.hpcp_mmu_cnt_en === 1'b1)) begin
         tr              = misc_txn::type_id::create("hpcp_mon");
         tr.op           = MISC_HPCP_CNT_EN;  // tag as HPCP observation
         tr.dutlb_miss   = vif.monitor_cb.mmu_hpcp_dutlb_miss;
@@ -77,8 +91,21 @@ class misc_monitor extends uvm_monitor;
           $sformatf("HPCP miss: dutlb=%0b iutlb=%0b jtlb=%0b cnt_en=%0b",
             tr.dutlb_miss, tr.iutlb_miss, tr.jtlb_miss, tr.hpcp_cnt_en),
           UVM_HIGH)
-        ap_hpcp.write(tr);
+        ap_hpcp.write(tr);  // count-valid publication
+      end else if (miss_event && raw_changed) begin
+        `uvm_info(get_type_name(),
+          $sformatf("HPCP raw miss observed while cnt_en=%0b (not counted): dutlb=%0b iutlb=%0b jtlb=%0b",
+            vif.monitor_cb.hpcp_mmu_cnt_en,
+            vif.monitor_cb.mmu_hpcp_dutlb_miss,
+            vif.monitor_cb.mmu_hpcp_iutlb_miss,
+            vif.monitor_cb.mmu_hpcp_jtlb_miss),
+          UVM_HIGH)
       end
+
+      prev_dutlb_miss = vif.monitor_cb.mmu_hpcp_dutlb_miss;
+      prev_iutlb_miss = vif.monitor_cb.mmu_hpcp_iutlb_miss;
+      prev_jtlb_miss  = vif.monitor_cb.mmu_hpcp_jtlb_miss;
+      prev_cnt_en     = vif.monitor_cb.hpcp_mmu_cnt_en;
     end
   endtask
 

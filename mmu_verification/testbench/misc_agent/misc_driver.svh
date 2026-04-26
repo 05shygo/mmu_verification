@@ -81,24 +81,33 @@ class misc_driver extends uvm_driver #(misc_txn);
   endtask
 
   // ── RTU pipeline flush (single-cycle pulse) ───────────────────────────────
-  // Assert rtu_yy_xx_flush for exactly ONE driver_cb cycle, then deassert.
-  // RTL: flush signal is edge-sensitive; a one-cycle pulse is sufficient.
+  // Assert rtu_yy_xx_flush for one cycle when tr.flush_pulse=1.
+  // Keep expt path untouched so tests can intentionally create flush/expt
+  // misalignment through separate transactions.
   protected task _do_rtu_flush(misc_txn tr);
     @(vif.driver_cb);
-    vif.driver_cb.rtu_yy_xx_flush <= 1'b1;   // assert pulse
-    @(vif.driver_cb);
-    vif.driver_cb.rtu_yy_xx_flush <= 1'b0;   // deassert after one cycle
-    // One settle cycle to allow RTL to clear flush propagation
+    if (tr.flush_pulse) begin
+      vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+      @(vif.driver_cb);
+      vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+    end else begin
+      // Allow "no-pulse" transaction to keep sequencing alignment without drive.
+      vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+    end
+    // Keep one settle cycle for deterministic cleanup.
     @(vif.driver_cb);
   endtask
 
   // ── RTU exception injection (single-cycle pulse) ──────────────────────────
-  // Assert rtu_mmu_expt_vld + bad_vpn for one cycle.
+  // Assert rtu_mmu_expt_vld + bad_vpn for one cycle when tr.expt_vld=1.
+  // If tr.expt_vld=0, keep the exception channel explicitly idle.
   protected task _do_rtu_expt(misc_txn tr);
     @(vif.driver_cb);
-    vif.driver_cb.rtu_mmu_expt_vld <= 1'b1;
-    vif.driver_cb.rtu_mmu_bad_vpn  <= tr.bad_vpn;
-    @(vif.driver_cb);
+    if (tr.expt_vld) begin
+      vif.driver_cb.rtu_mmu_expt_vld <= 1'b1;
+      vif.driver_cb.rtu_mmu_bad_vpn  <= tr.bad_vpn;
+      @(vif.driver_cb);
+    end
     vif.driver_cb.rtu_mmu_expt_vld <= 1'b0;
     vif.driver_cb.rtu_mmu_bad_vpn  <= 27'h0;
     @(vif.driver_cb);  // settle cycle

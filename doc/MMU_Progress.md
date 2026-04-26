@@ -364,13 +364,13 @@
 
 ---
 
-## Phase 6 详细进度（🔄 进行中：B 已完成，A 未开始，退出准则检查未开启）
+## Phase 6 详细进度（🔄 进行中：B 已完成，A 已完成，退出准则检查未开启）
 
 **负责**：工程师 B（主）/ 工程师 A（配合）  
 **当前状态快照（2026-04-26）**：
 
 - B 侧任务：✅ 已完成（`drive_inv`、`mmu_invalidate_sb`、invalidate 序列与 phase6 回归入口）
-- A 侧任务：⏳ 未开始（`misc_agent` 的 flush/expt 注入增强与 HPCP cnt_en 采样完善）
+- A 侧任务：✅ 已完成（`misc_agent` 的 flush/expt 注入增强与 HPCP cnt_en 采样完善）
 - 退出准则检查：⏳ 未开启（尚未执行 `4 模式 × 100 次 × 3 seeds` 的正式门禁回归）
 
 | 项目 | 负责人 | 状态 | 说明 |
@@ -378,8 +378,8 @@
 | `lsu_driver.svh` `drive_inv` 子线程（4 模式） | B | ✅ | 已实现并接入 `mmu_lsu_tlb_inv_done` 完成握手 |
 | `lsu_sequences.svh` invalidate 序列库 | B | ✅ | `tlb_inv_*` + `sfence_vma_stress_seq` 已可用 |
 | `mmu_invalidate_sb.svh` + env 连线 | B | ✅ | 已接入 `lsu_monitor.ap_inv` 与 `cp0_monitor.ap` |
-| `misc_driver.svh` flush/expt 注入增强 | A | ⏳ | 尚未开始 |
-| `misc_monitor.svh` HPCP `cnt_en` 采样完善 | A | ⏳ | 尚未开始 |
+| `misc_driver.svh` flush/expt 注入增强 | A | ✅ | 已完成：支持 `flush_pulse` 门控脉冲，保持 settle 清理与默认语义兼容 |
+| `misc_monitor.svh` HPCP `cnt_en` 采样完善 | A | ✅ | 已完成：仅在 `cnt_en=1` 时发布计数事件，`cnt_en=0` 时仅记录 raw miss 观察 |
 | Phase 6 退出准则门禁回归 | A+B | ⏳ | 尚未开启（需在 A 侧任务开始后联合执行） |
 
 ---

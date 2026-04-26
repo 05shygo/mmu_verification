@@ -31,6 +31,7 @@ package mmu_env_pkg;
   `include "mmu_invalidate_sb.svh"   // Phase 6: invalidate scoreboard
   `include "mmu_credit_sb.svh"       // Phase 5: credit / capacity scoreboard
   `include "mmu_perf_mon.svh"        // Phase 5: performance monitor skeleton
+  `include "mmu_env_cg_whitebox.svh" // Phase 7: §10.2 whitebox CG
   `include "mmu_env.svh"
 
 endpackage : mmu_env_pkg

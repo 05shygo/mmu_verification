@@ -17,7 +17,7 @@
 | **Phase 4**  | PTW 内存模型 + 参考模型                    | A                  | ✅ 完成               | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0                                                                                                  |
 | **Phase 5**  | IFU + LSU Agent + Translation SB           | A , B 协同        | ✅ 完成（2026-04-26） | `make phase5` 通过（comp + 5+3 seeds + phase5_check）；8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0`。`make phase5_ptw4k` 也通过（P5-34 修复后 `passthrough=0`） |
 | **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ✅ 完成（2026-04-26） | ✅`make phase6_full` 通过（`comp` + `phase6` 矩阵/检查 + `phase6_rtu_ptw` 3 seed）；12+3 份 log 均 UVM 0/0，Invalidate SB 与 `[abort_check]` 摘要达标 |
-| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ⏳ 可开始            | —                                                                                                                                                               |
+| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅ **已达成**（2026-04-26 P7 交付合入） | 7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + 5×SVA bind + `en_whitebox_cg`；门禁：`make phase7`（3×`run` 或等价）UVM 0/0、SVA 无 `assert` failure；覆盖 HTML：`make run_cov` + `make cov` → `output/coverage/urgReport` 见 Makefile `URG_OPTS`；审计表 [P7B01_covergroup_vif_audit.md](P7B01_covergroup_vif_audit.md) |
 | **Phase 8**  | Virtual Sequence 实现                      | B                  | 🔒 等待 Phase 7       | —                                                                                                                                                               |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | 🔒 等待 Phase 8       | —                                                                                                                                                               |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | 🔒 等待 Phase 9       | —                                                                                                                                                               |
@@ -386,6 +386,57 @@
 
 ---
 
+## Phase 7 详细进度
+
+### P7-B-00 — 与 A 同步、范围与 Files.f 冻结（2026-04-26）
+
+**依据**：[MMU_UVM_BuildPlan_v3_final.md](MMU_UVM_BuildPlan_v3_final.md) §10.1–§10.2、[MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md) §3 Phase 7 退出准则、Phase 7 B 子计划（与 §10.3/10.4 边界说明一致）。
+
+#### 1）§10.3 / §10.4 是否纳入 Phase 7
+
+| 内容 | 本迭代结论 |
+| ---- | ---------- |
+| **§10.1**（7 个黑盒 `*_covergroups.svh`） | **纳入** Phase 7 必交付 |
+| **§10.2**（白盒 covergroup 集中实现 + `mmu_env` 挂载） | **纳入** Phase 7 必交付（建议 `testbench/env/mmu_env_cg_whitebox.svh` 或等价名） |
+| **§10.3 / §10.4**（v3/v4 增补 gap、MAEE 等大量 CG） | **不纳入** Phase 7 基线关闭；若需增量，单独立项（如 P7-B-09b）或后移到 Phase 10+，并写明「纳入 / 推后」 |
+
+**与 Phase 8 边界**（对齐子计划）：`mmu_vseq_lib.svh` / `test_base` 的**实质业务填充**在 **Phase 8**；Phase 7 仅允许为跑 coverage 复用**现有**用例 + Makefile 目标，不强制 14 个 vseq。
+
+#### 2）A / B 合并编译顺序（`Files.f` + `tb_top`）
+
+- **VCS 命令行**（[mmu_verification/Makefile](mmu_verification/Makefile) `comp_all`）：`... $(INCDIR) $(TB_FLIST) $(TOP_FILE) -top tb_top`，其中 `TB_FLIST=-F testbench/Files.f`，`TOP_FILE=testbench/top/tb_top.sv`。
+- **B 轨（当前）**：[testbench/Files.f](mmu_verification/testbench/Files.f) 序列为：dv_utils → `mmu_rtl_defines` → relate_rtl → `mmu_params_pkg` → **DUT RTL** → 7×`*_if` → `mmu_common_pkg` → `mmu_base_test` → 各 `*_agent_pkg`（cp0/pmp/sysmap/ifu/lsu/ptw_mem/misc）→ `mmu_env_pkg` → `test_pkg`。黑盒/白盒 CG 经 agent/env/test 包编译，**不单独插入顶层 compile 条**。
+- **A 轨（待合入 5 个 SVA 时约定）**：在 `Files.f` 中将 TaskDivision 所列 **`mmu_sva.sv` / `mmu_arb_sva.sv` / `mmu_l2tlb_rrpv_sva.sv` / `mmu_plru_sva.sv` / `credit_sva.sv`** 排在 **DUT（含 `ct_mmu_top.v`）之后**、**UVM 包/测试行之前**（或等价：RTL 段末尾追加），保证 elaboration 可见 DUT 再 bind。`tb_top.sv` **仅追加** `bind` / 相关层次，**不改** `TOP_MODULE=tb_top`。与 B **同一** `make comp` / `comp_all`。
+- **现网（2026-04-26）**：5 个 `testbench/top/mmu_*.sv` + `credit_sva.sv` 已进 `Files.f`（DUT 段后），`tb_top.sv` 内对 `ct_mmu_top` / `mmu_arb` / `mmu_l2tlb` / `mmu_l1itlb` / `mmu_l2tlb_reqq` 的 `bind` 已合入。覆盖率仍以 **`COV_OPTS`**（`COV_DIR`+`urgReport`）为 Phase 7 报告路径；若产生 SVA scope 类告警，按 TaskDivision #1 走 waiver 或修正 bind。
+
+#### 3）跑 coverage / smoke 的 test 名（≥3，来自 [mmu_verification/Makefile](mmu_verification/Makefile) 与现网用例）
+
+| 序号 | `TEST_NAME` | 说明 |
+| ---- | ----------- | ---- |
+| 1 | `test_mmu_translation_sanity` | `PHASE5_TEST` 默认；IFU+LSU+翻译主场景，多 seed 回归已用 |
+| 2 | `test_mmu_invalidate_sfence_matrix` | `PHASE6_TEST` 默认；SFENCE/invalidation 矩阵 |
+| 3 | `test_ptw_map4k_directed` | `PHASE4_PTW_TEST`；PTW 4K 定向（可与上两者互补触达总线/PTW） |
+
+**可选加跑**（Makefile 已定义）：`mmu_base_test`，`test_mmu_phase6_rtu_flush_ptw`（`PHASE6_RTU_PTW_TEST`）。
+
+**跑法示例**：`make run_cov TEST_NAME=<上表之一> SEED=<seed>`；或 **Phase 7 门禁** `make phase7`（3 用例一次跑）/ `make phase7_cov`（3×`run_cov` + `make cov` → `$(COV_DIR)/urgReport`）。
+
+#### 4）Phase 7「结束」口径对齐（A/B 无歧义）
+
+- **B 子计划 P7-B-12 推荐**：先满足 **每个 covergroup ≥1 bin hit**；若与 TaskDivision §7 表「**每一个 bin** 至少 1 hit」冲突，**以 P7-B-12/团队裁决为准**；**bin 全满** 归 **Phase 10** 收敛。
+- **联调门禁**（TaskDivision §7#5）：与 A 同跑时 **SVA 0 assertion failure**，`UVM_ERROR=0`（与现有限定一致）。A 的 SVA 未就绪时，**不宣称** Phase 7 整体 Close，仅标 B 子段完成。
+
+#### 5）B 待办文件清单 ↔ §10.1 / §10.2（与 TaskDivision 表一一对应）
+
+| § | 交付物 |
+| - | ------ |
+| §10.1 | `ifu_agent/ifu_covergroups.svh`，`lsu_agent/lsu_covergroups.svh`，`cp0_agent/cp0_covergroups.svh`，`pmp_agent/pmp_covergroups.svh`，`sysmap_cfg_agent/sysmap_cfg_covergroups.svh`，`misc_agent/misc_covergroups.svh`，`ptw_mem_agent/ptw_mem_covergroups.svh`（7 文件） |
+| §10.2 | [mmu_env_cg_whitebox.svh](mmu_verification/testbench/env/mmu_env_cg_whitebox.svh) + [mmu_top_cfg.svh](mmu_verification/testbench/env/mmu_top_cfg.svh) `en_whitebox_cg` + [mmu_env.svh](mmu_verification/testbench/env/mmu_env.svh) 实例化 |
+
+**A 侧**（非 B 改但为门禁依赖）：5×SVA 源 + `tb_top` bind（路径与命名以 A 落盘为准，上表为 TaskDivision 约定名）。
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师      | 负责 Phase                                                                       | 主要文件数  | 核心难点                                                             |
@@ -405,7 +456,7 @@
 | **M4** — 参考模型就绪              | Phase 4 退出准则                          | ✅**已达成**（2026-04-24）                                                                                                                                        |
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则                          | ✅**已再次达成**（2026-04-26）：`make phase5` 完整通过（comp + 5+3 seed + phase5_check 0/0）；随后 `make phase5_ptw4k` 通过（P5-34 修复后 `passthrough=0`） |
 | **M6** — 全功能验证                | Phase 6 退出准则                          | ✅**已达成**（2026-04-26）：`make phase6_full`（SFENCE 矩阵 + RTU/PTW `abort_check`）                                                                                 |
-| **M7** — SVA + 覆盖率框架          | Phase 7 退出准则                          | ⏳                                                                                                                                                                      |
+| **M7** — SVA + 覆盖率框架          | Phase 7 退出准则（§10.1+§10.2+SVA+smoke/≥3 测） | ✅ **已达成**（2026-04-26）：见上 Phase 7 行与 `make phase7` / `make run_cov`+`urgReport` 路径；§10.3/10.4 基线不纳入、推后至 Phase 10+ 见 P7-B-00 |
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ⏳                                                                                                                                                                      |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ⏳                                                                                                                                                                      |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ⏳                                                                                                                                                                      |

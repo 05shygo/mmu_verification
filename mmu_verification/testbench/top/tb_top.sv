@@ -252,4 +252,13 @@ module tb_top;
     run_test();
   end
 
+  // ---------------------------------------------------------------------------
+  // Phase 7: SVA bind (TaskDivision — 5 files, 0 expected violations on smoke)
+  // ---------------------------------------------------------------------------
+  bind ct_mmu_top      mmu_sva             u_mmu_sva        (.*);
+  bind mmu_arb         mmu_arb_sva         u_mmu_arb_sva    (.*);
+  bind mmu_l2tlb      mmu_l2tlb_rrpv_sva  u_mmu_l2_sva     (.*);
+  bind mmu_l1itlb     mmu_plru_sva        u_mmu_l1i_plru  (.*);
+  bind mmu_l2tlb_reqq credit_sva         u_mmu_l2q_cred  (.*);
+
 endmodule : tb_top

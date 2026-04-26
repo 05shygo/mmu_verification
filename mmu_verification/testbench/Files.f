@@ -71,6 +71,15 @@ ${MMU_RTL_DIR}/ptw.sv
 ${MMU_RTL_DIR}/ct_mmu_top.v
 
 # ---------------------------------------------------------------------------
+# Phase 7: SVA (bind to DUT submodules; compile before UVM, after RTL)
+# ---------------------------------------------------------------------------
+${TB_DIR}/top/mmu_sva.sv
+${TB_DIR}/top/mmu_arb_sva.sv
+${TB_DIR}/top/mmu_l2tlb_rrpv_sva.sv
+${TB_DIR}/top/mmu_plru_sva.sv
+${TB_DIR}/top/credit_sva.sv
+
+# ---------------------------------------------------------------------------
 # Phase 2: Testbench interfaces (must come after RTL & params package)
 # ---------------------------------------------------------------------------
 ${TB_DIR}/ifu_agent/ifu_if.sv

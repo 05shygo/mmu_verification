@@ -392,7 +392,7 @@ help:
 	@echo "  make print-phase6-rtu-ptw     # show RTU-flush/PTW test + seeds + logs"
 	@echo "  make phase6_rtu_ptw            # comp + 3-seed RTU flush vs PTW + [abort_check] grep"
 	@echo "  make phase6_rtu_ptw_fast     # comp_fast + same"
-	@echo "  make phase6_full               # one comp: SFANCE matrix + RTU/PTW (full §6 make gate)"
+	@echo "  make phase6_full               # one comp: SFENCE matrix + RTU/PTW (full §6 make gate)"
 	@echo "  make phase6_full_fast"
 	@echo "  Optional: make run TEST_NAME=test_mmu_phase6_misc_inv_smoke  # misc+inv smoke"
 	@echo "  Override: PHASE6_INV_NUM=100  PHASE6_SEEDS='...'  PHASE6_RTU_PTW_SEEDS='...'"

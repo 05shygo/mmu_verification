@@ -16,8 +16,8 @@
 | **Phase 3**  | 最简 Active Agent + Sanity Test            | A/B 并行           | ✅ 完成               | ✅`UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24）                                                                         |
 | **Phase 4**  | PTW 内存模型 + 参考模型                    | A                  | ✅ 完成               | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0                                                                                                  |
 | **Phase 5**  | IFU + LSU Agent + Translation SB           | A , B 协同        | ✅ 完成（2026-04-26） | `make phase5` 通过（comp + 5+3 seeds + phase5_check）；8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0`。`make phase5_ptw4k` 也通过（P5-34 修复后 `passthrough=0`） |
-| **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | 🔄 进行中（B完成，A未开始） | ⏳ 退出准则检查未开启                                                                                                                                           |
-| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | 🔒 等待 Phase 6       | —                                                                                                                                                               |
+| **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ✅ 完成（2026-04-26） | ✅`make phase6_full` 通过（`comp` + `phase6` 矩阵/检查 + `phase6_rtu_ptw` 3 seed）；12+3 份 log 均 UVM 0/0，Invalidate SB 与 `[abort_check]` 摘要达标 |
+| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ⏳ 可开始            | —                                                                                                                                                               |
 | **Phase 8**  | Virtual Sequence 实现                      | B                  | 🔒 等待 Phase 7       | —                                                                                                                                                               |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | 🔒 等待 Phase 8       | —                                                                                                                                                               |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | 🔒 等待 Phase 9       | —                                                                                                                                                               |
@@ -359,28 +359,30 @@
 | 4 | miss→PTW→refill 混合，mismatch=0                                  | B           | ✅ 同上（3 seed tranche 通过）                                                                                                            |
 | 5 | `mmu_translation_sb` 接收 ≥200 笔，mismatch=0                    | B           | ✅ 已达成（phase5_check 通过；P5-33 误判已修）                                                                                            |
 | 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0                           | **A** | ✅ phase5 log 统计归零；`phase5_ptw4k` 亦 PASS                                                                                          |
-| 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ✅ 随 env 构建；专项用例 ⏳ Phase 6+                                                                                                      |
+| 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ✅ 随 env 构建；`test_mmu_phase6_rtu_flush_ptw` / `phase6_full` 覆盖 RTU flush 路径 |
 | 8 | `scan_logs.pl` 无非预期 ERROR/FATAL                               | A+B         | ⚠️ 环境依赖：服务器缺 `Text::Table`（`phase5_scan_logs` 报模块缺失）；Makefile 已加 fallback grep 检查，当前 8 份 phase5 log 均 0/0 |
 
 ---
 
-## Phase 6 详细进度（🔄 进行中：B 已完成，A 已完成，退出准则检查未开启）
+## Phase 6 详细进度（✅ 已完成 — 2026-04-26）
 
 **负责**：工程师 B（主）/ 工程师 A（配合）  
-**当前状态快照（2026-04-26）**：
+**完成快照**：
 
-- B 侧任务：✅ 已完成（`drive_inv`、`mmu_invalidate_sb`、invalidate 序列与 phase6 回归入口）
-- A 侧任务：✅ 已完成（`misc_agent` 的 flush/expt 注入增强与 HPCP cnt_en 采样完善）
-- 退出准则检查：⏳ 未开启（尚未执行 `4 模式 × 100 次 × 3 seeds` 的正式门禁回归）
+- B 侧：✅ `drive_inv`、`mmu_invalidate_sb`、invalidate 序列、`Makefile` `phase6` / `phase6_check` 目标
+- A 侧：✅ `misc_driver` / `misc_monitor` 增强；`test_mmu_phase6_rtu_flush_ptw` + `phase6_rtu_ptw` / `phase6_full`；`mmu_env` 支持 `en_translation_sb` 关闭以配合 RTU 压力用例
+- 仿真签核：✅ `make phase6_full` — SFENCE 矩阵（4 模式 ×3 seed ×100）+ `test_mmu_phase6_rtu_flush_ptw`（3 seed，每 seed 10 次 fork(LD, 随机延迟 flush) + log `[abort_check]`）
+- 文档项：TaskDivision §6#5（B 对 `misc_monitor` HPCP 采样点 **Code Review 签字**）⏳ 非仿真，需单独在评审记录中闭环
 
 | 项目 | 负责人 | 状态 | 说明 |
 | --- | --- | --- | --- |
 | `lsu_driver.svh` `drive_inv` 子线程（4 模式） | B | ✅ | 已实现并接入 `mmu_lsu_tlb_inv_done` 完成握手 |
 | `lsu_sequences.svh` invalidate 序列库 | B | ✅ | `tlb_inv_*` + `sfence_vma_stress_seq` 已可用 |
 | `mmu_invalidate_sb.svh` + env 连线 | B | ✅ | 已接入 `lsu_monitor.ap_inv` 与 `cp0_monitor.ap` |
-| `misc_driver.svh` flush/expt 注入增强 | A | ✅ | 已完成：支持 `flush_pulse` 门控脉冲，保持 settle 清理与默认语义兼容 |
-| `misc_monitor.svh` HPCP `cnt_en` 采样完善 | A | ✅ | 已完成：仅在 `cnt_en=1` 时发布计数事件，`cnt_en=0` 时仅记录 raw miss 观察 |
-| Phase 6 退出准则门禁回归 | A+B | ⏳ | 尚未开启（需在 A 侧任务开始后联合执行） |
+| `misc_driver.svh` flush/expt 注入增强 | A | ✅ | 支持 `flush_pulse` / `expt_vld` 门控，settle 与默认语义兼容 |
+| `misc_monitor.svh` HPCP `cnt_en` 采样完善 | A | ✅ | `cnt_en=1` 时经 `ap_hpcp` 计数，边沿事件口径 |
+| `test_mmu_phase6_rtu_flush_ptw.svh` + Makefile `phase6_rtu_ptw` / `phase6_full` | A | ✅ | TaskDivision §6#4 门禁与 log `[abort_check]` 检查 |
+| Phase 6 退出准则门禁回归 | A+B | ✅ | `make phase6` + `make phase6_rtu_ptw`（或一次 `make phase6_full`）已执行通过 |
 
 ---
 
@@ -402,7 +404,7 @@
 | **M3** — Sanity Test 通过          | Phase 3 退出准则                          | ✅**已达成**（2026-04-24）                                                                                                                                        |
 | **M4** — 参考模型就绪              | Phase 4 退出准则                          | ✅**已达成**（2026-04-24）                                                                                                                                        |
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则                          | ✅**已再次达成**（2026-04-26）：`make phase5` 完整通过（comp + 5+3 seed + phase5_check 0/0）；随后 `make phase5_ptw4k` 通过（P5-34 修复后 `passthrough=0`） |
-| **M6** — 全功能验证                | Phase 6 退出准则                          | ⏳                                                                                                                                                                      |
+| **M6** — 全功能验证                | Phase 6 退出准则                          | ✅**已达成**（2026-04-26）：`make phase6_full`（SFENCE 矩阵 + RTU/PTW `abort_check`）                                                                                 |
 | **M7** — SVA + 覆盖率框架          | Phase 7 退出准则                          | ⏳                                                                                                                                                                      |
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ⏳                                                                                                                                                                      |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ⏳                                                                                                                                                                      |

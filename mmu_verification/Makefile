@@ -216,6 +216,39 @@ phase7_cov: comp
 	@echo "=== phase7_cov: see URG under $(COV_DIR)/urgReport (or URG_OPTS -report) ==="
 
 #===============================================================================
+# Phase 8 — 14 vseq matrix (M8 TaskDivision #2: 3 seeds × 14 vseq = 42 runs)
+#===============================================================================
+print-phase8:
+	@echo "PHASE8_TEST=$(PHASE8_TEST)  SEEDS=$(PHASE8_SEEDS)"
+	@echo "Log pattern: $(LOG_DIR)/phase8_<VSEQ>_s<SEED>.log (copied from $(PHASE8_TEST)_<SEED>.log)"
+
+# Large TIMEOUT: long PTW settle for thrash/perf
+phase8_run_matrix: comp
+	@set -e; for v in $(PHASE8_VSEQS); do \
+	  for s in $(PHASE8_SEEDS); do \
+	    echo "=== Phase8 vseq=$$v SEED=$$s ==="; \
+	    $(MAKE) run TEST_NAME=$(PHASE8_TEST) SEED=$$s TIMEOUT=120000000 \
+	      PLUS_ARGS="+VSEQ_NAME=$$v" ; \
+	    cp -f "$(LOG_DIR)/$(PHASE8_TEST)_$$s.log" "$(LOG_DIR)/phase8_$${v}_s$$s.log"; \
+	  done; \
+	done
+
+phase8_check:
+	@set -e; for v in $(PHASE8_VSEQS); do \
+	  for s in $(PHASE8_SEEDS); do \
+	    f="$(LOG_DIR)/phase8_$${v}_s$$s.log"; \
+	    test -f "$$f" || (echo "Missing $$f (run phase8_run_matrix first)"; exit 1); \
+	    grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f UVM_ERROR"; exit 1); \
+	    grep -E 'UVM_FATAL[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f UVM_FATAL"; exit 1); \
+	    grep -E 'MMU_VSEQ_STATS' "$$f" >/dev/null 2>&1 || (echo "WARN: $$f missing MMU_VSEQ_STATS (TaskDivision #3)"; true); \
+	  done; \
+	done
+	@echo "phase8_check: 42 log files UVM_ERROR=0 UVM_FATAL=0 (grep [MMU_VSEQ_TASKDIVISION#3] for stats)"
+
+phase8: phase8_run_matrix phase8_check
+	@echo "=== phase8: M8 matrix done (42 runs). Review SVA/ASSERT 0 in logs if required by sign-off. ==="
+
+#===============================================================================
 # Test Name Check
 # NOTE: CHECK_TEST_NAME is disabled in Phase 1 because only uvm_test_top
 #       (UVM built-in) is used. Re-enable from Phase 3 onward when
@@ -241,6 +274,19 @@ endef
 PHASE7_TESTS ?= test_mmu_translation_sanity test_mmu_invalidate_sfence_matrix test_ptw_map4k_directed
 PHASE7_SEED  ?= 71001
 
+#===============================================================================
+# Phase 8 — M8 virtual sequences (MMU_UVM_TaskDivision.md §3 Phase 8)
+#  test_mmu_vseq_runner +VSEQ_NAME=<class> +VSEQ_NUM_TXN optional
+#  phase8_matrix: 14 vseq × PHASE8_SEEDS (default 3) → logs phase8_<vseq>_s<seed>.log
+#===============================================================================
+PHASE8_TEST   ?= test_mmu_vseq_runner
+PHASE8_SEEDS  ?= 81001 81002 81003
+PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
+	mmu_sfence_during_walk_vseq mmu_asid_context_switch_vseq mmu_huge_page_mix_vseq \
+	mmu_rrpv_aging_vseq mmu_l2tlb_bank_conflict_vseq mmu_satp_hotswap_vseq \
+	mmu_stress_all_ports_vseq mmu_power_gating_vseq mmu_reset_midtransaction_vseq \
+	mmu_error_rain_vseq mmu_perf_bench_vseq
+
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
@@ -249,7 +295,8 @@ PHASE7_SEED  ?= 71001
         phase6 phase6_fast phase6_run_matrix phase6_check print-phase6 \
         phase6_rtu_ptw phase6_rtu_ptw_fast phase6_rtu_ptw_run phase6_rtu_ptw_check \
         print-phase6-rtu-ptw phase6_full phase6_full_fast \
-        phase7 phase7_cov print-phase7
+        phase7 phase7_cov print-phase7 \
+        print-phase8 phase8_run_matrix phase8_check phase8
 
 all: comp run
 
@@ -433,6 +480,12 @@ help:
 	@echo "  make phase6_full_fast"
 	@echo "  Optional: make run TEST_NAME=test_mmu_phase6_misc_inv_smoke  # misc+inv smoke"
 	@echo "  Override: PHASE6_INV_NUM=100  PHASE6_SEEDS='...'  PHASE6_RTU_PTW_SEEDS='...'"
+	@echo ""
+	@echo "Phase 8 / M8 (virtual sequences, TaskDivision.md §3 Phase 8):"
+	@echo "  make print-phase8              # PHASE8_TEST / SEEDS / log naming"
+	@echo "  make run TEST_NAME=test_mmu_vseq_runner PLUS_ARGS=+VSEQ_NAME=mmu_smoke_vseq"
+	@echo "  make phase8                    # comp + 14×3 runs + UVM 0/0 + MMU_VSEQ_STATS grep"
+	@echo "  Override: PHASE8_SEEDS='s1 s2 s3'  PHASE8_VSEQS='mmu_smoke_vseq ...'"
 
 #===============================================================================
 # Env / Setup

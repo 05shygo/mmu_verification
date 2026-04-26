@@ -1,8 +1,6 @@
 // =============================================================================
 // MMU UVM Verification — testbench/env/mmu_env.svh
-// Phase 3 (Batch 1): Environment — integrates cp0/pmp/sysmap_cfg agents only.
-// ifu_agent, lsu_agent, ptw_mem_agent, misc_agent are added in Phase 5.
-// Scoreboard, ref model, and virtual sequencer are added in Phase 5.
+// Phase 3+ : Environment — cp0/pmp/sysmap_cfg + IFU/LSU/PTW/misc + ref/SB/perf; Phase 8: m_vseqr.
 // =============================================================================
 `ifndef MMU_ENV_SVH
 `define MMU_ENV_SVH
@@ -35,6 +33,9 @@ class mmu_env extends uvm_env;
   mmu_credit_sb      m_credit_sb;
   mmu_perf_mon         m_perf;
   mmu_env_cg_whitebox  m_cg_whitebox;
+
+  // Phase 8: virtual sequencer (6 sub-sequencer handles, no ptw_mem)
+  mmu_virtual_sequencer m_vseqr;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -90,6 +91,8 @@ class mmu_env extends uvm_env;
       m_cg_whitebox = mmu_env_cg_whitebox::type_id::create("m_cg_whitebox", this);
     end
 
+    m_vseqr = mmu_virtual_sequencer::type_id::create("m_vseqr", this);
+
     // Forward active/passive mode from config
     m_cp0.is_active        = m_cfg.cp0_agent_mode;
     m_pmp.is_active        = m_cfg.pmp_agent_mode;
@@ -101,6 +104,14 @@ class mmu_env extends uvm_env;
 
   // ── Connect phase ─────────────────────────────────────────────────────────
   virtual function void connect_phase(uvm_phase phase);
+    // Phase 8: sub-sequencer handles for virtual sequences
+    m_vseqr.ifu_sqr    = m_ifu.m_sequencer;
+    m_vseqr.lsu_sqr    = m_lsu.m_sequencer;
+    m_vseqr.cp0_sqr    = m_cp0.m_sequencer;
+    m_vseqr.pmp_sqr    = m_pmp.m_sequencer;
+    m_vseqr.sysmap_sqr = m_sysmap_cfg.m_sequencer;
+    m_vseqr.misc_sqr   = m_misc.m_sequencer;
+
     // Phase 4: inject shared page table builder into PTW responder
     m_ptw_mem.m_responder.set_page_table(m_pt_mem.m_builder);
 
@@ -148,6 +159,9 @@ class mmu_env extends uvm_env;
     m_lsu.m_monitor.ap_pipe1_rsp.connect(m_perf.af_lsu_p1_rsp.analysis_export);
     m_lsu.m_monitor.ap_pipe2_rsp.connect(m_perf.af_lsu_p2_rsp.analysis_export);
     m_misc.m_monitor.ap_hpcp.connect(m_perf.af_hpcp.analysis_export);
+    // Phase 8: PTW mem channel → perf (PTW walk proxy / TaskDivision #3)
+    m_ptw_mem.m_monitor.ap_req.connect(m_perf.af_ptw_req.analysis_export);
+    m_ptw_mem.m_monitor.ap_rsp.connect(m_perf.af_ptw_rsp.analysis_export);
   endfunction
 
 endclass : mmu_env

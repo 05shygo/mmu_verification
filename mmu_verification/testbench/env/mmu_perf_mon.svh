@@ -28,17 +28,22 @@ class mmu_perf_mon extends uvm_component;
   uvm_tlm_analysis_fifo #(lsu_txn)     af_lsu_p1_rsp;
   uvm_tlm_analysis_fifo #(lsu_txn)     af_lsu_p2_rsp;
   uvm_tlm_analysis_fifo #(misc_txn)    af_hpcp;
+  uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_req;
+  uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_rsp;
 
   // ── Statistics counters ───────────────────────────────────────────────────
   // IFU
   int unsigned n_ifu_req;       // total IFU translation requests observed
-  int unsigned n_ifu_miss;      // IFU requests that caused TLB miss (TODO Ph7)
+  int unsigned n_ifu_miss;      // IFU: responses with IUTLB HPCP miss (Phase 8)
 
   // LSU (per-pipe)
   int unsigned n_lsu_req[3];    // [0]=pipe0 [1]=pipe1 [2]=pipe2
   int unsigned n_lsu_miss[3];   // miss count per pipe (TODO Ph7)
 
-  // PTW / walk latency (TODO Phase 7)
+  // PTW memory channel (Phase 8)
+  int unsigned     n_ptw_mem_req;     // PTW bus read requests (proxy for walk activity)
+  int unsigned     n_ptw_mem_rsp;
+  // PTW / walk latency (TODO: precise cycle measure)
   longint unsigned walk_latency_sum;  // sum of PTW walk latency in cycles
 
   // HPCP hardware counters
@@ -57,6 +62,8 @@ class mmu_perf_mon extends uvm_component;
     n_hpcp_dutlb_miss = 0;
     n_hpcp_iutlb_miss = 0;
     n_hpcp_jtlb_miss  = 0;
+    n_ptw_mem_req     = 0;
+    n_ptw_mem_rsp     = 0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -66,6 +73,8 @@ class mmu_perf_mon extends uvm_component;
     af_lsu_p1_rsp = new("af_lsu_p1_rsp", this);
     af_lsu_p2_rsp = new("af_lsu_p2_rsp", this);
     af_hpcp       = new("af_hpcp",       this);
+    af_ptw_req    = new("af_ptw_req",    this);
+    af_ptw_rsp    = new("af_ptw_rsp",    this);
   endfunction
 
   // ── run_phase: fork 5 consumer threads ────────────────────────────────────
@@ -76,6 +85,8 @@ class mmu_perf_mon extends uvm_component;
       _consume_lsu_p1_rsp();
       _consume_lsu_p2_rsp();
       _consume_hpcp();
+      _consume_ptw_req();
+      _consume_ptw_rsp();
     join_none
   endtask
 
@@ -136,6 +147,24 @@ class mmu_perf_mon extends uvm_component;
 
   // ── HPCP miss event consumer ──────────────────────────────────────────────
   // Increments hardware miss counters mirroring DUT hpcp signals.
+  protected task _consume_ptw_req();
+    ptw_mem_txn tr;
+    forever begin
+      af_ptw_req.get(tr);
+      n_ptw_mem_req++;
+      `uvm_info(get_type_name(), $sformatf("[PerfMon] PTW req #%0d", n_ptw_mem_req), UVM_HIGH)
+    end
+  endtask
+
+  protected task _consume_ptw_rsp();
+    ptw_mem_txn tr;
+    forever begin
+      af_ptw_rsp.get(tr);
+      n_ptw_mem_rsp++;
+      `uvm_info(get_type_name(), $sformatf("[PerfMon] PTW rsp #%0d", n_ptw_mem_rsp), UVM_HIGH)
+    end
+  endtask
+
   protected task _consume_hpcp();
     misc_txn tr;
     forever begin
@@ -153,20 +182,21 @@ class mmu_perf_mon extends uvm_component;
 
   // ── report_phase: print performance summary ───────────────────────────────
   virtual function void report_phase(uvm_phase phase);
+    int unsigned n_txn_total, n_miss_hpc;
+    n_txn_total = n_ifu_req + n_lsu_req[0] + n_lsu_req[1] + n_lsu_req[2];
+    n_miss_hpc  = n_hpcp_dutlb_miss + n_hpcp_iutlb_miss + n_hpcp_jtlb_miss;
     `uvm_info(get_type_name(),
-      $sformatf({"[PerfMon] Performance Summary:\n",
-        "  IFU:  req=%0d  miss=%0d (TODO)\n",
-        "  LSU0: req=%0d  miss=%0d (TODO)\n",
-        "  LSU1: req=%0d  miss=%0d (TODO)\n",
-        "  LSU2: req=%0d  (prefetch)\n",
-        "  PTW:  walk_latency_sum=%0d (TODO)\n",
-        "  HPCP: dutlb_miss=%0d  iutlb_miss=%0d  jtlb_miss=%0d"},
-        n_ifu_req,  n_ifu_miss,
-        n_lsu_req[0], n_lsu_miss[0],
-        n_lsu_req[1], n_lsu_miss[1],
-        n_lsu_req[2],
-        walk_latency_sum,
-        n_hpcp_dutlb_miss, n_hpcp_iutlb_miss, n_hpcp_jtlb_miss),
+      $sformatf({"[PerfMon] Performance Summary (TaskDivision #3 fields):\n",
+        "  n_txn_total (ifu+lsu0+1+2 rsp)     = %0d\n",
+        "  n_miss_hpc (dutlb+iutlb+jtlb HPCP)  = %0d\n",
+        "  n_ptw_mem_req / n_ptw_mem_rsp        = %0d / %0d\n",
+        "  per-channel: IFU req=%0d; LSU0/1/2=%0d/%0d/%0d\n",
+        "  HPCP detail: dutlb=%0d iutlb=%0d jtlb=%0d  walk_latency_sum=%0d\n"},
+        n_txn_total,
+        n_miss_hpc,
+        n_ptw_mem_req, n_ptw_mem_rsp,
+        n_ifu_req, n_lsu_req[0], n_lsu_req[1], n_lsu_req[2],
+        n_hpcp_dutlb_miss, n_hpcp_iutlb_miss, n_hpcp_jtlb_miss, walk_latency_sum),
       UVM_MEDIUM)
   endfunction
 

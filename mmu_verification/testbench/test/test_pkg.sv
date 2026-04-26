@@ -44,6 +44,9 @@ package test_pkg;
   `include "basic_tests/test_mmu_phase6_misc_inv_smoke.svh"
   `include "basic_tests/test_mmu_phase6_rtu_flush_ptw.svh"
 
+  // Phase 8: virtual sequence harness (+VSEQ_NAME=...)
+  `include "phase8_tests/test_mmu_vseq_runner.svh"
+
 endpackage : test_pkg
 
 `endif // TEST_PKG_SV

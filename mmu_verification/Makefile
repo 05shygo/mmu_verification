@@ -256,17 +256,16 @@ phase8_check:
 phase8: phase8_run_matrix phase8_check
 	@echo "=== phase8: M8 matrix done (42 runs). Review SVA/ASSERT 0 in logs if required for sign-off. ==="
 
-# Fast pass: 42 次与 phase8 相同，但关闭大量 UVM_INFO/WARNING 终端输出（仍保留 [UVM_ERROR]/Report summary）
-#   + 只检查 UVM 报告里 ERROR/FATAL 是否为 0（不强制 MMU_VSEQ_STATS 行，适合先扫错）
+# Fast pass: 42 次与 phase8 相同，但 +UVM_ERR_ONLY 关闭大量 UVM_INFO/WARNING（[UVM_ERROR]/UVM 结尾 Report 应仍在）
 # 用法：已编译过可  make phase8_run_matrix_fast phase8_check_errfatal
 #       全量       make phase8_quick   （= comp + fast 矩阵 + errfatal 检查）
-# 不隐式 comp — 与 phase8_run_matrix 相同但 UVM_ERR_ONLY=1+VERBOSITY=UVM_NONE；先 make comp 一次即可反复跑
+# 不隐式 comp — 同矩阵但 +UVM_ERR_ONLY（少打 INFO/WARN）。**不要**设 VERBOSITY=UVM_NONE：部分 VCS+UVM 会吞掉结尾 UVM Report 里的 UVM_ERROR:0 行，导致 phase8_check_errfatal 假失败。
 phase8_run_matrix_fast:
 	@set -e; for v in $(PHASE8_VSEQS); do \
 	  for s in $(PHASE8_SEEDS); do \
 	    echo "=== Phase8 fast vseq=$$v SEED=$$s (UVM_ERR_ONLY) ==="; \
 	    $(MAKE) run TEST_NAME=$(PHASE8_TEST) SEED=$$s TIMEOUT=120000000 UVM_ERR_ONLY=1 \
-	      VERBOSITY=UVM_NONE PLUS_ARGS="+VSEQ_NAME=$$v" ; \
+	      PLUS_ARGS="+VSEQ_NAME=$$v" ; \
 	    cp -f "$(LOG_DIR)/$(PHASE8_TEST)_$$s.log" "$(LOG_DIR)/phase8_$${v}_s$$s.log"; \
 	  done; \
 	done

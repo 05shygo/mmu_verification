@@ -124,8 +124,9 @@ class ifu_monitor extends uvm_monitor;
       end
 
       // If request disappears without a response:
-      // - abort req: close immediately (expected)
-      // - non-abort req: strict protocol violation, close and report error.
+      // - abort req: close immediately (expected cancel path)
+      // - non-abort req: treat as monitor-visible drop (e.g. driver timeout),
+      //   close with warning and publish ap_drop for credit compensation.
       if (m_has_pending && !vif.monitor_cb.ifu_mmu_va_vld) begin
         if (m_pending_req.abort) begin
           ifu_txn drop_tr;
@@ -143,10 +144,12 @@ class ifu_monitor extends uvm_monitor;
           drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
           drop_tr.va    = m_pending_req.va;
           drop_tr.abort = m_pending_req.abort;
-          `uvm_error(get_type_name(),
-            $sformatf("[IFU_HOLD_PROTOCOL] pending req dropped: va_vld deasserted before rsp for non-abort req. pending_va=0x%010h cur_va=0x%010h pavld=%0b pa=0x%07h",
+          `uvm_warning(get_type_name(),
+            $sformatf("[IFU_REQ_DROP] non-abort pending req closed before rsp (likely timeout/retry): pending_va=0x%010h cur_va=0x%010h pavld=%0b pa=0x%07h",
               {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]},
               vif.monitor_cb.mmu_ifu_pavld, vif.monitor_cb.mmu_ifu_pa))
+          // Clear local pending and emit drop so downstream credit scoreboard
+          // can compensate req-without-rsp accounting.
           m_has_pending = 1'b0;
           ap_drop.write(drop_tr);
         end

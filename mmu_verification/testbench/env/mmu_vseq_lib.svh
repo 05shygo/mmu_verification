@@ -299,18 +299,18 @@ class mmu_concurrent_3pipe_vseq extends mmu_base_vseq;
   virtual task body();
     mmu_env env = get_env();
     int nmap, i;
-    mmu_vseq_lsu_interleave3_seq tri;
+    mmu_vseq_lsu_interleave3_seq seq_itr3;
     va_t va_tbl[$];
     nmap = (num_txn > 1000) ? 128 : 32;
     vseq_bringup_sv39_4k(env, 28'h0, 16'h0, nmap, 39'h20_0000, 28'h300);
     for (i = 0; i < nmap; i++) va_tbl.push_back(va_t'(39'h20_0000) + va_t'(i << 12));
-    tri = mmu_vseq_lsu_interleave3_seq::type_id::create("tri");
-    tri.m_va_table = new[nmap];
-    tri.m_table_size = nmap;
-    foreach (va_tbl[j]) tri.m_va_table[j] = va_tbl[j];
-    tri.num_txn = int'(num_txn) / 2;
-    if (tri.num_txn < 6) tri.num_txn = 6;
-    tri.start(p_sequencer.lsu_sqr);
+    seq_itr3 = mmu_vseq_lsu_interleave3_seq::type_id::create("seq_itr3");
+    seq_itr3.m_va_table = new[nmap];
+    seq_itr3.m_table_size = nmap;
+    foreach (va_tbl[j]) seq_itr3.m_va_table[j] = va_tbl[j];
+    seq_itr3.num_txn = int'(num_txn) / 2;
+    if (seq_itr3.num_txn < 6) seq_itr3.num_txn = 6;
+    seq_itr3.start(p_sequencer.lsu_sqr);
     #80000ns;
   endtask
 endclass
@@ -531,7 +531,7 @@ class mmu_stress_all_ports_vseq extends mmu_base_vseq;
   virtual task body();
     mmu_env env = get_env();
     mmu_vseq_ifu_rr_seq  ifq;
-    mmu_vseq_lsu_interleave3_seq tri;
+    mmu_vseq_lsu_interleave3_seq seq_itr3;
     mmu_vseq_lsu_stamo_short_seq st;
     misc_init_seq        mi;
     va_t va_tbl[$];
@@ -551,12 +551,12 @@ class mmu_stress_all_ports_vseq extends mmu_base_vseq;
         ifq.start(p_sequencer.ifu_sqr);
       end
       begin
-        tri = mmu_vseq_lsu_interleave3_seq::type_id::create("tri");
-        tri.m_va_table = new[nmap];
-        tri.m_table_size = nmap;
-        foreach (va_tbl[jj]) tri.m_va_table[jj] = va_tbl[jj];
-        tri.num_txn     = 60;
-        tri.start(p_sequencer.lsu_sqr);
+        seq_itr3 = mmu_vseq_lsu_interleave3_seq::type_id::create("seq_itr3");
+        seq_itr3.m_va_table = new[nmap];
+        seq_itr3.m_table_size = nmap;
+        foreach (va_tbl[jj]) seq_itr3.m_va_table[jj] = va_tbl[jj];
+        seq_itr3.num_txn     = 60;
+        seq_itr3.start(p_sequencer.lsu_sqr);
       end
     join
     st = mmu_vseq_lsu_stamo_short_seq::type_id::create("st");

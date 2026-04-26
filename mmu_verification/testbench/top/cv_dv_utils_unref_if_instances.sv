@@ -3,6 +3,10 @@
 // into the MMU DUT. VCS then reports UII-L (interface never instantiated).
 // This module only elaborates those interfaces under tb_top so the warnings
 // are resolved; nothing in the UVM env is required to drive them.
+//
+// xrtl_reset_vif always blocks trigger ->hvl_obj.* events; the real TB would
+// allocate hvl_obj in the reset agent. This stub must construct it or VCS
+// reports NOA (null object) on first reset edge.
 //=============================================================================
 `timescale 1ns/1ps
 
@@ -10,6 +14,8 @@ module cv_dv_utils_unref_if_instances (
     input bit clk_i,
     input bit rst_ni
 );
+
+  import reset_vif_xrtl_pkg::*;
 
   wire reset_w;
   wire reset_n_w;
@@ -21,6 +27,10 @@ module cv_dv_utils_unref_if_instances (
       .reset_n(reset_n_w),
       .post_shutdown_phase(post_shutdown_phase_w)
   );
+
+  initial begin
+    u_xrtl_reset_vif.hvl_obj = new("cv_dv_utils_unref_xrtl_reset");
+  end
 
   generic_if u_generic_if (
       .clk_i(clk_i),

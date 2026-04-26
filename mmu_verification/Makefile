@@ -85,6 +85,12 @@ PHASE6_MODES      ?= 0 1 2 3
 PHASE6_INV_NUM    ?= 100
 PHASE6_LOGS       := $(foreach m,$(PHASE6_MODES),$(foreach s,$(PHASE6_SEEDS),$(LOG_DIR)/$(PHASE6_TEST)_m$(m)_s$(s).log))
 
+# Phase 6 — TaskDivision §6 criterion #4: RTU flush vs cold miss / PTW window
+#   test prints [abort_check] per iteration + final summary (status=PASS)
+PHASE6_RTU_PTW_TEST   ?= test_mmu_phase6_rtu_flush_ptw
+PHASE6_RTU_PTW_SEEDS  ?= 62001 62002 62003
+PHASE6_RTU_PTW_LOGS   := $(foreach s,$(PHASE6_RTU_PTW_SEEDS),$(LOG_DIR)/$(PHASE6_RTU_PTW_TEST)_$(s).log)
+
 #===============================================================================
 # Include and Source Files
 #===============================================================================
@@ -205,7 +211,9 @@ endef
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
-        phase6 phase6_fast phase6_run_matrix phase6_check print-phase6
+        phase6 phase6_fast phase6_run_matrix phase6_check print-phase6 \
+        phase6_rtu_ptw phase6_rtu_ptw_fast phase6_rtu_ptw_run phase6_rtu_ptw_check \
+        print-phase6-rtu-ptw phase6_full phase6_full_fast
 
 all: comp run
 
@@ -311,6 +319,40 @@ phase6: comp phase6_run_matrix phase6_check
 phase6_fast: comp_fast phase6_run_matrix phase6_check
 	@echo "=== phase6_fast finished OK (comp_fast + matrix + checks) ==="
 
+print-phase6-rtu-ptw:
+	@echo "PHASE6_RTU_PTW_TEST  = $(PHASE6_RTU_PTW_TEST)"
+	@echo "PHASE6_RTU_PTW_SEEDS = $(PHASE6_RTU_PTW_SEEDS)"
+	@echo "PHASE6_RTU_PTW_LOGS  = $(PHASE6_RTU_PTW_LOGS)"
+
+# TaskDivision §6 #4: RTU flush + in-flight translation/PTW stress (3 seeds)
+phase6_rtu_ptw_run:
+	@set -e; for s in $(PHASE6_RTU_PTW_SEEDS); do \
+	  echo "=== $(PHASE6_RTU_PTW_TEST) SEED=$$s ==="; \
+	  $(MAKE) run TEST_NAME=$(PHASE6_RTU_PTW_TEST) SEED=$$s; \
+	done
+
+phase6_rtu_ptw_check:
+	@set -e; for f in $(PHASE6_RTU_PTW_LOGS); do \
+	  test -f "$$f" || (echo "Missing log: $$f  (run phase6_rtu_ptw_run first)"; exit 1); \
+	  grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — UVM_ERROR is not 0"; exit 1); \
+	  grep -E 'UVM_FATAL[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — UVM_FATAL is not 0"; exit 1); \
+	  grep -E '\[abort_check\] summary:.*status=PASS' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f — missing [abort_check] summary PASS"; exit 1); \
+	done
+	@echo "phase6_rtu_ptw_check: UVM 0/0 and [abort_check] summary in all $(PHASE6_RTU_PTW_TEST) seed logs"
+
+phase6_rtu_ptw: comp phase6_rtu_ptw_run phase6_rtu_ptw_check
+	@echo "=== phase6_rtu_ptw finished OK (comp + $(words $(PHASE6_RTU_PTW_SEEDS)) seeds + abort_check) ==="
+
+phase6_rtu_ptw_fast: comp_fast phase6_rtu_ptw_run phase6_rtu_ptw_check
+	@echo "=== phase6_rtu_ptw_fast finished OK (comp_fast + RTU/PTW seeds + checks) ==="
+
+# Full Phase 6 sign-off: invalidate matrix (§6 #2–3) + RTU/PTW (§6 #4); single compile
+phase6_full: comp phase6_run_matrix phase6_check phase6_rtu_ptw_run phase6_rtu_ptw_check
+	@echo "=== phase6_full finished OK (SFENCE matrix + RTU/PTW abort_check) ==="
+
+phase6_full_fast: comp_fast phase6_run_matrix phase6_check phase6_rtu_ptw_run phase6_rtu_ptw_check
+	@echo "=== phase6_full_fast finished OK ==="
+
 #===============================================================================
 # Help
 #===============================================================================
@@ -347,7 +389,13 @@ help:
 	@echo "  make phase6                    # comp + (4 modes x 3 seeds) + checks"
 	@echo "  make phase6_run_matrix         # only run matrix (requires simv)"
 	@echo "  make phase6_check              # check UVM 0/0 + invalidate summary"
-	@echo "  Override: PHASE6_INV_NUM=100 PHASE6_SEEDS='61001 61002 61003'"
+	@echo "  make print-phase6-rtu-ptw     # show RTU-flush/PTW test + seeds + logs"
+	@echo "  make phase6_rtu_ptw            # comp + 3-seed RTU flush vs PTW + [abort_check] grep"
+	@echo "  make phase6_rtu_ptw_fast     # comp_fast + same"
+	@echo "  make phase6_full               # one comp: SFANCE matrix + RTU/PTW (full §6 make gate)"
+	@echo "  make phase6_full_fast"
+	@echo "  Optional: make run TEST_NAME=test_mmu_phase6_misc_inv_smoke  # misc+inv smoke"
+	@echo "  Override: PHASE6_INV_NUM=100  PHASE6_SEEDS='...'  PHASE6_RTU_PTW_SEEDS='...'"
 
 #===============================================================================
 # Env / Setup

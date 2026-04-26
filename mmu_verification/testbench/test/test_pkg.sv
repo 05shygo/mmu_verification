@@ -42,6 +42,7 @@ package test_pkg;
   // ── Phase 6: SFENCE.VMA invalidate matrix test ────────────────────────────
   `include "basic_tests/test_mmu_invalidate_sfence_matrix.svh"
   `include "basic_tests/test_mmu_phase6_misc_inv_smoke.svh"
+  `include "basic_tests/test_mmu_phase6_rtu_flush_ptw.svh"
 
 endpackage : test_pkg
 

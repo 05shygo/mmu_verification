@@ -71,9 +71,11 @@ class mmu_env extends uvm_env;
     // Inject shared page table reference BEFORE run_phase
     m_ref.m_pt = m_pt_mem;
 
-    // Phase 5: Translation scoreboard
-    m_translation_sb        = mmu_translation_sb::type_id::create("m_translation_sb", this);
-    m_translation_sb.m_ref  = m_ref;
+    // Phase 5: Translation scoreboard (optional: RTU/PTW stress may disable)
+    if (m_cfg.en_translation_sb) begin
+      m_translation_sb        = mmu_translation_sb::type_id::create("m_translation_sb", this);
+      m_translation_sb.m_ref  = m_ref;
+    end
     if (m_cfg.en_invalidate_sb)
       m_invalidate_sb = mmu_invalidate_sb::type_id::create("m_invalidate_sb", this);
 
@@ -105,10 +107,12 @@ class mmu_env extends uvm_env;
     m_sysmap_cfg.m_monitor.ap.connect(m_ref.af_sysmap_cfg.analysis_export);
 
     // Phase 5: Connect monitor rsp APs → translation scoreboard
-    m_ifu.m_monitor.ap_rsp.connect(m_translation_sb.af_ifu_rsp);
-    m_lsu.m_monitor.ap_pipe0_rsp.connect(m_translation_sb.af_lsu_p0_rsp);
-    m_lsu.m_monitor.ap_pipe1_rsp.connect(m_translation_sb.af_lsu_p1_rsp);
-    m_lsu.m_monitor.ap_pipe2_rsp.connect(m_translation_sb.af_lsu_p2_rsp);
+    if (m_translation_sb != null) begin
+      m_ifu.m_monitor.ap_rsp.connect(m_translation_sb.af_ifu_rsp);
+      m_lsu.m_monitor.ap_pipe0_rsp.connect(m_translation_sb.af_lsu_p0_rsp);
+      m_lsu.m_monitor.ap_pipe1_rsp.connect(m_translation_sb.af_lsu_p1_rsp);
+      m_lsu.m_monitor.ap_pipe2_rsp.connect(m_translation_sb.af_lsu_p2_rsp);
+    end
 
     // Phase 6: Connect invalidate paths into invalidate scoreboard.
     if (m_invalidate_sb != null) begin

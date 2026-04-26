@@ -254,7 +254,8 @@ module tb_top;
 
 endmodule : tb_top
 
-// Phase 7: SVA bind (MMU_UVM_BuildPlan_v3 §9.2; TaskDivision Phase 7)
+// Phase 7: SVA bind — 工程师 A 完整实现（iplru/dplru 子模块，非 mmu_l1itlb 口直连）
+// 参考: MMU_UVM_BuildPlan_v3 §9.2, TaskDivision Phase 7
 bind ct_mmu_top   mmu_sva             u_mmu_sva   (.*);
 bind mmu_arb      mmu_arb_sva         u_arb_sva   (.*);
 bind mmu_l2tlb    mmu_l2tlb_rrpv_sva  u_l2tlb_sva (.*);

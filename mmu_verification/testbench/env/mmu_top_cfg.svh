@@ -29,6 +29,7 @@ class mmu_top_cfg extends uvm_object;
     `uvm_field_int(en_sva_rrpv,        UVM_ALL_ON)
     `uvm_field_int(en_sva_plru,        UVM_ALL_ON)
     `uvm_field_int(en_sva_credit,      UVM_ALL_ON)
+    `uvm_field_int(en_whitebox_cg,   UVM_ALL_ON)
   `uvm_object_utils_end
 
   // =========================================================================
@@ -67,6 +68,8 @@ class mmu_top_cfg extends uvm_object;
   bit en_sva_rrpv   = 1;   // RRPV QLRU replacement policy assertions
   bit en_sva_plru   = 1;   // L1 PLRU assertions
   bit en_sva_credit = 1;   // L2 request-queue credit assertions
+  // Phase 7: hierarchical whitebox covergroups in env
+  bit en_whitebox_cg = 1;
 
   // =========================================================================
   // Constructor

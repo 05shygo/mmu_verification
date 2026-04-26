@@ -185,6 +185,37 @@ COV_OPTS        := -cm line+cond+fsm+tgl+branch+assert \
                    -cm_hier $(PROJECT_DIR)/scripts/cov_hier.cfg
 
 #===============================================================================
+# Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
+#  phase7:  comp 后 3 个 TEST_NAME 各 run 一次，log 中 UVM_ERROR/FATAL=0
+#  phase7_cov: 同上以 run_cov 落 .vdb，再 urg → $(COV_DIR)/urgReport
+#===============================================================================
+print-phase7:
+	@echo "PHASE7_TESTS = $(PHASE7_TESTS)"
+	@echo "PHASE7_SEED  = $(PHASE7_SEED)"
+	@echo "PHASE7_LOGS  = 3x $(LOG_DIR)/<test>_$(PHASE7_SEED).log"
+
+# Windows/Git Bash: use MSYS/MinGW 或 WSL 中 make；核心为三次 sim + grep 0/0
+phase7: comp
+	@set -e; for t in $(PHASE7_TESTS); do \
+		echo "=== phase7: $$t SEED=$(PHASE7_SEED) ==="; \
+		$(MAKE) run TEST_NAME=$$t SEED=$(PHASE7_SEED); \
+	done
+	@set -e; for t in $(PHASE7_TESTS); do \
+		f="$(LOG_DIR)/$${t}_$(PHASE7_SEED).log"; \
+		test -f "$$f" || (echo "Missing $$f"; exit 1); \
+		grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f UVM_ERROR"; exit 1); \
+		grep -E 'UVM_FATAL[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f UVM_FATAL"; exit 1); \
+	done
+	@echo "=== phase7 OK: 3 tests UVM_ERROR=0 UVM_FATAL=0 (review simv for SVA/ASSERT summary) ==="
+
+phase7_cov: comp
+	@set -e; for t in $(PHASE7_TESTS); do \
+		$(MAKE) run_cov TEST_NAME=$$t SEED=$(PHASE7_SEED); \
+	done
+	$(MAKE) cov
+	@echo "=== phase7_cov: see URG under $(COV_DIR)/urgReport (or URG_OPTS -report) ==="
+
+#===============================================================================
 # Test Name Check
 # NOTE: CHECK_TEST_NAME is disabled in Phase 1 because only uvm_test_top
 #       (UVM built-in) is used. Re-enable from Phase 3 onward when
@@ -206,6 +237,10 @@ endef
 #===============================================================================
 # Phony
 #===============================================================================
+# Phase 7 — 3 个现网用例 + UVM/断言门禁（P7-B-12 推荐，与 P7B01 表一致）
+PHASE7_TESTS ?= test_mmu_translation_sanity test_mmu_invalidate_sfence_matrix test_ptw_map4k_directed
+PHASE7_SEED  ?= 71001
+
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
@@ -213,7 +248,8 @@ endef
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
         phase6 phase6_fast phase6_run_matrix phase6_check print-phase6 \
         phase6_rtu_ptw phase6_rtu_ptw_fast phase6_rtu_ptw_run phase6_rtu_ptw_check \
-        print-phase6-rtu-ptw phase6_full phase6_full_fast
+        print-phase6-rtu-ptw phase6_full phase6_full_fast \
+        phase7 phase7_cov print-phase7
 
 all: comp run
 

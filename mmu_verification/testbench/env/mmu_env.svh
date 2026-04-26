@@ -33,7 +33,8 @@ class mmu_env extends uvm_env;
   // ── Phase 5 (Engineer A): misc agent + credit SB + perf monitor ─────────
   misc_agent         m_misc;
   mmu_credit_sb      m_credit_sb;
-  mmu_perf_mon       m_perf;
+  mmu_perf_mon         m_perf;
+  mmu_env_cg_whitebox  m_cg_whitebox;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -84,6 +85,10 @@ class mmu_env extends uvm_env;
     // Phase 5 (Engineer A): credit scoreboard + performance monitor
     m_credit_sb = mmu_credit_sb::type_id::create("m_credit_sb", this);
     m_perf      = mmu_perf_mon::type_id::create("m_perf",      this);
+
+    if (m_cfg.en_whitebox_cg) begin
+      m_cg_whitebox = mmu_env_cg_whitebox::type_id::create("m_cg_whitebox", this);
+    end
 
     // Forward active/passive mode from config
     m_cp0.is_active        = m_cfg.cp0_agent_mode;

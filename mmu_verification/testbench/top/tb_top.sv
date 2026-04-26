@@ -253,3 +253,11 @@ module tb_top;
   end
 
 endmodule : tb_top
+
+// Phase 7: SVA bind (MMU_UVM_BuildPlan_v3 §9.2; TaskDivision Phase 7)
+bind ct_mmu_top   mmu_sva             u_mmu_sva   (.*);
+bind mmu_arb      mmu_arb_sva         u_arb_sva   (.*);
+bind mmu_l2tlb    mmu_l2tlb_rrpv_sva  u_l2tlb_sva (.*);
+bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
+bind ct_mmu_iplru mmu_plru_sva        u_iplru_sva (.*);
+bind ct_mmu_dplru mmu_dplru_sva       u_dplru_sva (.*);

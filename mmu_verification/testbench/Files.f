@@ -111,3 +111,12 @@ ${TB_DIR}/env/mmu_env_pkg.sv
 # Phase 3: Test package (imports mmu_env_pkg; includes test_base + sanity tests)
 # ---------------------------------------------------------------------------
 ${TB_DIR}/test/test_pkg.sv
+
+# ---------------------------------------------------------------------------
+# Phase 7: Top-level SVA (after UVM packages; bind in tb_top.sv)
+# ---------------------------------------------------------------------------
+${TB_DIR}/top/mmu_sva.sv
+${TB_DIR}/top/mmu_arb_sva.sv
+${TB_DIR}/top/mmu_l2tlb_rrpv_sva.sv
+${TB_DIR}/top/mmu_plru_sva.sv
+${TB_DIR}/top/credit_sva.sv

@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-26
+> **更新**：2026-04-26（Phase 7 工程师 A 部分已记档）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -17,8 +17,8 @@
 | **Phase 4**  | PTW 内存模型 + 参考模型                    | A                  | ✅ 完成               | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0                                                                                                  |
 | **Phase 5**  | IFU + LSU Agent + Translation SB           | A , B 协同        | ✅ 完成（2026-04-26） | `make phase5` 通过（comp + 5+3 seeds + phase5_check）；8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0`。`make phase5_ptw4k` 也通过（P5-34 修复后 `passthrough=0`） |
 | **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ✅ 完成（2026-04-26） | ✅`make phase6_full` 通过（`comp` + `phase6` 矩阵/检查 + `phase6_rtu_ptw` 3 seed）；12+3 份 log 均 UVM 0/0，Invalidate SB 与 `[abort_check]` 摘要达标 |
-| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ⏳ 可开始            | —                                                                                                                                                               |
-| **Phase 8**  | Virtual Sequence 实现                      | B                  | 🔒 等待 Phase 7       | —                                                                                                                                                               |
+| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | 🔄 A 完成 / B 待办     | A：`make comp`+smoke 需在仿真服务器确认；5×SVA+`tb_top` bind+`Files.f` 已合入。B：7×covergroup+白盒cg+多 test 覆盖（整 Phase 签核待 B） |
+| **Phase 8**  | Virtual Sequence 实现                      | B                  | 🔒 等待 Phase 7 整体验收 | —                                                                                                                                                               |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | 🔒 等待 Phase 8       | —                                                                                                                                                               |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | 🔒 等待 Phase 9       | —                                                                                                                                                               |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | 🔒 等待 Phase 10      | —                                                                                                                                                               |
@@ -386,6 +386,28 @@
 
 ---
 
+## Phase 7 详细进度（工程师 A 部分：✅ 已交付；整 Phase 签核待 B）
+
+**负责**：工程师 A（5×SVA + bind + Files.f）/ 工程师 B（covergroup 与多 test 覆盖）
+
+**工程师 A 交付物（2026-04-26）**：
+
+| 步骤   | 交付物 | 状态 | 说明 |
+| ------ | ------ | ---- | ---- |
+| 7-A1   | `testbench/top/mmu_sva.sv` | ✅ | 顶层 `ct_mmu_top`：IFU/LSU VA 非 X、pipe0/1/2 `stall` 与 `pa_vld` 同拍互斥 |
+| 7-A2   | `testbench/top/mmu_arb_sva.sv` | ✅ | `mmu_arb`：五路 grant `$onehot0`/`$onehot` 与 `arb_l2tlb_req` 一致、`sva_ptw_write_pipe_reset_safe` |
+| 7-A3   | `testbench/top/mmu_l2tlb_rrpv_sva.sv` | ✅ | `mmu_l2tlb`：写路径 tag/data 非 X；raw_vld/inv/RRPV 需内部节点的性质见文件注释 |
+| 7-A4   | `testbench/top/mmu_plru_sva.sv` | ✅ | `bind ct_mmu_iplru`→`mmu_plru_sva`；`bind ct_mmu_dplru`→`mmu_dplru_sva`；回填时 victim one-hot+非 X |
+| 7-A5   | `testbench/top/credit_sva.sv` | ✅ | `bind mmu_l2tlb_reqq`：issue 时段 payload 非 X；I/D 两路在 Reqq **独立、可同周期申请**（不互斥） |
+| 7-A6   | `testbench/top/tb_top.sv` 片尾 `bind` | ✅ | 上述模块 + `credit_sva` 与 BuildPlan 层次一致 |
+| 7-A7   | `testbench/Files.f` 追加 5 个 `top/*.sv` | ✅ | 位于 `test_pkg` 之后 |
+
+**A 侧退出验证（需仿真服务器）**：`make comp` 0 error；`make run TEST_NAME=test_mmu_sanity_csr_pmp_sysmap`（或 `phase6_fast` 子集）UVM 0/0、log 无 SVA/ASSERT fail — **本地未跑通时以服务器 log 为准**。
+
+**B 侧待办（整 Phase 7 行仍非 ✅）**：7×`*_covergroups.svh` 黑盒、env 白盒 cg、≥3 test 的 cover HTML、TaskDivision §7 与覆盖注释等。
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师      | 负责 Phase                                                                       | 主要文件数  | 核心难点                                                             |
@@ -405,7 +427,7 @@
 | **M4** — 参考模型就绪              | Phase 4 退出准则                          | ✅**已达成**（2026-04-24）                                                                                                                                        |
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则                          | ✅**已再次达成**（2026-04-26）：`make phase5` 完整通过（comp + 5+3 seed + phase5_check 0/0）；随后 `make phase5_ptw4k` 通过（P5-34 修复后 `passthrough=0`） |
 | **M6** — 全功能验证                | Phase 6 退出准则                          | ✅**已达成**（2026-04-26）：`make phase6_full`（SFENCE 矩阵 + RTU/PTW `abort_check`）                                                                                 |
-| **M7** — SVA + 覆盖率框架          | Phase 7 退出准则                          | ⏳                                                                                                                                                                      |
+| **M7** — SVA + 覆盖率框架          | Phase 7 退出准则                          | 🔄 A：SVA/bind 已交付；B：cg 与 HTML 覆盖未闭环                                                                                                                                 |
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ⏳                                                                                                                                                                      |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ⏳                                                                                                                                                                      |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ⏳                                                                                                                                                                      |

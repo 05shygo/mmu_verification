@@ -21,6 +21,12 @@ WAVE_DIR        ?= $(OUTPUT_DIR)/waves
 COV_DIR         ?= $(OUTPUT_DIR)/coverage
 REGRESS_DIR     ?= $(OUTPUT_DIR)/regression
 
+# VCS and any subordinate make in output/csrc must see the same file-list paths
+# as this Makefile. Stale csrc with -Mupdate can also produce "cc -o .o" / make [.o] errors
+# — if that appears: `make clean` then rebuild, or use PERF_OPTS without -Mupdate.
+export PROJECT_DIR MMU_RTL_DIR RELATE_RTL_DIR MMU_PARAMS_DIR TB_DIR
+export CORE_V_VERIF CV_DV_UTILS_DIR OUTPUT_DIR
+
 #===============================================================================
 # Tool Configuration
 #===============================================================================
@@ -131,7 +137,9 @@ VCS_ELAB_OPTS   := -full64 \
                    -Mdir=$(OUTPUT_DIR)/csrc \
                    -o $(OUTPUT_DIR)/simv
 
-PERF_OPTS       := -j4 -Mupdate
+# Parallel VCS only. Omit -Mupdate: incremental csrc makefiles can emit invalid
+# targets (e.g. .o) and "cc -o .o" on path/env hiccups; full comp is the safe default.
+PERF_OPTS       := -j4
 
 #===============================================================================
 # Fast compile: drop debug/KDB/FSDB for 3-5x speedup (no wave support)

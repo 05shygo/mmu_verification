@@ -254,7 +254,50 @@ phase8_check:
 	@echo "phase8_check: 42 log files UVM_ERROR=0 UVM_FATAL=0 (grep [MMU_VSEQ_TASKDIVISION#3] for stats)"
 
 phase8: phase8_run_matrix phase8_check
-	@echo "=== phase8: M8 matrix done (42 runs). Review SVA/ASSERT 0 in logs if required by sign-off. ==="
+	@echo "=== phase8: M8 matrix done (42 runs). Review SVA/ASSERT 0 in logs if required for sign-off. ==="
+
+# Fast pass: 42 次与 phase8 相同，但关闭大量 UVM_INFO/WARNING 终端输出（仍保留 [UVM_ERROR]/Report summary）
+#   + 只检查 UVM 报告里 ERROR/FATAL 是否为 0（不强制 MMU_VSEQ_STATS 行，适合先扫错）
+# 用法：已编译过可  make phase8_run_matrix_fast phase8_check_errfatal
+#       全量       make phase8_quick   （= comp + fast 矩阵 + errfatal 检查）
+# 不隐式 comp — 与 phase8_run_matrix 相同但 UVM_ERR_ONLY=1+VERBOSITY=UVM_NONE；先 make comp 一次即可反复跑
+phase8_run_matrix_fast:
+	@set -e; for v in $(PHASE8_VSEQS); do \
+	  for s in $(PHASE8_SEEDS); do \
+	    echo "=== Phase8 fast vseq=$$v SEED=$$s (UVM_ERR_ONLY) ==="; \
+	    $(MAKE) run TEST_NAME=$(PHASE8_TEST) SEED=$$s TIMEOUT=120000000 UVM_ERR_ONLY=1 \
+	      VERBOSITY=UVM_NONE PLUS_ARGS="+VSEQ_NAME=$$v" ; \
+	    cp -f "$(LOG_DIR)/$(PHASE8_TEST)_$$s.log" "$(LOG_DIR)/phase8_$${v}_s$$s.log"; \
+	  done; \
+	done
+
+# 只判 err/fatal 摘要=0；不要求 MMU_VSEQ_STATS（签核前再用 phase8_check 全项）
+phase8_check_errfatal:
+	@set -e; for v in $(PHASE8_VSEQS); do \
+	  for s in $(PHASE8_SEEDS); do \
+	    f="$(LOG_DIR)/phase8_$${v}_s$$s.log"; \
+	    test -f "$$f" || (echo "Missing $$f (run phase8_run_matrix or phase8_run_matrix_fast first)"; exit 1); \
+	    grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f UVM_ERROR"; exit 1); \
+	    grep -E 'UVM_FATAL[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || (echo "FAIL: $$f UVM_FATAL"; exit 1); \
+	  done; \
+	done
+	@echo "phase8_check_errfatal: 42 (or N) matrix logs — UVM_ERROR=0 UVM_FATAL=0 in report summary (no MMU_VSEQ_STATS gate)."
+
+# 不重新仿真：在已有 phase8_*.log 上秒级列出错/非零 FATAL 的文件
+phase8_scan_errfatal:
+	@echo "--- logs with UVM_ERROR count != 0 in final report (empty = none) ---"
+	@set -e; for f in $(LOG_DIR)/phase8_*.log; do \
+	  test -f "$$f" || continue; \
+	  grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || echo "$$f"; \
+	done; echo "---"; \
+	echo "--- logs with UVM_FATAL count != 0 (empty = none) ---"; \
+	for f in $(LOG_DIR)/phase8_*.log; do \
+	  test -f "$$f" || continue; \
+	  grep -E 'UVM_FATAL[[:space:]]*:[[:space:]]*0' "$$f" >/dev/null 2>&1 || echo "$$f"; \
+	done; echo "done (phase8_scan_errfatal)."
+
+phase8_quick: comp phase8_run_matrix_fast phase8_check_errfatal
+	@echo "=== phase8_quick: 42 fast runs + err/fatal only.  Run 'make phase8_check' for full M8 (incl. MMU_VSEQ_STATS). ==="
 
 #===============================================================================
 # Test Name Check
@@ -304,7 +347,8 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         phase6_rtu_ptw phase6_rtu_ptw_fast phase6_rtu_ptw_run phase6_rtu_ptw_check \
         print-phase6-rtu-ptw phase6_full phase6_full_fast \
         phase7 phase7_cov print-phase7 \
-        print-phase8 phase8_run_matrix phase8_check phase8
+        print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
+        phase8_check_errfatal phase8_scan_errfatal phase8_quick
 
 all: comp run
 
@@ -492,7 +536,10 @@ help:
 	@echo "Phase 8 / M8 (virtual sequences, TaskDivision.md §3 Phase 8):"
 	@echo "  make print-phase8              # PHASE8_TEST / SEEDS / log naming"
 	@echo "  make run TEST_NAME=test_mmu_vseq_runner PLUS_ARGS=+VSEQ_NAME=mmu_smoke_vseq"
-	@echo "  make phase8                    # comp + 14×3 runs + UVM 0/0 + MMU_VSEQ_STATS grep"
+	@echo "  make phase8                    # comp + 14×3 + full phase8_check (incl. MMU_VSEQ_STATS)"
+	@echo "  make phase8_quick              # comp + 42 runs w/ UVM_ERR_ONLY + phase8_check_errfatal (只扫 err/fatal)"
+	@echo "  make phase8_run_matrix_fast    # 仅 42 次快速跑（需已有 simv 时可去掉 comp 依赖：先 make comp）"
+	@echo "  make phase8_scan_errfatal      # 不仿真，只扫已有 phase8_*.log 里 ERROR/FATAL 是否非 0"
 	@echo "  Override: PHASE8_SEEDS='s1 s2 s3'  PHASE8_VSEQS='mmu_smoke_vseq ...'"
 
 #===============================================================================

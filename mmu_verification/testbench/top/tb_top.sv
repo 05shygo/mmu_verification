@@ -279,13 +279,13 @@ module tb_top;
     run_test();
   end
 
-  // ---------------------------------------------------------------------------
-  // Phase 7: SVA bind (TaskDivision — 5 files, 0 expected violations on smoke)
-  // ---------------------------------------------------------------------------
-  bind ct_mmu_top      mmu_sva             u_mmu_sva        (.*);
-  bind mmu_arb         mmu_arb_sva         u_mmu_arb_sva    (.*);
-  bind mmu_l2tlb      mmu_l2tlb_rrpv_sva  u_mmu_l2_sva     (.*);
-  bind mmu_l1itlb     mmu_plru_sva        u_mmu_l1i_plru  (.*);
-  bind mmu_l2tlb_reqq credit_sva         u_mmu_l2q_cred  (.*);
-
 endmodule : tb_top
+
+// Phase 7: SVA bind — 工程师 A 完整实现（iplru/dplru 子模块，非 mmu_l1itlb 口直连）
+// 参考: MMU_UVM_BuildPlan_v3 §9.2, TaskDivision Phase 7
+bind ct_mmu_top   mmu_sva             u_mmu_sva   (.*);
+bind mmu_arb      mmu_arb_sva         u_arb_sva   (.*);
+bind mmu_l2tlb    mmu_l2tlb_rrpv_sva  u_l2tlb_sva (.*);
+bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
+bind ct_mmu_iplru mmu_plru_sva        u_iplru_sva (.*);
+bind ct_mmu_dplru mmu_dplru_sva       u_dplru_sva (.*);

@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-26
+> **更新**：2026-04-26（Phase 7 工程师 A 部分已记档）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -17,8 +17,8 @@
 | **Phase 4**  | PTW 内存模型 + 参考模型                    | A                  | ✅ 完成               | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0                                                                                                  |
 | **Phase 5**  | IFU + LSU Agent + Translation SB           | A , B 协同        | ✅ 完成（2026-04-26） | `make phase5` 通过（comp + 5+3 seeds + phase5_check）；8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0`。`make phase5_ptw4k` 也通过（P5-34 修复后 `passthrough=0`） |
 | **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ✅ 完成（2026-04-26） | ✅`make phase6_full` 通过（`comp` + `phase6` 矩阵/检查 + `phase6_rtu_ptw` 3 seed）；12+3 份 log 均 UVM 0/0，Invalidate SB 与 `[abort_check]` 摘要达标 |
-| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅ **已达成**（2026-04-26 P7 交付合入） | 7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + 5×SVA bind + `en_whitebox_cg`；门禁：`make phase7`（3×`run` 或等价）UVM 0/0、SVA 无 `assert` failure；覆盖 HTML：`make run_cov` + `make cov` → `output/coverage/urgReport` 见 Makefile `URG_OPTS`；审计表 [P7B01_covergroup_vif_audit.md](P7B01_covergroup_vif_audit.md) |
-| **Phase 8**  | Virtual Sequence 实现                      | B                  | 🔒 等待 Phase 7       | —                                                                                                                                                               |
+| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅ **已达成**（2026-04-26，A/B 合入+合并） | B：7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + `en_whitebox_cg` + `make phase7` / `run_cov`+`urgReport`；A：**5×SVA 为完整属性版**（与 `B_phase7` 合入时保留 A 实现，非桩代码）+ `tb_top` bind + `Files.f`；审计 [P7B01_covergroup_vif_audit.md](P7B01_covergroup_vif_audit.md) |
+| **Phase 8**  | Virtual Sequence 实现                      | B                  | 🔒 等待 Phase 7 整体验收 | —                                                                                                                                                               |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | 🔒 等待 Phase 8       | —                                                                                                                                                               |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | 🔒 等待 Phase 9       | —                                                                                                                                                               |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | 🔒 等待 Phase 10      | —                                                                                                                                                               |
@@ -388,6 +388,21 @@
 
 ## Phase 7 详细进度
 
+### 工程师 A：5×SVA + bind + Files.f（完整实现，与 `B_phase7` 合并时保留）
+
+**负责**：工程师 A
+
+| 步骤   | 交付物 | 状态 | 说明 |
+| ------ | ------ | ---- | ---- |
+| 7-A1   | `testbench/top/mmu_sva.sv` | ✅ | 顶层 `ct_mmu_top`：IFU/LSU VA 非 X、pipe0/1/2 `stall` 与 `pa_vld` 同拍互斥 |
+| 7-A2   | `testbench/top/mmu_arb_sva.sv` | ✅ | `mmu_arb`：五路 grant `$onehot0`/`$onehot` 与 `arb_l2tlb_req` 一致、`sva_ptw_write_pipe_reset_safe` |
+| 7-A3   | `testbench/top/mmu_l2tlb_rrpv_sva.sv` | ✅ | `mmu_l2tlb`：写路径 tag/data 非 X；raw_vld/inv/RRPV 需内部节点见文件注释 |
+| 7-A4   | `testbench/top/mmu_plru_sva.sv` | ✅ | `bind ct_mmu_iplru` / `ct_mmu_dplru`；回填 victim one-hot+非 X |
+| 7-A5   | `testbench/top/credit_sva.sv` | ✅ | `bind mmu_l2tlb_reqq`；I/D 在 Reqq **独立、可同周期申请**（不互斥） |
+| 7-A6   | `tb_top.sv` 片尾 `bind` + `Files.f` | ✅ | 与 B 的 `comp_all` 顺序已对齐；合并冲突时以 A 版 SVA 源为准 |
+
+**联调验证**：`make comp` 0 error；`make phase7` 或 `test_mmu_sanity` / `phase6_fast` 子集下 UVM 0/0、无 SVA assert fail（以服务器 log 为准）。
+
 ### P7-B-00 — 与 A 同步、范围与 Files.f 冻结（2026-04-26）
 
 **依据**：[MMU_UVM_BuildPlan_v3_final.md](MMU_UVM_BuildPlan_v3_final.md) §10.1–§10.2、[MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md) §3 Phase 7 退出准则、Phase 7 B 子计划（与 §10.3/10.4 边界说明一致）。
@@ -433,7 +448,7 @@
 | §10.1 | `ifu_agent/ifu_covergroups.svh`，`lsu_agent/lsu_covergroups.svh`，`cp0_agent/cp0_covergroups.svh`，`pmp_agent/pmp_covergroups.svh`，`sysmap_cfg_agent/sysmap_cfg_covergroups.svh`，`misc_agent/misc_covergroups.svh`，`ptw_mem_agent/ptw_mem_covergroups.svh`（7 文件） |
 | §10.2 | [mmu_env_cg_whitebox.svh](mmu_verification/testbench/env/mmu_env_cg_whitebox.svh) + [mmu_top_cfg.svh](mmu_verification/testbench/env/mmu_top_cfg.svh) `en_whitebox_cg` + [mmu_env.svh](mmu_verification/testbench/env/mmu_env.svh) 实例化 |
 
-**A 侧**（非 B 改但为门禁依赖）：5×SVA 源 + `tb_top` bind（路径与命名以 A 落盘为准，上表为 TaskDivision 约定名）。
+**A 侧**（非 B 改但为门禁依赖）：5×SVA 源 + `tb_top` bind；**与远程 `B_phase7` 合并后源文件为工程师 A 完整实现**（非仅时钟 X-check 桩）。
 
 ---
 
@@ -456,7 +471,7 @@
 | **M4** — 参考模型就绪              | Phase 4 退出准则                          | ✅**已达成**（2026-04-24）                                                                                                                                        |
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则                          | ✅**已再次达成**（2026-04-26）：`make phase5` 完整通过（comp + 5+3 seed + phase5_check 0/0）；随后 `make phase5_ptw4k` 通过（P5-34 修复后 `passthrough=0`） |
 | **M6** — 全功能验证                | Phase 6 退出准则                          | ✅**已达成**（2026-04-26）：`make phase6_full`（SFENCE 矩阵 + RTU/PTW `abort_check`）                                                                                 |
-| **M7** — SVA + 覆盖率框架          | Phase 7 退出准则（§10.1+§10.2+SVA+smoke/≥3 测） | ✅ **已达成**（2026-04-26）：见上 Phase 7 行与 `make phase7` / `make run_cov`+`urgReport` 路径；§10.3/10.4 基线不纳入、推后至 Phase 10+ 见 P7-B-00 |
+| **M7** — SVA + 覆盖率框架          | Phase 7 退出准则（§10.1+§10.2+SVA+smoke/≥3 测） | ✅ **已达成**（2026-04-26）：A 完整 5×SVA + B cg/白盒 + `make phase7` 等；§10.3/10.4 基线不纳入、推后见 P7-B-00 |
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ⏳                                                                                                                                                                      |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ⏳                                                                                                                                                                      |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ⏳                                                                                                                                                                      |

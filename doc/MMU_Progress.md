@@ -16,7 +16,7 @@
 | **Phase 3**  | 最简 Active Agent + Sanity Test            | A/B 并行           | ✅ 完成               | ✅`UVM_ERROR=0`，`UVM_FATAL=0`，`mmu_xx_mmu_en=1`，仿真时间 81500 ps（2026-04-24）                                                                         |
 | **Phase 4**  | PTW 内存模型 + 参考模型                    | A                  | ✅ 完成               | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0                                                                                                  |
 | **Phase 5**  | IFU + LSU Agent + Translation SB           | A , B 协同        | ✅ 完成（2026-04-26） | `make phase5` 通过（comp + 5+3 seeds + phase5_check）；8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0`。`make phase5_ptw4k` 也通过（P5-34 修复后 `passthrough=0`） |
-| **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ⏳ 待开始             | —                                                                                                                                                               |
+| **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | 🔄 进行中（B完成，A未开始） | ⏳ 退出准则检查未开启                                                                                                                                           |
 | **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | 🔒 等待 Phase 6       | —                                                                                                                                                               |
 | **Phase 8**  | Virtual Sequence 实现                      | B                  | 🔒 等待 Phase 7       | —                                                                                                                                                               |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | 🔒 等待 Phase 8       | —                                                                                                                                                               |
@@ -361,6 +361,26 @@
 | 6 | `mmu_credit_sb` 仿真结束信用守恒计数 =0                           | **A** | ✅ phase5 log 统计归零；`phase5_ptw4k` 亦 PASS                                                                                          |
 | 7 | `misc_agent` 编译通过；`rtu_flush`/`biu_smp_disable` 实际驱动 | **A** | ✅ 随 env 构建；专项用例 ⏳ Phase 6+                                                                                                      |
 | 8 | `scan_logs.pl` 无非预期 ERROR/FATAL                               | A+B         | ⚠️ 环境依赖：服务器缺 `Text::Table`（`phase5_scan_logs` 报模块缺失）；Makefile 已加 fallback grep 检查，当前 8 份 phase5 log 均 0/0 |
+
+---
+
+## Phase 6 详细进度（🔄 进行中：B 已完成，A 未开始，退出准则检查未开启）
+
+**负责**：工程师 B（主）/ 工程师 A（配合）  
+**当前状态快照（2026-04-26）**：
+
+- B 侧任务：✅ 已完成（`drive_inv`、`mmu_invalidate_sb`、invalidate 序列与 phase6 回归入口）
+- A 侧任务：⏳ 未开始（`misc_agent` 的 flush/expt 注入增强与 HPCP cnt_en 采样完善）
+- 退出准则检查：⏳ 未开启（尚未执行 `4 模式 × 100 次 × 3 seeds` 的正式门禁回归）
+
+| 项目 | 负责人 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `lsu_driver.svh` `drive_inv` 子线程（4 模式） | B | ✅ | 已实现并接入 `mmu_lsu_tlb_inv_done` 完成握手 |
+| `lsu_sequences.svh` invalidate 序列库 | B | ✅ | `tlb_inv_*` + `sfence_vma_stress_seq` 已可用 |
+| `mmu_invalidate_sb.svh` + env 连线 | B | ✅ | 已接入 `lsu_monitor.ap_inv` 与 `cp0_monitor.ap` |
+| `misc_driver.svh` flush/expt 注入增强 | A | ⏳ | 尚未开始 |
+| `misc_monitor.svh` HPCP `cnt_en` 采样完善 | A | ⏳ | 尚未开始 |
+| Phase 6 退出准则门禁回归 | A+B | ⏳ | 尚未开启（需在 A 侧任务开始后联合执行） |
 
 ---
 

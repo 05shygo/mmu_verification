@@ -44,6 +44,7 @@ module tb_top;
   pmp_if        pmp_if_inst        (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   sysmap_cfg_if sysmap_cfg_if_inst (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   misc_if       misc_if_inst       (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
+  mmu_dut_probes_if dut_probes_if   (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
 
   //=========================================================================
   // DUT Instantiation — ct_mmu_top
@@ -226,6 +227,23 @@ module tb_top;
     .rtu_yy_xx_flush          (misc_if_inst.rtu_yy_xx_flush)
   );
 
+  // Phase 7 whitebox: hierarchical refs only in module (not in mmu_env_pkg)
+  assign dut_probes_if.l1i_entry_vld    = u_dut.x_mmu_l1itlb.entry_vld;
+  assign dut_probes_if.l1i_ref_fsm      = u_dut.x_mmu_l1itlb.iutlb_top_ref_cur_st;
+  assign dut_probes_if.l1i_credit_cnt   = u_dut.x_mmu_l1itlb.credit_cnt;
+  assign dut_probes_if.l1d_mb_vld        = u_dut.u_mmu_l1dtlb.mb_entry_vld;
+  assign dut_probes_if.l1d_mb_st0        = u_dut.u_mmu_l1dtlb.mb_entry_state[0];
+  assign dut_probes_if.l2_bank0          = u_dut.x_mmu_l2tlb.way_index[0][2:0];
+  assign dut_probes_if.l2_final_way_hit  = u_dut.x_mmu_l2tlb.final_way_hit;
+  assign dut_probes_if.l2_raw_pre_pgs0  = u_dut.x_mmu_l2tlb.raw_pre_pgs[0];
+  assign dut_probes_if.l2_reqq_vld_vec  = u_dut.x_mmu_l2tlb.x_l2tlb_reqq.entry_vld_vec;
+  assign dut_probes_if.l2_reqq_qid      = u_dut.x_mmu_l2tlb.x_l2tlb_reqq.issue_queue_id;
+  assign dut_probes_if.ptw_xbar_hit_lvl = u_dut.x_ct_mmu_ptw.xbar_twu_hit_level;
+  assign dut_probes_if.ptw_mbuf_twu_lvl  = u_dut.x_ct_mmu_ptw.mbuf_twu_lvl;
+  assign dut_probes_if.ptw_fault_any     = u_dut.x_ct_mmu_ptw.pgflt_vld
+                                         | u_dut.x_ct_mmu_ptw.acc_err_vld;
+  assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
+
   //=========================================================================
   // UVM Config DB — Publish Virtual Interfaces
   //=========================================================================
@@ -245,6 +263,8 @@ module tb_top;
       null, "*", "SYSMAP_CFG_VIF", sysmap_cfg_if_inst);
     uvm_config_db #(virtual misc_if)::set(
       null, "*", "MISC_VIF", misc_if_inst);
+    uvm_config_db #(virtual mmu_dut_probes_if)::set(
+      null, "*", "MMU_DUT_PROBES_VIF", dut_probes_if);
 
     // Default simulation timeout (overridable by test)
     uvm_config_db #(int)::set(null, "*", "timeout", 100_000);

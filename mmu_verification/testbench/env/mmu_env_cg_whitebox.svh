@@ -1,7 +1,8 @@
 // =============================================================================
 // MMU UVM Verification — testbench/env/mmu_env_cg_whitebox.svh
-// Phase 7 §10.2：白盒 covergroup（$root.tb_top.u_dut 层次引用）
-// P7-B-09b：§10.3/§10.4 gap CG 不纳入本文件 — 见 doc/MMU_Progress.md Phase 7
+// Phase 7 §10.2：白盒 covergroup — 仅通过 virtual mmu_dut_probes_if 采样
+//（层次信号在 tb_top 内 assign 到 mmu_dut_probes_if，禁止在 package 内 $root）
+// P7-B-09b：§10.3/§10.4 gap CG 不纳入 — 见 doc/MMU_Progress.md Phase 7
 // =============================================================================
 `ifndef MMU_ENV_CG_WHITEBOX_SVH
 `define MMU_ENV_CG_WHITEBOX_SVH
@@ -9,7 +10,7 @@
 class mmu_env_cg_whitebox extends uvm_component;
   `uvm_component_utils(mmu_env_cg_whitebox)
 
-  virtual ifu_if v_clk;
+  virtual mmu_dut_probes_if v_probe;
 
   int unsigned wb_itlb_ent;
   logic [1:0]  wb_itlb_fsm;
@@ -71,7 +72,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- cg_tlboper_fsm -------------------------------------------------------
   covergroup cg_tlboper_fsm;
     option.per_instance = 1;
-    cp_fsm_state: coverpoint wb_tlbiva { bins s[] = {[0:15]}; }  // INVVA/相关 FSM
+    cp_fsm_state: coverpoint wb_tlbiva { bins s[] = {[0:15]}; }
   endgroup
 
   function int unsigned umin(int unsigned a, int b);
@@ -94,19 +95,19 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    if (!uvm_config_db#(virtual ifu_if)::get(this, "", "IFU_VIF", v_clk)) begin
-      `uvm_info(get_type_name(), "IFU_VIF not found — whitebox CG disabled in run_phase", UVM_LOW)
+    if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe)) begin
+      `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not in config_db — mmu_env_cg_whitebox will idle", UVM_LOW)
     end
   endfunction
 
   virtual task run_phase(uvm_phase phase);
-    if (v_clk == null) begin
-      `uvm_info(get_type_name(), "IFU_VIF not bound — mmu_env_cg_whitebox idle", UVM_LOW)
+    if (v_probe == null) begin
+      `uvm_info(get_type_name(), "DUT probes vif not bound — whitebox CG idle (fix tb_top assign + set)", UVM_LOW)
       return;
     end
     forever begin
-      @(posedge v_clk.clk_i);
-      if (v_clk.rst_ni === 1'b0) continue;
+      @(posedge v_probe.clk_i);
+      if (v_probe.rst_ni === 1'b0) continue;
       sample_dut;
       cg_ptw_walk.sample();
       cg_l2tlb_bank.sample();
@@ -117,28 +118,21 @@ class mmu_env_cg_whitebox extends uvm_component;
     end
   endtask
 
-  // 综合工具不可见时保持 last 值；仿真用 $root 直读
   virtual function void sample_dut;
-    // ITLB
-    wb_itlb_ent    = cnt16($root.tb_top.u_dut.x_mmu_l1itlb.entry_vld);
-    wb_itlb_fsm    = $root.tb_top.u_dut.x_mmu_l1itlb.iutlb_top_ref_cur_st;
-    wb_itlb_credit = $root.tb_top.u_dut.x_mmu_l1itlb.credit_cnt;
-    // DTLB MB
-    wb_dtlb_mb_occ  = $countones($root.tb_top.u_dut.u_mmu_l1dtlb.mb_entry_vld);
-    wb_dtlb_mb0_st  = $root.tb_top.u_dut.u_mmu_l1dtlb.mb_entry_state[0];
-    // L2 TLB
-    wb_l2_b0  = $root.tb_top.u_dut.x_mmu_l2tlb.way_index[0][2:0];
-    wb_l2_w0  = f_first_onehot3($root.tb_top.u_dut.x_mmu_l2tlb.final_way_hit);
-    wb_l2_pgs0= $root.tb_top.u_dut.x_mmu_l2tlb.raw_pre_pgs[0];
-    // ReqQ
-    wb_reqq_dep = $countones($root.tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.entry_vld_vec);
-    wb_reqq_iss = $root.tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.issue_queue_id;
-    // PTW
-    wb_xbar_hit = $root.tb_top.u_dut.x_ct_mmu_ptw.xbar_twu_hit_level;
-    wb_mbuf_lvl = $root.tb_top.u_dut.x_ct_mmu_ptw.mbuf_twu_lvl;
-    wb_ptw_flt  = $root.tb_top.u_dut.x_ct_mmu_ptw.pgflt_vld | $root.tb_top.u_dut.x_ct_mmu_ptw.acc_err_vld;
-    // TlbOper
-    wb_tlbiva   = $root.tb_top.u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
+    wb_itlb_ent    = cnt16(v_probe.l1i_entry_vld);
+    wb_itlb_fsm    = v_probe.l1i_ref_fsm;
+    wb_itlb_credit = v_probe.l1i_credit_cnt;
+    wb_dtlb_mb_occ  = $countones(v_probe.l1d_mb_vld);
+    wb_dtlb_mb0_st  = v_probe.l1d_mb_st0;
+    wb_l2_b0  = v_probe.l2_bank0;
+    wb_l2_w0  = f_first_onehot3(v_probe.l2_final_way_hit);
+    wb_l2_pgs0= v_probe.l2_raw_pre_pgs0;
+    wb_reqq_dep = $countones(v_probe.l2_reqq_vld_vec);
+    wb_reqq_iss = v_probe.l2_reqq_qid;
+    wb_xbar_hit = v_probe.ptw_xbar_hit_lvl;
+    wb_mbuf_lvl = v_probe.ptw_mbuf_twu_lvl;
+    wb_ptw_flt  = v_probe.ptw_fault_any;
+    wb_tlbiva   = v_probe.tlbiva_cur_st;
   endfunction
 
   function logic [2:0] f_first_onehot3(input logic [7:0] oh);

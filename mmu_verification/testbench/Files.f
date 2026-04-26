@@ -89,6 +89,8 @@ ${TB_DIR}/ptw_mem_agent/ptw_mem_if.sv
 ${TB_DIR}/pmp_agent/pmp_if.sv
 ${TB_DIR}/sysmap_cfg_agent/sysmap_cfg_if.sv
 ${TB_DIR}/misc_agent/misc_if.sv
+# Phase 7: DUT 内部探针（层次仅在 tb_top 中 assign；mmu_env_cg_whitebox 用 virtual if）
+${TB_DIR}/env/mmu_dut_probes_if.sv
 
 # ---------------------------------------------------------------------------
 # Phase 2: Common utilities package

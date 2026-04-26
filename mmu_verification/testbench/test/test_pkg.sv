@@ -22,6 +22,7 @@ package test_pkg;
   import ifu_agent_pkg::*;
   import lsu_agent_pkg::*;
   import ptw_mem_agent_pkg::*;  // Phase 4
+  import misc_agent_pkg::*;     // Phase 6 misc sequences/types
   import mmu_env_pkg::*;   // mmu_top_cfg, mmu_env, mmu_ref_model, mmu_page_table_mem
 
   `include "uvm_macros.svh"

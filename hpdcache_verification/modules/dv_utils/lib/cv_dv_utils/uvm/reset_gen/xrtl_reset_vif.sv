@@ -66,7 +66,10 @@ import reset_vif_xrtl_pkg::*;
     // reset generation
     //--------------------------------------------------------------------
     // Initialization supported by Veloce
+    // hvl_obj must exist before the first @posedge clk that can trigger
+    // ->hvl_obj.* (VCS NOA if the TB never assigns from outside the if).
     initial begin
+        hvl_obj = new("xrtl_reset_vif");
         reset <= init_value;
         ra_cnt_FF = init_assert;
         post_shutdown_phase <= 1'b0;
@@ -87,12 +90,14 @@ import reset_vif_xrtl_pkg::*;
     //--------------------------------------------------------------------
    always @( posedge clk) begin
        reset_D1_FF <= reset;
-       if (  reset && !reset_D1_FF ) ->hvl_obj.reset_asserted;
-       if ( ra_cnt_FF == 'd1 )  begin  // assert event on clock when reset
-                                       // drops
-          repeat (1+post_reset_delay) @( posedge clk );
-          ->hvl_obj.reset_deasserted;
-       end // if
+       if (hvl_obj != null) begin
+          if (  reset && !reset_D1_FF ) ->hvl_obj.reset_asserted;
+          if ( ra_cnt_FF == 'd1 )  begin  // assert event on clock when reset
+                                          // drops
+             repeat (1+post_reset_delay) @( posedge clk );
+             ->hvl_obj.reset_deasserted;
+          end // if
+       end
    end // always
 
 endinterface : xrtl_reset_vif

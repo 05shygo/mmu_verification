@@ -69,15 +69,40 @@ endclass : ifu_sequential_fetch_seq
 class ifu_abort_seq extends ifu_base_seq;
   `uvm_object_utils(ifu_abort_seq)
 
+  // Match the default Phase-9 bringup window in phase9_generated_test_base.
+  // Warm one mapped ITLB entry first, then issue aborts on the same VA so the
+  // "abort no stall / no pollution" scenario does not devolve into random PTW
+  // miss traffic.
+  localparam bit [62:0] P9_IFU_MAPPED_BASE_VA = 63'h10_0000;
+  localparam bit [62:0] P9_IFU_MAPPED_LAST_VA = 63'h11_ffff;
+
   function new(string name = "ifu_abort_seq");
     super.new(name);
   endfunction
 
   virtual task body();
-    ifu_txn tr;
+    ifu_txn tr, warmup_tr;
+    bit [62:0] abort_va;
+
+    `uvm_create(warmup_tr)
+    if (!warmup_tr.randomize() with {
+          abort == 1'b0;
+          idle_cycles == 0;
+          va inside {[P9_IFU_MAPPED_BASE_VA:P9_IFU_MAPPED_LAST_VA]};
+        })
+      `uvm_fatal(get_type_name(), "ifu_abort_seq warmup randomize failed")
+    abort_va = warmup_tr.va;
+    `uvm_send(warmup_tr)
+
     for (int i = 0; i < int'(num_txn); i++) begin
       `uvm_create(tr)
-      assert(tr.randomize() with { abort == 1'b1; idle_cycles == 0; });
+      tr.c_no_abort.constraint_mode(0);
+      if (!tr.randomize() with {
+            abort == 1'b1;
+            idle_cycles == 0;
+            va == abort_va;
+          })
+        `uvm_fatal(get_type_name(), "ifu_abort_seq randomize failed")
       `uvm_send(tr)
     end
   endtask

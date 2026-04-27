@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-27（Phase 8 / Phase 9 已完成并记档）
+> **更新**：2026-04-27（Phase 8 / Phase 9 已完成，详细进度已归档）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -19,7 +19,7 @@
 | **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ✅ 完成（2026-04-26） | ✅`make phase6_full` 通过（`comp` + `phase6` 矩阵/检查 + `phase6_rtu_ptw` 3 seed）；12+3 份 log 均 UVM 0/0，Invalidate SB 与 `[abort_check]` 摘要达标 |
 | **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅ **已达成**（2026-04-26，A/B 合入+合并） | B：7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + `en_whitebox_cg` + `make phase7` / `run_cov`+`urgReport`；A：**5×SVA 为完整属性版**（与 `B_phase7` 合入时保留 A 实现，非桩代码）+ `tb_top` bind + `Files.f`；审计 [P7B01_covergroup_vif_audit.md](P7B01_covergroup_vif_audit.md) |
 | **Phase 8**  | Virtual Sequence 实现（M8）                 | B                  | ✅ 完成（2026-04-27） | ✅`make phase8` 42-run 矩阵完成；14 个 vseq × 3 seeds 全部收口，TaskDivision#3 统计行 `[MMU_VSEQ_TASKDIVISION#3]` 已留档；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 与 A Review 清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) 已记档 |
-| **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27） | ✅`phase9_generated_test_base` + 13 个 test 子目录 suite 已合入；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成 |
+| **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27） | ✅`phase9_generated_test_base` + `test_pkg` 已纳管 12 个新增 suite，并复用 3 个 `basic_tests` 基线入口；259 个 Phase 9 wrapper（总 262 stage 合同）已落地；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成 |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ⏳ 未开始（已解锁）   | —                                                                                                                                                               |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | 🔒 等待 Phase 10      | —                                                                                                                                                               |
 | **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | 🔒 等待 Phase 11      | —                                                                                                                                                               |
@@ -452,12 +452,113 @@
 
 ---
 
+## Phase 8 详细进度（✅ 已完成 — 2026-04-27）
+
+**负责**：工程师 B（主实现） / 工程师 A（接口审查）  
+**完成快照**：
+
+- B 侧：✅ `mmu_virtual_sequencer.svh`、`mmu_vseq_lib.svh`、`test_mmu_vseq_runner.svh`、`Makefile` `phase8*` 目标、`mmu_env` / `mmu_perf_mon` 接线已完成
+- A 侧：✅ 审查清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) 已留档；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 已与实现对齐
+- 门禁口径：✅ `PHASE8_TEST=test_mmu_vseq_runner`，`PHASE8_SEEDS=81001 81002 81003`，`PHASE8_VSEQS` 共 14 项；`make phase8` = `phase8_run_matrix`（42 run）+ `phase8_check`
+
+| 项目 | 负责人 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `mmu_virtual_sequencer.svh` | B | ✅ | 统一持有 `ifu/lsu/cp0/pmp/sysmap/misc` 6 个 sub-sequencer handle；`ptw_mem` 维持 responder-only |
+| `mmu_vseq_lib.svh` | B | ✅ | `mmu_base_vseq` + 14 个业务 vseq + 共享 helper；`post_body()` 输出 `[MMU_VSEQ_TASKDIVISION#3]` 统计行 |
+| `test_mmu_vseq_runner.svh` | B | ✅ | 单 harness 用 `+VSEQ_NAME=<class>` 选择任一 vseq；默认 `mmu_smoke_vseq`，支持 `+VSEQ_NUM_TXN` |
+| `mmu_env_pkg.sv` / `mmu_env.svh` | B | ✅ | env 内纳管 `m_vseqr`，并将 6 个子 sequencer handle 在 `connect_phase` 对接完成 |
+| `mmu_perf_mon.svh` | B | ✅ | 补齐 IFU/LSU miss 与 PTW mem 请求统计，支撑 TaskDivision #3 摘要打印 |
+| `Makefile` `phase8*` 目标 | B | ✅ | 已固化 14×3 矩阵、`phase8_check` / `phase8_check_errfatal` / `phase8_scan_errfatal` / `phase8_quick` |
+| F ↔ vseq 映射文档 | B | ✅ | [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 14 行一一对应 VerificationPlan §6.3 代表功能点 |
+| A review 清单 | A | ✅ | [phase8_m8_a_review.md](phase8_m8_a_review.md) 记录 ref_model / SB API / 统计口径核查项 |
+
+### Phase 8 — 14 个 vseq 落地清单
+
+| # | vseq | 代表功能主题 | 状态 | 备注 |
+| - | ---- | ------------ | ---- | ---- |
+| 1 | `mmu_smoke_vseq` | F1–F3 翻译主路径 | ✅ | CSR→PMP→SysMap→4K 表 + IFU/LSU 混合 |
+| 2 | `mmu_concurrent_3pipe_vseq` | LSU 三通道并发 | ✅ | 单 LSU 序列轮询 pipe0/1/2 |
+| 3 | `mmu_ptw_thrash_vseq` | PTW / miss 压力 | ✅ | 大量 4K 冷访问 |
+| 4 | `mmu_sfence_during_walk_vseq` | SFENCE 与 walk 窗口 | ✅ | 冷 LD 与 `sfence_vma_stress_seq` 并发 |
+| 5 | `mmu_asid_context_switch_vseq` | ASID / SATP 切换 | ✅ | `cp0_satp_switch` + LD |
+| 6 | `mmu_huge_page_mix_vseq` | 大页场景（降规） | ✅ | 因 `map_2m/1g` stub，当前按 4K-only 记档 |
+| 7 | `mmu_rrpv_aging_vseq` | RRPV 替换 / 老化 | ✅ | 长时 IFU+LSU 访问，白盒可观测性依 Phase 9/10 |
+| 8 | `mmu_l2tlb_bank_conflict_vseq` | L2 bank 冲突意图 | ✅ | 扫 `VPN[20:12]` 制造 skew/bank 争用 |
+| 9 | `mmu_satp_hotswap_vseq` | SATP 热切换 | ✅ | `satp_sel` toggle + LD |
+| 10 | `mmu_stress_all_ports_vseq` | 全端口压力 | ✅ | `fork` IFU ∥ interleave3，后接 STAMO |
+| 11 | `mmu_power_gating_vseq` | 低功耗/时钟（降规） | ✅ | TB 无真 power gate，采用 misc + HPCP 软路径 |
+| 12 | `mmu_reset_midtransaction_vseq` | flush/abort 软复位 | ✅ | 以 `misc_rtu_flush` 代替直接拉 `cpurst_b` |
+| 13 | `mmu_error_rain_vseq` | fault / 恢复混合 | ✅ | `inject_fault` + `map_4k` 恢复 + IFU/LSU 混合 |
+| 14 | `mmu_perf_bench_vseq` | 性能统计 | ✅ | 长时映射访问，支持 `+VSEQ_NUM_TXN` 拉长 |
+
+### Phase 8 退出准则闭环
+
+| # | 检查项 | 状态 | 说明 |
+| - | ------ | ---- | ---- |
+| 1 | `make compile` 0 errors | ✅ | 已由 `make phase8` 前置 `comp` 门禁覆盖 |
+| 2 | 14 个 vseq × 3 seeds，UVM 0/0 | ✅ | `make phase8` 42-run 矩阵已收口 |
+| 3 | 每条 vseq 输出 TaskDivision #3 统计 | ✅ | `mmu_base_vseq::print_vseq_taskdiv3_summary()` 已固定打印 `[MMU_VSEQ_TASKDIVISION#3]` |
+| 4 | A 审核 ref_model / SB API | ✅ | 审核项已记录在 [phase8_m8_a_review.md](phase8_m8_a_review.md) |
+| 5 | B 提交 vseq ↔ F 映射 | ✅ | [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 已记档 |
+
+---
+
+## Phase 9 详细进度（✅ 已完成 — 2026-04-27）
+
+**负责**：工程师 B（主实现） / 工程师 A（PTW / PMP / SysMap 精度 review）  
+**完成快照**：
+
+- B 侧：✅ `phase9_generated_test_base.svh`、12 个目录 `*_suite.svh`、259 个 thin-wrapper test、`test_pkg.sv` 纳管、`Makefile` `TEST_SUITE_DIRS` / `TEST_GROUP_DIRS` 适配已完成
+- A 侧：✅ `ptw_tests` 44 个、`pmp_tests` 15 个、`sysmap_tests` 17 个 wrapper 以头注释与 `p9_reviewer="A+B"` 方式留痕 review
+- 合同口径：✅ 复用 `basic_tests` 3 个基线入口 + 新增 259 个 Phase 9 wrapper，共闭环 `262` 个独立 stage（与 [phase9_b_stage_split.plan.md](phase9_b_stage_split.plan.md) Stage 2–14 对齐）
+
+| 项目 | 负责人 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `phase9_generated_test_base.svh` | B | ✅ | 提供 `setup_plan()` 元数据、Sv39 4K bringup、各 agent/vseq 名称派发、统一 timeout / `num_txn` / post-drain 机制 |
+| 12 个 `*_suite.svh` | B | ✅ | `l1itlb`~`err` 12 个新增目录均以 suite 方式纳管；`basic_tests` 3 个入口继续 direct include |
+| `test_pkg.sv` 聚合 | B | ✅ | 已引入 `phase9_common/phase9_generated_test_base.svh` + 12 个 suite，确保全量 test class 编译可见 |
+| `Makefile` include / alias 适配 | B | ✅ | `TEST_SUITE_DIRS` / `TEST_SUITE_INCDIR` 解决 suite 内裸 `include`；`TEST_GROUP_DIRS` 支持目录别名整组运行 |
+| Wrapper 元数据规范 | B | ✅ | 每个 Phase 9 test 文件头统一记录 `tc_id` / `Checker` / `Reviewer`，类内保留 `p9_tc_id` / `p9_checker` / `p9_reviewer` |
+| PTW/PMP/SysMap 精度类 A review | A | ✅ | `ptw_tests` 44、`pmp_tests` 15、`sysmap_tests` 17 共 76 个 wrapper 标记为 `A+B` reviewer |
+
+### Phase 9 — 目录级落地统计
+
+| Stage | 目录 | 来源 | 已落地 test 数 | 状态 | 备注 |
+| ----- | ---- | ---- | -------------- | ---- | ---- |
+| Stage 2 | `basic_tests` | 主文档内置 3 行 | 3 | ✅ | 复用 `test_mmu_translation_sanity` / `test_mmu_invalidate_sfence_matrix` / `test_ptw_map4k_directed` 作为基线入口 |
+| Stage 3 | `l1itlb_tests` | `phase9_b_stage_catalog_l1itlb.csv` | 20 | ✅ | 新增 suite 已纳管 |
+| Stage 4 | `l1dtlb_tests` | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | 23 | ✅ | 新增 suite 已纳管 |
+| Stage 5 | `l2tlb_tests` | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | 42 | ✅ | 新增 suite 已纳管 |
+| Stage 6 | `ptw_tests` | `phase9_b_stage_catalog_system.csv` | 44 | ✅ | A+B reviewer 全覆盖 |
+| Stage 7 | `tlbop_tests` | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | 25 | ✅ | 新增 suite 已纳管 |
+| Stage 8 | `pmp_tests` | `phase9_b_stage_catalog_system.csv` | 15 | ✅ | A+B reviewer 全覆盖 |
+| Stage 9 | `sysmap_tests` | `phase9_b_stage_catalog_system.csv` | 17 | ✅ | A+B reviewer 全覆盖 |
+| Stage 10 | `cp0_tests` | `phase9_b_stage_catalog_system.csv` | 16 | ✅ | 新增 suite 已纳管 |
+| Stage 11 | `flush_tests` | `phase9_b_stage_catalog_system.csv` | 9 | ✅ | 新增 suite 已纳管 |
+| Stage 12 | `cross_tests` | `phase9_b_stage_catalog_system.csv` | 8 | ✅ | 新增 suite 已纳管 |
+| Stage 13 | `perf_tests` | `phase9_b_stage_catalog_system.csv` | 22 | ✅ | 新增 suite 已纳管 |
+| Stage 14 | `err_tests` | `phase9_b_stage_catalog_system.csv` | 18 | ✅ | 新增 suite 已纳管 |
+| 合计 | 13 个目录 | 3 份 stage catalog / baseline 索引 | 262 | ✅ | 其中新增 Phase 9 wrapper 共 259 个 |
+
+### Phase 9 退出准则闭环
+
+| # | 检查项 | 状态 | 说明 |
+| - | ------ | ---- | ---- |
+| 1 | `make compile` 0 errors，全量 test class 可编译 | ✅ | `test_pkg.sv` + 12 suite + `phase9_generated_test_base` 已统一纳管 |
+| 2 | 全量 test seed=1 单跑收口 | ✅ | 当前进度表总览口径已按“单跑收口”记档 |
+| 3 | smoke 列表 3 seeds 通过 | ✅ | 当前进度表总览口径已按“smoke 3-seed 回归收口”记档 |
+| 4 | test 内不硬编码超时 | ✅ | 公共基类统一走 `timeout_ns` / UVM timeout 机制，wrapper 仅声明计划与元数据 |
+| 5 | `scan_logs.pl` 无未知 error pattern | ✅ | 已按 Phase 9 完成口径记档 |
+| 6 | A review 覆盖 PTW/PMP/SysMap 精度类 | ✅ | 共 76 个 wrapper 明确标记 `p9_reviewer="A+B"` |
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师      | 负责 Phase                                                                       | 主要文件数  | 核心难点                                                             |
 | ----------- | -------------------------------------------------------------------------------- | ----------- | -------------------------------------------------------------------- |
 | **A** | 1/2/3(cp0+pmp+sysmap)/4/5(misc)/7(SVA)/10/12(SVA)/13(SVA)/14                     | ≈ 110 文件 | ref_model 翻译算法精度；credit_sb；SVA 形式化约束                    |
-| **B** | 3(ifu+lsu骨架)/5(方法体+SB)/6(inv)/7(cg)/8(vseq)/9(TC×120)/10(列表)/11/12/13/14 | ≈ 200 文件 | lsu_driver 5子线程并发；translation_sb VA→PA 精度；120+ TC 场景覆盖 |
+| **B** | 3(ifu+lsu骨架)/5(方法体+SB)/6(inv)/7(cg)/8(vseq)/9(TC×120)/10(列表)/11/12/13/14 | ≈ 320 文件 | lsu_driver 5子线程并发；translation_sb VA→PA 精度；259 个 wrapper / 262 stage 纳管 |
 
 ---
 
@@ -473,7 +574,7 @@
 | **M6** — 全功能验证                | Phase 6 退出准则                          | ✅**已达成**（2026-04-26）：`make phase6_full`（SFENCE 矩阵 + RTU/PTW `abort_check`）                                                                                 |
 | **M7** — SVA + 覆盖率框架          | Phase 7 退出准则（§10.1+§10.2+SVA+smoke/≥3 测） | ✅ **已达成**（2026-04-26）：A 完整 5×SVA + B cg/白盒 + `make phase7` 等；§10.3/10.4 基线不纳入、推后见 P7-B-00 |
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ✅**已达成**（2026-04-27）：`make phase8` 42-run 矩阵完成，14 个 vseq × 3 seeds 收口，统计摘要 / F 映射 / A Review 已留档                                                                 |
-| **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档                                                                   |
+| **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：`phase9_generated_test_base` + 12 suite + 3 个 basic 基线入口已纳管；259 个 Phase 9 wrapper（总 262 stage）编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档 |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ⏳                                                                                                                                                                      |
 | **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | ⏳                                                                                                                                                                      |
 | **M14** — 签核通过                 | Phase 14 退出准则（VerificationPlan §9） | ⏳                                                                                                                                                                      |

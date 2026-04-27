@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-26（Phase 7 工程师 A 部分已记档）
+> **更新**：2026-04-27（Phase 8 / Phase 9 已完成并记档）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -18,9 +18,9 @@
 | **Phase 5**  | IFU + LSU Agent + Translation SB           | A , B 协同        | ✅ 完成（2026-04-26） | `make phase5` 通过（comp + 5+3 seeds + phase5_check）；8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0`。`make phase5_ptw4k` 也通过（P5-34 修复后 `passthrough=0`） |
 | **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ✅ 完成（2026-04-26） | ✅`make phase6_full` 通过（`comp` + `phase6` 矩阵/检查 + `phase6_rtu_ptw` 3 seed）；12+3 份 log 均 UVM 0/0，Invalidate SB 与 `[abort_check]` 摘要达标 |
 | **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅ **已达成**（2026-04-26，A/B 合入+合并） | B：7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + `en_whitebox_cg` + `make phase7` / `run_cov`+`urgReport`；A：**5×SVA 为完整属性版**（与 `B_phase7` 合入时保留 A 实现，非桩代码）+ `tb_top` bind + `Files.f`；审计 [P7B01_covergroup_vif_audit.md](P7B01_covergroup_vif_audit.md) |
-| **Phase 8**  | Virtual Sequence 实现（M8）                 | B                  | 🔄 代码已合入，**待 VCS 跑 `make phase8` 与 A 签 Review** | `mmu_virtual_sequencer`+`mmu_vseq_lib`（14 vseq）+`m_vseqr` 集成；`test_mmu_vseq_runner`+`+VSEQ_NAME`；`make phase8`（14×3 seed 矩阵，log 见 `output/logs/phase8_*`）；TaskDivision#3 统计行 `[MMU_VSEQ_TASKDIVISION#3]`；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md)；A 清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) |
-| **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | 🔒 等待 Phase 8       | —                                                                                                                                                               |
-| **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | 🔒 等待 Phase 9       | —                                                                                                                                                               |
+| **Phase 8**  | Virtual Sequence 实现（M8）                 | B                  | ✅ 完成（2026-04-27） | ✅`make phase8` 42-run 矩阵完成；14 个 vseq × 3 seeds 全部收口，TaskDivision#3 统计行 `[MMU_VSEQ_TASKDIVISION#3]` 已留档；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 与 A Review 清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) 已记档 |
+| **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27） | ✅`phase9_generated_test_base` + 13 个 test 子目录 suite 已合入；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成 |
+| **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ⏳ 未开始（已解锁）   | —                                                                                                                                                               |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | 🔒 等待 Phase 10      | —                                                                                                                                                               |
 | **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | 🔒 等待 Phase 11      | —                                                                                                                                                               |
 | **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | 🔒 等待 Phase 12      | —                                                                                                                                                               |
@@ -472,8 +472,8 @@
 | **M5** — Translation SB 0 mismatch | Phase 5 退出准则                          | ✅**已再次达成**（2026-04-26）：`make phase5` 完整通过（comp + 5+3 seed + phase5_check 0/0）；随后 `make phase5_ptw4k` 通过（P5-34 修复后 `passthrough=0`） |
 | **M6** — 全功能验证                | Phase 6 退出准则                          | ✅**已达成**（2026-04-26）：`make phase6_full`（SFENCE 矩阵 + RTU/PTW `abort_check`）                                                                                 |
 | **M7** — SVA + 覆盖率框架          | Phase 7 退出准则（§10.1+§10.2+SVA+smoke/≥3 测） | ✅ **已达成**（2026-04-26）：A 完整 5×SVA + B cg/白盒 + `make phase7` 等；§10.3/10.4 基线不纳入、推后见 P7-B-00 |
-| **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ⏳                                                                                                                                                                      |
-| **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ⏳                                                                                                                                                                      |
+| **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ✅**已达成**（2026-04-27）：`make phase8` 42-run 矩阵完成，14 个 vseq × 3 seeds 收口，统计摘要 / F 映射 / A Review 已留档                                                                 |
+| **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档                                                                   |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ⏳                                                                                                                                                                      |
 | **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | ⏳                                                                                                                                                                      |
 | **M14** — 签核通过                 | Phase 14 退出准则（VerificationPlan §9） | ⏳                                                                                                                                                                      |

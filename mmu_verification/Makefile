@@ -100,6 +100,13 @@ PHASE6_RTU_PTW_LOGS   := $(foreach s,$(PHASE6_RTU_PTW_SEEDS),$(LOG_DIR)/$(PHASE6
 #===============================================================================
 # Include and Source Files
 #===============================================================================
+# Phase 9 suites are included from test_pkg.sv using directory-qualified paths,
+# but each suite pulls in leaf tests via bare filenames. VCS resolves those
+# against +incdir, so collect every suite directory here to make nested
+# `include "test_*.svh"` robust for all generated test groups.
+TEST_SUITE_DIRS := $(sort $(dir $(wildcard $(TB_DIR)/test/*/*_suite.svh)))
+TEST_SUITE_INCDIR := $(foreach d,$(TEST_SUITE_DIRS),+incdir+$(patsubst %/,%,$(d)))
+
 INCDIR          := +incdir+$(TB_DIR)/common \
                    +incdir+$(TB_DIR)/env \
                    +incdir+$(TB_DIR)/test \
@@ -111,6 +118,7 @@ INCDIR          := +incdir+$(TB_DIR)/common \
                    +incdir+$(TB_DIR)/pmp_agent \
                    +incdir+$(TB_DIR)/sysmap_cfg_agent \
                    +incdir+$(TB_DIR)/misc_agent \
+                   $(TEST_SUITE_INCDIR) \
                    +incdir+$(MMU_PARAMS_DIR) \
                    +incdir+$(CV_DV_UTILS_DIR)/uvm
 

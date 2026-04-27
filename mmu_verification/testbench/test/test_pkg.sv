@@ -47,6 +47,21 @@ package test_pkg;
   // Phase 8: virtual sequence harness (+VSEQ_NAME=...)
   `include "phase8_tests/test_mmu_vseq_runner.svh"
 
+  // Phase 9: generated thin-wrapper test base + directory suites
+  `include "phase9_common/phase9_generated_test_base.svh"
+  `include "l1itlb_tests/l1itlb_tests_suite.svh"
+  `include "l1dtlb_tests/l1dtlb_tests_suite.svh"
+  `include "l2tlb_tests/l2tlb_tests_suite.svh"
+  `include "ptw_tests/ptw_tests_suite.svh"
+  `include "tlbop_tests/tlbop_tests_suite.svh"
+  `include "pmp_tests/pmp_tests_suite.svh"
+  `include "sysmap_tests/sysmap_tests_suite.svh"
+  `include "cp0_tests/cp0_tests_suite.svh"
+  `include "flush_tests/flush_tests_suite.svh"
+  `include "cross_tests/cross_tests_suite.svh"
+  `include "perf_tests/perf_tests_suite.svh"
+  `include "err_tests/err_tests_suite.svh"
+
 endpackage : test_pkg
 
 `endif // TEST_PKG_SV

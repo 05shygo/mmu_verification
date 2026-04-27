@@ -1,0 +1,150 @@
+stage_id,target_dir,tc_id,test_name,seq,checker,reviewer,target_file
+p9-cp0-tc_csr_001,cp0_tests,TC-CSR-001,test_mmu_csr_satp_read,cp0_reg_rw_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_satp_read.svh
+p9-cp0-tc_csr_002,cp0_tests,TC-CSR-002,test_mmu_csr_satp_read_both,cp0_satp_sel_toggle_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_satp_read_both.svh
+p9-cp0-tc_csr_003,cp0_tests,TC-CSR-003,test_mmu_csr_satp_write,cp0_reg_rw_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_satp_write.svh
+p9-cp0-tc_csr_004,cp0_tests,TC-CSR-004,test_mmu_csr_satp_fields,cp0_reg_rw_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_satp_fields.svh
+p9-cp0-tc_csr_005,cp0_tests,TC-CSR-005,test_mmu_csr_mode_disable,cp0_reg_rw_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_mode_disable.svh
+p9-cp0-tc_csr_006,cp0_tests,TC-CSR-006,test_mmu_csr_mode_sv39,cp0_reg_rw_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_mode_sv39.svh
+p9-cp0-tc_csr_007,cp0_tests,TC-CSR-007,test_mmu_csr_dual_satp_sel,cp0_satp_sel_toggle_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_dual_satp_sel.svh
+p9-cp0-tc_csr_008,cp0_tests,TC-CSR-008,test_mmu_csr_satp_switch,cp0_satp_hotswap_vseq,"csr_cg + translation_sb",B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_satp_switch.svh
+p9-cp0-tc_csr_009,cp0_tests,TC-CSR-009,test_mmu_csr_satp_write_tlb_inval,cp0_reg_rw_seq,"csr_cg + invalidation_sb",B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_satp_write_tlb_inval.svh
+p9-cp0-tc_csr_010,cp0_tests,TC-CSR-010,test_mmu_csr_ptw_disable,cp0_ptw_disable_seq,"translation_sb + ptw_walk_cg",B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_ptw_disable.svh
+p9-cp0-tc_csr_011,cp0_tests,TC-CSR-011,test_mmu_csr_no_op,cp0_no_op_seq,coherency_sb,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_no_op.svh
+p9-cp0-tc_csr_012,cp0_tests,TC-CSR-012,test_mmu_csr_maee,cp0_agent 配置,coherency_sb,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_maee.svh
+p9-cp0-tc_csr_013,cp0_tests,TC-CSR-013,test_mmu_csr_cskyee,cp0_agent 配置,coherency_sb,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_cskyee.svh
+p9-cp0-tc_csr_014,cp0_tests,TC-CSR-014,test_mmu_csr_icg_enable,cp0_agent 配置,coherency_sb,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_icg_enable.svh
+p9-cp0-tc_csr_015,cp0_tests,TC-CSR-015,test_mmu_csr_icg_disable,cp0_agent 配置,coherency_sb,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_icg_disable.svh
+p9-cp0-tc_csr_016,cp0_tests,TC-CSR-016,test_mmu_csr_complete_signal,cp0_reg_rw_seq,csr_cg,B,mmu_verification/testbench/test/cp0_tests/test_mmu_csr_complete_signal.svh
+p9-cross-tc_priv_001,cross_tests,TC-PRIV-001,test_mmu_priv_mxr_impact,cp0_mxr_sum_cross_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_mxr_impact.svh
+p9-cross-tc_priv_002,cross_tests,TC-PRIV-002,test_mmu_priv_mxr_fetch_denied,cp0_mxr_sum_cross_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_mxr_fetch_denied.svh
+p9-cross-tc_priv_003,cross_tests,TC-PRIV-003,test_mmu_priv_sum_impact,cp0_mxr_sum_cross_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_sum_impact.svh
+p9-cross-tc_priv_004,cross_tests,TC-PRIV-004,test_mmu_priv_sum_m_mode,cp0_mxr_sum_cross_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_sum_m_mode.svh
+p9-cross-tc_priv_005,cross_tests,TC-PRIV-005,test_mmu_priv_mprv_u_mode,cp0_mprv_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_mprv_u_mode.svh
+p9-cross-tc_priv_006,cross_tests,TC-PRIV-006,test_mmu_priv_mprv_off,cp0_mprv_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_mprv_off.svh
+p9-cross-tc_priv_007,cross_tests,TC-PRIV-007,test_mmu_priv_mode_u,cp0_priv_switch_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_mode_u.svh
+p9-cross-tc_priv_008,cross_tests,TC-PRIV-008,test_mmu_priv_mode_s,cp0_priv_switch_seq,cross_scenario_cg,B,mmu_verification/testbench/test/cross_tests/test_mmu_priv_mode_s.svh
+p9-ptw-ptw_001,ptw_tests,PTW-001,test_ptw_satp_load_basic,ptw_mem_normal_rsp_seq,translation_sb,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_satp_load_basic.svh
+p9-ptw-ptw_002,ptw_tests,PTW-002,test_ptw_satp_load_dual_switch,cp0_satp_switch_seq,translation_sb,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_satp_load_dual_switch.svh
+p9-ptw-ptw_003,ptw_tests,PTW-003,test_ptw_l2_pde_hit_direct,ptw_page_table_build_2m_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l2_pde_hit_direct.svh
+p9-ptw-ptw_004,ptw_tests,PTW-004,test_ptw_l2_pde_miss_walk,ptw_deep_tree_random_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l2_pde_miss_walk.svh
+p9-ptw-ptw_005,ptw_tests,PTW-005,test_ptw_l2_pde_cache_replace,ptw_page_table_build_2m_seq + cache invalidation,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l2_pde_cache_replace.svh
+p9-ptw-ptw_006,ptw_tests,PTW-006,test_ptw_l1_pde_hit,ptw_page_table_build_4k_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l1_pde_hit.svh
+p9-ptw-ptw_007,ptw_tests,PTW-007,test_ptw_l1_pde_miss_walk,ptw_deep_tree_random_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l1_pde_miss_walk.svh
+p9-ptw-ptw_008,ptw_tests,PTW-008,test_ptw_l1_pde_cache_replace,多次 L1 cache 填充,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l1_pde_cache_replace.svh
+p9-ptw-ptw_009,ptw_tests,PTW-009,test_ptw_l0_pte_read_basic,ptw_page_table_build_4k_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l0_pte_read_basic.svh
+p9-ptw-ptw_010,ptw_tests,PTW-010,test_ptw_l0_pte_permission_check,ptw_mem_illegal_pte_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_ptw_l0_pte_permission_check.svh
+p9-ptw-ptw_011,ptw_tests,PTW-011,test_twu_concurrent_4way,4 个 TWU 同时发起不同 VPN 的 walk,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_twu_concurrent_4way.svh
+p9-ptw-ptw_012,ptw_tests,PTW-012,test_twu_concurrent_same_vpn,多个 TWU 同时请求相同 VPN,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_twu_concurrent_same_vpn.svh
+p9-ptw-ptw_013,ptw_tests,PTW-013,test_mbuf_credit_management,MBUF 8 entry 填满后流控,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_mbuf_credit_management.svh
+p9-ptw-ptw_014,ptw_tests,PTW-014,test_mbuf_ooo_response,ptw_mem_ooo_rsp_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_mbuf_ooo_response.svh
+p9-ptw-ptw_015,ptw_tests,PTW-015,test_pte_v_bit_zero,ptw_mem_illegal_pte_seq (V=0),ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_v_bit_zero.svh
+p9-ptw-ptw_016,ptw_tests,PTW-016,test_pte_rw_both_zero,ptw_mem_illegal_pte_seq (R=W=0),ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_rw_both_zero.svh
+p9-ptw-ptw_017,ptw_tests,PTW-017,test_pte_reserved_bits,ptw_mem_illegal_pte_seq (reserved != 0),ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_reserved_bits.svh
+p9-ptw-ptw_018,ptw_tests,PTW-018,test_pte_misaligned_ppn_2m,2M 巨页 PPN[0] != 0,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_misaligned_ppn_2m.svh
+p9-ptw-ptw_019,ptw_tests,PTW-019,test_pte_misaligned_ppn_1g,1G 巨页 PPN[9:0] != 0,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_misaligned_ppn_1g.svh
+p9-ptw-ptw_020,ptw_tests,PTW-020,test_pte_u_bit_sum_interaction,"User page, S mode, SUM=0/1",ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_u_bit_sum_interaction.svh
+p9-ptw-ptw_021,ptw_tests,PTW-021,test_pte_x_bit_mxr_mix,"X=1 R=0, MXR=0/1",ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_x_bit_mxr_mix.svh
+p9-ptw-ptw_022,ptw_tests,PTW-022,test_pte_global_bit_asid,G=1 PTE，ASID 切换后 hit 验证,translation_sb,A+B,mmu_verification/testbench/test/ptw_tests/test_pte_global_bit_asid.svh
+p9-ptw-ptw_023,ptw_tests,PTW-023,test_huge_page_1g_direct,ptw_page_table_build_1g_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_huge_page_1g_direct.svh
+p9-ptw-ptw_024,ptw_tests,PTW-024,test_huge_page_2m_direct,ptw_page_table_build_2m_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_huge_page_2m_direct.svh
+p9-ptw-ptw_025,ptw_tests,PTW-025,test_huge_page_4k_full_walk,ptw_page_table_build_4k_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_huge_page_4k_full_walk.svh
+p9-ptw-ptw_026,ptw_tests,PTW-026,test_huge_page_mixed,mmu_huge_page_mix_vseq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_huge_page_mixed.svh
+p9-ptw-ptw_027,ptw_tests,PTW-027,test_satp_switch_during_walk,mmu_satp_hotswap_vseq,translation_sb,A+B,mmu_verification/testbench/test/ptw_tests/test_satp_switch_during_walk.svh
+p9-ptw-ptw_028,ptw_tests,PTW-028,test_sfence_abort_walk,mmu_sfence_during_walk_vseq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_sfence_abort_walk.svh
+p9-ptw-ptw_029,ptw_tests,PTW-029,test_bus_error_terminate,ptw_mem_bus_error_inject_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_bus_error_terminate.svh
+p9-ptw-ptw_031,ptw_tests,PTW-031,test_mbuf_full_backpressure,MBUF 9 entry 全占时阻塞新 TWU req,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_mbuf_full_backpressure.svh
+p9-ptw-twu_001,ptw_tests,TWU-001,test_twu_idle_state,Power gate simulation,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_twu_idle_state.svh
+p9-ptw-arb_001,ptw_tests,ARB-001,test_arb_ptw_priority_highest,PTW + ReqQ + TLBOPER + Prefetch 并发,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_ptw_priority_highest.svh
+p9-ptw-arb_002,ptw_tests,ARB-002,test_arb_reqq_preempt_lower,ReqQ 优先级抢占 TLBOPER,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_reqq_preempt_lower.svh
+p9-ptw-arb_003,ptw_tests,ARB-003,test_arb_tlboper_above_prefetch,TLBOper + Prefetch 并发,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_tlboper_above_prefetch.svh
+p9-ptw-arb_004,ptw_tests,ARB-004,test_arb_no_double_grant,所有源同时 valid,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_no_double_grant.svh
+p9-ptw-arb_005,ptw_tests,ARB-005,test_arb_work_conserving,交替 grant 周期,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_work_conserving.svh
+p9-ptw-arb_006,ptw_tests,ARB-006,test_arb_skew_index_generation,VPN 转换为 8 bank indices,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_skew_index_generation.svh
+p9-ptw-arb_007,ptw_tests,ARB-007,test_arb_bank_conflict_resolution,同一 VPN 多 bank 映射,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_bank_conflict_resolution.svh
+p9-ptw-arb_008,ptw_tests,ARB-008,test_arb_backpressure_mask,L2 busy 时 arb_ptw_mask=1,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_arb_backpressure_mask.svh
+p9-ptw-xbar_001,ptw_tests,XBAR-001,test_xbar_1to4_distribution,PDE 请求分发到 idle TWU,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_xbar_1to4_distribution.svh
+p9-ptw-xbar_002,ptw_tests,XBAR-002,test_xbar_twu_round_robin,多次 PDE 请求循环分发,arb_sva,A+B,mmu_verification/testbench/test/ptw_tests/test_xbar_twu_round_robin.svh
+p9-ptw-pde_001,ptw_tests,PDE-001,test_pde_cache_l2_single_entry,L2 PDE 写入与查询,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pde_cache_l2_single_entry.svh
+p9-ptw-pde_002,ptw_tests,PDE-002,test_pde_cache_l1_single_entry,L1 PDE 写入与查询,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pde_cache_l1_single_entry.svh
+p9-ptw-pde_003,ptw_tests,PDE-003,test_pde_cache_clear_on_ptw_reset,regs_ptw_clr 复位,ptw_walk_cg,A+B,mmu_verification/testbench/test/ptw_tests/test_pde_cache_clear_on_ptw_reset.svh
+p9-pmp-ptw_032,pmp_tests,PTW-032,test_pmp_deny_walk_abort,PMP 拒绝权限,ptw_walk_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_pmp_deny_walk_abort.svh
+p9-pmp-tc_pmp_001,pmp_tests,TC-PMP-001,test_mmu_pmp_8port_concurrent,ptw_mem_ooo_rsp_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_8port_concurrent.svh
+p9-pmp-tc_pmp_002,pmp_tests,TC-PMP-002,test_mmu_pmp_port_independence,pmp_flg_cross_8port_seq,pmp_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_port_independence.svh
+p9-pmp-tc_pmp_003,pmp_tests,TC-PMP-003,test_mmu_pmp_port_saturation,ptw_mem_slow_rsp_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_port_saturation.svh
+p9-pmp-tc_pmp_004,pmp_tests,TC-PMP-004,test_mmu_pmp_flg_encode,pmp_flg_normal_seq,pmp_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_flg_encode.svh
+p9-pmp-tc_pmp_005,pmp_tests,TC-PMP-005,test_mmu_pmp_flg_combinations,pmp_flg_cross_8port_seq,pmp_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_flg_combinations.svh
+p9-pmp-tc_pmp_006,pmp_tests,TC-PMP-006,test_mmu_pmp_fetch_selective,pmp_flg_deny_fetch_seq,pmp_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_fetch_selective.svh
+p9-pmp-tc_pmp_007,pmp_tests,TC-PMP-007,test_mmu_pmp_pa_correctness,ptw_mem_normal_rsp_seq + pmp check,ptw_walk_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_pa_correctness.svh
+p9-pmp-tc_pmp_008,pmp_tests,TC-PMP-008,test_mmu_pmp_pa_pipeline,ptw_deep_tree_random_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_pa_pipeline.svh
+p9-pmp-tc_pmp_009,pmp_tests,TC-PMP-009,test_mmu_pmp_deny_access_fault,pmp_flg_deny_rw_seq,pmp_cg + coherency_sb,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_deny_access_fault.svh
+p9-pmp-tc_pmp_010,pmp_tests,TC-PMP-010,test_mmu_pmp_deny_fetch_fault,pmp_flg_deny_fetch_seq,pmp_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_deny_fetch_fault.svh
+p9-pmp-tc_pmp_011,pmp_tests,TC-PMP-011,test_mmu_pmp_pa_alignment,ptw_mem_normal_rsp_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_pa_alignment.svh
+p9-pmp-tc_pmp_012,pmp_tests,TC-PMP-012,test_mmu_pmp_cross_port_deny,pmp_flg_cross_8port_seq,pmp_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_cross_port_deny.svh
+p9-pmp-tc_pmp_013,pmp_tests,TC-PMP-013,test_mmu_pmp_port_config_independence,pmp_flg_normal_seq,pmp_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_port_config_independence.svh
+p9-pmp-tc_pmp_014,pmp_tests,TC-PMP-014,test_mmu_pmp_pde_cache_flow,ptw_mem_ooo_rsp_seq,ptw_walk_cg,A+B,mmu_verification/testbench/test/pmp_tests/test_mmu_pmp_pde_cache_flow.svh
+p9-sysmap-ptw_033,sysmap_tests,PTW-033,test_sysmap_hit_bypass_walk,SysMap region hit,ptw_walk_cg,A+B,mmu_verification/testbench/test/sysmap_tests/test_sysmap_hit_bypass_walk.svh
+p9-sysmap-sysmap_ptw_001,sysmap_tests,SYSMAP-PTW-001,test_sysmap_vs_ptw_priority,"SysMap hit & TLB hit 同时存在",sysmap_cg,A+B,mmu_verification/testbench/test/sysmap_tests/test_sysmap_vs_ptw_priority.svh
+p9-sysmap-sysmap_ptw_002,sysmap_tests,SYSMAP-PTW-002,test_sysmap_multi_region_coverage,sysmap_region_setup_seq x 8 region,sysmap_cg,A+B,mmu_verification/testbench/test/sysmap_tests/test_sysmap_multi_region_coverage.svh
+p9-sysmap-sysmap_ptw_003,sysmap_tests,SYSMAP-PTW-003,test_sysmap_no_walk_required,SysMap hit 时 LSU 无数据请求,sysmap_cg,A+B,mmu_verification/testbench/test/sysmap_tests/test_sysmap_no_walk_required.svh
+p9-sysmap-tc_sysmap_001,sysmap_tests,TC-SYSMAP-001,test_mmu_sysmap_region_config,sysmap_region_setup_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_region_config.svh
+p9-sysmap-tc_sysmap_002,sysmap_tests,TC-SYSMAP-002,test_mmu_sysmap_region_default,sysmap_region_setup_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_region_default.svh
+p9-sysmap-tc_sysmap_003,sysmap_tests,TC-SYSMAP-003,test_mmu_sysmap_hit_match,sysmap_hit_cross_tlb_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_hit_match.svh
+p9-sysmap-tc_sysmap_004,sysmap_tests,TC-SYSMAP-004,test_mmu_sysmap_hit_boundary,sysmap_boundary_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_hit_boundary.svh
+p9-sysmap-tc_sysmap_005,sysmap_tests,TC-SYSMAP-005,test_mmu_sysmap_hit_unique,sysmap_hit_cross_tlb_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_hit_unique.svh
+p9-sysmap-tc_sysmap_006,sysmap_tests,TC-SYSMAP-006,test_mmu_sysmap_priority,sysmap_hit_cross_tlb_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_priority.svh
+p9-sysmap-tc_sysmap_007,sysmap_tests,TC-SYSMAP-007,test_mmu_sysmap_flag_r,sysmap_perm_flag_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_flag_r.svh
+p9-sysmap-tc_sysmap_008,sysmap_tests,TC-SYSMAP-008,test_mmu_sysmap_flag_wxec,sysmap_perm_flag_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_flag_wxec.svh
+p9-sysmap-tc_sysmap_009,sysmap_tests,TC-SYSMAP-009,test_mmu_sysmap_priority_over_tlb,sysmap_hit_cross_tlb_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_priority_over_tlb.svh
+p9-sysmap-tc_sysmap_010,sysmap_tests,TC-SYSMAP-010,test_mmu_sysmap_tlb_fallback,sysmap_hit_cross_tlb_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_tlb_fallback.svh
+p9-sysmap-tc_sysmap_011,sysmap_tests,TC-SYSMAP-011,test_mmu_sysmap_pte_walk_addr,ptw_page_table_build_4k_seq + sysmap,translation_sb + ptw_walk_cg,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_pte_walk_addr.svh
+p9-sysmap-tc_sysmap_012,sysmap_tests,TC-SYSMAP-012,test_mmu_sysmap_disabled,sysmap_region_setup_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_disabled.svh
+p9-sysmap-tc_sysmap_013,sysmap_tests,TC-SYSMAP-013,test_mmu_sysmap_alignment,sysmap_boundary_seq,translation_sb,A+B,mmu_verification/testbench/test/sysmap_tests/test_mmu_sysmap_alignment.svh
+p9-err-exc_001,err_tests,EXC-001,test_ifu_pgflt_v_bit_zero,ifu_pagefault_trigger_seq,pgflt_sb,B,mmu_verification/testbench/test/err_tests/test_ifu_pgflt_v_bit_zero.svh
+p9-err-exc_002,err_tests,EXC-002,test_ifu_pgflt_user_priv_vio,ifu_pagefault_trigger_seq + priv=U,pgflt_sb,B,mmu_verification/testbench/test/err_tests/test_ifu_pgflt_user_priv_vio.svh
+p9-err-exc_003,err_tests,EXC-003,test_ifu_pgflt_exec_deny,ifu_pagefault_trigger_seq,pgflt_sb,B,mmu_verification/testbench/test/err_tests/test_ifu_pgflt_exec_deny.svh
+p9-err-exc_004,err_tests,EXC-004,test_lsu_pgflt_store_pipe0,lsu_pipe0_seq + store illegal,pgflt_sb,B,mmu_verification/testbench/test/err_tests/test_lsu_pgflt_store_pipe0.svh
+p9-err-exc_005,err_tests,EXC-005,test_lsu_pgflt_load_pipe1,lsu_pipe1_seq + load illegal,pgflt_sb,B,mmu_verification/testbench/test/err_tests/test_lsu_pgflt_load_pipe1.svh
+p9-err-exc_006,err_tests,EXC-006,test_lsu_access_fault_pmp_deny,pmp_flg_deny_fetch_seq,access_fault_sb,B,mmu_verification/testbench/test/err_tests/test_lsu_access_fault_pmp_deny.svh
+p9-err-exc_007,err_tests,EXC-007,test_lsu_access_fault_bus_error,ptw_mem_bus_error_inject_seq,access_fault_sb,B,mmu_verification/testbench/test/err_tests/test_lsu_access_fault_bus_error.svh
+p9-err-exc_008,err_tests,EXC-008,test_pipe2_prefetch_err,lsu_prefetch_pipe2_seq + error trigger,prefetch_sb,B,mmu_verification/testbench/test/err_tests/test_pipe2_prefetch_err.svh
+p9-err-exc_009,err_tests,EXC-009,test_bad_vpn_record_accuracy,multiple pgflt triggers + RTU,pgflt_sb,B,mmu_verification/testbench/test/err_tests/test_bad_vpn_record_accuracy.svh
+p9-err-exc_010,err_tests,EXC-010,test_expt_vld_mb_cleanup,ptw_mem_bus_error_inject_seq + MB full,mb_sb,B,mmu_verification/testbench/test/err_tests/test_expt_vld_mb_cleanup.svh
+p9-flush-exc_011,flush_tests,EXC-011,test_rtu_flush_all_pending,concurrent + rtu_yy_xx_flush,reqq_sb,B,mmu_verification/testbench/test/flush_tests/test_rtu_flush_all_pending.svh
+p9-err-exc_012,err_tests,EXC-012,test_sec_deny_during_fault,mixed concurrent,pgflt_sb,B,mmu_verification/testbench/test/err_tests/test_sec_deny_during_fault.svh
+p9-err-exc_013,err_tests,EXC-013,test_concurrent_exc_priority,concurrent IFU/LSU/Pipe2 faults,exception_arb_sb,B,mmu_verification/testbench/test/err_tests/test_concurrent_exc_priority.svh
+p9-err-exc_014,err_tests,EXC-014,test_recovery_after_exception,fault trigger → recovery → normal,recovery_sb,B,mmu_verification/testbench/test/err_tests/test_recovery_after_exception.svh
+p9-err-pwr_001,err_tests,PWR-001,test_icg_en_clock_stop,icg_en toggle,clock_mon_sb,B,mmu_verification/testbench/test/err_tests/test_icg_en_clock_stop.svh
+p9-err-pwr_002,err_tests,PWR-002,test_icg_en_normal_work,normal operation + icg_en=1,function_sb,B,mmu_verification/testbench/test/err_tests/test_icg_en_normal_work.svh
+p9-err-pwr_003,err_tests,PWR-003,test_scan_en_force_clock,scan_en=1,clock_mon_sb,B,mmu_verification/testbench/test/err_tests/test_scan_en_force_clock.svh
+p9-err-pwr_004,err_tests,PWR-004,test_smp_disable_snoop,smp_disable toggle,snoop_sb,B,mmu_verification/testbench/test/err_tests/test_smp_disable_snoop.svh
+p9-err-pwr_005,err_tests,PWR-005,test_clock_gating_transition,icg on/off sequence,clock_mon_sb,B,mmu_verification/testbench/test/err_tests/test_clock_gating_transition.svh
+p9-flush-rst_001,flush_tests,RST-001,test_cpurst_b_async_assert,async reset pulse,reset_sb,B,mmu_verification/testbench/test/flush_tests/test_cpurst_b_async_assert.svh
+p9-flush-rst_002,flush_tests,RST-002,test_tlb_invalid_after_reset,reset → release → check,tlb_valid_sb,B,mmu_verification/testbench/test/flush_tests/test_tlb_invalid_after_reset.svh
+p9-flush-rst_003,flush_tests,RST-003,test_reg_default_values,reset → read regs,reg_sb,B,mmu_verification/testbench/test/flush_tests/test_reg_default_values.svh
+p9-flush-rst_004,flush_tests,RST-004,test_reset_during_ptw_walk,PTW walk → async reset,ptw_recovery_sb,B,mmu_verification/testbench/test/flush_tests/test_reset_during_ptw_walk.svh
+p9-flush-rst_005,flush_tests,RST-005,test_reset_during_response,response pipeline → reset,resp_sb,B,mmu_verification/testbench/test/flush_tests/test_reset_during_response.svh
+p9-flush-rst_006,flush_tests,RST-006,test_reset_output_no_x,reset monitor,x_monitor,B,mmu_verification/testbench/test/flush_tests/test_reset_output_no_x.svh
+p9-flush-rst_007,flush_tests,RST-007,test_mmu_en_after_reset,reset → release → check mmu_en,mmu_en_sb,B,mmu_verification/testbench/test/flush_tests/test_mmu_en_after_reset.svh
+p9-flush-rst_008,flush_tests,RST-008,test_reset_immediate_operation,reset → immediate request,function_sb,B,mmu_verification/testbench/test/flush_tests/test_reset_immediate_operation.svh
+p9-perf-perf_001,perf_tests,PERF-001,test_iutlb_miss_pulse_1to1,ifu_random_vaddr_seq,perf_mon_sb,B,mmu_verification/testbench/test/perf_tests/test_iutlb_miss_pulse_1to1.svh
+p9-perf-perf_002,perf_tests,PERF-002,test_iutlb_miss_gated_by_cnt_en,cnt_en toggle,perf_mon_sb,B,mmu_verification/testbench/test/perf_tests/test_iutlb_miss_gated_by_cnt_en.svh
+p9-perf-perf_003,perf_tests,PERF-003,test_dutlb_miss_pipe0_counted,lsu_pipe0_seq + miss trigger,perf_mon_sb,B,mmu_verification/testbench/test/perf_tests/test_dutlb_miss_pipe0_counted.svh
+p9-perf-perf_004,perf_tests,PERF-004,test_dutlb_miss_pipe1_counted,lsu_pipe1_seq + miss trigger,perf_mon_sb,B,mmu_verification/testbench/test/perf_tests/test_dutlb_miss_pipe1_counted.svh
+p9-perf-perf_005,perf_tests,PERF-005,test_jtlb_miss_counted,L2 TLB miss trigger,perf_mon_sb,B,mmu_verification/testbench/test/perf_tests/test_jtlb_miss_counted.svh
+p9-perf-perf_006,perf_tests,PERF-006,test_concurrent_miss_pulses,mmu_concurrent_3pipe_vseq,perf_mon_sb,B,mmu_verification/testbench/test/perf_tests/test_concurrent_miss_pulses.svh
+p9-perf-perf_007,perf_tests,PERF-007,test_perf_under_stress,mmu_stress_all_ports_vseq + cnt_en,perf_mon_sb,B,mmu_verification/testbench/test/perf_tests/test_perf_under_stress.svh
+p9-perf-perf_ptw_001,perf_tests,PERF-PTW-001,test_ptw_walk_latency,Long random walk sequence,perf_mon,B,mmu_verification/testbench/test/perf_tests/test_ptw_walk_latency.svh
+p9-perf-perf_arb_001,perf_tests,PERF-ARB-001,test_arb_throughput_max,mmu_stress_all_ports_vseq,perf_mon,B,mmu_verification/testbench/test/perf_tests/test_arb_throughput_max.svh
+p9-perf-stress_001,perf_tests,STRESS-001,test_3pipe_concurrent_max_rate,mmu_stress_all_ports_vseq,arb_sb,B,mmu_verification/testbench/test/perf_tests/test_3pipe_concurrent_max_rate.svh
+p9-perf-stress_002,perf_tests,STRESS-002,test_l2tlb_saturated_mb_full,L2 full setup,l2_sb,B,mmu_verification/testbench/test/perf_tests/test_l2tlb_saturated_mb_full.svh
+p9-perf-stress_003,perf_tests,STRESS-003,test_l2_bank_conflict_and_reqq_full,8 bank conflict scenario,l2_sb,B,mmu_verification/testbench/test/perf_tests/test_l2_bank_conflict_and_reqq_full.svh
+p9-perf-stress_004,perf_tests,STRESS-004,test_ptw_4tws_full_wakeup_dense,mmu_ptw_thrash_vseq,ptw_sb,B,mmu_verification/testbench/test/perf_tests/test_ptw_4tws_full_wakeup_dense.svh
+p9-perf-stress_005,perf_tests,STRESS-005,test_satp_hotswap_concurrent,mmu_satp_hotswap_vseq,satp_sb,B,mmu_verification/testbench/test/perf_tests/test_satp_hotswap_concurrent.svh
+p9-perf-stress_006,perf_tests,STRESS-006,test_sfence_high_frequency,mmu_sfence_during_walk_vseq,inv_sb,B,mmu_verification/testbench/test/perf_tests/test_sfence_high_frequency.svh
+p9-perf-stress_007,perf_tests,STRESS-007,test_asid_thrashing,mmu_asid_context_switch_vseq,asid_sb,B,mmu_verification/testbench/test/perf_tests/test_asid_thrashing.svh
+p9-perf-stress_008,perf_tests,STRESS-008,test_huge_4k_page_mix,mmu_huge_page_mix_vseq,page_size_sb,B,mmu_verification/testbench/test/perf_tests/test_huge_4k_page_mix.svh
+p9-perf-stress_009,perf_tests,STRESS-009,test_100k_txn_stable_run,mmu_stress_all_ports_vseq + 100K seed,txn_sb,B,mmu_verification/testbench/test/perf_tests/test_100k_txn_stable_run.svh
+p9-perf-stress_010,perf_tests,STRESS-010,test_error_rain_mixed_fault,mmu_error_rain_vseq,error_sb,B,mmu_verification/testbench/test/perf_tests/test_error_rain_mixed_fault.svh
+p9-perf-stress_011,perf_tests,STRESS-011,test_rrpv_aging_replacement,mmu_rrpv_aging_vseq,replace_sb,B,mmu_verification/testbench/test/perf_tests/test_rrpv_aging_replacement.svh
+p9-perf-stress_012,perf_tests,STRESS-012,test_reset_mid_transaction,mmu_reset_midtransaction_vseq,mid_txn_sb,B,mmu_verification/testbench/test/perf_tests/test_reset_mid_transaction.svh
+p9-perf-stress_013,perf_tests,STRESS-013,test_power_gating_sequence,mmu_power_gating_vseq,power_sb,B,mmu_verification/testbench/test/perf_tests/test_power_gating_sequence.svh

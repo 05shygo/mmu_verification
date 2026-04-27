@@ -1,0 +1,10 @@
+// Auto-generated Phase 9 suite include list
+`include "test_cpurst_b_async_assert.svh"
+`include "test_mmu_en_after_reset.svh"
+`include "test_reg_default_values.svh"
+`include "test_reset_during_ptw_walk.svh"
+`include "test_reset_during_response.svh"
+`include "test_reset_immediate_operation.svh"
+`include "test_reset_output_no_x.svh"
+`include "test_rtu_flush_all_pending.svh"
+`include "test_tlb_invalid_after_reset.svh"

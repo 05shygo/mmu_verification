@@ -90,6 +90,40 @@ class misc_smp_disable_seq extends misc_base_seq;
 
 endclass : misc_smp_disable_seq
 
+class misc_smp_disable_on_seq extends misc_base_seq;
+  `uvm_object_utils(misc_smp_disable_on_seq)
+
+  function new(string name = "misc_smp_disable_on_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    misc_txn tr;
+    `uvm_create(tr)
+    tr.op          = MISC_SMP_DISABLE;
+    tr.smp_disable = 1'b1;
+    `uvm_send(tr)
+  endtask
+
+endclass : misc_smp_disable_on_seq
+
+class misc_smp_disable_off_seq extends misc_base_seq;
+  `uvm_object_utils(misc_smp_disable_off_seq)
+
+  function new(string name = "misc_smp_disable_off_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    misc_txn tr;
+    `uvm_create(tr)
+    tr.op          = MISC_SMP_DISABLE;
+    tr.smp_disable = 1'b0;
+    `uvm_send(tr)
+  endtask
+
+endclass : misc_smp_disable_off_seq
+
 // ── HPCP counter enable / disable ─────────────────────────────────────────────
 // Issues MISC_HPCP_CNT_EN: sets hpcp_mmu_cnt_en to the given level.
 class misc_hpcp_enable_seq extends misc_base_seq;
@@ -113,6 +147,40 @@ class misc_hpcp_enable_seq extends misc_base_seq;
   endtask
 
 endclass : misc_hpcp_enable_seq
+
+class misc_hpcp_enable_on_seq extends misc_base_seq;
+  `uvm_object_utils(misc_hpcp_enable_on_seq)
+
+  function new(string name = "misc_hpcp_enable_on_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    misc_txn tr;
+    `uvm_create(tr)
+    tr.op          = MISC_HPCP_CNT_EN;
+    tr.hpcp_cnt_en = 1'b1;
+    `uvm_send(tr)
+  endtask
+
+endclass : misc_hpcp_enable_on_seq
+
+class misc_hpcp_enable_off_seq extends misc_base_seq;
+  `uvm_object_utils(misc_hpcp_enable_off_seq)
+
+  function new(string name = "misc_hpcp_enable_off_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    misc_txn tr;
+    `uvm_create(tr)
+    tr.op          = MISC_HPCP_CNT_EN;
+    tr.hpcp_cnt_en = 1'b0;
+    `uvm_send(tr)
+  endtask
+
+endclass : misc_hpcp_enable_off_seq
 
 // ── Compound initialisation sequence ─────────────────────────────────────────
 // Sets up safe defaults at the start of every test that uses misc_agent:

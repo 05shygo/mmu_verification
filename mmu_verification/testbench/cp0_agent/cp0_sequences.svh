@@ -193,6 +193,314 @@ class cp0_no_op_seq extends cp0_base_seq;
 
 endclass : cp0_no_op_seq
 
+class cp0_no_op_assert_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_no_op_assert_seq)
+
+  function new(string name = "cp0_no_op_assert_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op        = CP0_SET_NO_OP;
+    tr.no_op_req = 1'b1;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_no_op_assert_seq
+
+class cp0_no_op_clear_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_no_op_clear_seq)
+
+  function new(string name = "cp0_no_op_clear_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op        = CP0_SET_NO_OP;
+    tr.no_op_req = 1'b0;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_no_op_clear_seq
+
+class cp0_maee_enable_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_maee_enable_seq)
+
+  function new(string name = "cp0_maee_enable_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op   = CP0_SET_MAEE;
+    tr.maee = 1'b1;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_maee_enable_seq
+
+class cp0_maee_disable_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_maee_disable_seq)
+
+  function new(string name = "cp0_maee_disable_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op   = CP0_SET_MAEE;
+    tr.maee = 1'b0;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_maee_disable_seq
+
+class cp0_icg_enable_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_icg_enable_seq)
+
+  function new(string name = "cp0_icg_enable_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op     = CP0_SET_ICG_EN;
+    tr.icg_en = 1'b1;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_icg_enable_seq
+
+class cp0_icg_disable_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_icg_disable_seq)
+
+  function new(string name = "cp0_icg_disable_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op     = CP0_SET_ICG_EN;
+    tr.icg_en = 1'b0;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_icg_disable_seq
+
+class cp0_cskyee_enable_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_cskyee_enable_seq)
+
+  function new(string name = "cp0_cskyee_enable_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op      = CP0_SET_CSKYEE;
+    tr.cskyee  = 1'b1;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_cskyee_enable_seq
+
+class cp0_cskyee_disable_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_cskyee_disable_seq)
+
+  function new(string name = "cp0_cskyee_disable_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op      = CP0_SET_CSKYEE;
+    tr.cskyee  = 1'b0;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_cskyee_disable_seq
+
+class cp0_satp_read_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_satp_read_seq)
+
+  rand bit satp_sel;
+
+  function new(string name = "cp0_satp_read_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op       = CP0_READ_SATP;
+    tr.satp_sel = satp_sel;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_satp_read_seq
+
+class cp0_satp_read_both_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_satp_read_both_seq)
+
+  function new(string name = "cp0_satp_read_both_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    for (int i = 0; i < 2; i++) begin
+      `uvm_create(tr)
+      tr.op       = CP0_READ_SATP;
+      tr.satp_sel = i[0];
+      `uvm_send(tr)
+    end
+  endtask
+
+endclass : cp0_satp_read_both_seq
+
+class cp0_satp_mode_sv39_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_satp_mode_sv39_seq)
+
+  function new(string name = "cp0_satp_mode_sv39_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op       = CP0_WRITE_SATP;
+    tr.satp_sel = 1'b0;
+    tr.wdata    = {4'h8, 16'h0, 44'h0};
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_satp_mode_sv39_seq
+
+class cp0_satp_mode_bare_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_satp_mode_bare_seq)
+
+  function new(string name = "cp0_satp_mode_bare_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op       = CP0_WRITE_SATP;
+    tr.satp_sel = 1'b0;
+    tr.wdata    = {4'h0, 16'h0, 44'h0};
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_satp_mode_bare_seq
+
+class cp0_reg_access_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_reg_access_seq)
+
+  rand bit       is_write;
+  rand bit [1:0] reg_num;
+  rand bit [63:0] wdata;
+
+  function new(string name = "cp0_reg_access_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op      = is_write ? CP0_WRITE_REG : CP0_READ_REG;
+    tr.reg_num = reg_num;
+    tr.wdata   = wdata;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_reg_access_seq
+
+class cp0_tlbp_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_tlbp_seq)
+
+  function new(string name = "cp0_tlbp_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op      = CP0_READ_REG;
+    tr.reg_num = 2'd2;
+    `uvm_send(tr)
+  endtask
+
+endclass : cp0_tlbp_seq
+
+class cp0_tlbr_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_tlbr_seq)
+
+  function new(string name = "cp0_tlbr_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    for (int i = 0; i < 3; i++) begin
+      `uvm_create(tr)
+      tr.op      = CP0_READ_REG;
+      tr.reg_num = i[1:0];
+      `uvm_send(tr)
+    end
+  endtask
+
+endclass : cp0_tlbr_seq
+
+class cp0_tlbwi_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_tlbwi_seq)
+
+  function new(string name = "cp0_tlbwi_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    for (int i = 0; i < 3; i++) begin
+      `uvm_create(tr)
+      tr.op      = CP0_WRITE_REG;
+      tr.reg_num = i[1:0];
+      tr.wdata   = 64'h1000 + i;
+      `uvm_send(tr)
+    end
+  endtask
+
+endclass : cp0_tlbwi_seq
+
+class cp0_tlbwr_seq extends cp0_base_seq;
+  `uvm_object_utils(cp0_tlbwr_seq)
+
+  function new(string name = "cp0_tlbwr_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+    for (int i = 0; i < 3; i++) begin
+      `uvm_create(tr)
+      tr.op      = CP0_WRITE_REG;
+      tr.reg_num = i[1:0];
+      tr.wdata   = 64'h2000 + (i * 64'h10);
+      `uvm_send(tr)
+    end
+  endtask
+
+endclass : cp0_tlbwr_seq
+
 // ── Composite init sequence: ICG_EN → PRIV → SATP(Sv39) → PTW_EN ─────────────
 // Phase 3+ sanity tests use this to bring the MMU online.
 // PRIV is set BEFORE SATP so mmu_en=1 the instant satp_mode is latched.

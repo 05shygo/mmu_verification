@@ -1,0 +1,21 @@
+stage_id,target_dir,tc_id,tc_name,seq,checker,reviewer,target_file
+p9-l1itlb-itlb_hit_001,l1itlb_tests,ITLB_HIT_001,IFU basic 4K hit,"ifu_base_seq + 4K页表",translation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_hit_001.svh
+p9-l1itlb-itlb_hit_002,l1itlb_tests,ITLB_HIT_002,IFU sequential fetch 4K,ifu_sequential_fetch_seq,translation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_hit_002.svh
+p9-l1itlb-itlb_plru_001,l1itlb_tests,ITLB_PLRU_001,IFU PLRU directed,"ifu_random_vaddr_seq (16+ VPN)",cov_ifu_rsp,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_plru_001.svh
+p9-l1itlb-itlb_plru_002,l1itlb_tests,ITLB_PLRU_002,IFU PLRU random,"ifu_random_vaddr_seq x 100 seed","cg_itlb + sva_plru",B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_plru_002.svh
+p9-l1itlb-itlb_perm_001,l1itlb_tests,ITLB_PERM_001,IFU exec perm X=0,VA→X=0 PTE构造,translation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_perm_001.svh
+p9-l1itlb-itlb_perm_002,l1itlb_tests,ITLB_PERM_002,IFU perm SUM+MXR,U-mode取指U=0页面 + SUM/MXR组合,"translation_sb + cov_csr",B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_perm_002.svh
+p9-l1itlb-itlb_pgflt_001,l1itlb_tests,ITLB_PGFLT_001,IFU pagefault V=0,V=0页面,translation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_pgflt_001.svh
+p9-l1itlb-itlb_huge_001,l1itlb_tests,ITLB_HUGE_001,IFU huge 2MB,2MB巨页VA(offset<21bit)→PA,translation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_huge_001.svh
+p9-l1itlb-itlb_huge_002,l1itlb_tests,ITLB_HUGE_002,IFU huge 1GB,1GB巨页VA(offset<30bit)→PA,translation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_huge_002.svh
+p9-l1itlb-itlb_huge_003,l1itlb_tests,ITLB_HUGE_003,IFU huge mixed 2M/1G,"ifu_huge_page_fetch_seq x 50 seed",cg_huge_page,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_huge_003.svh
+p9-l1itlb-itlb_asid_001,l1itlb_tests,ITLB_ASID_001,IFU global page ASID,G=1页面跨ASID切换后命中,coherency_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_asid_001.svh
+p9-l1itlb-itlb_asid_002,l1itlb_tests,ITLB_ASID_002,IFU non-global ASID,"cp0_satp_sel_toggle_seq + G=0页",coherency_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_asid_002.svh
+p9-l1itlb-itlb_refill_001,l1itlb_tests,ITLB_REFILL_001,IFU L2 miss refill,无效→L2MISS→refill,translation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_refill_001.svh
+p9-l1itlb-itlb_refill_002,l1itlb_tests,ITLB_REFILL_002,IFU concurrent refill credit,"mmu_concurrent_3pipe_vseq x 50 seed",sva_l2tlb_interface,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_refill_002.svh
+p9-l1itlb-itlb_abort_001,l1itlb_tests,ITLB_ABORT_001,IFU abort no stall,ifu_abort_seq,coherency_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_abort_001.svh
+p9-l1itlb-itlb_inv_001,l1itlb_tests,ITLB_INV_001,IFU SFENCE all,tlb_inv_all_seq,invalidation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_inv_001.svh
+p9-l1itlb-itlb_inv_002,l1itlb_tests,ITLB_INV_002,IFU SFENCE VA,tlb_inv_va_seq,invalidation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_inv_002.svh
+p9-l1itlb-itlb_inv_003,l1itlb_tests,ITLB_INV_003,IFU SFENCE VA_ASID,tlb_inv_va_asid_seq,invalidation_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_inv_003.svh
+p9-l1itlb-itlb_probe_001,l1itlb_tests,ITLB_PROBE_001,IFU TLBP,TLBP指令查询命中/未命中,cov_software_ops,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_probe_001.svh
+p9-l1itlb-itlb_flush_001,l1itlb_tests,ITLB_FLUSH_001,IFU flush abort concurrent,ifu_branch_flush_seq,coherency_sb,B,mmu_verification/testbench/test/l1itlb_tests/test_mmu_l1itlb_itlb_flush_001.svh

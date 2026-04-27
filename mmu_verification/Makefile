@@ -308,21 +308,25 @@ phase8_quick: comp phase8_run_matrix_fast phase8_check_errfatal
 
 #===============================================================================
 # Test Name Check
-# NOTE: CHECK_TEST_NAME is disabled in Phase 1 because only uvm_test_top
-#       (UVM built-in) is used. Re-enable from Phase 3 onward when
-#       project-specific tests are registered via `uvm_component_utils.
+# A TEST_NAME can be either:
+#   1) an exact UVM test class name registered via `uvm_component_utils, or
+#   2) a test directory alias such as basic_tests / l1itlb_tests to run every
+#      registered test under that directory sequentially with the same seed.
 #===============================================================================
-# DETECTED_TESTS_CMD = grep -Rho "uvm_component_utils([^)]*)" \
-#                      $(PROJECT_DIR)/testbench/test 2>/dev/null | \
-#                      sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u
-#
-# define CHECK_TEST_NAME
-# 	@if ! ($(DETECTED_TESTS_CMD) | grep -x "$(TEST_NAME)" >/dev/null 2>&1); then \
-# 		echo "ERROR: TEST_NAME='$(TEST_NAME)' is not a registered UVM test."; \
-# 		exit 2; \
-# 	fi
-# endef
+DETECTED_TESTS_CMD = grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test 2>/dev/null | \
+                     sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u
+TEST_GROUP_DIRS   := $(filter-out phase9_common,$(notdir $(patsubst %/,%,$(wildcard $(TB_DIR)/test/*/))))
+
 define CHECK_TEST_NAME
+	@if ! ( \
+		($(DETECTED_TESTS_CMD) | grep -x "$(TEST_NAME)" >/dev/null 2>&1) || \
+		(printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1) \
+	); then \
+		echo "ERROR: TEST_NAME='$(TEST_NAME)' is neither a registered UVM test nor a supported test directory alias."; \
+		echo "  Use 'make list_tests' to view exact UVM test names."; \
+		echo "  Supported directory aliases: $(TEST_GROUP_DIRS)"; \
+		exit 2; \
+	fi
 endef
 
 #===============================================================================
@@ -502,7 +506,7 @@ help:
 	@echo "Usage:"
 	@echo "  make check_env                     # VCS in PATH? (comp/comp_fast run this first)"
 	@echo "  make comp                          # Compile + elaborate"
-	@echo "  make run TEST_NAME=uvm_test_top    # Run simulation"
+	@echo "  make run TEST_NAME=<uvm_test|test_dir>  # Run one test, or every test under a directory alias"
 	@echo "  make all                           # comp + run"
 	@echo "  make verdi TEST_NAME=<test>        # Open Verdi waveform"
 	@echo "  make clean                         # Remove build artifacts"
@@ -511,7 +515,8 @@ help:
 	@echo "Key variables:"
 	@echo "  TEST_NAME=$(TEST_NAME)  SEED=$(SEED)  VERBOSITY=$(VERBOSITY)"
 	@echo "  UVM_ERR_ONLY=$(UVM_ERR_ONLY)  (1=errors only on console)"
-	@echo "  Example: make run TEST_NAME=... UVM_ERR_ONLY=1"
+	@echo "  Example: make run TEST_NAME=test_mmu_translation_sanity UVM_ERR_ONLY=1"
+	@echo "  Group example: make run TEST_NAME=basic_tests SEED=1"
 	@echo "  PLUS_ARGS: e.g. PLUS_ARGS=+MMU_LSU_MON_DBG  (P1 RSP bus snapshot, lsu_monitor.svh)"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md §5):"
@@ -637,16 +642,34 @@ elab:
 #===============================================================================
 run: setup
 	$(CHECK_TEST_NAME)
-	@echo "Running $(TEST_NAME), seed=$(SEED)"
-	cd $(OUTPUT_DIR) && ./simv \
-		$(RUN_OPTS) \
-		$(SEED_OPTS) \
-		$(FSDB_OPTS) \
-		-l $(LOG_DIR)/$(TEST_NAME)_$(SEED).log
-	@echo "Simulation completed. Log: $(LOG_DIR)/$(TEST_NAME)_$(SEED).log"
+	@if printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1; then \
+		set -e; \
+		tests=`grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test/$(TEST_NAME) 2>/dev/null | \
+		  sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u`; \
+		test -n "$$tests" || (echo "ERROR: directory alias '$(TEST_NAME)' has no registered UVM tests."; exit 2); \
+		echo "Running test group $(TEST_NAME), seed=$(SEED)"; \
+		for t in $$tests; do \
+			echo "=== [$(TEST_NAME)] $$t SEED=$(SEED) ==="; \
+			$(MAKE) run TEST_NAME=$$t SEED=$(SEED) VERBOSITY="$(VERBOSITY)" TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)" PLUS_ARGS='$(PLUS_ARGS)'; \
+		done; \
+		echo "Completed test group $(TEST_NAME), seed=$(SEED)"; \
+	else \
+		echo "Running $(TEST_NAME), seed=$(SEED)"; \
+		cd $(OUTPUT_DIR) && ./simv \
+			$(RUN_OPTS) \
+			$(SEED_OPTS) \
+			$(FSDB_OPTS) \
+			-l $(LOG_DIR)/$(TEST_NAME)_$(SEED).log; \
+		echo "Simulation completed. Log: $(LOG_DIR)/$(TEST_NAME)_$(SEED).log"; \
+	fi
 
 run_gui: setup
 	$(CHECK_TEST_NAME)
+	@if printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1; then \
+		echo "ERROR: run_gui does not support directory alias TEST_NAME='$(TEST_NAME)'."; \
+		echo "  Use 'make run TEST_NAME=$(TEST_NAME) SEED=$(SEED)' for batch execution, or pass an exact UVM test name to run_gui."; \
+		exit 2; \
+	fi
 	cd $(OUTPUT_DIR) && ./simv \
 		$(RUN_OPTS) \
 		$(SEED_OPTS) \
@@ -656,27 +679,66 @@ run_gui: setup
 
 run_batch: setup
 	$(CHECK_TEST_NAME)
-	cd $(OUTPUT_DIR) && ./simv \
-		$(RUN_OPTS) \
-		$(SEED_OPTS) \
-		-l $(LOG_DIR)/$(TEST_NAME)_batch.log
+	@if printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1; then \
+		set -e; \
+		tests=`grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test/$(TEST_NAME) 2>/dev/null | \
+		  sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u`; \
+		test -n "$$tests" || (echo "ERROR: directory alias '$(TEST_NAME)' has no registered UVM tests."; exit 2); \
+		echo "Running batch test group $(TEST_NAME), seed=$(SEED)"; \
+		for t in $$tests; do \
+			echo "=== [$(TEST_NAME)] $$t SEED=$(SEED) batch ==="; \
+			$(MAKE) run_batch TEST_NAME=$$t SEED=$(SEED) VERBOSITY="$(VERBOSITY)" TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)" PLUS_ARGS='$(PLUS_ARGS)'; \
+		done; \
+		echo "Completed batch test group $(TEST_NAME), seed=$(SEED)"; \
+	else \
+		cd $(OUTPUT_DIR) && ./simv \
+			$(RUN_OPTS) \
+			$(SEED_OPTS) \
+			-l $(LOG_DIR)/$(TEST_NAME)_batch.log; \
+	fi
 
 run_cov: setup
 	$(CHECK_TEST_NAME)
-	cd $(OUTPUT_DIR) && ./simv \
-		$(RUN_OPTS) \
-		$(SEED_OPTS) \
-		$(COV_OPTS) \
-		-l $(LOG_DIR)/$(TEST_NAME)_cov.log
+	@if printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1; then \
+		set -e; \
+		tests=`grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test/$(TEST_NAME) 2>/dev/null | \
+		  sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u`; \
+		test -n "$$tests" || (echo "ERROR: directory alias '$(TEST_NAME)' has no registered UVM tests."; exit 2); \
+		echo "Running coverage test group $(TEST_NAME), seed=$(SEED)"; \
+		for t in $$tests; do \
+			echo "=== [$(TEST_NAME)] $$t SEED=$(SEED) cov ==="; \
+			$(MAKE) run_cov TEST_NAME=$$t SEED=$(SEED) VERBOSITY="$(VERBOSITY)" TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)" PLUS_ARGS='$(PLUS_ARGS)'; \
+		done; \
+		echo "Completed coverage test group $(TEST_NAME), seed=$(SEED)"; \
+	else \
+		cd $(OUTPUT_DIR) && ./simv \
+			$(RUN_OPTS) \
+			$(SEED_OPTS) \
+			$(COV_OPTS) \
+			-l $(LOG_DIR)/$(TEST_NAME)_cov.log; \
+	fi
 
 debug: setup
 	$(CHECK_TEST_NAME)
-	cd $(OUTPUT_DIR) && ./simv \
-		$(RUN_OPTS) \
-		$(SEED_OPTS) \
-		$(FSDB_OPTS) \
-		+UVM_VERBOSITY=UVM_DEBUG \
-		-l $(LOG_DIR)/$(TEST_NAME)_debug.log
+	@if printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1; then \
+		set -e; \
+		tests=`grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test/$(TEST_NAME) 2>/dev/null | \
+		  sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u`; \
+		test -n "$$tests" || (echo "ERROR: directory alias '$(TEST_NAME)' has no registered UVM tests."; exit 2); \
+		echo "Running debug test group $(TEST_NAME), seed=$(SEED)"; \
+		for t in $$tests; do \
+			echo "=== [$(TEST_NAME)] $$t SEED=$(SEED) debug ==="; \
+			$(MAKE) debug TEST_NAME=$$t SEED=$(SEED) TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)" PLUS_ARGS='$(PLUS_ARGS)'; \
+		done; \
+		echo "Completed debug test group $(TEST_NAME), seed=$(SEED)"; \
+	else \
+		cd $(OUTPUT_DIR) && ./simv \
+			$(RUN_OPTS) \
+			$(SEED_OPTS) \
+			$(FSDB_OPTS) \
+			+UVM_VERBOSITY=UVM_DEBUG \
+			-l $(LOG_DIR)/$(TEST_NAME)_debug.log; \
+	fi
 
 #===============================================================================
 # Wave
@@ -706,12 +768,11 @@ merge_cov:
 #===============================================================================
 # Test List
 #===============================================================================
-DETECTED_TESTS_CMD = grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test 2>/dev/null | \
-                     sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u
-
 list_tests:
 	@echo "Registered UVM tests:"
 	@($(DETECTED_TESTS_CMD) | sed 's/^/  - /') || true
+	@echo "Supported test directory aliases:"
+	@printf '  - %s\n' $(TEST_GROUP_DIRS)
 
 #===============================================================================
 # Clean

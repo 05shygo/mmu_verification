@@ -218,6 +218,11 @@ REGRESS_SMOKE_LIST        ?= $(SIMU_DIR)/mmu_smoke_list
 REGRESS_NIGHTLY_LIST      ?= $(SIMU_DIR)/mmu_nightly_list
 REGRESS_SMOKE_SEEDS       ?= 91001
 REGRESS_NIGHTLY_SEEDS     ?= 92001 92002 92003 92004 92005
+REGRESS_V3_NAME           ?= v3_gap
+REGRESS_V3_LIST           ?= $(SIMU_DIR)/mmu_v3_regression_list
+REGRESS_V3_SEEDS          ?= 93001 93002 93003
+REGRESS_V3_MIN_PASS_RATE  ?= 1.0
+REGRESS_V3_SUMMARY        ?= $(REGRESS_DIR)/$(REGRESS_V3_NAME)/summary.txt
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -379,7 +384,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         phase7 phase7_cov print-phase7 \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
-        regress regress_smoke regress_nightly print-regress
+        regress regress_smoke regress_nightly regress_v3_gap print-regress
 
 all: comp run
 
@@ -396,6 +401,11 @@ print-regress:
 	@echo "REGRESS_SUMMARY        = $(REGRESS_SUMMARY)"
 	@echo "REGRESS_SMOKE_LIST     = $(REGRESS_SMOKE_LIST)"
 	@echo "REGRESS_NIGHTLY_LIST   = $(REGRESS_NIGHTLY_LIST)"
+	@echo "REGRESS_V3_NAME        = $(REGRESS_V3_NAME)"
+	@echo "REGRESS_V3_LIST        = $(REGRESS_V3_LIST)"
+	@echo "REGRESS_V3_SEEDS       = $(REGRESS_V3_SEEDS)"
+	@echo "REGRESS_V3_SUMMARY     = $(REGRESS_V3_SUMMARY)"
+	@echo "REGRESS_V3_MIN_PASS_RATE = $(REGRESS_V3_MIN_PASS_RATE)"
 
 regress: setup
 	@test -f "$(REGRESS_SCRIPT)" || (echo "ERROR: regression wrapper missing: $(REGRESS_SCRIPT)"; exit 2)
@@ -435,6 +445,34 @@ regress_nightly: comp
 		echo "No coverage databases found under $(COV_DIR); skipping URG."; \
 	fi; \
 	exit $$rc
+
+regress_v3_gap: comp
+	@set +e; \
+	$(MAKE) regress \
+		LIST="$(REGRESS_V3_LIST)" \
+		REGRESS_MODE=run_check \
+		REGRESS_NAME="$(REGRESS_V3_NAME)" \
+		REGRESS_SEEDS="$(REGRESS_V3_SEEDS)" \
+		REGRESS_SUMMARY="$(REGRESS_V3_SUMMARY)" \
+		REGRESS_MIN_PASS_RATE="$(REGRESS_V3_MIN_PASS_RATE)"; \
+	reg_rc=$$?; \
+	set -e; \
+	summary="$(REGRESS_V3_SUMMARY)"; \
+	test -f "$$summary" || (echo "Missing regression summary: $$summary"; exit 1); \
+	logs="$$(awk -F'log=' '/^(PASS|FAIL|XFAIL|XPASS) / {print $$2}' "$$summary")"; \
+	test -n "$$logs" || (echo "No log paths found in $$summary"; exit 1); \
+	if $(PERL) -MText::Table -e 1 >/dev/null 2>&1; then \
+		$(PERL) $(PROJECT_DIR)/scripts/scan_logs.pl $$logs; \
+	else \
+		echo "[regress_v3_gap] WARN: perl module Text::Table missing; fallback to grep UVM_ERROR/UVM_FATAL scan."; \
+		if grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*[1-9]|UVM_FATAL[[:space:]]*:[[:space:]]*[1-9]' $$logs >/dev/null 2>&1; then \
+			echo "[regress_v3_gap] FAIL: non-zero UVM_ERROR/UVM_FATAL summary found."; \
+			exit 1; \
+		else \
+			echo "[regress_v3_gap] PASS (fallback): all logs show UVM_ERROR=0 and UVM_FATAL=0"; \
+		fi; \
+	fi; \
+	exit $$reg_rc
 
 #===============================================================================
 # Phase 5 regression (MMU_UVM_TaskDivision.md §5 — 一次签核)
@@ -597,9 +635,11 @@ help:
 	@echo "  make regress LIST=simu/mmu_smoke_list                 # generic regression list runner"
 	@echo "  make regress_smoke                                    # smoke list, 100% pass gate"
 	@echo "  make regress_nightly                                  # nightly list, multi-seed + URG baseline"
+	@echo "  make regress_v3_gap                                   # Phase 11 v3 gap list + xfail + scan_logs"
 	@echo "  make print-regress                                    # show regression defaults"
 	@echo "  Override: REGRESS_SEEDS='1 2 3' REGRESS_MIN_PASS_RATE=0.5"
-	@echo "  List format: one test per line; optional per-line PLUS_ARGS after the test name"
+	@echo "  List format: one test per line; optional per-line PLUS_ARGS after the test name;"
+	@echo "               optional xfail marker: xfail or xfail=<reason>"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md §5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"

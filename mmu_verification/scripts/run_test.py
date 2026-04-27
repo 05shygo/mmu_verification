@@ -20,11 +20,19 @@ SKIP_TESTS = {"test_base", "phase9_generated_test_base", "phase11_generated_test
 
 
 class RegressionEntry:
-    __slots__ = ("test_name", "plus_args")
+    __slots__ = ("test_name", "plus_args", "expected_fail", "xfail_reason")
 
-    def __init__(self, test_name: str, plus_args: str = "") -> None:
+    def __init__(
+        self,
+        test_name: str,
+        plus_args: str = "",
+        expected_fail: bool = False,
+        xfail_reason: str = "",
+    ) -> None:
         self.test_name = test_name
         self.plus_args = plus_args
+        self.expected_fail = expected_fail
+        self.xfail_reason = xfail_reason
 
 
 class RegressionResult:
@@ -38,6 +46,9 @@ class RegressionResult:
         "command",
         "log_path",
         "return_code",
+        "expected_fail",
+        "xfail_reason",
+        "effective_pass",
     )
 
     def __init__(
@@ -51,6 +62,9 @@ class RegressionResult:
         command: List[str],
         log_path: Optional[Path],
         return_code: int,
+        expected_fail: bool,
+        xfail_reason: str,
+        effective_pass: bool,
     ) -> None:
         self.test_name = test_name
         self.seed = seed
@@ -61,6 +75,9 @@ class RegressionResult:
         self.command = command
         self.log_path = log_path
         self.return_code = return_code
+        self.expected_fail = expected_fail
+        self.xfail_reason = xfail_reason
+        self.effective_pass = effective_pass
 
 
 def find_registered_tests() -> List[str]:
@@ -130,7 +147,33 @@ def load_regression_list(list_path: Path) -> List[RegressionEntry]:
             tokens = shlex.split(line)
             if not tokens:
                 continue
-            entries.append(RegressionEntry(test_name=tokens[0], plus_args=" ".join(tokens[1:])))
+            expected_fail = False
+            xfail_reason = ""
+            plus_tokens: List[str] = []
+            for token in tokens[1:]:
+                if token == "xfail":
+                    expected_fail = True
+                    continue
+                if token.startswith("xfail="):
+                    expected_fail = True
+                    xfail_reason = token.split("=", 1)[1]
+                    continue
+                if token.startswith("xfail_reason="):
+                    expected_fail = True
+                    xfail_reason = token.split("=", 1)[1]
+                    continue
+                if token.startswith("reason=") and expected_fail:
+                    xfail_reason = token.split("=", 1)[1]
+                    continue
+                plus_tokens.append(token)
+            entries.append(
+                RegressionEntry(
+                    test_name=tokens[0],
+                    plus_args=" ".join(plus_tokens),
+                    expected_fail=expected_fail,
+                    xfail_reason=xfail_reason,
+                )
+            )
 
     if not entries:
         raise ValueError(f"Regression list is empty after filtering comments: {list_path}")
@@ -205,6 +248,8 @@ def run_single(
     timeout: str,
     uvm_err_only: str,
     plus_args: str,
+    expected_fail: bool = False,
+    xfail_reason: str = "",
 ) -> RegressionResult:
     cmd = make_cmd(mode, test_name, seed, verbosity, timeout, uvm_err_only, plus_args)
     start = time.monotonic()
@@ -221,16 +266,21 @@ def run_single(
                 break
 
     duration_s = time.monotonic() - start
+    passed = rc == 0
+    effective_pass = (not expected_fail and passed) or (expected_fail and not passed)
     return RegressionResult(
         test_name=test_name,
         seed=seed,
         mode=mode,
         plus_args=plus_args,
-        passed=(rc == 0),
+        passed=passed,
         duration_s=duration_s,
         command=cmd,
         log_path=log_path,
         return_code=rc,
+        expected_fail=expected_fail,
+        xfail_reason=xfail_reason,
+        effective_pass=effective_pass,
     )
 
 
@@ -244,9 +294,12 @@ def write_summary(
 ) -> None:
     summary_path.parent.mkdir(parents=True, exist_ok=True)
     total = len(results)
-    passed = sum(1 for item in results if item.passed)
-    failed = total - passed
-    pass_rate = (passed / total) if total else 0.0
+    passed = sum(1 for item in results if item.passed and not item.expected_fail)
+    failed = sum(1 for item in results if (not item.passed) and (not item.expected_fail))
+    xfail_expected = sum(1 for item in results if (not item.passed) and item.expected_fail)
+    xpass_unexpected = sum(1 for item in results if item.passed and item.expected_fail)
+    effective_passed = sum(1 for item in results if item.effective_pass)
+    pass_rate = (effective_passed / total) if total else 0.0
 
     with summary_path.open("w", encoding="utf-8") as handle:
         handle.write("MMU regression summary\n")
@@ -257,17 +310,29 @@ def write_summary(
         handle.write(f"total_runs: {total}\n")
         handle.write(f"passed_runs: {passed}\n")
         handle.write(f"failed_runs: {failed}\n")
+        handle.write(f"xfail_expected_runs: {xfail_expected}\n")
+        handle.write(f"xpass_unexpected_runs: {xpass_unexpected}\n")
+        handle.write(f"effective_passed_runs: {effective_passed}\n")
         handle.write(f"pass_rate: {pass_rate:.4f}\n")
         handle.write(f"min_pass_rate: {min_pass_rate:.4f}\n")
         handle.write("\n")
         for result in results:
-            status = "PASS" if result.passed else "FAIL"
+            if result.expected_fail and result.passed:
+                status = "XPASS"
+            elif result.expected_fail and not result.passed:
+                status = "XFAIL"
+            elif result.passed:
+                status = "PASS"
+            else:
+                status = "FAIL"
             log_path = str(result.log_path) if result.log_path is not None else "-"
             handle.write(
                 f"{status} test={result.test_name} seed={result.seed} "
                 f"mode={result.mode} duration_s={result.duration_s:.2f} log={log_path}\n"
             )
-            if not result.passed:
+            if result.expected_fail and result.xfail_reason:
+                handle.write(f"  xfail_reason={result.xfail_reason}\n")
+            if status != "PASS":
                 handle.write(f"  rc={result.return_code} cmd={' '.join(result.command)}\n")
 
 
@@ -297,15 +362,25 @@ def run_regression(
                 timeout=timeout,
                 uvm_err_only=uvm_err_only,
                 plus_args=plus_args,
+                expected_fail=entry.expected_fail,
+                xfail_reason=entry.xfail_reason,
             )
             results.append(result)
 
     write_summary(summary_path, list_path, mode, seeds, results, min_pass_rate)
 
     total = len(results)
-    passed = sum(1 for item in results if item.passed)
-    pass_rate = (passed / total) if total else 0.0
-    print(f"Summary: {passed}/{total} passed, pass_rate={pass_rate:.2%}")
+    passed = sum(1 for item in results if item.passed and not item.expected_fail)
+    failed = sum(1 for item in results if (not item.passed) and (not item.expected_fail))
+    xfail_expected = sum(1 for item in results if (not item.passed) and item.expected_fail)
+    xpass_unexpected = sum(1 for item in results if item.passed and item.expected_fail)
+    effective_passed = sum(1 for item in results if item.effective_pass)
+    pass_rate = (effective_passed / total) if total else 0.0
+    print(
+        "Summary: "
+        f"PASS={passed} FAIL={failed} XFAIL={xfail_expected} XPASS={xpass_unexpected} "
+        f"effective_pass_rate={pass_rate:.2%}"
+    )
     print(f"Summary file: {summary_path}")
     return 0 if total and pass_rate >= min_pass_rate else 1
 
@@ -319,7 +394,10 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", default="10000000", help="Simulation timeout passed through to Makefile")
     parser.add_argument("--uvm-err-only", default="0", help="Pass 1 to add +UVM_ERR_ONLY")
     parser.add_argument("--mode", default=DEFAULT_MODE, choices=sorted(VALID_MODES), help="Make target to execute")
-    parser.add_argument("--reg-list", help="Regression list file under the MMU project")
+    parser.add_argument(
+        "--reg-list",
+        help="Regression list file under the MMU project; supports optional xfail markers",
+    )
     parser.add_argument("--seeds", default="1", help="Whitespace or comma separated seed list for regression mode")
     parser.add_argument("--summary", help="Summary file path for regression mode")
     parser.add_argument("--min-pass-rate", type=float, default=1.0, help="Minimum pass rate before returning failure")

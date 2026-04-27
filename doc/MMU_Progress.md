@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-27（Phase 8 / Phase 9 已完成，详细进度已归档）
+> **更新**：2026-04-27（Phase 8 / Phase 9 已完成；Phase 10 A 侧回归脚本与覆盖率入口已落地，待 B 侧列表 / 豁免接入）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -20,7 +20,7 @@
 | **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅ **已达成**（2026-04-26，A/B 合入+合并） | B：7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + `en_whitebox_cg` + `make phase7` / `run_cov`+`urgReport`；A：**5×SVA 为完整属性版**（与 `B_phase7` 合入时保留 A 实现，非桩代码）+ `tb_top` bind + `Files.f`；审计 [P7B01_covergroup_vif_audit.md](P7B01_covergroup_vif_audit.md) |
 | **Phase 8**  | Virtual Sequence 实现（M8）                 | B                  | ✅ 完成（2026-04-27） | ✅`make phase8` 42-run 矩阵完成；14 个 vseq × 3 seeds 全部收口，TaskDivision#3 统计行 `[MMU_VSEQ_TASKDIVISION#3]` 已留档；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 与 A Review 清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) 已记档 |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27） | ✅`phase9_generated_test_base` + `test_pkg` 已纳管 12 个新增 suite，并复用 3 个 `basic_tests` 基线入口；259 个 Phase 9 wrapper（总 262 stage 合同）已落地；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成 |
-| **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ⏳ 未开始（已解锁）   | —                                                                                                                                                               |
+| **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | 🔄 进行中（A 侧已完成，待 B 接入） | A：`Makefile` 已新增 `regress` / `regress_smoke` / `regress_nightly` / `print-regress`，`scripts/run_test.py` / `run_vcs_verdi.py` / `cov_hier.cfg` 已切换 MMU 口径，`run_cov` 已按 `TEST_NAME+SEED` 隔离 `.vdb` / log；B：`simu/mmu_smoke_list` / `mmu_nightly_list` / `mmu_coverage_list` / `exclude.do` 待交付后联调 |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | 🔒 等待 Phase 10      | —                                                                                                                                                               |
 | **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | 🔒 等待 Phase 11      | —                                                                                                                                                               |
 | **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | 🔒 等待 Phase 12      | —                                                                                                                                                               |
@@ -553,6 +553,40 @@
 
 ---
 
+## Phase 10 详细进度（🔄 进行中 — 2026-04-27）
+
+**负责**：工程师 A（主实现） / 工程师 B（回归列表与覆盖率豁免待接入）  
+**当前快照**：
+
+- A 侧：✅ `Makefile` 已新增 `regress` / `regress_smoke` / `regress_nightly` / `print-regress`，并将 `run_cov` 的 `.vdb` / log 输出切到 `TEST_NAME+SEED` 隔离，避免 nightly/coverage 回归互相覆盖
+- A 侧：✅ `scripts/run_test.py` 已改为 MMU 工程包装器，支持 `--reg-list` / `--mode` / `--seeds` / `--plus-args` / `--summary`，可枚举当前 UVM test 与目录 alias
+- A 侧：✅ `scripts/run_vcs_verdi.py` 已切换到 MMU 工程（`tb_top` / `testbench/Files.f`），`scripts/cov_hier.cfg` 已切到 `tb_top.u_dut` 并排除 MMU SVA 模块
+- B 侧：⏳ `simu/mmu_smoke_list` / `mmu_nightly_list` / `mmu_coverage_list` / `exclude.do` 尚待交付；Phase 10 现阶段为“A 侧入口已就绪、B 侧内容待接入”
+
+| 项目 | 负责人 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `Makefile` 回归 target | A | ✅ | 已落地 `regress` / `regress_smoke` / `regress_nightly` / `print-regress`；`regress_smoke` / `regress_nightly` 已带 `comp` 前置 |
+| `run_cov` 覆盖率目录隔离 | A | ✅ | `COV_TAG=$(TEST_NAME)_$(SEED)`；`.vdb` 与 `_cov.log` 不再被不同 seed 覆盖 |
+| `scripts/run_test.py` MMU 化 | A | ✅ | 去除 hpdcache 默认测试名与旧入口；支持回归列表、seed 集合、summary 汇总、目录 alias 扫描 |
+| `scripts/run_vcs_verdi.py` MMU 化 | A | ✅ | 已对齐 `tb_top` / `testbench/Files.f`；支持 `--info` / `--list` / `--compile-only` / `--verdi-on-fail` |
+| `scripts/cov_hier.cfg` MMU 层级 | A | ✅ | DUT 根路径已切到 `tb_top.u_dut`，并排除 `mmu_sva` / `mmu_arb_sva` / `mmu_l2tlb_rrpv_sva` / `mmu_plru_sva` / `mmu_dplru_sva` / `credit_sva` |
+| `simu/mmu_smoke_list` / `mmu_nightly_list` / `mmu_coverage_list` | B | ⏳ | 当前仓库尚未接入；A 侧入口已按这些路径预留读取与缺失报错 |
+| `simu/exclude.do` | B | ⏳ | 覆盖率豁免内容待 B 按 TaskDivision Phase 10 交付 |
+
+### Phase 10 当前验证状态
+
+| # | 检查项 | 状态 | 说明 |
+| - | ------ | ---- | ---- |
+| 1 | A 侧脚本 / Makefile 入口已落地 | ✅ | `Makefile` + `scripts/run_test.py` + `scripts/run_vcs_verdi.py` + `scripts/cov_hier.cfg` 已更新 |
+| 2 | Python 包装脚本静态校验通过 | ✅ | `py_compile` 已通过；`run_test.py --list` 与 `run_vcs_verdi.py --info` 已静态验证 |
+| 3 | `cov_hier.cfg` `u_dut` 前缀对齐 | ✅ | 现已按 `tb_top.u_dut` 收集 DUT code coverage |
+| 4 | `make regress_smoke` 100% 通过 | ⏳ | 待 B 提交 `simu/mmu_smoke_list` 后联调 |
+| 5 | `make regress_nightly` 输出 baseline coverage | ⏳ | 待 B 提交 nightly / coverage list 与 `exclude.do` 后联调 |
+| 6 | `run_test.py` 接受 `TEST_NAME` / `SEED` / `PLUS_ARGS` | ✅ | 单测 / 回归两种入口均已支持 |
+| 7 | Phase 10 整体退出准则闭环 | ⏳ | 当前口径：A 侧已完成，B 侧列表与豁免接入后再收口 |
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师      | 负责 Phase                                                                       | 主要文件数  | 核心难点                                                             |
@@ -575,6 +609,6 @@
 | **M7** — SVA + 覆盖率框架          | Phase 7 退出准则（§10.1+§10.2+SVA+smoke/≥3 测） | ✅ **已达成**（2026-04-26）：A 完整 5×SVA + B cg/白盒 + `make phase7` 等；§10.3/10.4 基线不纳入、推后见 P7-B-00 |
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ✅**已达成**（2026-04-27）：`make phase8` 42-run 矩阵完成，14 个 vseq × 3 seeds 收口，统计摘要 / F 映射 / A Review 已留档                                                                 |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：`phase9_generated_test_base` + 12 suite + 3 个 basic 基线入口已纳管；259 个 Phase 9 wrapper（总 262 stage）编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档 |
-| **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ⏳                                                                                                                                                                      |
+| **M10** — 回归脚本就绪             | Phase 10 退出准则                         | 🔄 进行中（2026-04-27）：A 侧 `Makefile` `regress*` / `run_test.py` / `run_vcs_verdi.py` / `cov_hier.cfg` 已落地并完成静态校验；待 B 侧 `simu/mmu_*_list` 与 `exclude.do` 接入后联调收口 |
 | **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | ⏳                                                                                                                                                                      |
 | **M14** — 签核通过                 | Phase 14 退出准则（VerificationPlan §9） | ⏳                                                                                                                                                                      |

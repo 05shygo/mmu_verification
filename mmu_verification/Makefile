@@ -13,6 +13,7 @@ RELATE_RTL_DIR  ?= $(PROJECT_DIR)/../mmu/rtl/relate_rtl
 RELATE_RTL_REAL ?= $(PROJECT_DIR)/../mmu/rtl/relate rtl
 MMU_PARAMS_DIR  ?= $(PROJECT_DIR)/modules/mmu_params
 TB_DIR          ?= $(PROJECT_DIR)/testbench
+SIMU_DIR        ?= $(PROJECT_DIR)/simu
 CORE_V_VERIF    ?= $(PROJECT_DIR)/modules/dv_utils
 CV_DV_UTILS_DIR ?= $(CORE_V_VERIF)/lib/cv_dv_utils
 OUTPUT_DIR      ?= $(PROJECT_DIR)/output
@@ -33,6 +34,7 @@ export CORE_V_VERIF CV_DV_UTILS_DIR OUTPUT_DIR
 VCS             ?= vcs
 VERDI           ?= verdi
 URG             ?= urg
+PYTHON          ?= python
 
 #===============================================================================
 # UVM Configuration
@@ -197,10 +199,25 @@ URG_OPTS        := -dir $(COV_DIR)/*.vdb \
                    -format both \
                    -report $(COV_DIR)/urgReport
 
+COV_TAG         ?= $(TEST_NAME)_$(SEED)
 COV_OPTS        := -cm line+cond+fsm+tgl+branch+assert \
-                   -cm_name $(TEST_NAME) \
-                   -cm_dir $(COV_DIR)/$(TEST_NAME).vdb \
+                   -cm_name $(COV_TAG) \
+                   -cm_dir $(COV_DIR)/$(COV_TAG).vdb \
                    -cm_hier $(PROJECT_DIR)/scripts/cov_hier.cfg
+
+#===============================================================================
+# Phase 10 - regression wrappers and coverage baseline
+#===============================================================================
+REGRESS_SCRIPT            ?= $(PROJECT_DIR)/scripts/run_test.py
+REGRESS_MODE              ?= run_check
+REGRESS_NAME              ?= adhoc
+REGRESS_SEEDS             ?= 1
+REGRESS_MIN_PASS_RATE     ?= 1.0
+REGRESS_SUMMARY           ?= $(REGRESS_DIR)/$(REGRESS_NAME)/summary.txt
+REGRESS_SMOKE_LIST        ?= $(SIMU_DIR)/mmu_smoke_list
+REGRESS_NIGHTLY_LIST      ?= $(SIMU_DIR)/mmu_nightly_list
+REGRESS_SMOKE_SEEDS       ?= 91001
+REGRESS_NIGHTLY_SEEDS     ?= 92001 92002 92003 92004 92005
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -361,12 +378,63 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         print-phase6-rtu-ptw phase6_full phase6_full_fast \
         phase7 phase7_cov print-phase7 \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
-        phase8_check_errfatal phase8_scan_errfatal phase8_quick
+        phase8_check_errfatal phase8_scan_errfatal phase8_quick \
+        regress regress_smoke regress_nightly print-regress
 
 all: comp run
 
 # Fast: compile without debug + run without FSDB/waves (fastest iteration loop)
 fast: comp_fast run_batch
+
+print-regress:
+	@echo "SIMU_DIR               = $(SIMU_DIR)"
+	@echo "REGRESS_SCRIPT         = $(REGRESS_SCRIPT)"
+	@echo "REGRESS_MODE           = $(REGRESS_MODE)"
+	@echo "REGRESS_NAME           = $(REGRESS_NAME)"
+	@echo "REGRESS_SEEDS          = $(REGRESS_SEEDS)"
+	@echo "REGRESS_MIN_PASS_RATE  = $(REGRESS_MIN_PASS_RATE)"
+	@echo "REGRESS_SUMMARY        = $(REGRESS_SUMMARY)"
+	@echo "REGRESS_SMOKE_LIST     = $(REGRESS_SMOKE_LIST)"
+	@echo "REGRESS_NIGHTLY_LIST   = $(REGRESS_NIGHTLY_LIST)"
+
+regress: setup
+	@test -f "$(REGRESS_SCRIPT)" || (echo "ERROR: regression wrapper missing: $(REGRESS_SCRIPT)"; exit 2)
+	@test -n "$(LIST)" || (echo "ERROR: LIST is empty. Example: make regress LIST=simu/mmu_smoke_list"; exit 2)
+	$(PYTHON) "$(REGRESS_SCRIPT)" \
+		--reg-list "$(LIST)" \
+		--mode "$(REGRESS_MODE)" \
+		--seeds "$(REGRESS_SEEDS)" \
+		--verbosity "$(VERBOSITY)" \
+		--timeout "$(TIMEOUT)" \
+		--uvm-err-only "$(UVM_ERR_ONLY)" \
+		--plus-args "$(PLUS_ARGS)" \
+		--summary "$(REGRESS_SUMMARY)" \
+		--min-pass-rate "$(REGRESS_MIN_PASS_RATE)"
+
+regress_smoke: comp
+	@$(MAKE) regress \
+		LIST="$(REGRESS_SMOKE_LIST)" \
+		REGRESS_MODE=run_check \
+		REGRESS_NAME=smoke \
+		REGRESS_SEEDS="$(REGRESS_SMOKE_SEEDS)" \
+		REGRESS_MIN_PASS_RATE=1.0
+
+regress_nightly: comp
+	@set +e; \
+	$(MAKE) regress \
+		LIST="$(REGRESS_NIGHTLY_LIST)" \
+		REGRESS_MODE=run_cov \
+		REGRESS_NAME=nightly \
+		REGRESS_SEEDS="$(REGRESS_NIGHTLY_SEEDS)" \
+		REGRESS_MIN_PASS_RATE=0.5; \
+	rc=$$?; \
+	set -e; \
+	if ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
+		$(MAKE) cov; \
+	else \
+		echo "No coverage databases found under $(COV_DIR); skipping URG."; \
+	fi; \
+	exit $$rc
 
 #===============================================================================
 # Phase 5 regression (MMU_UVM_TaskDivision.md §5 — 一次签核)
@@ -524,6 +592,14 @@ help:
 	@echo "  Example: make fast_check TEST_NAME=test_mmu_translation_sanity SEED=1 UVM_ERR_ONLY=1"
 	@echo "  Group example: make run TEST_NAME=basic_tests SEED=1"
 	@echo "  PLUS_ARGS: e.g. PLUS_ARGS=+MMU_LSU_MON_DBG  (P1 RSP bus snapshot, lsu_monitor.svh)"
+	@echo ""
+	@echo "Phase 10 (MMU_UVM_TaskDivision.md §10):"
+	@echo "  make regress LIST=simu/mmu_smoke_list                 # generic regression list runner"
+	@echo "  make regress_smoke                                    # smoke list, 100% pass gate"
+	@echo "  make regress_nightly                                  # nightly list, multi-seed + URG baseline"
+	@echo "  make print-regress                                    # show regression defaults"
+	@echo "  Override: REGRESS_SEEDS='1 2 3' REGRESS_MIN_PASS_RATE=0.5"
+	@echo "  List format: one test per line; optional per-line PLUS_ARGS after the test name"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md §5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"
@@ -759,7 +835,7 @@ run_cov: setup
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(COV_OPTS) \
-			-l $(LOG_DIR)/$(TEST_NAME)_cov.log; \
+			-l $(LOG_DIR)/$(COV_TAG)_cov.log; \
 	fi
 
 debug: setup

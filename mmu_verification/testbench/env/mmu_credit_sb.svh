@@ -82,6 +82,7 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int m_lsu_ext_outstanding; // LSU externally-visible uncompleted (approx, includes sleeping)
   protected int m_ptw_mbuf_cnt;        // PTW miss buffer occupancy
   protected int m_ptw_rsp_ignored;     // late PTW rsps after tlboper_ptw_abort
+  protected bit m_end_drain_active;    // run-phase end settle window in progress
 
   // ── Peak observations (for debug) ─────────────────────────────────────────
   protected int m_peak_l1i;
@@ -96,6 +97,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_lsu_ext_outstanding = 0;
     m_ptw_mbuf_cnt        = 0;
     m_ptw_rsp_ignored     = 0;
+    m_end_drain_active    = 1'b0;
     m_peak_l1i            = 0;
     m_peak_l1d            = 0;
     m_peak_lsu_ext        = 0;
@@ -372,6 +374,62 @@ class mmu_credit_sb extends uvm_scoreboard;
       end
       prev_abort = v_probe.mon_cb.ptw_abort_pulse;
     end
+  endtask
+
+  // ── phase_ready_to_end: allow late PTW completion / abort settle ─────────
+  // Phase-9 wrappers use a fixed post-drain, but SFENCE-aborted PTW traffic
+  // can still be in flight on the memory side when run_phase is about to end.
+  // Hold the run phase briefly so late PTW responses (and their abort
+  // compensation) are consumed before report_phase checks conservation.
+  virtual function void phase_ready_to_end(uvm_phase phase);
+    if (phase.get_name() != "run")
+      return;
+
+    if (m_end_drain_active)
+      return;
+
+    if ((m_ptw_mbuf_cnt != 0) || (m_ptw_rsp_ignored != 0)) begin
+      m_end_drain_active = 1'b1;
+      phase.raise_objection(this,
+        $sformatf("Settling PTW counters before end: ptw_mbuf_cnt=%0d ptw_rsp_ignored=%0d",
+          m_ptw_mbuf_cnt, m_ptw_rsp_ignored));
+      fork
+        begin
+          _drain_ptw_before_end(phase);
+        end
+      join_none
+    end
+  endfunction
+
+  protected task _drain_ptw_before_end(uvm_phase phase);
+    int unsigned wait_cycles;
+    int unsigned max_wait_cycles;
+
+    wait_cycles     = 0;
+    max_wait_cycles = 4096;
+
+    while (((m_ptw_mbuf_cnt != 0) || (m_ptw_rsp_ignored != 0)) &&
+           (wait_cycles < max_wait_cycles)) begin
+      if (v_probe != null)
+        @(v_probe.mon_cb);
+      else
+        #1ns;
+      wait_cycles++;
+    end
+
+    if ((m_ptw_mbuf_cnt != 0) || (m_ptw_rsp_ignored != 0)) begin
+      `uvm_warning(get_type_name(),
+        $sformatf(
+          "PTW end-drain timeout after %0d cycles: ptw_mbuf_cnt=%0d ptw_rsp_ignored=%0d",
+          wait_cycles, m_ptw_mbuf_cnt, m_ptw_rsp_ignored))
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("PTW end-drain settled after %0d cycles", wait_cycles),
+        UVM_MEDIUM)
+    end
+
+    m_end_drain_active = 1'b0;
+    phase.drop_objection(this, "PTW counters settled (or timeout reached)");
   endtask
 
   // ── Inline bound checks ───────────────────────────────────────────────────

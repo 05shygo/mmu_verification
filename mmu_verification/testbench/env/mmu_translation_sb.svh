@@ -261,7 +261,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit           skip_ref_ppn_check = 1'b0,
     bit           dtlb_expt_match = 1'b0
   );
-    bit exp_fault = (ref_rsp.exc != EXC_NONE);
+    // Treat deny as a fault-class outcome as well (for PMP/SysMap modeled paths).
+    bit exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
     bit local_mismatch = 0;
     bit fault_replay_rsp = 0;
     // Ref does not model DTLB pre_sel/expt CAM; see file header.
@@ -288,13 +289,13 @@ class mmu_translation_sb extends uvm_scoreboard;
       if (!skip_lsu_dtlb_ref_fault_compare) begin
         if (fault_replay_rsp) begin
           `uvm_error(get_type_name(),
-            $sformatf("[%s][EXPT_REPLAY] VA=0x%010h: fault mismatch on replay response — ref.exc=%s (exp_fault=%0b) dut_fault=%0b dut.pa=0x%07h req_vpn=0x%07h",
-              channel, {1'b0, va}, ref_rsp.exc.name(), exp_fault, dut_fault, dut_pa, req_vpn))
+            $sformatf("[%s][EXPT_REPLAY] VA=0x%010h: fault mismatch on replay response — ref.exc=%s ref.deny=%0b (exp_fault=%0b) dut_fault=%0b dut.pa=0x%07h req_vpn=0x%07h",
+              channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault, dut_pa, req_vpn))
           m_lsu_replay_mismatch++;
         end else begin
           `uvm_error(get_type_name(),
-            $sformatf("[%s] VA=0x%010h: fault mismatch — ref.exc=%s (exp_fault=%0b)  dut_fault=%0b",
-              channel, {1'b0, va}, ref_rsp.exc.name(), exp_fault, dut_fault))
+            $sformatf("[%s] VA=0x%010h: fault mismatch — ref.exc=%s ref.deny=%0b (exp_fault=%0b)  dut_fault=%0b",
+              channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault))
         end
         local_mismatch = 1;
       end

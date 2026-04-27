@@ -184,6 +184,7 @@ class mmu_ref_model extends uvm_component;
     xlation_rsp_t rsp;
     ppn_t   active_ppn;
     bit [3:0] active_mode;
+    int     pmp_port_idx;
 
     rsp = '{ppn: '0, exc: EXC_NONE,
             sec: 0, ca: 0, buf_en: 0, sh: 0, so: 0, deny: 0};
@@ -212,6 +213,15 @@ class mmu_ref_model extends uvm_component;
         return rsp;
       end
     end
+
+    // Map access class to a stable PMP port index for scoreboard-level fault
+    // alignment. Keep mapping local and deterministic across runs.
+    unique case (acc)
+      ACC_FETCH: pmp_port_idx = 0;
+      ACC_LOAD:  pmp_port_idx = 1;
+      ACC_STORE: pmp_port_idx = 2;
+      default:   pmp_port_idx = 1; // PFU uses read-like permission model
+    endcase
 
     // ── [Decision 2] Select active SATP ──────────────────────────────────
     if (m_satp_sel) begin
@@ -367,6 +377,21 @@ class mmu_ref_model extends uvm_component;
           end
           rsp.ppn = leaf_ppn;
 
+          // PMP deny is modeled as fault-class outcome so translation_sb can
+          // compare against IFU deny / LSU access_fault consistently.
+          begin
+            pa_t pa_full = pa_t'({leaf_ppn, va[11:0]});
+            if (!check_pmp(pa_full, acc, pmp_port_idx)) begin
+              rsp.deny = 1'b1;
+              rsp.exc  = (acc == ACC_FETCH) ? EXC_PMP_DENY : EXC_ACCESS_FAULT;
+              `uvm_info(get_type_name(),
+                $sformatf("translate DENY(PMP): va=0x%010h pa=0x%010h acc=%s port=%0d exc=%s",
+                  va, pa_full, acc.name(), pmp_port_idx, rsp.exc.name()),
+                UVM_MEDIUM)
+              return rsp;
+            end
+          end
+
           `uvm_info(get_type_name(),
             $sformatf("translate OK: va=0x%010h → ppn=0x%07h L%0d pte=0x%016h",
               va, leaf_ppn, level, pte), UVM_MEDIUM)
@@ -394,10 +419,20 @@ class mmu_ref_model extends uvm_component;
   // PMP check (stub — Phase 5 for full 8-port check)
   // =========================================================================
   virtual function bit check_pmp(pa_t pa, acc_type_e acc, int port_idx);
-    // Phase 4: always pass (m_pmp_flg configured from pmp_monitor in Phase 5)
-    // flg bit semantics: [0]=fetch_en, [1]=load_en, [2]=store_en, [3]=valid
-    if (port_idx >= PMP_ENTRIES) return 1'b1;
-    return (m_pmp_flg[port_idx] != 4'h0);
+    bit [3:0] flg;
+    // pmp_txn semantics: {execute_deny, write_deny, read_deny, valid}.
+    // Keep valid-bit out of decision to match current DUT test programming
+    // where deny scenarios may not set a dedicated valid bit.
+    if (port_idx < 0 || port_idx >= PMP_ENTRIES) return 1'b1;
+    flg = m_pmp_flg[port_idx];
+
+    unique case (acc)
+      ACC_FETCH: return !flg[3];
+      ACC_LOAD:  return !flg[1];
+      ACC_PFU:   return !flg[1];
+      ACC_STORE: return !flg[2];
+      default:   return 1'b1;
+    endcase
   endfunction
 
   // =========================================================================

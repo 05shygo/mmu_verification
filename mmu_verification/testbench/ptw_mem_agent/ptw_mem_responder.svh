@@ -47,28 +47,30 @@ class ptw_mem_responder extends uvm_component;
     m_pt = pt;
   endfunction
 
-  // ── Main protocol loop ────────────────────────────────────────────────────
-  virtual task run_phase(uvm_phase phase);
-    // Initialise TB-driven outputs to safe state
+  protected task _drive_idle_outputs();
     vif.driver_cb.lsu_mmu_data_vld  <= 1'b0;
     vif.driver_cb.lsu_mmu_data      <= 64'b0;
     vif.driver_cb.lsu_mmu_bus_error <= 1'b0;
+  endtask
+
+  // ── Main protocol loop ────────────────────────────────────────────────────
+  virtual task run_phase(uvm_phase phase);
+    // Initialise TB-driven outputs to safe state
+    _drive_idle_outputs();
 
     // Wait for reset de-assertion
     @(posedge vif.clk_i);
     wait (vif.rst_ni === 1'b1);
     @(vif.driver_cb);
 
-    // Strictly serial: one completion per mmu_lsu_data_req phase. If the DUT
-    // leaves req high, do not re-arm until it falls — otherwise we issue
-    // extra lsu_mmu_data_vld while ptw_mem_monitor only counted one ap_req
-    // (stuck waiting for deassert) → ptw_mbuf_cnt underflow in mmu_credit_sb.
+    // Strictly serial: at most one PTW memory request is outstanding, but req
+    // is not required to pulse low between adjacent requests. After a response,
+    // the DUT may keep req high and present the next address on the following
+    // cycle. Re-arm on the next sampled req-high cycle instead of waiting for
+    // a req-low bubble.
     forever begin
       @(vif.driver_cb iff vif.driver_cb.mmu_lsu_data_req === 1'b1);
       handle_request(vif.driver_cb.mmu_lsu_data_req_addr);
-      if (vif.driver_cb.mmu_lsu_data_req === 1'b1) begin
-        @(vif.driver_cb iff vif.driver_cb.mmu_lsu_data_req === 1'b0);
-      end
     end
   endtask
 
@@ -95,7 +97,13 @@ class ptw_mem_responder extends uvm_component;
 
     // Random response delay
     delay = $urandom_range(m_rsp_delay_min, m_rsp_delay_max);
-    repeat (delay) @(vif.driver_cb);
+    repeat (delay) begin
+      @(vif.driver_cb);
+      if (vif.rst_ni !== 1'b1) begin
+        _drive_idle_outputs();
+        return;
+      end
+    end
 
     if (inject_err) begin
       // ── Bus error response ─────────────────────────────────────────────
@@ -103,6 +111,10 @@ class ptw_mem_responder extends uvm_component;
       `uvm_info(get_type_name(),
         $sformatf("PTW BUS_ERR: addr=0x%010h delay=%0d", addr, delay), UVM_MEDIUM)
       @(vif.driver_cb);
+      if (vif.rst_ni !== 1'b1) begin
+        _drive_idle_outputs();
+        return;
+      end
       vif.driver_cb.lsu_mmu_bus_error <= 1'b0;
     end else begin
       // ── Normal data response ───────────────────────────────────────────
@@ -112,6 +124,10 @@ class ptw_mem_responder extends uvm_component;
         $sformatf("PTW RSP: addr=0x%010h pte=0x%016h delay=%0d", addr, pte, delay),
         UVM_HIGH)
       @(vif.driver_cb);
+      if (vif.rst_ni !== 1'b1) begin
+        _drive_idle_outputs();
+        return;
+      end
       vif.driver_cb.lsu_mmu_data_vld <= 1'b0;
       vif.driver_cb.lsu_mmu_data     <= 64'b0;
     end

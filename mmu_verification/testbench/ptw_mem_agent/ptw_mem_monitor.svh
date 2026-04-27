@@ -24,19 +24,16 @@ class ptw_mem_monitor extends uvm_monitor;
   uvm_analysis_port #(ptw_mem_txn) ap_rsp;   // TB response (PTE data / bus_error)
 
   // PTW LSU protocol is strict serial single-outstanding. req may remain high
-  // across back-to-back requests; the next request starts only after the prior
-  // response completes, with addr/size potentially changing on the next cycle.
+  // across back-to-back requests, but there is still only one externally
+  // outstanding request at a time. After a rsp cycle completes, any req that
+  // is still high on a later cycle is a new request, even if addr/size repeat.
   protected bit [39:0]  m_pending_addr;
   protected bit         m_pending_size;
   protected bit         m_has_pending;
-  protected bit [39:0]  m_last_rsp_addr;
-  protected bit         m_last_rsp_size;
-  protected bit         m_wait_req_change_after_rsp;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
     m_has_pending = 1'b0;
-    m_wait_req_change_after_rsp = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -58,7 +55,8 @@ class ptw_mem_monitor extends uvm_monitor;
   // Open a request when req is high and no request is pending. Keep the
   // pending request until data_vld/bus_error returns or req drops unexpectedly
   // (abort/reset/driver issue). Do not require a req low bubble between two
-  // adjacent requests; the next request can begin on the cycle after a rsp.
+  // adjacent requests; after a rsp cycle, the next later req-high cycle starts
+  // a new request, even if it reuses the same addr/size.
   protected task collect_channel();
     forever begin
       bit         req_seen;
@@ -71,7 +69,6 @@ class ptw_mem_monitor extends uvm_monitor;
 
       if (vif.rst_ni !== 1'b1) begin
         m_has_pending = 1'b0;
-        m_wait_req_change_after_rsp = 1'b0;
         continue;
       end
 
@@ -89,28 +86,6 @@ class ptw_mem_monitor extends uvm_monitor;
             m_pending_addr, cur_addr, m_pending_size, cur_size))
       end
 
-      if (!m_has_pending && req_seen && !rsp_seen) begin
-        if (m_wait_req_change_after_rsp &&
-            (cur_addr == m_last_rsp_addr) &&
-            (cur_size == m_last_rsp_size)) begin
-          // The just-completed request may legally keep req high through the
-          // response boundary. Do not reopen a new txn until req drops or the
-          // address/size changes to a distinct next request.
-        end else begin
-          tr          = ptw_mem_txn::type_id::create("ptw_req");
-          tr.addr     = cur_addr;
-          tr.req_size = cur_size;
-          m_pending_addr = cur_addr;
-          m_pending_size = cur_size;
-          m_has_pending = 1'b1;
-          m_wait_req_change_after_rsp = 1'b0;
-          `uvm_info(get_type_name(),
-            $sformatf("PTW REQ: addr=0x%010h size=%0b", tr.addr, tr.req_size),
-            UVM_HIGH)
-          ap_req.write(tr);
-        end
-      end
-
       if (rsp_seen) begin
         tr           = ptw_mem_txn::type_id::create("ptw_rsp");
         tr.pte_data  = vif.monitor_cb.lsu_mmu_data;
@@ -118,10 +93,7 @@ class ptw_mem_monitor extends uvm_monitor;
         if (m_has_pending) begin
           tr.addr     = m_pending_addr;
           tr.req_size = m_pending_size;
-          m_last_rsp_addr = m_pending_addr;
-          m_last_rsp_size = m_pending_size;
           m_has_pending = 1'b0;
-          m_wait_req_change_after_rsp = 1'b1;
         end else begin
           `uvm_warning(get_type_name(),
             $sformatf("PTW rsp observed without pending req: pte=0x%016h bus_err=%0b req=%0b addr=0x%010h",
@@ -133,16 +105,30 @@ class ptw_mem_monitor extends uvm_monitor;
         ap_rsp.write(tr);
       end
 
-      if (m_has_pending && !req_seen && !rsp_seen) begin
-        `uvm_warning(get_type_name(),
-          $sformatf(
-            "[PTW_REQ_DROP] pending req closed before rsp: addr=0x%010h size=%0b",
-            m_pending_addr, m_pending_size))
-        m_has_pending = 1'b0;
-      end
+      // Never reopen on the same sampled cycle as rsp_seen. In this protocol
+      // req high on the rsp cycle is still the retiring transaction's tail.
+      if (!rsp_seen) begin
+        if (!m_has_pending && req_seen) begin
+          tr          = ptw_mem_txn::type_id::create("ptw_req");
+          tr.addr     = cur_addr;
+          tr.req_size = cur_size;
+          m_pending_addr = cur_addr;
+          m_pending_size = cur_size;
+          m_has_pending = 1'b1;
+          `uvm_info(get_type_name(),
+            $sformatf("PTW REQ: addr=0x%010h size=%0b", tr.addr, tr.req_size),
+            UVM_HIGH)
+          ap_req.write(tr);
+        end
 
-      if (m_wait_req_change_after_rsp && !req_seen && !rsp_seen)
-        m_wait_req_change_after_rsp = 1'b0;
+        if (m_has_pending && !req_seen) begin
+          `uvm_warning(get_type_name(),
+            $sformatf(
+              "[PTW_REQ_DROP] pending req closed before rsp: addr=0x%010h size=%0b",
+              m_pending_addr, m_pending_size))
+          m_has_pending = 1'b0;
+        end
+      end
     end
   endtask
 

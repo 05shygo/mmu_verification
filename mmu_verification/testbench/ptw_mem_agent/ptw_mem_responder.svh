@@ -31,13 +31,9 @@ class ptw_mem_responder extends uvm_component;
   int unsigned m_rsp_delay_min          = 1;
   int unsigned m_rsp_delay_max          = 8;
   int unsigned m_bus_error_rate_permille = 0;  // 0 = never inject bus error
-  bit [39:0]   m_last_rsp_addr;
-  bit          m_last_rsp_size;
-  bit          m_wait_req_change_after_rsp;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
-    m_wait_req_change_after_rsp = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -67,11 +63,11 @@ class ptw_mem_responder extends uvm_component;
     wait (vif.rst_ni === 1'b1);
     @(vif.driver_cb);
 
-    // Strictly serial: at most one PTW memory request is outstanding, but req
-    // is not required to pulse low between adjacent requests. After a response,
-    // the DUT may keep req high. Treat req-high with the same addr/size as the
-    // just-completed request as hold tail, not as a new request. Re-arm only
-    // after req drops or the addr/size changes to a distinct next request.
+    // Strictly serial: at most one PTW memory request is outstanding. The
+    // responder handles exactly one request per loop iteration and blocks until
+    // its response is completed. No req-low bubble is required between two
+    // adjacent requests; after one response retires, any later req-high sample
+    // is a new transaction, even if addr/size repeat.
     forever begin
       bit [39:0] req_addr;
       bit        req_size;
@@ -80,32 +76,21 @@ class ptw_mem_responder extends uvm_component;
 
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();
-        m_wait_req_change_after_rsp = 1'b0;
         continue;
       end
 
-      if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
-        m_wait_req_change_after_rsp = 1'b0;
-        continue;
-      end
-
-      if (m_wait_req_change_after_rsp &&
-          (vif.driver_cb.mmu_lsu_data_req_addr == m_last_rsp_addr) &&
-          (vif.driver_cb.mmu_lsu_data_req_size == m_last_rsp_size))
+      if (vif.driver_cb.mmu_lsu_data_req !== 1'b1)
         continue;
 
       req_addr = vif.driver_cb.mmu_lsu_data_req_addr;
       req_size = vif.driver_cb.mmu_lsu_data_req_size;
-      handle_request(req_addr);
-      m_last_rsp_addr = req_addr;
-      m_last_rsp_size = req_size;
-      m_wait_req_change_after_rsp = 1'b1;
+      handle_request(req_addr, req_size);
     end
   endtask
 
   // ── Handle a single PTW memory request ───────────────────────────────────
   // addr: the 40-bit physical address of the PTE to read
-  virtual task handle_request(bit [39:0] addr);
+  virtual task handle_request(bit [39:0] addr, bit req_size);
     bit [63:0] pte;
     int        delay;
     bit        inject_err;
@@ -131,6 +116,19 @@ class ptw_mem_responder extends uvm_component;
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();
         return;
+      end
+      if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
+        `uvm_error(get_type_name(),
+          $sformatf(
+            "[PTW_HOLD_PROTOCOL] req dropped before rsp: addr=0x%010h size=%0b",
+            addr, req_size))
+      end else if ((vif.driver_cb.mmu_lsu_data_req_addr !== addr) ||
+                   (vif.driver_cb.mmu_lsu_data_req_size !== req_size)) begin
+        `uvm_error(get_type_name(),
+          $sformatf(
+            "[PTW_HOLD_PROTOCOL] req changed before rsp: exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b",
+            addr, vif.driver_cb.mmu_lsu_data_req_addr, req_size,
+            vif.driver_cb.mmu_lsu_data_req_size))
       end
     end
 

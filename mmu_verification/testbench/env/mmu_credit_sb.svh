@@ -31,10 +31,12 @@
 //     not a hard error.
 //
 //   m_ptw_mbuf_cnt — PTW->LSU serialized external request outstanding proxy
-//     ptw_mem ap_req → +1 (new PTW memory read issued)
-//     ptw_mem ap_rsp → -1 (PTW memory read completed)
-//     PTW external LSU request channel is single-outstanding by protocol:
-//       req must stay asserted, address stable, until LSU returns data/error.
+//     ptw_mem ap_req  → +1 (new PTW memory read issued)
+//     ptw_mem ap_rsp  → -1 (PTW memory read completed)
+//     ptw_mem ap_drop → -1 (request cancelled before any response)
+//     PTW external LSU request channel is single-outstanding by protocol.
+//     A pending request may still be cancelled by invalidate/abort, so the
+//     externally-visible lifetime is req → rsp OR req → drop.
 //     Therefore this counter must stay within {0,1}; it is NOT the DUT's
 //     internal 9-entry PTW mbuf occupancy.
 //
@@ -46,7 +48,7 @@
 //   af_ifu_req, af_ifu_rsp, af_ifu_drop,
 //   af_lsu_p0_req, af_lsu_p0_rsp, af_lsu_p0_drop,
 //   af_lsu_p1_req, af_lsu_p1_rsp, af_lsu_p1_drop,
-//   af_ptw_req, af_ptw_rsp
+//   af_ptw_req, af_ptw_rsp, af_ptw_drop
 //
 // Connected in mmu_env::connect_phase (fan-out from monitors).
 // =============================================================================
@@ -75,6 +77,7 @@ class mmu_credit_sb extends uvm_scoreboard;
   // PTW memory channel
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_req;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_rsp;
+  uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_drop;
 
   // ── Credit / occupancy counters (all start at 0) ──────────────────────────
   protected int m_credit_l1i;          // outstanding IFU translation requests
@@ -117,13 +120,14 @@ class mmu_credit_sb extends uvm_scoreboard;
     af_lsu_p1_drop = new("af_lsu_p1_drop", this);
     af_ptw_req    = new("af_ptw_req",    this);
     af_ptw_rsp    = new("af_ptw_rsp",    this);
+    af_ptw_drop   = new("af_ptw_drop",   this);
     if (!uvm_config_db #(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
       `uvm_info(get_type_name(),
         "MMU_DUT_PROBES_VIF not in config_db — PTW end-drain will use #1ns fallback",
         UVM_LOW)
   endfunction
 
-  // ── run_phase: fork 8 consumer threads ────────────────────────────────────
+  // ── run_phase: fork all analysis-fifo consumer threads ───────────────────
   virtual task run_phase(uvm_phase phase);
     fork
       _consume_ifu_req();
@@ -137,6 +141,7 @@ class mmu_credit_sb extends uvm_scoreboard;
       _consume_lsu_p1_drop();
       _consume_ptw_req();
       _consume_ptw_rsp();
+      _consume_ptw_drop();
     join_none
   endtask
 
@@ -332,6 +337,22 @@ class mmu_credit_sb extends uvm_scoreboard;
             m_ptw_mbuf_cnt))
       `uvm_info(get_type_name(),
         $sformatf("PTW_RSP: ptw_mbuf_cnt=%0d", m_ptw_mbuf_cnt), UVM_HIGH)
+    end
+  endtask
+
+  // ── PTW request cancelled before response: ptw_mbuf_cnt -1 ────────────────
+  protected task _consume_ptw_drop();
+    ptw_mem_txn tr;
+    forever begin
+      af_ptw_drop.get(tr);
+      m_ptw_mbuf_cnt--;
+      if (m_ptw_mbuf_cnt < 0)
+        `uvm_error(get_type_name(),
+          $sformatf("ptw_mbuf_cnt underflow on drop: %0d (spurious PTW drop?)",
+            m_ptw_mbuf_cnt))
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_DROP: ptw_mbuf_cnt=%0d addr=0x%010h", m_ptw_mbuf_cnt, tr.addr),
+        UVM_HIGH)
     end
   endtask
 

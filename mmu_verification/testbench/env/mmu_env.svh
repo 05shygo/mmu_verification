@@ -136,7 +136,7 @@ class mmu_env extends uvm_env;
       m_cp0.m_monitor.ap.connect(m_invalidate_sb.af_cp0.analysis_export);
     end
 
-    // Phase 5 (Engineer A): IFU/LSU/PTW req+rsp → credit scoreboard
+    // Phase 5 (Engineer A): IFU/LSU/PTW req+rsp+drop → credit scoreboard
     // IFU: ap_req (request) + ap_rsp (merged response)
     m_ifu.m_monitor.ap_req.connect(m_credit_sb.af_ifu_req.analysis_export);
     m_ifu.m_monitor.ap_rsp.connect(m_credit_sb.af_ifu_rsp.analysis_export);
@@ -152,6 +152,7 @@ class mmu_env extends uvm_env;
     // PTW memory channel
     m_ptw_mem.m_monitor.ap_req.connect(m_credit_sb.af_ptw_req.analysis_export);
     m_ptw_mem.m_monitor.ap_rsp.connect(m_credit_sb.af_ptw_rsp.analysis_export);
+    m_ptw_mem.m_monitor.ap_drop.connect(m_credit_sb.af_ptw_drop.analysis_export);
 
     // Phase 5 (Engineer A): IFU/LSU rsp + misc HPCP → performance monitor
     m_ifu.m_monitor.ap_rsp.connect(m_perf.af_ifu_rsp.analysis_export);

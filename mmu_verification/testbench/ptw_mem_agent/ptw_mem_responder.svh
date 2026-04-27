@@ -3,7 +3,8 @@
 // Phase 4: PTW memory channel responder
 //
 // Protocol summary (BuildPlan §2.4 Group 7):
-//   · DUT asserts mmu_lsu_data_req=1 and holds addr stable until TB responds
+//   · DUT asserts mmu_lsu_data_req=1 and normally holds addr stable until TB
+//     responds; invalidate/abort may cancel the request before the response
 //   · TB drives lsu_mmu_data_vld=1 (with PTE data) for exactly one cycle,
 //     then deasserts.  OR drives lsu_mmu_bus_error=1 for one cycle.
 //   · At most 1 outstanding request at any time (no tag/ID)
@@ -118,17 +119,23 @@ class ptw_mem_responder extends uvm_component;
         return;
       end
       if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
-        `uvm_error(get_type_name(),
+        `uvm_info(get_type_name(),
           $sformatf(
-            "[PTW_HOLD_PROTOCOL] req dropped before rsp: addr=0x%010h size=%0b",
-            addr, req_size))
+            "[PTW_REQ_CANCEL] req dropped before rsp, cancel response: addr=0x%010h size=%0b",
+            addr, req_size),
+          UVM_MEDIUM)
+        _drive_idle_outputs();
+        return;
       end else if ((vif.driver_cb.mmu_lsu_data_req_addr !== addr) ||
                    (vif.driver_cb.mmu_lsu_data_req_size !== req_size)) begin
-        `uvm_error(get_type_name(),
+        `uvm_info(get_type_name(),
           $sformatf(
-            "[PTW_HOLD_PROTOCOL] req changed before rsp: exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b",
+            "[PTW_REQ_REPLACE] req changed before rsp, cancel response: exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b",
             addr, vif.driver_cb.mmu_lsu_data_req_addr, req_size,
-            vif.driver_cb.mmu_lsu_data_req_size))
+            vif.driver_cb.mmu_lsu_data_req_size),
+          UVM_MEDIUM)
+        _drive_idle_outputs();
+        return;
       end
     end
 

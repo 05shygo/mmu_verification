@@ -225,6 +225,21 @@ REGRESS_V3_MIN_PASS_RATE  ?= 1.0
 REGRESS_V3_SUMMARY        ?= $(REGRESS_DIR)/$(REGRESS_V3_NAME)/summary.txt
 
 #===============================================================================
+# Phase 11 - v3.0 gap-driven regression
+#===============================================================================
+PHASE11_R19_PROOF         ?=
+PHASE11_BUG015_REVIEW     ?= $(PROJECT_DIR)/../doc/phase11_bug015_doc_review.md
+PHASE11_SKIP_COMPILE      ?= 0
+PHASE11_BUG_SEED          ?= 94001
+PHASE11_PROTOCOL_SEEDS    ?= 94101 94102 94103
+PHASE11_V3_SEEDS          ?= 94201 94202 94203
+PHASE11_R20_SEEDS         ?= 94301 94302 94303 94304 94305 94306 94307 94308 94309 94310
+PHASE11_PROTOCOL_LIST     ?= $(SIMU_DIR)/mmu_ptw_lsu_protocol_list
+PHASE11_V3_LIST           ?= $(SIMU_DIR)/mmu_v3_regression_list
+PHASE11_PROTOCOL_SUMMARY  ?= $(REGRESS_DIR)/phase11_protocol/summary.txt
+PHASE11_V3_SUMMARY        ?= $(REGRESS_DIR)/phase11_v3_gap/summary.txt
+
+#===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
 #  phase7:  comp 后 3 个 TEST_NAME 各 run 一次，log 中 UVM_ERROR/FATAL=0
 #  phase7_cov: 同上以 run_cov 落 .vdb，再 urg → $(COV_DIR)/urgReport
@@ -261,6 +276,18 @@ phase7_cov: comp
 print-phase8:
 	@echo "PHASE8_TEST=$(PHASE8_TEST)  SEEDS=$(PHASE8_SEEDS)"
 	@echo "Log pattern: $(LOG_DIR)/phase8_<VSEQ>_s<SEED>.log (copied from $(PHASE8_TEST)_<SEED>.log)"
+
+print-phase11:
+	@echo "PHASE11_R19_PROOF      = $(PHASE11_R19_PROOF)"
+	@echo "PHASE11_BUG015_REVIEW  = $(PHASE11_BUG015_REVIEW)"
+	@echo "PHASE11_SKIP_COMPILE   = $(PHASE11_SKIP_COMPILE)"
+	@echo "PHASE11_BUG_SEED       = $(PHASE11_BUG_SEED)"
+	@echo "PHASE11_PROTOCOL_SEEDS = $(PHASE11_PROTOCOL_SEEDS)"
+	@echo "PHASE11_V3_SEEDS       = $(PHASE11_V3_SEEDS)"
+	@echo "PHASE11_R20_SEEDS      = $(PHASE11_R20_SEEDS)"
+	@echo "PHASE11_PROTOCOL_LIST  = $(PHASE11_PROTOCOL_LIST)"
+	@echo "PHASE11_V3_LIST        = $(PHASE11_V3_LIST)"
+	@echo "PHASE11_V3_SUMMARY     = $(PHASE11_V3_SUMMARY)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -384,7 +411,8 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         phase7 phase7_cov print-phase7 \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
-        regress regress_smoke regress_nightly regress_v3_gap print-regress
+        regress regress_smoke regress_nightly print-regress \
+        print-phase11 regress_v3_gap phase11_exit_check
 
 all: comp run
 
@@ -449,30 +477,52 @@ regress_nightly: comp
 regress_v3_gap: comp
 	@set +e; \
 	$(MAKE) regress \
-		LIST="$(REGRESS_V3_LIST)" \
-		REGRESS_MODE=run_check \
-		REGRESS_NAME="$(REGRESS_V3_NAME)" \
-		REGRESS_SEEDS="$(REGRESS_V3_SEEDS)" \
-		REGRESS_SUMMARY="$(REGRESS_V3_SUMMARY)" \
-		REGRESS_MIN_PASS_RATE="$(REGRESS_V3_MIN_PASS_RATE)"; \
+		LIST="$(PHASE11_V3_LIST)" \
+		REGRESS_MODE=run_cov \
+		REGRESS_NAME=phase11_v3_gap \
+		REGRESS_SUMMARY="$(PHASE11_V3_SUMMARY)" \
+		REGRESS_SEEDS="$(PHASE11_V3_SEEDS)" \
+		REGRESS_MIN_PASS_RATE=1.0 \
+		VERBOSITY="$(VERBOSITY)" \
+		TIMEOUT="$(TIMEOUT)" \
+		UVM_ERR_ONLY="$(UVM_ERR_ONLY)"; \
 	reg_rc=$$?; \
 	set -e; \
-	summary="$(REGRESS_V3_SUMMARY)"; \
-	test -f "$$summary" || (echo "Missing regression summary: $$summary"; exit 1); \
-	logs="$$(awk -F'log=' '/^(PASS|FAIL|XFAIL|XPASS) / {print $$2}' "$$summary")"; \
-	test -n "$$logs" || (echo "No log paths found in $$summary"; exit 1); \
-	if $(PERL) -MText::Table -e 1 >/dev/null 2>&1; then \
-		$(PERL) $(PROJECT_DIR)/scripts/scan_logs.pl $$logs; \
+	set +e; \
+	bash $(PROJECT_DIR)/scripts/phase11_scan_regression_logs.sh "$(PHASE11_V3_LIST)" "$(PHASE11_V3_SEEDS)" "$(LOG_DIR)" cov; \
+	scan_rc=$$?; \
+	set -e; \
+	if ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
+		$(MAKE) cov; \
 	else \
-		echo "[regress_v3_gap] WARN: perl module Text::Table missing; fallback to grep UVM_ERROR/UVM_FATAL scan."; \
-		if grep -E 'UVM_ERROR[[:space:]]*:[[:space:]]*[1-9]|UVM_FATAL[[:space:]]*:[[:space:]]*[1-9]' $$logs >/dev/null 2>&1; then \
-			echo "[regress_v3_gap] FAIL: non-zero UVM_ERROR/UVM_FATAL summary found."; \
-			exit 1; \
-		else \
-			echo "[regress_v3_gap] PASS (fallback): all logs show UVM_ERROR=0 and UVM_FATAL=0"; \
-		fi; \
+		echo "No coverage databases found under $(COV_DIR); skipping URG."; \
 	fi; \
-	exit $$reg_rc
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "regress_v3_gap: underlying regression returned $$reg_rc"; \
+	fi; \
+	if [ $$scan_rc -ne 0 ]; then \
+		echo "regress_v3_gap: scan_logs/check_sim_status returned $$scan_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+phase11_exit_check:
+	@PHASE11_R19_PROOF='$(PHASE11_R19_PROOF)' \
+	PHASE11_BUG015_REVIEW='$(PHASE11_BUG015_REVIEW)' \
+	PHASE11_BUG_SEED='$(PHASE11_BUG_SEED)' \
+	PHASE11_PROTOCOL_SEEDS='$(PHASE11_PROTOCOL_SEEDS)' \
+	PHASE11_V3_SEEDS='$(PHASE11_V3_SEEDS)' \
+	PHASE11_R20_SEEDS='$(PHASE11_R20_SEEDS)' \
+	PHASE11_PROTOCOL_LIST='$(PHASE11_PROTOCOL_LIST)' \
+	PHASE11_V3_LIST='$(PHASE11_V3_LIST)' \
+	PHASE11_PROTOCOL_SUMMARY='$(PHASE11_PROTOCOL_SUMMARY)' \
+	PHASE11_V3_SUMMARY='$(PHASE11_V3_SUMMARY)' \
+	PHASE11_SKIP_COMPILE='$(PHASE11_SKIP_COMPILE)' \
+	VERBOSITY='$(VERBOSITY)' \
+	TIMEOUT='$(TIMEOUT)' \
+	UVM_ERR_ONLY='$(UVM_ERR_ONLY)' \
+	bash $(PROJECT_DIR)/scripts/phase11_exit_check.sh
 
 #===============================================================================
 # Phase 5 regression (MMU_UVM_TaskDivision.md §5 — 一次签核)
@@ -640,6 +690,12 @@ help:
 	@echo "  Override: REGRESS_SEEDS='1 2 3' REGRESS_MIN_PASS_RATE=0.5"
 	@echo "  List format: one test per line; optional per-line PLUS_ARGS after the test name;"
 	@echo "               optional xfail marker: xfail or xfail=<reason>"
+	@echo ""
+	@echo "Phase 11 (MMU_UVM_TaskDivision.md §11):"
+	@echo "  make print-phase11                                    # show Phase11 file/seed defaults"
+	@echo "  make regress_v3_gap                                   # 3-seed v3 union + integrated log scan"
+	@echo "  make phase11_exit_check PHASE11_R19_PROOF=<jira.png>  # full Phase11 exit check, final PASS/FAIL"
+	@echo "  Optional: PHASE11_BUG015_REVIEW=../doc/<closed_review>.md"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md §5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"

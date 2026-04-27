@@ -34,6 +34,9 @@
 //     ptw_mem ap_req → +1 (new PTW memory read issued)
 //     ptw_mem ap_rsp → -1 (PTW memory read completed)
 //     Upper bound  : PTW_MBUF_DEPTH (4)
+//     Special case : LSU SFENCE can assert tlboper_ptw_abort and clear PTW
+//                    mbuf entries without waiting for memory responses. Those
+//                    post-abort responses are ignored via whitebox compensation.
 //
 // Conservation: m_credit_l1i/l1d/ptw_mbuf_cnt must == 0 at report_phase.
 // m_lsu_ext_outstanding may be non-zero at end-of-sim if LSU-side sleeping
@@ -53,6 +56,8 @@
 class mmu_credit_sb extends uvm_scoreboard;
 
   `uvm_component_utils(mmu_credit_sb)
+
+  virtual mmu_dut_probes_if v_probe;
 
   // ── TLM Analysis FIFOs (8 streams) ────────────────────────────────────────
   // IFU
@@ -76,6 +81,7 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int m_credit_l1d;          // outstanding LSU translation requests (external)
   protected int m_lsu_ext_outstanding; // LSU externally-visible uncompleted (approx, includes sleeping)
   protected int m_ptw_mbuf_cnt;        // PTW miss buffer occupancy
+  protected int m_ptw_rsp_ignored;     // late PTW rsps after tlboper_ptw_abort
 
   // ── Peak observations (for debug) ─────────────────────────────────────────
   protected int m_peak_l1i;
@@ -89,6 +95,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_credit_l1d          = 0;
     m_lsu_ext_outstanding = 0;
     m_ptw_mbuf_cnt        = 0;
+    m_ptw_rsp_ignored     = 0;
     m_peak_l1i            = 0;
     m_peak_l1d            = 0;
     m_peak_lsu_ext        = 0;
@@ -108,6 +115,10 @@ class mmu_credit_sb extends uvm_scoreboard;
     af_lsu_p1_drop = new("af_lsu_p1_drop", this);
     af_ptw_req    = new("af_ptw_req",    this);
     af_ptw_rsp    = new("af_ptw_rsp",    this);
+    if (!uvm_config_db #(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
+      `uvm_info(get_type_name(),
+        "MMU_DUT_PROBES_VIF not in config_db — PTW abort compensation disabled",
+        UVM_LOW)
   endfunction
 
   // ── run_phase: fork 8 consumer threads ────────────────────────────────────
@@ -124,6 +135,7 @@ class mmu_credit_sb extends uvm_scoreboard;
       _consume_lsu_p1_drop();
       _consume_ptw_req();
       _consume_ptw_rsp();
+      _observe_ptw_abort();
     join_none
   endtask
 
@@ -311,6 +323,14 @@ class mmu_credit_sb extends uvm_scoreboard;
     ptw_mem_txn tr;
     forever begin
       af_ptw_rsp.get(tr);
+      if (m_ptw_rsp_ignored > 0) begin
+        m_ptw_rsp_ignored--;
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_RSP ignored after tlboper_ptw_abort: ignored_left=%0d",
+            m_ptw_rsp_ignored),
+          UVM_HIGH)
+        continue;
+      end
       m_ptw_mbuf_cnt--;
       if (m_ptw_mbuf_cnt < 0)
         `uvm_error(get_type_name(),
@@ -318,6 +338,39 @@ class mmu_credit_sb extends uvm_scoreboard;
             m_ptw_mbuf_cnt))
       `uvm_info(get_type_name(),
         $sformatf("PTW_RSP: ptw_mbuf_cnt=%0d", m_ptw_mbuf_cnt), UVM_HIGH)
+    end
+  endtask
+
+  // ── PTW abort compensation ────────────────────────────────────────────────
+  // tlboper_ptw_abort clears PTW mbuf entries immediately in RTL. Any memory
+  // responses that return later no longer correspond to live mbuf occupancy.
+  protected task _observe_ptw_abort();
+    bit prev_abort;
+    if (v_probe == null)
+      return;
+
+    prev_abort = 1'b0;
+    @(posedge v_probe.clk_i);
+    wait (v_probe.rst_ni === 1'b1);
+    @(v_probe.mon_cb);
+
+    forever begin
+      @(v_probe.mon_cb);
+      if (v_probe.mon_cb.ptw_abort_pulse && !prev_abort) begin
+        if (m_ptw_mbuf_cnt > 0) begin
+          m_ptw_rsp_ignored += m_ptw_mbuf_cnt;
+          `uvm_info(get_type_name(),
+            $sformatf(
+              "PTW_ABORT: clear live ptw_mbuf_cnt=%0d, ignored_rsp_budget=%0d",
+              m_ptw_mbuf_cnt, m_ptw_rsp_ignored),
+            UVM_MEDIUM)
+          m_ptw_mbuf_cnt = 0;
+        end else begin
+          `uvm_info(get_type_name(),
+            "PTW_ABORT observed with no live PTW mbuf occupancy", UVM_HIGH)
+        end
+      end
+      prev_abort = v_probe.mon_cb.ptw_abort_pulse;
     end
   endtask
 
@@ -362,11 +415,13 @@ class mmu_credit_sb extends uvm_scoreboard;
         "  credit_l1i          = %0d  (peak=%0d, limit=%0d)\n",
         "  credit_l1d          = %0d  (peak=%0d, limit=%0d)\n",
         "  lsu_ext_outstanding = %0d  (peak=%0d, MB_depth=%0d)  [approx, includes sleeping]\n",
-        "  ptw_mbuf_cnt        = %0d  (peak=%0d, limit=%0d)"},
+        "  ptw_mbuf_cnt        = %0d  (peak=%0d, limit=%0d)\n",
+        "  ptw_rsp_ignored     = %0d  (post-abort late-response budget)"},
         m_credit_l1i,          m_peak_l1i,      L1_ITLB_ENTRIES,
         m_credit_l1d,          m_peak_l1d,      L1_DTLB_ENTRIES,
         m_lsu_ext_outstanding, m_peak_lsu_ext,  L1_DTLB_MB_DEPTH,
-        m_ptw_mbuf_cnt,        m_peak_ptw_mbuf, PTW_MBUF_DEPTH),
+        m_ptw_mbuf_cnt,        m_peak_ptw_mbuf, PTW_MBUF_DEPTH,
+        m_ptw_rsp_ignored),
       UVM_MEDIUM)
 
     if (m_credit_l1i != 0)

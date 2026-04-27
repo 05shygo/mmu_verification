@@ -46,20 +46,53 @@ class ifu_random_vaddr_seq extends ifu_base_seq;
 endclass : ifu_random_vaddr_seq
 
 // ── Sequential page-aligned fetch (simulates PC advance) ─────────────────────
-// TODO (Phase 5): Implement sequential VA increment with configurable stride.
+// Drives a deterministic 4-byte PC stream inside the default Phase-9 mapped
+// window. Start near the end of a 4K page so short runs still cross a page
+// boundary and exercise the sequential-hit path on both sides of the boundary.
 class ifu_sequential_fetch_seq extends ifu_base_seq;
   `uvm_object_utils(ifu_sequential_fetch_seq)
+
+  localparam bit [62:0] P9_IFU_MAPPED_BASE_VA = 63'h10_0000;
+  localparam bit [62:0] P9_IFU_MAPPED_LAST_VA = 63'h11_ffff;
 
   rand bit [62:0] start_va;
   // Sv39 canonical start address
   constraint c_sv39_start { start_va[62:39] == {24{start_va[38]}}; }
+  constraint c_p9_mapped_start {
+    start_va inside {[P9_IFU_MAPPED_BASE_VA:P9_IFU_MAPPED_LAST_VA]};
+    start_va[11:0] inside {[12'hff0:12'hffc]};
+  }
 
   function new(string name = "ifu_sequential_fetch_seq");
     super.new(name);
+    start_va = 63'h10_0ff0;
   endfunction
 
   virtual task body();
-    // TODO (Phase 5): increment VA by 4 (instruction width) each cycle
+    ifu_txn    tr;
+    bit [62:0] curr_va;
+
+    curr_va = start_va;
+    if ((curr_va < P9_IFU_MAPPED_BASE_VA) || (curr_va > P9_IFU_MAPPED_LAST_VA))
+      `uvm_fatal(get_type_name(),
+        $sformatf("ifu_sequential_fetch_seq start_va out of mapped window: 0x%010h",
+          {1'b0, curr_va[38:0]}))
+
+    for (int i = 0; i < int'(num_txn); i++) begin
+      if (curr_va > P9_IFU_MAPPED_LAST_VA)
+        `uvm_fatal(get_type_name(),
+          $sformatf("ifu_sequential_fetch_seq exceeded mapped window at txn=%0d va=0x%010h",
+            i, {1'b0, curr_va[38:0]}))
+      `uvm_create(tr)
+      if (!tr.randomize() with {
+            abort == 1'b0;
+            idle_cycles == 0;
+            va == curr_va;
+          })
+        `uvm_fatal(get_type_name(), "ifu_sequential_fetch_seq randomize failed")
+      `uvm_send(tr)
+      curr_va = curr_va + 63'd4;
+    end
   endtask
 
 endclass : ifu_sequential_fetch_seq

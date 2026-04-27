@@ -33,6 +33,7 @@ interface mmu_dut_probes_if (
   wire [1:0]   ptw_xbar_hit_lvl;
   wire [2:0]   ptw_mbuf_twu_lvl;
   wire         ptw_fault_any;    // pgflt_vld | acc_err_vld
+  wire         ptw_abort_pulse;  // tlboper_ptw_abort
 
   // ct_mmu_tlboper
   wire [3:0]   tlbiva_cur_st;
@@ -44,7 +45,7 @@ interface mmu_dut_probes_if (
     input l1d_mb_vld, l1d_mb_st0;
     input l2_bank0, l2_final_way_hit, l2_raw_pre_pgs0;
     input l2_reqq_vld_vec, l2_reqq_qid;
-    input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any;
+    input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any, ptw_abort_pulse;
     input tlbiva_cur_st;
   endclocking
 

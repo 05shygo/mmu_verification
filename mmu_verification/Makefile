@@ -34,7 +34,7 @@ export CORE_V_VERIF CV_DV_UTILS_DIR OUTPUT_DIR
 VCS             ?= vcs
 VERDI           ?= verdi
 URG             ?= urg
-PYTHON          ?= python
+PYTHON          ?= python3
 
 #===============================================================================
 # UVM Configuration

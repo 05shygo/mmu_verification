@@ -249,7 +249,6 @@ module tb_top;
   assign dut_probes_if.ptw_mbuf_twu_lvl  = u_dut.x_ct_mmu_ptw.mbuf_twu_lvl;
   assign dut_probes_if.ptw_fault_any     = u_dut.x_ct_mmu_ptw.pgflt_vld
                                          | u_dut.x_ct_mmu_ptw.acc_err_vld;
-  assign dut_probes_if.ptw_abort_pulse   = u_dut.x_ct_mmu_tlboper.tlboper_ptw_abort;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
 
   // DTLB expt CAM (mmu_l1dtlb_expt_cam): on consume, mmu_l1dtlb_hit_rd muxes

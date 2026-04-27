@@ -30,13 +30,13 @@
 //     L1_DTLB_MB_DEPTH is therefore a WARNING (expected under backpressure),
 //     not a hard error.
 //
-//   m_ptw_mbuf_cnt — PTW miss buffer occupancy
+//   m_ptw_mbuf_cnt — PTW->LSU serialized external request outstanding proxy
 //     ptw_mem ap_req → +1 (new PTW memory read issued)
 //     ptw_mem ap_rsp → -1 (PTW memory read completed)
-//     Upper bound  : PTW_MBUF_DEPTH (4)
-//     Special case : LSU SFENCE can assert tlboper_ptw_abort and clear PTW
-//                    mbuf entries without waiting for memory responses. Those
-//                    post-abort responses are ignored via whitebox compensation.
+//     PTW external LSU request channel is single-outstanding by protocol:
+//       req must stay asserted, address stable, until LSU returns data/error.
+//     Therefore this counter must stay within {0,1}; it is NOT the DUT's
+//     internal 9-entry PTW mbuf occupancy.
 //
 // Conservation: m_credit_l1i/l1d/ptw_mbuf_cnt must == 0 at report_phase.
 // m_lsu_ext_outstanding may be non-zero at end-of-sim if LSU-side sleeping
@@ -80,9 +80,9 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int m_credit_l1i;          // outstanding IFU translation requests
   protected int m_credit_l1d;          // outstanding LSU translation requests (external)
   protected int m_lsu_ext_outstanding; // LSU externally-visible uncompleted (approx, includes sleeping)
-  protected int m_ptw_mbuf_cnt;        // PTW miss buffer occupancy
-  protected int m_ptw_rsp_ignored;     // late PTW rsps after tlboper_ptw_abort
+  protected int m_ptw_mbuf_cnt;        // PTW serialized external outstanding proxy
   protected bit m_end_drain_active;    // run-phase end settle window in progress
+  protected bit m_end_drain_attempted; // prevent repeated ready_to_end loops
 
   // ── Peak observations (for debug) ─────────────────────────────────────────
   protected int m_peak_l1i;
@@ -96,8 +96,8 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_credit_l1d          = 0;
     m_lsu_ext_outstanding = 0;
     m_ptw_mbuf_cnt        = 0;
-    m_ptw_rsp_ignored     = 0;
     m_end_drain_active    = 1'b0;
+    m_end_drain_attempted = 1'b0;
     m_peak_l1i            = 0;
     m_peak_l1d            = 0;
     m_peak_lsu_ext        = 0;
@@ -119,7 +119,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     af_ptw_rsp    = new("af_ptw_rsp",    this);
     if (!uvm_config_db #(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
       `uvm_info(get_type_name(),
-        "MMU_DUT_PROBES_VIF not in config_db — PTW abort compensation disabled",
+        "MMU_DUT_PROBES_VIF not in config_db — PTW end-drain will use #1ns fallback",
         UVM_LOW)
   endfunction
 
@@ -137,7 +137,6 @@ class mmu_credit_sb extends uvm_scoreboard;
       _consume_lsu_p1_drop();
       _consume_ptw_req();
       _consume_ptw_rsp();
-      _observe_ptw_abort();
     join_none
   endtask
 
@@ -310,10 +309,11 @@ class mmu_credit_sb extends uvm_scoreboard;
     forever begin
       af_ptw_req.get(tr);
       m_ptw_mbuf_cnt++;
-      if (m_ptw_mbuf_cnt > int'(PTW_MBUF_DEPTH))
+      if (m_ptw_mbuf_cnt > 1)
         `uvm_error(get_type_name(),
-          $sformatf("ptw_mbuf_cnt overflow: %0d > PTW_MBUF_DEPTH=%0d",
-            m_ptw_mbuf_cnt, PTW_MBUF_DEPTH))
+          $sformatf(
+            "ptw_mbuf_cnt(serialized PTW ext outstanding) overflow: %0d > 1 for addr=0x%010h",
+            m_ptw_mbuf_cnt, tr.addr))
       if (m_ptw_mbuf_cnt > m_peak_ptw_mbuf) m_peak_ptw_mbuf = m_ptw_mbuf_cnt;
       `uvm_info(get_type_name(),
         $sformatf("PTW_REQ: ptw_mbuf_cnt=%0d", m_ptw_mbuf_cnt), UVM_HIGH)
@@ -325,14 +325,6 @@ class mmu_credit_sb extends uvm_scoreboard;
     ptw_mem_txn tr;
     forever begin
       af_ptw_rsp.get(tr);
-      if (m_ptw_rsp_ignored > 0) begin
-        m_ptw_rsp_ignored--;
-        `uvm_info(get_type_name(),
-          $sformatf("PTW_RSP ignored after tlboper_ptw_abort: ignored_left=%0d",
-            m_ptw_rsp_ignored),
-          UVM_HIGH)
-        continue;
-      end
       m_ptw_mbuf_cnt--;
       if (m_ptw_mbuf_cnt < 0)
         `uvm_error(get_type_name(),
@@ -343,44 +335,10 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endtask
 
-  // ── PTW abort compensation ────────────────────────────────────────────────
-  // tlboper_ptw_abort clears PTW mbuf entries immediately in RTL. Any memory
-  // responses that return later no longer correspond to live mbuf occupancy.
-  protected task _observe_ptw_abort();
-    bit prev_abort;
-    if (v_probe == null)
-      return;
-
-    prev_abort = 1'b0;
-    @(posedge v_probe.clk_i);
-    wait (v_probe.rst_ni === 1'b1);
-    @(v_probe.mon_cb);
-
-    forever begin
-      @(v_probe.mon_cb);
-      if (v_probe.mon_cb.ptw_abort_pulse && !prev_abort) begin
-        if (m_ptw_mbuf_cnt > 0) begin
-          m_ptw_rsp_ignored += m_ptw_mbuf_cnt;
-          `uvm_info(get_type_name(),
-            $sformatf(
-              "PTW_ABORT: clear live ptw_mbuf_cnt=%0d, ignored_rsp_budget=%0d",
-              m_ptw_mbuf_cnt, m_ptw_rsp_ignored),
-            UVM_MEDIUM)
-          m_ptw_mbuf_cnt = 0;
-        end else begin
-          `uvm_info(get_type_name(),
-            "PTW_ABORT observed with no live PTW mbuf occupancy", UVM_HIGH)
-        end
-      end
-      prev_abort = v_probe.mon_cb.ptw_abort_pulse;
-    end
-  endtask
-
   // ── phase_ready_to_end: allow late PTW completion / abort settle ─────────
-  // Phase-9 wrappers use a fixed post-drain, but SFENCE-aborted PTW traffic
-  // can still be in flight on the memory side when run_phase is about to end.
-  // Hold the run phase briefly so late PTW responses (and their abort
-  // compensation) are consumed before report_phase checks conservation.
+  // The PTW->LSU channel is single-outstanding and responder latency is small
+  // (normally 1..8 cycles). Give it one bounded settle window before
+  // report_phase so a final in-flight memory response can retire cleanly.
   virtual function void phase_ready_to_end(uvm_phase phase);
     if (phase.get_name() != "run")
       return;
@@ -388,11 +346,15 @@ class mmu_credit_sb extends uvm_scoreboard;
     if (m_end_drain_active)
       return;
 
-    if ((m_ptw_mbuf_cnt != 0) || (m_ptw_rsp_ignored != 0)) begin
+    if (m_end_drain_attempted)
+      return;
+
+    if (m_ptw_mbuf_cnt != 0) begin
       m_end_drain_active = 1'b1;
+      m_end_drain_attempted = 1'b1;
       phase.raise_objection(this,
-        $sformatf("Settling PTW counters before end: ptw_mbuf_cnt=%0d ptw_rsp_ignored=%0d",
-          m_ptw_mbuf_cnt, m_ptw_rsp_ignored));
+        $sformatf("Settling PTW counter before end: ptw_mbuf_cnt=%0d",
+          m_ptw_mbuf_cnt));
       fork
         begin
           _drain_ptw_before_end(phase);
@@ -406,9 +368,9 @@ class mmu_credit_sb extends uvm_scoreboard;
     int unsigned max_wait_cycles;
 
     wait_cycles     = 0;
-    max_wait_cycles = 4096;
+    max_wait_cycles = 64;
 
-    while (((m_ptw_mbuf_cnt != 0) || (m_ptw_rsp_ignored != 0)) &&
+    while ((m_ptw_mbuf_cnt != 0) &&
            (wait_cycles < max_wait_cycles)) begin
       if (v_probe != null)
         @(v_probe.mon_cb);
@@ -417,11 +379,11 @@ class mmu_credit_sb extends uvm_scoreboard;
       wait_cycles++;
     end
 
-    if ((m_ptw_mbuf_cnt != 0) || (m_ptw_rsp_ignored != 0)) begin
+    if (m_ptw_mbuf_cnt != 0) begin
       `uvm_warning(get_type_name(),
         $sformatf(
-          "PTW end-drain timeout after %0d cycles: ptw_mbuf_cnt=%0d ptw_rsp_ignored=%0d",
-          wait_cycles, m_ptw_mbuf_cnt, m_ptw_rsp_ignored))
+          "PTW end-drain timeout after %0d cycles: ptw_mbuf_cnt=%0d",
+          wait_cycles, m_ptw_mbuf_cnt))
     end else begin
       `uvm_info(get_type_name(),
         $sformatf("PTW end-drain settled after %0d cycles", wait_cycles),
@@ -473,13 +435,11 @@ class mmu_credit_sb extends uvm_scoreboard;
         "  credit_l1i          = %0d  (peak=%0d, limit=%0d)\n",
         "  credit_l1d          = %0d  (peak=%0d, limit=%0d)\n",
         "  lsu_ext_outstanding = %0d  (peak=%0d, MB_depth=%0d)  [approx, includes sleeping]\n",
-        "  ptw_mbuf_cnt        = %0d  (peak=%0d, limit=%0d)\n",
-        "  ptw_rsp_ignored     = %0d  (post-abort late-response budget)"},
+        "  ptw_mbuf_cnt        = %0d  (peak=%0d, serialized ext limit=1)"},
         m_credit_l1i,          m_peak_l1i,      L1_ITLB_ENTRIES,
         m_credit_l1d,          m_peak_l1d,      L1_DTLB_ENTRIES,
         m_lsu_ext_outstanding, m_peak_lsu_ext,  L1_DTLB_MB_DEPTH,
-        m_ptw_mbuf_cnt,        m_peak_ptw_mbuf, PTW_MBUF_DEPTH,
-        m_ptw_rsp_ignored),
+        m_ptw_mbuf_cnt,        m_peak_ptw_mbuf),
       UVM_MEDIUM)
 
     if (m_credit_l1i != 0)
@@ -502,7 +462,7 @@ class mmu_credit_sb extends uvm_scoreboard;
 
     if (m_ptw_mbuf_cnt != 0)
       `uvm_error(get_type_name(),
-        $sformatf("[CreditSB] ptw_mbuf_cnt != 0 at end-of-sim (%0d): PTW mbuf not drained",
+        $sformatf("[CreditSB] ptw_mbuf_cnt != 0 at end-of-sim (%0d): PTW serialized external request not drained",
           m_ptw_mbuf_cnt))
 
     if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_ptw_mbuf_cnt == 0)

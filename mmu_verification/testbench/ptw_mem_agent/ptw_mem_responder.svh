@@ -31,9 +31,13 @@ class ptw_mem_responder extends uvm_component;
   int unsigned m_rsp_delay_min          = 1;
   int unsigned m_rsp_delay_max          = 8;
   int unsigned m_bus_error_rate_permille = 0;  // 0 = never inject bus error
+  bit [39:0]   m_last_rsp_addr;
+  bit          m_last_rsp_size;
+  bit          m_wait_req_change_after_rsp;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    m_wait_req_change_after_rsp = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -65,12 +69,37 @@ class ptw_mem_responder extends uvm_component;
 
     // Strictly serial: at most one PTW memory request is outstanding, but req
     // is not required to pulse low between adjacent requests. After a response,
-    // the DUT may keep req high and present the next address on the following
-    // cycle. Re-arm on the next sampled req-high cycle instead of waiting for
-    // a req-low bubble.
+    // the DUT may keep req high. Treat req-high with the same addr/size as the
+    // just-completed request as hold tail, not as a new request. Re-arm only
+    // after req drops or the addr/size changes to a distinct next request.
     forever begin
-      @(vif.driver_cb iff vif.driver_cb.mmu_lsu_data_req === 1'b1);
-      handle_request(vif.driver_cb.mmu_lsu_data_req_addr);
+      bit [39:0] req_addr;
+      bit        req_size;
+
+      @(vif.driver_cb);
+
+      if (vif.rst_ni !== 1'b1) begin
+        _drive_idle_outputs();
+        m_wait_req_change_after_rsp = 1'b0;
+        continue;
+      end
+
+      if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
+        m_wait_req_change_after_rsp = 1'b0;
+        continue;
+      end
+
+      if (m_wait_req_change_after_rsp &&
+          (vif.driver_cb.mmu_lsu_data_req_addr == m_last_rsp_addr) &&
+          (vif.driver_cb.mmu_lsu_data_req_size == m_last_rsp_size))
+        continue;
+
+      req_addr = vif.driver_cb.mmu_lsu_data_req_addr;
+      req_size = vif.driver_cb.mmu_lsu_data_req_size;
+      handle_request(req_addr);
+      m_last_rsp_addr = req_addr;
+      m_last_rsp_size = req_size;
+      m_wait_req_change_after_rsp = 1'b1;
     end
   endtask
 

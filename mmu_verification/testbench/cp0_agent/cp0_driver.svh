@@ -95,9 +95,13 @@ class cp0_driver extends uvm_driver #(cp0_txn);
   endtask
 
   // ── SATP Read (sample read-back) ─────────────────────────────────────────
+  // RTL exposes a single SATP storage path: mmu_cp0_satp_data is a direct
+  // read-back bus, while cp0_mmu_satp_sel is the SATP write-enable strobe.
+  // Do not drive cp0_mmu_satp_sel during reads, or the read path will mutate
+  // DUT SATP state and confuse the SATP-write monitor.
   protected task _do_read_satp(cp0_txn tr);
     @(vif.driver_cb);
-    vif.driver_cb.cp0_mmu_satp_sel <= tr.satp_sel;
+    vif.driver_cb.cp0_mmu_satp_sel <= 1'b0;
     @(vif.driver_cb);
     tr.rdata = vif.driver_cb.mmu_cp0_satp_data;
     tr.cmplt = 1'b1;

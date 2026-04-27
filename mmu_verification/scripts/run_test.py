@@ -6,7 +6,6 @@ import shlex
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List, Optional
 
@@ -20,23 +19,48 @@ VALID_MODES = {"run", "run_check", "run_batch", "run_cov", "debug"}
 SKIP_TESTS = {"test_base", "phase9_generated_test_base"}
 
 
-@dataclass
 class RegressionEntry:
-    test_name: str
-    plus_args: str = ""
+    __slots__ = ("test_name", "plus_args")
+
+    def __init__(self, test_name: str, plus_args: str = "") -> None:
+        self.test_name = test_name
+        self.plus_args = plus_args
 
 
-@dataclass
 class RegressionResult:
-    test_name: str
-    seed: str
-    mode: str
-    plus_args: str
-    passed: bool
-    duration_s: float
-    command: List[str]
-    log_path: Optional[Path]
-    return_code: int
+    __slots__ = (
+        "test_name",
+        "seed",
+        "mode",
+        "plus_args",
+        "passed",
+        "duration_s",
+        "command",
+        "log_path",
+        "return_code",
+    )
+
+    def __init__(
+        self,
+        test_name: str,
+        seed: str,
+        mode: str,
+        plus_args: str,
+        passed: bool,
+        duration_s: float,
+        command: List[str],
+        log_path: Optional[Path],
+        return_code: int,
+    ) -> None:
+        self.test_name = test_name
+        self.seed = seed
+        self.mode = mode
+        self.plus_args = plus_args
+        self.passed = passed
+        self.duration_s = duration_s
+        self.command = command
+        self.log_path = log_path
+        self.return_code = return_code
 
 
 def find_registered_tests() -> List[str]:

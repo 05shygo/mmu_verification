@@ -143,7 +143,6 @@ VCS_ELAB_OPTS   := -full64 \
                    -debug_access+all \
                    -debug_region+cell+encrypt \
                    +vcs+fsdbon \
-                   +UVM_CONFIG_DB_TRACE \
                    +define+PA_WIDTH=40 \
                    +define+MMU_EXPT_TRACE_ONCE_EN \
                    -Mdir=$(OUTPUT_DIR)/csrc \
@@ -172,6 +171,7 @@ VCS_FAST_OPTS   := -full64 \
 RUN_OPTS        := +UVM_TESTNAME=$(TEST_NAME) \
                    +UVM_VERBOSITY=$(VERBOSITY) \
                    +TIMEOUT=$(TIMEOUT) \
+                   +UVM_CONFIG_DB_TRACE \
                    $(ERR_ONLY_OPTS) \
                    $(PLUS_ARGS)
 

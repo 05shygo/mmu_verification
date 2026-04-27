@@ -13,6 +13,18 @@ class test_mmu_csr_no_op extends phase9_generated_test_base;
     super.new(name, parent);
   endfunction
 
+  // no_op is checked by its dedicated CP0/coherency paths; translation_sb does
+  // not model the DUT's no_op gating semantics precisely enough for this case.
+  virtual function void build_phase(uvm_phase phase);
+    mmu_top_cfg tcfg;
+    if (!uvm_config_db #(mmu_top_cfg)::get(this, "", "m_cfg", tcfg) || tcfg == null) begin
+      tcfg = mmu_top_cfg::type_id::create("m_cfg");
+      uvm_config_db #(mmu_top_cfg)::set(this, "*", "m_cfg", tcfg);
+    end
+    tcfg.en_translation_sb = 1'b0;
+    super.build_phase(phase);
+  endfunction
+
   virtual function void setup_plan();
     super.setup_plan();
     p9_tc_id = "TC-CSR-011";

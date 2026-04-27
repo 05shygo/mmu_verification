@@ -45,11 +45,9 @@ class cp0_monitor extends uvm_monitor;
       // Wait for a write strobe
       @(vif.monitor_cb iff vif.monitor_cb.cp0_mmu_wreg);
       tr = cp0_txn::type_id::create("csr_wr_mon");
-      // Determine op type from reg_num
-      if (vif.monitor_cb.cp0_mmu_reg_num == 2'b00)
-        tr.op = CP0_WRITE_SATP;
-      else
-        tr.op = CP0_WRITE_REG;
+      // SATP writes do not use cp0_mmu_wreg; they are sampled separately from
+      // cp0_mmu_satp_sel. Any cp0_mmu_wreg pulse is a MIR/MEL/MEH/MCIR access.
+      tr.op = CP0_WRITE_REG;
       tr.reg_num   = vif.monitor_cb.cp0_mmu_reg_num;
       tr.satp_sel  = vif.monitor_cb.cp0_mmu_satp_sel;
       tr.wdata     = vif.monitor_cb.cp0_mmu_wdata;
@@ -99,18 +97,28 @@ class cp0_monitor extends uvm_monitor;
   endtask
 
   // ── Collect SATP write events (cp0_mmu_satp_sel pulse) ───────────────────
-  // cp0_mmu_satp_sel is the SATP write-enable strobe (always 1 when writing).
-  // The driver always writes SATP0 (cp0_reg_rw_seq sets satp_sel=0 in txn but
-  // drives satp_sel=1 on the interface as write-enable).  We therefore always
-  // publish CP0_WRITE_SATP with tr.satp_sel=0 → on_csr_write() updates satp0.
+  // cp0_mmu_satp_sel is the SATP write-enable strobe (RTL has a single SATP
+  // storage path).  Publish a dedicated CP0_WRITE_SATP event and include the
+  // same-cycle CP0 context snapshot so ref_model can keep its mirror coherent
+  // even when SATP / priv / no_op changes happen close together.
   protected task _collect_satp_writes();
     cp0_txn tr;
     forever begin
       @(vif.monitor_cb iff vif.monitor_cb.cp0_mmu_satp_sel);
       tr          = cp0_txn::type_id::create("satp_wr_mon");
       tr.op       = CP0_WRITE_SATP;
-      tr.satp_sel = 1'b0;           // write-enable → always targets satp0
+      tr.satp_sel = 1'b0;
       tr.wdata    = vif.monitor_cb.cp0_mmu_wdata;
+      tr.mxr       = vif.monitor_cb.cp0_mmu_mxr;
+      tr.sum       = vif.monitor_cb.cp0_mmu_sum;
+      tr.mprv      = vif.monitor_cb.cp0_mmu_mprv;
+      tr.mpp       = vif.monitor_cb.cp0_mmu_mpp;
+      tr.ptw_en    = vif.monitor_cb.cp0_mmu_ptw_en;
+      tr.no_op_req = vif.monitor_cb.cp0_mmu_no_op_req;
+      tr.maee      = vif.monitor_cb.cp0_mmu_maee;
+      tr.priv_mode = vif.monitor_cb.cp0_yy_priv_mode;
+      tr.icg_en    = vif.monitor_cb.cp0_mmu_icg_en;
+      tr.cskyee    = vif.monitor_cb.cp0_mmu_cskyee;
       `uvm_info(get_type_name(),
         $sformatf("Observed SATP write: wdata=0x%016h", tr.wdata), UVM_HIGH)
       ap.write(tr);

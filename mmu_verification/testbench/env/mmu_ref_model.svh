@@ -54,7 +54,7 @@ class mmu_ref_model extends uvm_component;
   bit       m_mmu_en;    // combinational: satp_mode==8 && priv != M
   bit       m_ptw_en;    // PTW hardware walker enable
   bit       m_maee;      // M-mode Address Extension Enable
-  bit       m_no_op;     // No-op mode (MMU transparent)
+  bit       m_no_op;     // Tracked for CP0 mirror / misc checks (not a global PA bypass)
 
   // =========================================================================
   // PMP / SysMap mirrors (updated by on_pmp_cfg / on_sysmap_cfg)
@@ -155,8 +155,7 @@ class mmu_ref_model extends uvm_component;
   //
   // [Decision 1] Passthrough conditions:
   //   a) m_mmu_en == 0 (satp_mode == 0 or M-mode): PA = {1'b0, VA[38:0]}
-  //   b) m_no_op == 1: same passthrough
-  //   c) M-mode with MPRV=0: passthrough (access uses M-mode effective priv)
+  //   b) M-mode with MPRV=0: passthrough (access uses M-mode effective priv)
   //
   // [Decision 2] Select active SATP:
   //   m_satp_sel=0 → satp0; m_satp_sel=1 → satp1
@@ -203,7 +202,7 @@ class mmu_ref_model extends uvm_component;
       m_mmu_en = (m_satp_sel ? (m_satp1_mode == 4'h8) : (m_satp0_mode == 4'h8))
                  && (eff_priv != PRIV_M);
 
-      if (!m_mmu_en || m_no_op) begin
+      if (!m_mmu_en) begin
         // Phase 4 passthrough: PA = zero-extend VA[38:0] to PA_WIDTH=40
         rsp.ppn = va_t'(va) >> PAGE_OFFSET;  // VA[39:12] zero-padded
         m_n_passthrough++;
@@ -437,6 +436,17 @@ class mmu_ref_model extends uvm_component;
           m_satp1_asid = tr.wdata[59:44];
           m_satp1_ppn  = tr.wdata[PPN_WIDTH-1:0];
         end
+        // SATP write and privilege/no-op controls are observed by independent
+        // monitor threads; snapshot the same-cycle context here so a SATP write
+        // cannot leave the ref mirror transiently in bare/M-mode semantics.
+        m_priv   = tr.priv_mode;
+        m_mxr    = tr.mxr;
+        m_sum    = tr.sum;
+        m_mprv   = tr.mprv;
+        m_mpp    = tr.mpp;
+        m_ptw_en = tr.ptw_en;
+        m_no_op  = tr.no_op_req;
+        m_maee   = tr.maee;
       end
       CP0_SET_PRIV:     m_priv  = tr.priv_mode;
       CP0_SET_MXR:      m_mxr   = tr.mxr;

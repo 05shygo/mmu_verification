@@ -97,7 +97,7 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     m_total_checked++;
     va        = va_t'(tr.va[38:0]);
-    ref_rsp   = m_ref.translate(va, ACC_FETCH);
+    ref_rsp   = m_ref.translate(va, ACC_FETCH, 0);
     dut_fault = tr.pgflt | tr.deny;
 
     _compare(.channel("IFU"), .va(va), .ref_rsp(ref_rsp),
@@ -126,7 +126,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_total_checked++;
     va        = va_t'(tr.va[38:0]);
     acc       = tr.st_inst ? ACC_STORE : ACC_LOAD;
-    ref_rsp   = m_ref.translate(va, acc);
+    ref_rsp   = m_ref.translate(va, acc, 1);
     dut_fault = tr.pgflt | tr.access_fault;
 
     _compare(.channel("LSU_P0"), .va(va), .ref_rsp(ref_rsp),
@@ -157,7 +157,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_total_checked++;
     va        = va_t'(tr.va[38:0]);
     acc       = tr.st_inst ? ACC_STORE : ACC_LOAD;
-    ref_rsp   = m_ref.translate(va, acc);
+    ref_rsp   = m_ref.translate(va, acc, 2);
     dut_fault = tr.pgflt | tr.access_fault;
 
     if (tr.stamo_vld_at_rsp && (tr.pa !== tr.stamo_pa_at_rsp)) begin
@@ -200,7 +200,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     // Reconstruct 39-bit VA: take lower 27 bits of va2 as VPN (VA[38:12]),
     // append 12-bit zero page offset.
     va      = va_t'({tr.va2[26:0], 12'b0});
-    ref_rsp = m_ref.translate(va, ACC_PFU);
+    ref_rsp = m_ref.translate(va, ACC_PFU, 1);
 
     // Pipe2 rsp txn currently carries pa and sec only; no fault signals.
     // Restrict comparison to PA only when ref predicts no fault.

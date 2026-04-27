@@ -56,6 +56,8 @@ TIMEOUT         ?= 10000000
 # 1 = quiet console: only UVM_ERROR / UVM_FATAL (+UVM_ERR_ONLY, see test_base.svh)
 UVM_ERR_ONLY    ?= 0
 PLUS_ARGS       ?=
+LOG_STATUS_MAX_HITS ?= 20
+LOG_CHECKER     ?= bash $(PROJECT_DIR)/scripts/check_sim_status.sh
 
 ifeq ($(UVM_ERR_ONLY),1)
   ERR_ONLY_OPTS := +UVM_ERR_ONLY
@@ -350,7 +352,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
 	mmu_error_rain_vseq mmu_perf_bench_vseq
 
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
-        run run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
+        run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -507,6 +509,8 @@ help:
 	@echo "  make check_env                     # VCS in PATH? (comp/comp_fast run this first)"
 	@echo "  make comp                          # Compile + elaborate"
 	@echo "  make run TEST_NAME=<uvm_test|test_dir>  # Run one test, or every test under a directory alias"
+	@echo "  make run_check TEST_NAME=<uvm_test|test_dir> SEED=<n>  # Run then auto-judge PASS/FAIL"
+	@echo "  make fast_check TEST_NAME=<uvm_test|test_dir> SEED=<n> # comp_fast + run_check"
 	@echo "  make all                           # comp + run"
 	@echo "  make verdi TEST_NAME=<test>        # Open Verdi waveform"
 	@echo "  make clean                         # Remove build artifacts"
@@ -516,6 +520,8 @@ help:
 	@echo "  TEST_NAME=$(TEST_NAME)  SEED=$(SEED)  VERBOSITY=$(VERBOSITY)"
 	@echo "  UVM_ERR_ONLY=$(UVM_ERR_ONLY)  (1=errors only on console)"
 	@echo "  Example: make run TEST_NAME=test_mmu_translation_sanity UVM_ERR_ONLY=1"
+	@echo "  Example: make run_check TEST_NAME=l2tlb_tests SEED=1 UVM_ERR_ONLY=1"
+	@echo "  Example: make fast_check TEST_NAME=test_mmu_translation_sanity SEED=1 UVM_ERR_ONLY=1"
 	@echo "  Group example: make run TEST_NAME=basic_tests SEED=1"
 	@echo "  PLUS_ARGS: e.g. PLUS_ARGS=+MMU_LSU_MON_DBG  (P1 RSP bus snapshot, lsu_monitor.svh)"
 	@echo ""
@@ -662,6 +668,44 @@ run: setup
 			-l $(LOG_DIR)/$(TEST_NAME)_$(SEED).log; \
 		echo "Simulation completed. Log: $(LOG_DIR)/$(TEST_NAME)_$(SEED).log"; \
 	fi
+
+run_check: setup
+	$(CHECK_TEST_NAME)
+	@if printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1; then \
+		tests=`grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test/$(TEST_NAME) 2>/dev/null | \
+		  sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u`; \
+		test -n "$$tests" || { echo "ERROR: directory alias '$(TEST_NAME)' has no registered UVM tests."; exit 2; }; \
+		set +e; \
+		$(MAKE) run TEST_NAME=$(TEST_NAME) SEED=$(SEED) VERBOSITY="$(VERBOSITY)" TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)" PLUS_ARGS='$(PLUS_ARGS)'; \
+		run_rc=$$?; \
+		set -e; \
+		logs=""; \
+		for t in $$tests; do \
+			logs="$$logs $(LOG_DIR)/$${t}_$(SEED).log"; \
+		done; \
+	else \
+		set +e; \
+		$(MAKE) run TEST_NAME=$(TEST_NAME) SEED=$(SEED) VERBOSITY="$(VERBOSITY)" TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)" PLUS_ARGS='$(PLUS_ARGS)'; \
+		run_rc=$$?; \
+		set -e; \
+		logs="$(LOG_DIR)/$(TEST_NAME)_$(SEED).log"; \
+	fi; \
+	set +e; \
+	MMU_LOG_MAX_MATCHES=$(LOG_STATUS_MAX_HITS) $(LOG_CHECKER) $$logs; \
+	log_rc=$$?; \
+	set -e; \
+	if [ $$run_rc -ne 0 ]; then \
+		echo "run_check: underlying run target returned $$run_rc"; \
+	fi; \
+	if [ $$run_rc -ne 0 ] || [ $$log_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+fast_check: comp_fast run_check
+
+check_log:
+	@test -n "$(LOG)" || (echo "Usage: make check_log LOG=$(LOG_DIR)/<test>.log"; exit 2)
+	@MMU_LOG_MAX_MATCHES=$(LOG_STATUS_MAX_HITS) $(LOG_CHECKER) "$(LOG)"
 
 run_gui: setup
 	$(CHECK_TEST_NAME)

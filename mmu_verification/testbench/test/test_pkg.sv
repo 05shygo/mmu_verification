@@ -49,6 +49,7 @@ package test_pkg;
 
   // Phase 9: generated thin-wrapper test base + directory suites
   `include "phase9_common/phase9_generated_test_base.svh"
+  `include "phase11_common/phase11_generated_test_base.svh"
   `include "l1itlb_tests/l1itlb_tests_suite.svh"
   `include "l1dtlb_tests/l1dtlb_tests_suite.svh"
   `include "l2tlb_tests/l2tlb_tests_suite.svh"
@@ -61,6 +62,8 @@ package test_pkg;
   `include "cross_tests/cross_tests_suite.svh"
   `include "perf_tests/perf_tests_suite.svh"
   `include "err_tests/err_tests_suite.svh"
+  `include "bug_hunt_tests/bug_hunt_tests_suite.svh"
+  `include "ptw_lsu_protocol_tests/ptw_lsu_protocol_tests_suite.svh"
 
 endpackage : test_pkg
 

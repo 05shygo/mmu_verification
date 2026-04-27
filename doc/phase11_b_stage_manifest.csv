@@ -1,0 +1,19 @@
+bucket,trace_id,test_name,status,seed_policy,fid,priority,owner,blocked_reason,xfail_required,review_mode,list_membership
+positive_guard,TC-BUG-001,test_bug_001_twu_fst_fetch_type,Functional,phase11_v3_regression:94201-94203,F4.NEW.2,P1,B,,0,A+B,mmu_v3_regression_list
+positive_guard,TC-BUG-002,test_bug_002_thd_chk_4k_a_bit,Functional,phase11_v3_regression:94201-94203,F4.NEW.3,P1,B,,0,A+B,mmu_v3_regression_list
+positive_guard,TC-BUG-003,test_bug_003_thd_chk_leaf_refill,Functional,phase11_v3_regression:94201-94203,F4.NEW.1,P1,B,,0,A+B,mmu_v3_regression_list
+positive_guard,TC-BUG-004,test_bug_004_mmu_arb_bank_mask,Functional,phase11_v3_regression:94201-94203,F5.NEW.1,P1,B,,0,A+B,mmu_v3_regression_list
+bug_hunt,TC-BUG-005,test_bug_005_l2_raw_vld_and_gate,Blocked-Waiting-RTL-Fix,phase11_bug_hunt:manual,F3.4,P0,B,real RTL defect; needs xfail handling,1,A+B,mmu_bug_hunt_list|mmu_v3_regression_list
+bug_hunt,TC-BUG-006,test_bug_006_l2_is_dtlb_store,Blocked-Waiting-RTL-Fix,phase11_bug_hunt:manual,F3.5,P0,B,real RTL defect; needs xfail handling,1,A+B,mmu_bug_hunt_list|mmu_v3_regression_list
+bug_hunt,TC-BUG-007,test_bug_007_rrpv_post_inv,Blocked-Waiting-RTL-Fix,phase11_bug_hunt:manual,F3.NEW.1,P0,B,real RTL defect; needs xfail handling,1,A+B,mmu_bug_hunt_list|mmu_v3_regression_list
+bug_hunt,TC-BUG-008,test_bug_008_pplru_entry0_first_hit,Blocked-Waiting-RTL-Fix,phase11_bug_hunt:manual,F12.NEW.1,P0,B,real RTL defect; needs xfail handling,1,A+B,mmu_bug_hunt_list|mmu_v3_regression_list
+bug_hunt,TC-BUG-011,test_bug_011_twu_2m_csr_cross,Blocked-Waiting-RTL-Fix,phase11_r19_gate:blocked,F4.NEW.4,P0,B,R19 open; keep out of runnable lists until closure,1,A+B,commented_out
+bug_hunt,TC-BUG-012,test_bug_012_csr_grant_onehot,Planned,phase11_bug_hunt:manual,F4.NEW.5,P1,B,,0,A+B,mmu_bug_hunt_list|mmu_v3_regression_list
+bug_hunt,TC-BUG-013,test_bug_013_ptw_write_pipe_reset,Planned,phase11_r20_focus:94301-94310,F5.NEW.2,P1,B,R20 focused seed gate,0,A+B,mmu_bug_hunt_list|mmu_v3_regression_list
+bug_hunt,TC-BUG-014,test_bug_014_xbar_cold_start,Planned,phase11_r20_focus:94301-94310,F5.NEW.3,P1,B,R20 focused seed gate,0,A+B,mmu_bug_hunt_list|mmu_v3_regression_list
+doc_review,TC-BUG-015,-,DOC_REVIEW,doc_only,F8.NEW.2,P2,B,non-runnable documentation review item,0,A+B,doc_only
+ptw_lsu_protocol,TC-PMBUF-SERIAL-OUTSTANDING-001,test_pmbuf_serial_outstanding_001,Planned,phase11_protocol:94101-94103,F4.42a,P0,B,,0,A+B,mmu_ptw_lsu_protocol_list|mmu_v3_regression_list
+ptw_lsu_protocol,TC-PMBUF-ADDR-STABLE-001,test_pmbuf_addr_stable_001,Planned,phase11_protocol:94101-94103,F4.42a,P0,B,,0,A+B,mmu_ptw_lsu_protocol_list|mmu_v3_regression_list
+ptw_lsu_protocol,TC-PMBUF-NO-TAG-001,test_pmbuf_no_tag_001,Planned,phase11_protocol:94101-94103,F4.42b,P0,B,,0,A+B,mmu_ptw_lsu_protocol_list|mmu_v3_regression_list
+ptw_lsu_protocol,TC-PMBUF-INORDER-RESP-001,test_pmbuf_inorder_resp_001,Planned,phase11_protocol:94101-94103,F4.42b,P0,B,,0,A+B,mmu_ptw_lsu_protocol_list|mmu_v3_regression_list
+ptw_lsu_protocol,TC-PMBUF-PTR-HOLD-001,test_pmbuf_ptr_hold_001,Planned,phase11_protocol:94101-94103,F4.42c,P1,B,,0,A+B,mmu_ptw_lsu_protocol_list|mmu_v3_regression_list

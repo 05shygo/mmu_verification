@@ -1,0 +1,20 @@
+# Phase 11 bug-hunt runnable set
+# Notes:
+#   - TC-BUG-005~008 are real defects and may require xfail handling in the
+#     eventual regress_v3_gap wrapper.
+#   - TC-BUG-011 remains blocked by R19 until JIRA closure.
+#   - TC-BUG-015 is DOC_REVIEW only and is intentionally not runnable.
+
+test_bug_005_l2_raw_vld_and_gate
+test_bug_006_l2_is_dtlb_store
+test_bug_007_rrpv_post_inv
+test_bug_008_pplru_entry0_first_hit
+test_bug_012_csr_grant_onehot
+test_bug_013_ptw_write_pipe_reset
+test_bug_014_xbar_cold_start
+
+# Blocked until R19 closure / xfail policy is available:
+# test_bug_011_twu_2m_csr_cross
+
+# DOC_REVIEW only:
+# tc_bug_015_invva_legacy_fsm_doc

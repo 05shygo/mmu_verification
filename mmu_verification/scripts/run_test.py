@@ -16,7 +16,7 @@ LOG_DIR = PROJECT_DIR / "output" / "logs"
 DEFAULT_TEST_NAME = "mmu_base_test"
 DEFAULT_MODE = "run_check"
 VALID_MODES = {"run", "run_check", "run_batch", "run_cov", "debug"}
-SKIP_TESTS = {"test_base", "phase9_generated_test_base"}
+SKIP_TESTS = {"test_base", "phase9_generated_test_base", "phase11_generated_test_base"}
 
 
 class RegressionEntry:
@@ -75,7 +75,7 @@ def find_registered_tests() -> List[str]:
 def find_test_aliases() -> List[str]:
     aliases = []
     for path in sorted(TEST_DIR.iterdir()):
-        if path.is_dir() and path.name != "phase9_common":
+        if path.is_dir() and path.name not in {"phase9_common", "phase11_common"}:
             aliases.append(path.name)
     return aliases
 

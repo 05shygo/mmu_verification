@@ -1,0 +1,9 @@
+# Phase 11 PTW->LSU protocol runnable set
+# Recommended external seed set:
+#   94101 94102 94103
+
+test_pmbuf_serial_outstanding_001
+test_pmbuf_addr_stable_001
+test_pmbuf_no_tag_001
+test_pmbuf_inorder_resp_001
+test_pmbuf_ptr_hold_001

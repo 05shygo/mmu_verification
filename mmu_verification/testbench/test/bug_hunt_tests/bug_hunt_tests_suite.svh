@@ -1,0 +1,13 @@
+// Auto-generated Phase 11 suite include list
+`include "test_bug_001_twu_fst_fetch_type.svh"
+`include "test_bug_002_thd_chk_4k_a_bit.svh"
+`include "test_bug_003_thd_chk_leaf_refill.svh"
+`include "test_bug_004_mmu_arb_bank_mask.svh"
+`include "test_bug_005_l2_raw_vld_and_gate.svh"
+`include "test_bug_006_l2_is_dtlb_store.svh"
+`include "test_bug_007_rrpv_post_inv.svh"
+`include "test_bug_008_pplru_entry0_first_hit.svh"
+`include "test_bug_011_twu_2m_csr_cross.svh"
+`include "test_bug_012_csr_grant_onehot.svh"
+`include "test_bug_013_ptw_write_pipe_reset.svh"
+`include "test_bug_014_xbar_cold_start.svh"

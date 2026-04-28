@@ -148,6 +148,53 @@ class mmu_ref_model extends uvm_component;
     join_none
   endtask
 
+  // Drain any monitor-published shadow-state updates without consuming time.
+  // Translation scoreboarding can run on the same sampled beat as CP0/PMP/
+  // SysMap activity; pulling pending FIFO items here keeps the ref model's
+  // SATP/CSR mirror coherent before a compare is made.
+  virtual function void sync_shadow_state();
+    cp0_txn        csr_tr;
+    lsu_txn        inv_tr;
+    pmp_txn        pmp_tr;
+    sysmap_cfg_txn sysmap_tr;
+    int unsigned   n_csr;
+    int unsigned   n_inv;
+    int unsigned   n_pmp;
+    int unsigned   n_sysmap;
+
+    n_csr    = 0;
+    n_inv    = 0;
+    n_pmp    = 0;
+    n_sysmap = 0;
+
+    while (af_csr_write.try_get(csr_tr)) begin
+      on_csr_write(csr_tr);
+      n_csr++;
+    end
+
+    while (af_tlb_inv.try_get(inv_tr)) begin
+      on_tlb_inv(inv_tr);
+      n_inv++;
+    end
+
+    while (af_pmp_cfg.try_get(pmp_tr)) begin
+      on_pmp_cfg_change(pmp_tr);
+      n_pmp++;
+    end
+
+    while (af_sysmap_cfg.try_get(sysmap_tr)) begin
+      on_sysmap_cfg_change(sysmap_tr);
+      n_sysmap++;
+    end
+
+    if ((n_csr + n_inv + n_pmp + n_sysmap) != 0) begin
+      `uvm_info(get_type_name(),
+        $sformatf("sync_shadow_state: drained csr=%0d inv=%0d pmp=%0d sysmap=%0d before translate",
+          n_csr, n_inv, n_pmp, n_sysmap),
+        UVM_HIGH)
+    end
+  endfunction
+
   // =========================================================================
   // Core API: translate()
   // =========================================================================
@@ -191,6 +238,7 @@ class mmu_ref_model extends uvm_component;
     rsp = '{ppn: '0, exc: EXC_NONE,
             sec: 0, ca: 0, buf_en: 0, sh: 0, so: 0, deny: 0};
 
+    sync_shadow_state();
     m_n_translate_calls++;
 
     // ── [Decision 1] Passthrough ──────────────────────────────────────────

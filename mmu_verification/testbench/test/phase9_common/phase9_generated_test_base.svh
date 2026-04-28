@@ -111,6 +111,8 @@ class phase9_generated_test_base extends test_base;
         })
       `uvm_fatal(get_type_name(), "cp0_init randomize failed")
     cp0_init.start(m_env.m_cp0.m_sequencer);
+    if (m_env.m_ref != null)
+      m_env.m_ref.sync_shadow_state();
 
     m_env.m_pt_mem.m_builder.set_root(m_root_ppn, m_root_asid);
     for (int i = 0; i < int'(m_nmap); i++) begin

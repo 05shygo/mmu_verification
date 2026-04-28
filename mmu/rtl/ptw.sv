@@ -861,6 +861,8 @@ logic [ID_WIDTH-1:0]   ptw_rsp_id_q;
 logic [41:0]           ptw_rsp_data_q;
 logic [47:0]           ptw_rsp_tag_q;
 logic [2:0]            ptw_rsp_pgs_q;
+logic                  ptw_lsu_req_dbg_q;
+logic [39:0]           ptw_lsu_addr_dbg_q;
 
 assign ptw_l2tlb_ref_type[2:0] = ptw_arb_ref_type[2:0];
 assign ptw_l2tlb_ref_id[ID_WIDTH-1:0] = ptw_arb_ref_id[ID_WIDTH-1:0];
@@ -909,6 +911,24 @@ always_ff @(posedge ptw_clk or negedge cpurst_b) begin
 			ptw_rsp_tag_q      <= ptw_arb_ref_tag_din[TAG_WIDTH-1:0];
 			ptw_rsp_pgs_q      <= ptw_arb_ref_pgs[2:0];
 		end
+	end
+end
+
+// PTW->LSU request trace for run_check log parsing.
+// Emit once per new request (req rising edge or address change while req high).
+always_ff @(posedge ptw_clk or negedge cpurst_b) begin
+	if(!cpurst_b) begin
+		ptw_lsu_req_dbg_q  <= 1'b0;
+		ptw_lsu_addr_dbg_q <= 40'b0;
+	end else begin
+		if(mmu_lsu_data_req
+		   && (!ptw_lsu_req_dbg_q || (mmu_lsu_data_req_addr != ptw_lsu_addr_dbg_q))) begin
+			$display("[%0t][PTW LSU REQ] addr=0x%010h size=%0b satp_base=0x%07h",
+			         $time, mmu_lsu_data_req_addr, mmu_lsu_data_req_size, regs_ptw_satp_ppn);
+		end
+		ptw_lsu_req_dbg_q <= mmu_lsu_data_req;
+		if(mmu_lsu_data_req)
+			ptw_lsu_addr_dbg_q <= mmu_lsu_data_req_addr;
 	end
 end
 

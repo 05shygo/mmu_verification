@@ -68,6 +68,8 @@ logic					L1PDE_plru_refill_vld;
 logic					L2PDE_plru_refill_vld;
 logic	[15:0]			L1PDE_entry_hit_idx;
 logic	[15:0]			L2PDE_entry_hit_idx;
+logic   [3:0]           L1PDE_hit_idx_num;
+logic   [3:0]           L2PDE_hit_idx_num;
 logic	[15:0]			plru_L1PDE_ref_num;
 logic	[15:0]			plru_L2PDE_ref_num;
 logic                   pde_cache_clk_en;
@@ -249,6 +251,50 @@ always_comb begin
 	endcase
 end
 
+always_comb begin
+	case(L1PDE_entry_hit_idx[15:0])
+		16'h0001: L1PDE_hit_idx_num = 4'd0;
+		16'h0002: L1PDE_hit_idx_num = 4'd1;
+		16'h0004: L1PDE_hit_idx_num = 4'd2;
+		16'h0008: L1PDE_hit_idx_num = 4'd3;
+		16'h0010: L1PDE_hit_idx_num = 4'd4;
+		16'h0020: L1PDE_hit_idx_num = 4'd5;
+		16'h0040: L1PDE_hit_idx_num = 4'd6;
+		16'h0080: L1PDE_hit_idx_num = 4'd7;
+		16'h0100: L1PDE_hit_idx_num = 4'd8;
+		16'h0200: L1PDE_hit_idx_num = 4'd9;
+		16'h0400: L1PDE_hit_idx_num = 4'd10;
+		16'h0800: L1PDE_hit_idx_num = 4'd11;
+		16'h1000: L1PDE_hit_idx_num = 4'd12;
+		16'h2000: L1PDE_hit_idx_num = 4'd13;
+		16'h4000: L1PDE_hit_idx_num = 4'd14;
+		16'h8000: L1PDE_hit_idx_num = 4'd15;
+		default : L1PDE_hit_idx_num = 4'd0;
+	endcase
+end
+
+always_comb begin
+	case(L2PDE_entry_hit_idx[15:0])
+		16'h0001: L2PDE_hit_idx_num = 4'd0;
+		16'h0002: L2PDE_hit_idx_num = 4'd1;
+		16'h0004: L2PDE_hit_idx_num = 4'd2;
+		16'h0008: L2PDE_hit_idx_num = 4'd3;
+		16'h0010: L2PDE_hit_idx_num = 4'd4;
+		16'h0020: L2PDE_hit_idx_num = 4'd5;
+		16'h0040: L2PDE_hit_idx_num = 4'd6;
+		16'h0080: L2PDE_hit_idx_num = 4'd7;
+		16'h0100: L2PDE_hit_idx_num = 4'd8;
+		16'h0200: L2PDE_hit_idx_num = 4'd9;
+		16'h0400: L2PDE_hit_idx_num = 4'd10;
+		16'h0800: L2PDE_hit_idx_num = 4'd11;
+		16'h1000: L2PDE_hit_idx_num = 4'd12;
+		16'h2000: L2PDE_hit_idx_num = 4'd13;
+		16'h4000: L2PDE_hit_idx_num = 4'd14;
+		16'h8000: L2PDE_hit_idx_num = 4'd15;
+		default : L2PDE_hit_idx_num = 4'd0;
+	endcase
+end
+
 //==============================================================================
 //                  refill  LRU
 //==============================================================================
@@ -301,6 +347,19 @@ assign PDE_xbar_vpn[VPN_WIDTH-1:0] = ptw_vpn[VPN_WIDTH-1:0];
 assign PDE_xbar_type[2:0] = ptw_type[2:0];
 assign PDE_xbar_id[ID_WIDTH-1:0] = ptw_id[ID_WIDTH-1:0];
 assign PDE_xbar_req = ptw_req & xbar_pde_ready;
+
+// Trace PDE cache hit details for run_check post-log analysis.
+always_ff @(posedge pde_cache_clk or negedge cpurst_b) begin
+	if(!cpurst_b) begin
+		// no-op
+	end else if(PDE_xbar_req && L2PDE_xbar_hit_vld) begin
+		$display("[%0t][PDE CACHE HIT] lvl=L2 req_vpn=0x%07h tag=0x%05h hit_idx=%0d hit_vec=0x%04h out_ppn=0x%07h",
+		         $time, PDE_xbar_vpn, PDE_xbar_vpn[26:9], L2PDE_hit_idx_num, L2PDE_entry_hit_idx, PDE_xbar_ppn);
+	end else if(PDE_xbar_req && L1PDE_xbar_hit_vld) begin
+		$display("[%0t][PDE CACHE HIT] lvl=L1 req_vpn=0x%07h tag=0x%03h hit_idx=%0d hit_vec=0x%04h out_ppn=0x%07h",
+		         $time, PDE_xbar_vpn, PDE_xbar_vpn[26:18], L1PDE_hit_idx_num, L1PDE_entry_hit_idx, PDE_xbar_ppn);
+	end
+end
 
 
 endmodule

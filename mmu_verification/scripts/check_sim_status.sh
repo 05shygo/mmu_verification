@@ -5,6 +5,7 @@ set -u
 MAX_MATCHES="${MMU_LOG_MAX_MATCHES:-20}"
 CHAIN_MAX_MATCHES="${MMU_LOG_CHAIN_MAX_MATCHES:-8}"
 PTW_RSP_MAX_MATCHES="${MMU_LOG_PTW_RSP_MAX_MATCHES:-6}"
+PDE_HIT_MAX_MATCHES="${MMU_LOG_PDE_HIT_MAX_MATCHES:-8}"
 
 usage() {
   echo "Usage: $0 <log1> [log2 ...]" >&2
@@ -234,6 +235,29 @@ print_recent_ptw_rsp_lines() {
   ' "$log"
 }
 
+print_recent_pde_cache_hit_lines() {
+  local log="$1"
+  local limit="$2"
+  awk -v limit="$limit" '
+    /\[PDE CACHE HIT\]/ {
+      n++;
+      idx = ((n - 1) % limit) + 1;
+      nums[idx] = NR;
+      lines[idx] = $0;
+    }
+    END {
+      if (n == 0) {
+        exit;
+      }
+      start = (n > limit) ? (n - limit + 1) : 1;
+      for (i = start; i <= n; i++) {
+        idx = ((i - 1) % limit) + 1;
+        printf("    %d:%s\n", nums[idx], lines[idx]);
+      }
+    }
+  ' "$log"
+}
+
 check_log() {
   local log="$1"
   local summary_seen
@@ -283,6 +307,8 @@ check_log() {
     print_translation_ppn_chain_summary "$log" 4
     echo "  recent PTW RSP (LSU->PTW) lines:"
     print_recent_ptw_rsp_lines "$log" "$PTW_RSP_MAX_MATCHES"
+    echo "  recent PDE cache hit lines:"
+    print_recent_pde_cache_hit_lines "$log" "$PDE_HIT_MAX_MATCHES"
   fi
 
   if [ "$status" = "PASS" ]; then

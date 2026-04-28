@@ -1059,7 +1059,7 @@ always_comb begin
 			ptw_nxt_st[2:0] = TWU_1G_CRS2;
 		end
 		TWU_1G_CRS2:begin
-		if(ptw_chk_cross)
+		if(twu_csr_cross)
 			ptw_nxt_st[2:0] = TWU_2M_CRS1;
 		else
 			ptw_nxt_st[2:0] = CSR_DATA_VLD;
@@ -1135,9 +1135,9 @@ always @(posedge twu_clk or negedge cpurst_b)begin
 		csr_refill_pgs[PGS_WIDTH-1:0] <= {PGS_WIDTH{1'b0}};
 	else if(csr_req & csr_idle)
 		csr_refill_pgs[PGS_WIDTH-1:0] <= {csr_grant[1:0],1'b0};
-	else if(ptw_crs2_1g && ptw_chk_cross)
+	else if(twu_crs2_1g && twu_csr_cross)
 		csr_refill_pgs[PGS_WIDTH-1:0] <= 3'b010;
-	else if(ptw_crs2_2m && ptw_chk_cross)
+	else if(twu_crs2_2m && twu_csr_cross)
 		csr_refill_pgs[PGS_WIDTH-1:0] <= 3'b001;
 end
 

@@ -19,16 +19,22 @@ class ptw_mem_cfg_base_seq extends uvm_sequence #(ptw_mem_txn);
 
   protected function ptw_mem_responder get_responder();
     uvm_component parent_comp;
-    ptw_mem_agent agent_h;
+    uvm_component responder_comp;
+    ptw_mem_responder rsp_h;
 
     parent_comp = p_sequencer.get_parent();
     if (parent_comp == null)
       `uvm_fatal(get_type_name(), "ptw_mem sequencer parent is null")
-    if (!$cast(agent_h, parent_comp))
-      `uvm_fatal(get_type_name(), "ptw_mem sequencer parent is not ptw_mem_agent")
-    if (agent_h.m_responder == null)
-      `uvm_fatal(get_type_name(), "ptw_mem responder is null")
-    return agent_h.m_responder;
+
+    // Avoid a hard compile-time dependency on ptw_mem_agent. This sequence file
+    // is included before ptw_mem_agent.svh in the package, so resolve the
+    // responder through the sequencer parent's child hierarchy instead.
+    responder_comp = parent_comp.get_child("m_responder");
+    if (responder_comp == null)
+      `uvm_fatal(get_type_name(), "Cannot find child component 'm_responder' under ptw_mem sequencer parent")
+    if (!$cast(rsp_h, responder_comp))
+      `uvm_fatal(get_type_name(), "Child component 'm_responder' is not a ptw_mem_responder")
+    return rsp_h;
   endfunction
 endclass
 

@@ -2,11 +2,13 @@
 
 ## 推荐执行命令
 
+- Phase 12 单命令 gate（推荐收口入口）：
+  - `make phase12_exit_check`
 - 编译：
   - `make comp`
 - Phase 12 主回归：
   - `make regress LIST=simu/mmu_v4_phase12_list REGRESS_MODE=run_check REGRESS_SEEDS="95101 95102 95103"`
-- A 侧 target 就位后：
+- 已有 Phase 12 回归 target：
   - `make regress_v4_maee_ptw REGRESS_SEEDS="95101 95102 95103"`
 
 ## B 侧文档与范围门禁
@@ -22,6 +24,7 @@
 - [ ] `mmu_verification/testbench/top/mmu_maee_twu_sva.sv` 已纳管编译。
 - [ ] `mmu_maee_twu_sva.sv` 中存在 3 条 property。
 - [ ] 每条 property 都有对应 `cover property`。
+- [ ] `mmu_verification/Makefile` 推荐提供 `phase12_exit_check` 单命令 gate，统一串起 compile / regress / summary / exit checks。
 - [ ] `mmu_verification/testbench/top/mmu_pmp_twu_sva.sv` 骨架编译通过，且无 undefined reference。
 - [ ] `mmu_verification/Makefile` 已提供 `regress_v4_maee_ptw` 或等价入口，消费 `simu/mmu_v4_phase12_list`。
 
@@ -34,9 +37,9 @@
 
 ## SVA 可达性门禁
 
-- [ ] `sva_twu_maee_paths_mutex` 的 `cover property` 聚合命中次数 `>=20`。
-- [ ] `sva_maee0_leaf_uses_csr_req` 的 `cover property` 聚合命中次数 `>=20`。
-- [ ] `sva_maee1_leaf_skips_csr_req` 的 `cover property` 聚合命中次数 `>=20`。
+- [ ] `sva_twu_maee_paths_mutex` / `cp_twu_maee_paths_mutex` 聚合命中次数 `>=20`。
+- [ ] `sva_maee0_triggers_csr_req` / `cp_maee0_triggers_csr_req` 聚合命中次数 `>=20`。
+- [ ] `sva_maee1_skips_csr_fsm` / `cp_maee1_skips_csr_fsm` 聚合命中次数 `>=20`。
 - [ ] 既有 `ptw/twu/xbar/arb` 相关 SVA 在 Phase 12 主回归中无新增 false fire。
 
 ## Covergroup 门禁

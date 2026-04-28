@@ -19,11 +19,12 @@
 ### 1. `mmu_verification/testbench/top/mmu_maee_twu_sva.sv`
 
 - 需要 3 条可编译、可触发、带 `cover property` 的 MAEE SVA。
-- 推荐按当前 B 侧 checker 口径收敛为：
-  - `sva_twu_maee_paths_mutex`
-  - `sva_maee0_leaf_uses_csr_req`
-  - `sva_maee1_leaf_skips_csr_req`
-- 如 A 侧沿用 BuildPlan 旧名，可在文件头注明别名映射，但最终需要与 B 侧 review 记录一一对位。
+- 当前文件内 assert / cover 对位为：
+  - `sva_twu_maee_paths_mutex` / `cp_twu_maee_paths_mutex`
+  - `sva_maee0_triggers_csr_req` / `cp_maee0_triggers_csr_req`
+  - `sva_maee1_skips_csr_fsm` / `cp_maee1_skips_csr_fsm`
+- 当前 RTL 暴露的 leaf probe 仅覆盖 `FST/SCD`；`THD` 不在本批次 MAEE SVA 检查范围内。
+- 若 review 仍引用 BuildPlan 旧名，需要在 review note 中补一对一别名映射，但最终签收以文件内实际名字为准。
 
 ### 2. `mmu_verification/testbench/top/mmu_pmp_twu_sva.sv`
 
@@ -35,8 +36,10 @@
 
 ### 3. `mmu_verification/Makefile`
 
-- 需要增加 `regress_v4_maee_ptw` 或等价入口。
-- 建议消费：
+- 当前已有 `regress_v4_maee_ptw` 作为 Phase 12 主回归入口。
+- 推荐再补一个单命令 gate：
+  - `make phase12_exit_check`
+- 建议统一消费：
   - `LIST=simu/mmu_v4_phase12_list`
   - `REGRESS_SEEDS="95101 95102 95103"`
 
@@ -44,19 +47,21 @@
 
 | Joint Item | B 侧触发测试 | A 侧动作 | Review hook | 关闭条件 |
 | --- | --- | --- | --- | --- |
-| MAEE 路径互斥 | `test_mmu_twu_maee0_csr_path`；`test_mmu_twu_maee1_direct_refill`；`test_mmu_twu_maee_dynamic_switch` | 实现 `sva_twu_maee_paths_mutex` + `cover property` | 检查 MAEE=0/1/switch 三类路径都命中且无 mixed-fire | 3 类路径均有命中统计，且 3-seed union 无 assertion fail |
-| MAEE=0 叶级走 CSR | `test_mmu_twu_maee0_csr_path`；`test_mmu_twu_maee0_csr_symmetric` | 实现 `sva_maee0_leaf_uses_csr_req` + `cover property` | 检查 FST/SCD/THD 至少有 2 个叶级被 cover 到；`csr_req` 为主路径 | A/B 对 `leaf_level` 命中报告签字 |
-| MAEE=1 跳过 CSR | `test_mmu_twu_maee1_direct_refill`；`test_mmu_twu_maee_dynamic_switch` | 实现 `sva_maee1_leaf_skips_csr_req` + `cover property` | 检查 MAEE=1 条件下 `csr_req=0` 且 `refill_req=1` | 3-seed union 下 cover hit 达标、无 false fire |
+| MAEE 路径互斥 | `test_mmu_twu_maee0_csr_path`；`test_mmu_twu_maee1_direct_refill`；`test_mmu_twu_maee_dynamic_switch` | 实现 `sva_twu_maee_paths_mutex` + `cp_twu_maee_paths_mutex` | 检查 MAEE=0/1/switch 三类路径都命中且无 mixed-fire | 3 类路径均有命中统计，且 3-seed union 无 assertion fail |
+| MAEE=0 叶级走 CSR | `test_mmu_twu_maee0_csr_path`；`test_mmu_twu_maee0_csr_symmetric` | 实现 `sva_maee0_triggers_csr_req` + `cp_maee0_triggers_csr_req` | 检查 `FST/SCD` 叶级路径被 cover 到；`csr_req` 为主路径 | A/B 对 `leaf_level` 命中报告签字 |
+| MAEE=1 跳过 CSR | `test_mmu_twu_maee1_direct_refill`；`test_mmu_twu_maee_dynamic_switch` | 实现 `sva_maee1_skips_csr_fsm` + `cp_maee1_skips_csr_fsm` | 检查 MAEE=1 条件下 `csr_req=0` 且 `refill_req=1` | 3-seed union 下 cover hit 达标、无 false fire |
 | 既有 PTW/TWU SVA 复核 | `test_mmu_ptw_ready_*`；`test_mmu_twu_idle_implies_no_mask`；`test_mmu_twu_pgflt_bypass_arb`；`test_mmu_twu_accerr_bypass_arb`；`test_mmu_mbuf_*`；`test_mmu_arb_*` | A 复核现有 `ptw/twu/xbar/arb` SVA 的绑定点和信号名是否与 Phase 12 probe 口径一致 | 对照 `doc/phase12_covergroup_matrix.md` 的 signal map | review note 写明“沿用/修改/待补”结论 |
-| Phase 12 回归入口 | `mmu_v4_phase12_list` 全表 | A 在 Makefile 中落入口并串 summary | 确认 list 只消费这 22 个 tests，默认 3 seeds | `regress_v4_maee_ptw` 能独立跑通并产出 summary |
+| Phase 12 回归入口 | `mmu_v4_phase12_list` 全表 | A 在 Makefile 中落入口并串 summary / exit checks | 确认 list 只消费这 22 个 tests，默认 3 seeds | `regress_v4_maee_ptw` 能独立跑通并产出 summary；`phase12_exit_check` 收口后优先作为最终 gate |
 
 ## 推荐对位命令
 
+- 单命令 gate（推荐收口入口）：
+  - `make phase12_exit_check`
 - 编译入口：
   - `make comp`
 - Phase 12 union：
   - `make regress LIST=simu/mmu_v4_phase12_list REGRESS_MODE=run_check REGRESS_SEEDS="95101 95102 95103"`
-- 如果 A 已补 Makefile target：
+- 当前已有回归 target：
   - `make regress_v4_maee_ptw REGRESS_SEEDS="95101 95102 95103"`
 
 ## 交接边界说明

@@ -24,9 +24,33 @@ module mmu_maee_twu_sva (
 
   logic fst_leaf_nonfault;
   logic scd_leaf_nonfault;
+  integer cov_hits_paths_mutex;
+  integer cov_hits_maee0_csr;
+  integer cov_hits_maee1_refill;
 
   assign fst_leaf_nonfault = fst_chk_vld && fst_chk_leaf_vld && !fst_chk_page_flt;
   assign scd_leaf_nonfault = scd_chk_vld && scd_chk_leaf_vld && !scd_chk_page_flt;
+
+  always @(posedge twu_clk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+      cov_hits_paths_mutex <= 0;
+      cov_hits_maee0_csr   <= 0;
+      cov_hits_maee1_refill <= 0;
+    end else begin
+      if ((fst_chk_csr_req ^ fst_chk_refill_req) || (scd_chk_csr_req ^ scd_chk_refill_req))
+        cov_hits_paths_mutex <= cov_hits_paths_mutex + 1;
+
+      if (!cp0_mmu_maee
+          && ((fst_leaf_nonfault && fst_chk_csr_req && !fst_chk_refill_req)
+              || (scd_leaf_nonfault && scd_chk_csr_req && !scd_chk_refill_req)))
+        cov_hits_maee0_csr <= cov_hits_maee0_csr + 1;
+
+      if (cp0_mmu_maee
+          && ((fst_leaf_nonfault && fst_chk_refill_req && !fst_chk_csr_req)
+              || (scd_leaf_nonfault && scd_chk_refill_req && !scd_chk_csr_req)))
+        cov_hits_maee1_refill <= cov_hits_maee1_refill + 1;
+    end
+  end
 
   // Verification intent: the same stage must not drive both MAEE paths together.
   sva_twu_maee_paths_mutex: assert property (@(posedge twu_clk) disable iff (!cpurst_b)
@@ -57,5 +81,11 @@ module mmu_maee_twu_sva (
     cp0_mmu_maee
     && ((fst_leaf_nonfault && fst_chk_refill_req && !fst_chk_csr_req)
         || (scd_leaf_nonfault && scd_chk_refill_req && !scd_chk_csr_req)));
+
+  final begin
+    $display("PHASE12_MAEE_COVER instance=%m prop=cp_twu_maee_paths_mutex hits=%0d", cov_hits_paths_mutex);
+    $display("PHASE12_MAEE_COVER instance=%m prop=cp_maee0_triggers_csr_req hits=%0d", cov_hits_maee0_csr);
+    $display("PHASE12_MAEE_COVER instance=%m prop=cp_maee1_skips_csr_fsm hits=%0d", cov_hits_maee1_refill);
+  end
 
 endmodule

@@ -245,6 +245,14 @@ PHASE11_V3_SUMMARY        ?= $(REGRESS_DIR)/phase11_v3_gap/summary.txt
 PHASE12_LIST              ?= $(SIMU_DIR)/mmu_v4_phase12_list
 PHASE12_SEEDS             ?= 95101 95102 95103
 PHASE12_SUMMARY           ?= $(REGRESS_DIR)/phase12_v4/summary.txt
+PHASE12_URG_REPORT        ?= $(COV_DIR)/urgReport
+PHASE12_A_REVIEW_NOTE     ?= $(PROJECT_DIR)/../doc/phase12_a_review.md
+PHASE12_EXIT_CHECKLIST    ?= $(PROJECT_DIR)/../doc/phase12_exit_checklist.md
+PHASE12_SKIP_COMPILE      ?= 0
+PHASE12_SKIP_REGRESSION   ?= 0
+PHASE12_SKIP_CLEAN_COV    ?= 0
+PHASE12_MAEE_MIN_HITS     ?= 20
+PHASE12_CG_MIN_PERCENT    ?= 50
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -300,6 +308,13 @@ print-phase12:
 	@echo "PHASE12_LIST           = $(PHASE12_LIST)"
 	@echo "PHASE12_SEEDS          = $(PHASE12_SEEDS)"
 	@echo "PHASE12_SUMMARY        = $(PHASE12_SUMMARY)"
+	@echo "PHASE12_URG_REPORT     = $(PHASE12_URG_REPORT)"
+	@echo "PHASE12_A_REVIEW_NOTE  = $(PHASE12_A_REVIEW_NOTE)"
+	@echo "PHASE12_SKIP_COMPILE   = $(PHASE12_SKIP_COMPILE)"
+	@echo "PHASE12_SKIP_REGRESSION= $(PHASE12_SKIP_REGRESSION)"
+	@echo "PHASE12_SKIP_CLEAN_COV = $(PHASE12_SKIP_CLEAN_COV)"
+	@echo "PHASE12_MAEE_MIN_HITS  = $(PHASE12_MAEE_MIN_HITS)"
+	@echo "PHASE12_CG_MIN_PERCENT = $(PHASE12_CG_MIN_PERCENT)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -424,7 +439,8 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
         regress regress_smoke regress_nightly print-regress \
-        print-phase11 print-phase12 regress_v3_gap regress_v4_maee_ptw phase11_exit_check phase11_show_failures
+        print-phase11 print-phase12 regress_v3_gap regress_v4_maee_ptw phase11_exit_check phase11_show_failures \
+        phase12_exit_check
 
 all: comp run
 
@@ -533,6 +549,10 @@ regress_v4_maee_ptw: comp
 		UVM_ERR_ONLY="$(UVM_ERR_ONLY)"; \
 	reg_rc=$$?; \
 	set -e; \
+	set +e; \
+	bash $(PROJECT_DIR)/scripts/phase11_scan_regression_logs.sh "$(PHASE12_LIST)" "$(PHASE12_SEEDS)" "$(LOG_DIR)" cov; \
+	scan_rc=$$?; \
+	set -e; \
 	if ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
 		$(MAKE) cov; \
 	else \
@@ -540,8 +560,33 @@ regress_v4_maee_ptw: comp
 	fi; \
 	if [ $$reg_rc -ne 0 ]; then \
 		echo "regress_v4_maee_ptw: underlying regression returned $$reg_rc"; \
+	fi; \
+	if [ $$scan_rc -ne 0 ]; then \
+		echo "regress_v4_maee_ptw: scan_logs/check_sim_status returned $$scan_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
 		exit 1; \
 	fi
+
+phase12_exit_check:
+	@MAKE_BIN='$(MAKE)' \
+	PYTHON='$(PYTHON)' \
+	PHASE12_LIST='$(PHASE12_LIST)' \
+	PHASE12_SEEDS='$(PHASE12_SEEDS)' \
+	PHASE12_SUMMARY='$(PHASE12_SUMMARY)' \
+	PHASE12_URG_REPORT='$(PHASE12_URG_REPORT)' \
+	PHASE12_LOG_DIR='$(LOG_DIR)' \
+	PHASE12_A_REVIEW_NOTE='$(PHASE12_A_REVIEW_NOTE)' \
+	PHASE12_EXIT_CHECKLIST='$(PHASE12_EXIT_CHECKLIST)' \
+	PHASE12_SKIP_COMPILE='$(PHASE12_SKIP_COMPILE)' \
+	PHASE12_SKIP_REGRESSION='$(PHASE12_SKIP_REGRESSION)' \
+	PHASE12_SKIP_CLEAN_COV='$(PHASE12_SKIP_CLEAN_COV)' \
+	PHASE12_MAEE_MIN_HITS='$(PHASE12_MAEE_MIN_HITS)' \
+	PHASE12_CG_MIN_PERCENT='$(PHASE12_CG_MIN_PERCENT)' \
+	VERBOSITY='$(VERBOSITY)' \
+	TIMEOUT='$(TIMEOUT)' \
+	UVM_ERR_ONLY='$(UVM_ERR_ONLY)' \
+	bash $(PROJECT_DIR)/scripts/phase12_exit_check.sh
 
 phase11_exit_check:
 	@PHASE11_R19_PROOF='$(PHASE11_R19_PROOF)' \
@@ -754,6 +799,8 @@ help:
 	@echo "Phase 12 (MMU_UVM_TaskDivision.md Â§12):"
 	@echo "  make print-phase12                                    # show Phase12 list/seed/summary defaults"
 	@echo "  make regress_v4_maee_ptw                              # 3-seed Phase12 regression + coverage merge"
+	@echo "  make phase12_exit_check                               # full Phase12 exit check, final PASS/FAIL"
+	@echo "  Optional: PHASE12_SKIP_COMPILE=1 PHASE12_SKIP_REGRESSION=1"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md Â§5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"

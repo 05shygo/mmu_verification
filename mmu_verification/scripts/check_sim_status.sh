@@ -3,6 +3,7 @@
 set -u
 
 MAX_MATCHES="${MMU_LOG_MAX_MATCHES:-20}"
+CHAIN_MAX_MATCHES="${MMU_LOG_CHAIN_MAX_MATCHES:-8}"
 
 usage() {
   echo "Usage: $0 <log1> [log2 ...]" >&2
@@ -59,6 +60,83 @@ print_error_hits() {
   ' "$log"
 }
 
+extract_translation_mismatch_keys() {
+  local log="$1"
+  local limit="$2"
+  awk -v limit="$limit" '
+    /^UVM_ERROR[[:space:]]*:/ { next }
+    /mmu_translation_sb/ && /PA mismatch/ {
+      ch = "";
+      va = "";
+      if (match($0, /\[LSU_P[01]\]/)) {
+        ch = substr($0, RSTART + 1, RLENGTH - 2);
+      }
+      if (match($0, /VA=0x[0-9a-fA-F]+/)) {
+        va = substr($0, RSTART + 3, RLENGTH - 3);
+      }
+      if (ch != "" && va != "") {
+        key = ch " " va;
+        if (!seen[key]) {
+          print key;
+          seen[key] = 1;
+          shown++;
+          if (shown >= limit) {
+            exit;
+          }
+        }
+      }
+    }
+  ' "$log"
+}
+
+print_whitebox_chain_for_key() {
+  local log="$1"
+  local channel="$2"
+  local va="$3"
+  local limit="$4"
+  awk -v ch="$channel" -v va="$va" -v limit="$limit" '
+    index($0, "[" ch "][WB]") && index($0, "VA=" va) {
+      printf("    %d:%s\n", NR, $0);
+      shown++;
+      if (shown >= limit) {
+        exit;
+      }
+    }
+  ' "$log"
+}
+
+print_translation_whitebox_chain() {
+  local log="$1"
+  local key_limit="$2"
+  local wb_limit="$3"
+  local keys
+  local key
+  local channel
+  local va
+  local printed=0
+
+  keys=$(extract_translation_mismatch_keys "$log" "$key_limit")
+  if [ -z "$keys" ]; then
+    return 0
+  fi
+
+  echo "  translation whitebox chain:"
+  while IFS= read -r key; do
+    [ -z "$key" ] && continue
+    channel="${key%% *}"
+    va="${key#* }"
+    echo "    key: ${channel} VA=${va}"
+    print_whitebox_chain_for_key "$log" "$channel" "$va" "$wb_limit"
+    printed=1
+  done <<EOF
+$keys
+EOF
+
+  if [ "$printed" -eq 0 ]; then
+    echo "    (no [LSU_Px][WB] lines matched keys)"
+  fi
+}
+
 check_log() {
   local log="$1"
   local summary_seen
@@ -104,6 +182,7 @@ check_log() {
     if [ "$hit_count" -gt "$MAX_MATCHES" ]; then
       echo "    ... truncated, total matched lines: $hit_count"
     fi
+    print_translation_whitebox_chain "$log" 4 "$CHAIN_MAX_MATCHES"
   fi
 
   if [ "$status" = "PASS" ]; then

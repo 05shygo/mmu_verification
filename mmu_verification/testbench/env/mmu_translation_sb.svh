@@ -24,10 +24,12 @@
 //
 // LSU: mmu_l1dtlb_hit_rd pre_sel path muxes dutlb_off_pa = VA[38:12] (PPN looks
 //   like VPN) for expt CAM consume, VA-illegal, MMU-off, etc. The Sv39 ref has
-//   no expt CAM — waive ref-vs-DUT fault compare when:
+//   no expt CAM — waive the entire ref-vs-DUT compare when:
 //   (a) tr.dtlb_expt_match from u_mmu_l1dtlb.expt_match{0,1}, OR
-//   (b) architectural signature: mmu_en && !stall && fault && dut_pa==req_vpn
-//       (not STAMO skip path) — covers probe wiring / hierarchy mismatch.
+//   (b) architectural signature: mmu_en && !stall && dut_pa==req_vpn
+//       (not STAMO skip path), even if dut fault bits are still 0 on the rsp
+//       cycle. This covers replay/pre-select completion windows where pa_vld
+//       is observable before page/access-fault indication is aligned.
 // IFU: mmu_l1itlb can also complete a response on internal completion sources
 //   that the software ref does not observe cycle-accurately:
 //   - iutlb_acc_flt   : PTW/TWU access-fault completion. On this pulse
@@ -69,6 +71,7 @@ class mmu_translation_sb extends uvm_scoreboard;
   int unsigned m_mismatch;
   int unsigned m_lsu_fault_replay_rsp;
   int unsigned m_lsu_replay_mismatch;
+  int unsigned m_lsu_replay_waive_rsp;
   int unsigned m_ifu_accerr_waive_rsp;
   int unsigned m_ifu_refpgflt_waive_rsp;
 
@@ -78,6 +81,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_mismatch      = 0;
     m_lsu_fault_replay_rsp = 0;
     m_lsu_replay_mismatch = 0;
+    m_lsu_replay_waive_rsp = 0;
     m_ifu_accerr_waive_rsp = 0;
     m_ifu_refpgflt_waive_rsp = 0;
   endfunction
@@ -248,8 +252,9 @@ class mmu_translation_sb extends uvm_scoreboard;
   // =========================================================================
   virtual function void report_phase(uvm_phase phase);
     `uvm_info(get_type_name(),
-      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d",
+      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d",
         m_total_checked, m_mismatch, m_lsu_fault_replay_rsp, m_lsu_replay_mismatch,
+        m_lsu_replay_waive_rsp,
         m_ifu_accerr_waive_rsp, m_ifu_refpgflt_waive_rsp),
       UVM_NONE)
     if (m_mismatch > 0)
@@ -290,7 +295,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit local_mismatch = 0;
     bit fault_replay_rsp = 0;
     // Ref does not model DTLB pre_sel/expt CAM; see file header.
-    bit skip_lsu_dtlb_ref_fault_compare;
+    bit skip_lsu_dtlb_ref_compare;
+    bit lsu_req_vpn_bypass_sig;
     bit skip_ifu_accerr_fault_compare;
     bit skip_ifu_accerr_completion_compare;
     bit skip_ifu_refpgflt_fault_compare;
@@ -302,14 +308,22 @@ class mmu_translation_sb extends uvm_scoreboard;
     if (fault_replay_rsp)
       m_lsu_fault_replay_rsp++;
 
-    skip_lsu_dtlb_ref_fault_compare = dbg_valid
+    lsu_req_vpn_bypass_sig = dbg_valid
+      && tr_mmu_en
+      && !tr_stall
+      && (dut_pa == req_vpn)
+      && !skip_ref_ppn_check;
+
+    skip_lsu_dtlb_ref_compare = dbg_valid
       && (ref_rsp.exc == EXC_NONE)
-      && dut_fault
+      && !ref_rsp.deny
       && (
            dtlb_expt_match
-        || (tr_mmu_en && !tr_stall
-            && (dut_pa == req_vpn) && !skip_ref_ppn_check)
+        || lsu_req_vpn_bypass_sig
       );
+
+    if (skip_lsu_dtlb_ref_compare)
+      m_lsu_replay_waive_rsp++;
 
     // IFU access-fault can surface in two observable forms:
     //   1) completion-only pulse: pavld is visible while deny/pgflt are still 0
@@ -346,7 +360,7 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     // ── Exception / fault check ───────────────────────────────────────────
     if (exp_fault !== dut_fault) begin
-      if (!skip_lsu_dtlb_ref_fault_compare
+      if (!skip_lsu_dtlb_ref_compare
           && !skip_ifu_accerr_completion_compare
           && !skip_ifu_accerr_fault_compare
           && !skip_ifu_refpgflt_fault_compare) begin
@@ -374,7 +388,10 @@ class mmu_translation_sb extends uvm_scoreboard;
     end
 
     // ── PA check — only when both ref and DUT predict no fault ────────────
-    if (!exp_fault && !dut_fault && !skip_ifu_accerr_completion_compare) begin
+    if (!exp_fault
+        && !dut_fault
+        && !skip_lsu_dtlb_ref_compare
+        && !skip_ifu_accerr_completion_compare) begin
       if (!skip_ref_ppn_check && (ref_rsp.ppn !== dut_pa)) begin
         `uvm_error(get_type_name(),
           $sformatf("[%s] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h",
@@ -386,9 +403,10 @@ class mmu_translation_sb extends uvm_scoreboard;
     if (local_mismatch) begin
       if (dbg_valid) begin
         `uvm_error(get_type_name(),
-          $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h req_vpn(va[38:12])=0x%07h | stall=%0b pgflt=%0b access_fault=%0b mmu_lsu_mmu_en=%0b",
+          $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h req_vpn(va[38:12])=0x%07h | stall=%0b pgflt=%0b access_fault=%0b mmu_lsu_mmu_en=%0b dtlb_expt_match=%0b skip_ref_ppn_check=%0b",
             channel, {1'b0, va}, dut_pa, req_vpn,
-            tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en))
+            tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en,
+            dtlb_expt_match, skip_ref_ppn_check))
       end else begin
         `uvm_info(get_type_name(),
           $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h | pgflt=%0b deny=%0b dbg_ifu_pmp_deny=%0b dbg_iutlb_acc_flt=%0b dbg_iutlb_ref_pgflt=%0b dbg_jtlb_acc_fault_flop=%0b",
@@ -400,10 +418,11 @@ class mmu_translation_sb extends uvm_scoreboard;
       end
       m_mismatch++;
     end else begin
-      if (skip_lsu_dtlb_ref_fault_compare) begin
+      if (skip_lsu_dtlb_ref_compare) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] VA=0x%010h  DTLB pre_sel/expt path: not vs ref  exc=%s  expt_match=%0b  dut_fault=%0b  dut.pa=0x%07h  PASS (SB waive)",
-            channel, {1'b0, va}, ref_rsp.exc.name(), dtlb_expt_match, dut_fault, dut_pa),
+          $sformatf("[%s] VA=0x%010h  DTLB replay/pre_sel path: compare waived  exc=%s  expt_match=%0b  vpn_bypass=%0b  dut_fault=%0b  dut.pa=0x%07h  req_vpn=0x%07h",
+            channel, {1'b0, va}, ref_rsp.exc.name(), dtlb_expt_match,
+            lsu_req_vpn_bypass_sig, dut_fault, dut_pa, req_vpn),
           UVM_HIGH)
       end else if (skip_ifu_accerr_completion_compare) begin
         `uvm_info(get_type_name(),

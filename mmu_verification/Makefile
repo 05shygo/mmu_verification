@@ -195,18 +195,32 @@ VERDI_BASE_OPTS := -nologo -full64 \
                    -ssf $(WAVE_DIR)/$(TEST_NAME).fsdb \
                    -logdir $(LOG_DIR)/verdi
 
-URG_OPTS        := -dir $(COV_DIR)/*.vdb \
+#
+# VCS code-coverage run directories created with runtime -cm_dir are
+# simulation-only VDBs. URG therefore needs the compile-time design VDB first,
+# followed by the runtime per-test VDBs; otherwise it reports UCAPI-DNYL
+# ("Design not yet loaded").
+#
+COV_DB_DIR      ?= $(OUTPUT_DIR)/simv.vdb
+URG_OPTS        := -dir $(COV_DB_DIR) $(COV_DIR)/*.vdb \
                    -format both \
                    -report $(COV_DIR)/urgReport
+URG_MERGE_OPTS  := -dir $(COV_DB_DIR) $(COV_DIR)/*.vdb \
+                   -dbname $(COV_DIR)/merged.vdb \
+                   -format both \
+                   -report $(COV_DIR)/merged_report
 
-# Coverage must be enabled at compile time; otherwise run_cov can launch simv
-# with -cm_* switches yet still miss the instrumentation needed for URG/VDB.
+# Coverage must be enabled at compile time and must land in a stable design VDB.
+# run_cov then writes each test/seed into its own runtime VDB via -cm_dir.
+# URG merges those simulation-only VDBs by loading the compile-time design VDB
+# first, then the runtime VDBs.
 # Phase 12 whitebox covergroups share the same VDB flow and therefore also
 # require the compile step to be coverage-enabled.
 COV_TAG         ?= $(TEST_NAME)_$(SEED)
 COV_METRICS     := line+cond+fsm+tgl+branch+assert
 COV_HIER_CFG    := $(PROJECT_DIR)/scripts/cov_hier.cfg
 COV_COMPILE_OPTS:= -cm $(COV_METRICS) \
+                   -cm_dir $(COV_DB_DIR) \
                    -cm_hier $(COV_HIER_CFG)
 COV_RUN_OPTS    := -cm $(COV_METRICS) \
                    -cm_name $(COV_TAG) \
@@ -1090,10 +1104,30 @@ wave: verdi
 # Coverage
 #===============================================================================
 cov:
+	@if [ ! -d "$(COV_DB_DIR)" ]; then \
+		echo "ERROR: coverage design database not found: $(COV_DB_DIR)"; \
+		echo "Run 'make comp' with coverage enabled before 'make cov'."; \
+		exit 2; \
+	fi
+	@if ! ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
+		echo "ERROR: no runtime coverage databases found under $(COV_DIR)"; \
+		echo "Run 'make run_cov TEST_NAME=<test> SEED=<seed>' before 'make cov'."; \
+		exit 2; \
+	fi
 	$(URG) $(URG_OPTS)
 
 merge_cov:
-	$(URG) -dir $(COV_DIR)/*.vdb -dbname $(COV_DIR)/merged.vdb -report $(COV_DIR)/merged_report
+	@if [ ! -d "$(COV_DB_DIR)" ]; then \
+		echo "ERROR: coverage design database not found: $(COV_DB_DIR)"; \
+		echo "Run 'make comp' with coverage enabled before 'make merge_cov'."; \
+		exit 2; \
+	fi
+	@if ! ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
+		echo "ERROR: no runtime coverage databases found under $(COV_DIR)"; \
+		echo "Run 'make run_cov TEST_NAME=<test> SEED=<seed>' before 'make merge_cov'."; \
+		exit 2; \
+	fi
+	$(URG) $(URG_MERGE_OPTS)
 
 #===============================================================================
 # Test List

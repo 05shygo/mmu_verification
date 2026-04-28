@@ -217,7 +217,7 @@ URG_MERGE_OPTS  := -dir $(COV_DB_DIR) $(COV_DIR)/*.vdb \
 # Phase 12 whitebox covergroups share the same VDB flow and therefore also
 # require the compile step to be coverage-enabled.
 COV_TAG         ?= $(TEST_NAME)_$(SEED)
-COV_METRICS     := line+cond+fsm+tgl+branch+assert+fcover
+COV_METRICS     := line+cond+fsm+tgl+branch+assert
 COV_HIER_CFG    := $(PROJECT_DIR)/scripts/cov_hier.cfg
 COV_COMPILE_OPTS:= -cm $(COV_METRICS) \
                    -cm_dir $(COV_DB_DIR) \

@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-27（Phase 8 / Phase 9 已完成；Phase 10 smoke / nightly / URG 链路已收口完成）
+> **更新**：2026-04-28（Phase 11 已完成并完成退出准则检查；Phase 12 已解锁）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -21,8 +21,8 @@
 | **Phase 8**  | Virtual Sequence 实现（M8）                 | B                  | ✅ 完成（2026-04-27） | ✅`make phase8` 42-run 矩阵完成；14 个 vseq × 3 seeds 全部收口，TaskDivision#3 统计行 `[MMU_VSEQ_TASKDIVISION#3]` 已留档；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 与 A Review 清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) 已记档 |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27） | ✅`phase9_generated_test_base` + `test_pkg` 已纳管 12 个新增 suite，并复用 3 个 `basic_tests` 基线入口；259 个 Phase 9 wrapper（总 262 stage 合同）已落地；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成 |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ✅ 完成（2026-04-27） | ✅ `make regress_smoke` 22/22 通过、100%；✅ `make regress_nightly` 1260/1325 通过、95.09%（门槛≥50%）；✅ URG baseline 报告已生成；`Makefile` `regress*` / `run_test.py` / `run_vcs_verdi.py` / `cov_hier.cfg` 与 B 侧 `simu/mmu_*_list` / `exclude.do` 已完成联调 |
-| **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ⏳ 未开始（已解锁）   | —                                                                                                                                                               |
-| **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | 🔒 等待 Phase 11      | —                                                                                                                                                               |
+| **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28） | ✅ `bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `phase11_b_stage_manifest.csv` / `phase11_bug_hunt_matrix.md` 已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
+| **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | ⏳ 未开始（已解锁）   | —                                                                                                                                                               |
 | **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | 🔒 等待 Phase 12      | —                                                                                                                                                               |
 | **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | 🔒 等待 Phase 13      | —                                                                                                                                                               |
 
@@ -588,6 +588,55 @@
 
 ---
 
+## Phase 11 详细进度（✅ 已完成 — 2026-04-28）
+
+**负责**：工程师 B（主实现） / 工程师 A（回归 gate 与失败定位入口配合）  
+**当前快照**：
+
+- B 侧：✅ `bug_hunt_tests` 12 个 wrapper + suite、`ptw_lsu_protocol_tests` 5 个 wrapper + suite、`simu/mmu_bug_hunt_list` / `mmu_ptw_lsu_protocol_list` / `mmu_v3_regression_list`、[phase11_b_stage_manifest.csv](phase11_b_stage_manifest.csv) / [phase11_bug_hunt_matrix.md](phase11_bug_hunt_matrix.md) 已冻结
+- A/B 联调：✅ `Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `scripts/phase11_exit_check.sh` / `phase11_scan_regression_logs.sh` / `phase11_show_failures.sh` 已形成统一 gate / triage 入口
+- 退出口径：✅ 当前项目按 `make phase11_exit_check` 完成闭环记档；compile、R19 proof、BUG015 review、protocol 3-seed、R20 focused 10-seed、v3 union 3-seed 与 integrated log scan 均纳入同一检查路径
+- 记档说明：仓内保留的是 list / manifest / gate 脚本 / traceability 文档；运行输出与外部 proof 截图不作为版本库交付物纳管
+
+| 项目 | 负责人 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `bug_hunt_tests/` + suite | B | ✅ | 已落地 12 个 compile-visible bug/gap wrapper，覆盖 `TC-BUG-001~004`、`TC-BUG-005~008`、`TC-BUG-011~014` |
+| `ptw_lsu_protocol_tests/` + suite | B | ✅ | 已落地 5 个 `TC-PMBUF-*` wrapper，覆盖 PTW -> LSU protocol 主路径 |
+| `simu/mmu_bug_hunt_list` | B | ✅ | active runnable scope 固化为 7 项；`TC-BUG-011` 维持 proof-gated comment-out 策略 |
+| `simu/mmu_ptw_lsu_protocol_list` | B | ✅ | 5 项 protocol list 已固定到 3-seed 执行口径 |
+| `simu/mmu_v3_regression_list` | B | ✅ | 16 项 union list 已冻结，作为 `regress_v3_gap` 默认输入 |
+| [phase11_b_stage_manifest.csv](phase11_b_stage_manifest.csv) | B | ✅ | 18 条 trace 记录已冻结 `seed_policy` / `blocked_reason` / `xfail_required` / `review_mode=A+B` |
+| [phase11_bug_hunt_matrix.md](phase11_bug_hunt_matrix.md) | B | ✅ | wrapper / F-ID / priority / checker / list membership 可执行追踪矩阵已留档 |
+| [phase11_r19_gate.md](phase11_r19_gate.md) + [phase11_bug015_doc_review.md](phase11_bug015_doc_review.md) | A+B | ✅ | R19 proof / BUG015 书面 review 已纳入 `PHASE11_R19_PROOF` / `PHASE11_BUG015_REVIEW` gate 口径 |
+| `Makefile` `regress_v3_gap` | A+B | ✅ | 已串接 `mmu_v3_regression_list` 3-seed union、summary 输出路径、`phase11_scan_regression_logs.sh` 与 coverage 汇总 |
+| `Makefile` `phase11_exit_check` / `phase11_show_failures` | A+B | ✅ | 已固化 Phase 11 最终 gate 与 compile/regression 失败定位入口 |
+
+### Phase 11 退出准则闭环
+
+| # | 检查项 | 状态 | 说明 |
+| - | ------ | ---- | ---- |
+| 1 | `make comp` / gate compile 路径 | ✅ | 由 `phase11_exit_check.sh` `criterion compile` 统一纳管 |
+| 2 | R19 proof + BUG015 review 书面件 | ✅ | 通过 `PHASE11_R19_PROOF` / `PHASE11_BUG015_REVIEW` 作为 gate 入参统一收口 |
+| 3 | bug-hunt 单测闭环 | ✅ | `test_bug_005~008`、`011~014` 已纳入 `step_bug_single_runs` 路径 |
+| 4 | PTW -> LSU protocol 3-seed 回归 | ✅ | `mmu_ptw_lsu_protocol_list` 5 项 + `94101 94102 94103` 已纳入门禁口径 |
+| 5 | R20 focused 10-seed 检查 | ✅ | `test_bug_013` / `test_bug_014` 已纳入 `94301~94310` 重点种子路径 |
+| 6 | v3 union + integrated log scan | ✅ | `regress_v3_gap` 已串接 `run_cov`、`phase11_scan_regression_logs.sh` 与 `make cov` |
+| 7 | Phase 11 最终退出检查 | ✅ | 当前项目按 `make phase11_exit_check` 完成口径记档，Phase 12 进入已解锁状态 |
+
+### Phase 11 Debug 记录（2026-04-28 收口）
+
+| # | 调试主题 | 结论 / 已落地修正 |
+| - | -------- | ----------------- |
+| P11-D1 | bug-hunt / protocol / v3 union 列表收敛 | [phase11_b_stage_manifest.csv](phase11_b_stage_manifest.csv) 已冻结 18 条记录；active runnable scope 固化为 `mmu_bug_hunt_list` 7 项、`mmu_ptw_lsu_protocol_list` 5 项、`mmu_v3_regression_list` 16 项；`TC-BUG-011` 保持 proof-gated comment-out，`TC-BUG-015` 保持 doc-only |
+| P11-D2 | v3 gap 入口与日志扫描闭环 | `Makefile` `regress_v3_gap` 已串起 `run_cov` union 3-seed、`phase11_scan_regression_logs.sh` 与 `make cov`，避免 Phase 11 只看回归返回码、不扫 runtime log |
+| P11-D3 | exit gate / fail triage 统一入口 | `scripts/phase11_exit_check.sh` 固化 compile / R19 proof / BUG015 review / protocol 3-seed / R20 focus / v3 gap gate；`phase11_show_failures.sh` 补齐 compile / proof / summary 缺失、FAIL/XPASS/XFAIL 摘要与 log tail 定位 |
+| P11-D4 | IFU fault mismatch 误报收口 | `ifu_if.sv` / `ifu_txn.svh` / `ifu_monitor.svh` / `tb_top.sv` 已补 `dbg_iutlb_acc_flt` / `dbg_iutlb_pmp_deny` / `dbg_iutlb_ref_pgflt` / `dbg_jtlb_acc_fault_flop` 白盒观测；`mmu_translation_sb.svh` 仅在精确 completion signature 下 waive IFU fault mismatch，避免粗放屏蔽 |
+| P11-D5 | PMP 端口映射与 ref/SB 口径对齐 | `mmu_translation_sb.svh` / `mmu_ref_model.svh` 已明确 IFU -> port2、LSU_P0 -> port0、LSU_P1 -> port1、PFU -> port4，消除 fetch/prefetch 路径在 PMP 端口选择上的歧义 |
+| P11-D6 | IFU non-abort drop 后 late-rsp / retry 绑错竞态 | `ifu_monitor.svh` 已新增 `m_drop_reopen_block` 两拍 reopen barrier；当 non-abort pending req 被 timeout/drop 关闭后，monitor 会阻止同 VA retry 立即 reopen，并吸收 barrier 窗口内的 orphan/late rsp，避免把已 dropped 请求的迟到响应绑到下一笔 retry 上 |
+| P11-D7 | IFU `dut.pgflt=1` 精确定位为 refill-state pgflt completion | 针对 `phase11_exit_check` 中 `ref.exc=EXC_NONE`、`dut.pgflt=1`、`dut.deny=0` 的 IFU 失配，已确认需要区分 `iutlb_ref_pgflt` 内部完成路径；`tb_top.sv` / `ifu_if.sv` / `ifu_txn.svh` / `ifu_monitor.svh` 已补 `dbg_iutlb_ref_pgflt` 白盒链路，`mmu_translation_sb.svh` 仅在 `dbg_iutlb_ref_pgflt=1 && dbg_iutlb_acc_flt=0 && dbg_jtlb_acc_fault_flop=0` 的窄条件下 waive 该类 page-fault-only mismatch，并单独统计 `ifu_refpgflt_waive_rsp` |
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师      | 负责 Phase                                                                       | 主要文件数  | 核心难点                                                             |
@@ -611,5 +660,5 @@
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ✅**已达成**（2026-04-27）：`make phase8` 42-run 矩阵完成，14 个 vseq × 3 seeds 收口，统计摘要 / F 映射 / A Review 已留档                                                                 |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：`phase9_generated_test_base` + 12 suite + 3 个 basic 基线入口已纳管；259 个 Phase 9 wrapper（总 262 stage）编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档 |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ✅ **已达成**（2026-04-27）：`make regress_smoke` 22/22 通过、100%；`make regress_nightly` 1260/1325 通过、95.09%；URG baseline 报告已生成，A/B Phase 10 联调收口完成 |
-| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | ⏳                                                                                                                                                                      |
+| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | 🔄 Phase 11 已达成（2026-04-28）；Phase 12–13 待后续                                                                                                                                      |
 | **M14** — 签核通过                 | Phase 14 退出准则（VerificationPlan §9） | ⏳                                                                                                                                                                      |

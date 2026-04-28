@@ -57,6 +57,8 @@ class mmu_translation_sb extends uvm_scoreboard;
 
   `uvm_component_utils(mmu_translation_sb)
 
+  virtual mmu_dut_probes_if v_probe;
+
   // ── Analysis import ports ─────────────────────────────────────────────────
   uvm_analysis_imp_ifu    #(ifu_txn, mmu_translation_sb) af_ifu_rsp;
   uvm_analysis_imp_lsu_p0 #(lsu_txn, mmu_translation_sb) af_lsu_p0_rsp;
@@ -75,6 +77,19 @@ class mmu_translation_sb extends uvm_scoreboard;
   int unsigned m_ifu_accerr_waive_rsp;
   int unsigned m_ifu_refpgflt_waive_rsp;
 
+  // ── Recent whitebox snapshots for LSU_P1 root-cause diagnostics ──────────
+  bit          m_last_l2_ref_valid;
+  bit          m_last_l2_ref_pavld;
+  bit          m_last_l2_ref_cmplt;
+  bit [26:0]   m_last_l2_ref_vpn;
+  bit [27:0]   m_last_l2_ref_ppn;
+  time         m_last_l2_ref_time;
+  bit          m_last_ptw_ref_valid;
+  bit [2:0]    m_last_ptw_ref_id;
+  bit [27:0]   m_last_ptw_ref_ppn;
+  bit [26:0]   m_last_ptw_arb_vpn;
+  time         m_last_ptw_ref_time;
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
     m_total_checked = 0;
@@ -84,6 +99,17 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_lsu_replay_waive_rsp = 0;
     m_ifu_accerr_waive_rsp = 0;
     m_ifu_refpgflt_waive_rsp = 0;
+    m_last_l2_ref_valid = 1'b0;
+    m_last_l2_ref_pavld = 1'b0;
+    m_last_l2_ref_cmplt = 1'b0;
+    m_last_l2_ref_vpn = '0;
+    m_last_l2_ref_ppn = '0;
+    m_last_l2_ref_time = 0;
+    m_last_ptw_ref_valid = 1'b0;
+    m_last_ptw_ref_id = '0;
+    m_last_ptw_ref_ppn = '0;
+    m_last_ptw_arb_vpn = '0;
+    m_last_ptw_ref_time = 0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -92,7 +118,35 @@ class mmu_translation_sb extends uvm_scoreboard;
     af_lsu_p0_rsp = new("af_lsu_p0_rsp", this);
     af_lsu_p1_rsp = new("af_lsu_p1_rsp", this);
     af_lsu_p2_rsp = new("af_lsu_p2_rsp", this);
+    if (!uvm_config_db #(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
+      `uvm_info(get_type_name(),
+        "MMU_DUT_PROBES_VIF not in config_db — LSU_P1 whitebox root-cause dump will be unavailable",
+        UVM_LOW)
   endfunction
+
+  virtual task run_phase(uvm_phase phase);
+    if (v_probe == null)
+      return;
+
+    forever begin
+      @(v_probe.mon_cb);
+      if (v_probe.mon_cb.l2_dtlb_ref_pavld || v_probe.mon_cb.l2_dtlb_ref_cmplt) begin
+        m_last_l2_ref_valid = 1'b1;
+        m_last_l2_ref_pavld = v_probe.mon_cb.l2_dtlb_ref_pavld;
+        m_last_l2_ref_cmplt = v_probe.mon_cb.l2_dtlb_ref_cmplt;
+        m_last_l2_ref_vpn   = v_probe.mon_cb.l2_dtlb_ref_vpn;
+        m_last_l2_ref_ppn   = v_probe.mon_cb.l2_dtlb_ref_ppn;
+        m_last_l2_ref_time  = $time;
+      end
+      if (v_probe.mon_cb.ptw_l1d_ref_cmplt) begin
+        m_last_ptw_ref_valid = 1'b1;
+        m_last_ptw_ref_id    = v_probe.mon_cb.ptw_l1d_ref_id;
+        m_last_ptw_ref_ppn   = v_probe.mon_cb.ptw_l1d_ref_ppn;
+        m_last_ptw_arb_vpn   = v_probe.mon_cb.ptw_arb_vpn;
+        m_last_ptw_ref_time  = $time;
+      end
+    end
+  endtask
 
   // =========================================================================
   // write_ifu — IFU fetch translation check
@@ -407,6 +461,8 @@ class mmu_translation_sb extends uvm_scoreboard;
             channel, {1'b0, va}, dut_pa, req_vpn,
             tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en,
             dtlb_expt_match, skip_ref_ppn_check))
+        if (channel == "LSU_P1")
+          _dump_lsu_p1_whitebox(va, ref_rsp, dut_pa, req_vpn);
       end else begin
         `uvm_info(get_type_name(),
           $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h | pgflt=%0b deny=%0b dbg_ifu_pmp_deny=%0b dbg_iutlb_acc_flt=%0b dbg_iutlb_ref_pgflt=%0b dbg_jtlb_acc_fault_flop=%0b",
@@ -451,6 +507,54 @@ class mmu_translation_sb extends uvm_scoreboard;
           UVM_HIGH)
       end
     end
+  endfunction
+
+  protected function void _dump_lsu_p1_whitebox(
+    va_t          va,
+    xlation_rsp_t ref_rsp,
+    bit [27:0]    dut_pa,
+    bit [27:0]    req_vpn
+  );
+    string src_hint;
+
+    if (v_probe == null) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[LSU_P1][WB] VA=0x%010h ref.ppn=0x%07h dut.pa=0x%07h req_vpn=0x%07h | MMU_DUT_PROBES_VIF unavailable",
+          {1'b0, va}, ref_rsp.ppn, dut_pa, req_vpn),
+        UVM_NONE)
+      return;
+    end
+
+    src_hint = "UNKNOWN";
+    if (v_probe.l1d_p1_hit_vld && v_probe.l1d_p1_addr_hit && !v_probe.l1d_p1_pre_sel)
+      src_hint = "L1DTLB_HIT";
+    else if (v_probe.l1d_p1_expt_match || (dut_pa == req_vpn))
+      src_hint = "L1DTLB_PRESEL_OR_REPLAY";
+    else if (v_probe.l2_final_vld && v_probe.l2_final_tlb_hit && v_probe.l2_final_is_dtlb)
+      src_hint = "L2TLB_HIT";
+    else if (v_probe.ptw_l1d_ref_cmplt)
+      src_hint = "PTW_REFILL";
+    else if (v_probe.l2_dtlb_ref_cmplt || v_probe.l2_dtlb_ref_pavld)
+      src_hint = "L2_TO_L1_REFILL";
+
+    `uvm_info(get_type_name(),
+      $sformatf(
+        "[LSU_P1][WB] VA=0x%010h ref.ppn=0x%07h dut.pa=0x%07h req_vpn=0x%07h src_hint=%s | L1: req_vpn=0x%07h addr_hit=%0b hit_vld=%0b miss_vld=%0b pre_sel=%0b expt_match=%0b entry_pa=0x%07h off_pa=0x%07h fin_pa=0x%07h | L2: final_vld=%0b final_hit=%0b miss=%0b is_dtlb=%0b final_vpn=0x%07h final_hit_ppn=0x%07h ref_pavld=%0b ref_cmplt=%0b ref_vpn=0x%07h ref_ppn=0x%07h | PTW: ref_cmplt=%0b ref_id=%0d arb_vpn=0x%07h ref_ppn=0x%07h | LAST_L2: valid=%0b t=%0t pavld=%0b cmplt=%0b vpn=0x%07h ppn=0x%07h | LAST_PTW: valid=%0b t=%0t id=%0d arb_vpn=0x%07h ppn=0x%07h",
+        {1'b0, va}, ref_rsp.ppn, dut_pa, req_vpn, src_hint,
+        v_probe.l1d_p1_req_vpn, v_probe.l1d_p1_addr_hit, v_probe.l1d_p1_hit_vld,
+        v_probe.l1d_p1_miss_vld, v_probe.l1d_p1_pre_sel, v_probe.l1d_p1_expt_match,
+        v_probe.l1d_p1_entry_pa, v_probe.l1d_p1_off_pa, v_probe.l1d_p1_fin_pa,
+        v_probe.l2_final_vld, v_probe.l2_final_tlb_hit, v_probe.l2_miss,
+        v_probe.l2_final_is_dtlb, v_probe.l2_final_vpn, v_probe.l2_final_hit_ppn,
+        v_probe.l2_dtlb_ref_pavld, v_probe.l2_dtlb_ref_cmplt,
+        v_probe.l2_dtlb_ref_vpn, v_probe.l2_dtlb_ref_ppn,
+        v_probe.ptw_l1d_ref_cmplt, v_probe.ptw_l1d_ref_id,
+        v_probe.ptw_arb_vpn, v_probe.ptw_l1d_ref_ppn,
+        m_last_l2_ref_valid, m_last_l2_ref_time, m_last_l2_ref_pavld,
+        m_last_l2_ref_cmplt, m_last_l2_ref_vpn, m_last_l2_ref_ppn,
+        m_last_ptw_ref_valid, m_last_ptw_ref_time, m_last_ptw_ref_id,
+        m_last_ptw_arb_vpn, m_last_ptw_ref_ppn),
+      UVM_NONE)
   endfunction
 
 endclass : mmu_translation_sb

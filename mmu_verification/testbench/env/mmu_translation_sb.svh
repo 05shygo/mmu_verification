@@ -496,7 +496,9 @@ class mmu_translation_sb extends uvm_scoreboard;
             channel, {1'b0, va}, dut_pa, req_vpn,
             tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en,
             dtlb_expt_match, skip_ref_ppn_check))
-        if (channel == "LSU_P1")
+        if (channel == "LSU_P0")
+          _dump_lsu_p0_whitebox(va, ref_rsp, dut_pa, req_vpn);
+        else if (channel == "LSU_P1")
           _dump_lsu_p1_whitebox(va, ref_rsp, dut_pa, req_vpn);
       end else begin
         `uvm_info(get_type_name(),
@@ -542,6 +544,112 @@ class mmu_translation_sb extends uvm_scoreboard;
           UVM_HIGH)
       end
     end
+  endfunction
+
+  protected function void _dump_lsu_p0_whitebox(
+    va_t          va,
+    xlation_rsp_t ref_rsp,
+    bit [27:0]    dut_pa,
+    bit [27:0]    req_vpn
+  );
+    string src_hint;
+    string rc_hint;
+    string cur_refill_src;
+    string last_refill_src;
+
+    if (v_probe == null) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[LSU_P0][WB] VA=0x%010h ref.ppn=0x%07h dut.pa=0x%07h req_vpn=0x%07h | MMU_DUT_PROBES_VIF unavailable",
+          {1'b0, va}, ref_rsp.ppn, dut_pa, req_vpn),
+        UVM_NONE)
+      return;
+    end
+
+    src_hint = "UNKNOWN";
+    if (v_probe.l1d_p0_hit_vld && v_probe.l1d_p0_addr_hit && !v_probe.l1d_p0_pre_sel)
+      src_hint = "L1DTLB_HIT";
+    else if (v_probe.l1d_p0_expt_match || (dut_pa == req_vpn))
+      src_hint = "L1DTLB_PRESEL_OR_REPLAY";
+    else if (v_probe.l2_final_vld && v_probe.l2_final_tlb_hit && v_probe.l2_final_is_dtlb)
+      src_hint = "L2TLB_HIT";
+    else if (v_probe.ptw_l1d_ref_cmplt)
+      src_hint = "PTW_REFILL";
+    else if (v_probe.l2_dtlb_ref_cmplt || v_probe.l2_dtlb_ref_pavld)
+      src_hint = "L2_TO_L1_REFILL";
+
+    case (v_probe.l1d_refill_src)
+      2'b01: cur_refill_src = "PTW";
+      2'b10: cur_refill_src = "JTLB";
+      2'b11: cur_refill_src = "WFI";
+      default: cur_refill_src = "NONE";
+    endcase
+
+    case (m_last_l1_refill_src)
+      2'b01: last_refill_src = "PTW";
+      2'b10: last_refill_src = "JTLB";
+      2'b11: last_refill_src = "WFI";
+      default: last_refill_src = "NONE";
+    endcase
+
+    rc_hint = "NEED_WAVE_CHECK";
+    if (v_probe.ptw_l1d_ref_cmplt
+        && (v_probe.ptw_arb_vpn == req_vpn)
+        && (v_probe.ptw_l1d_ref_ppn == ref_rsp.ppn)) begin
+      if (v_probe.l1d_refill_vld
+          && (v_probe.l1d_refill_vpn == req_vpn)
+          && (v_probe.l1d_refill_ppn == ref_rsp.ppn)) begin
+        if (v_probe.l1d_p0_hit_vld && (v_probe.l1d_p0_hit_ppn != ref_rsp.ppn))
+          rc_hint = "PTW_OK_REFILL_OK_BUT_P0_HIT_ENTRY_WRONG";
+        else if (v_probe.l1d_p0_pre_sel)
+          rc_hint = "PTW_OK_REFILL_OK_BUT_PRESEL_OVERRIDES_P0_HIT";
+        else
+          rc_hint = "PTW_OK_REFILL_OK_CHECK_PA0_OUTPUT_CHAIN";
+      end else begin
+        rc_hint = "PTW_OK_BUT_NO_MATCHING_L1_REFILL_OBSERVED";
+      end
+    end else if (m_last_l1_refill_valid
+                 && (m_last_l1_refill_vpn == req_vpn)
+                 && (m_last_l1_refill_ppn == ref_rsp.ppn)) begin
+      if (v_probe.l1d_p0_hit_vld && (v_probe.l1d_p0_hit_ppn != ref_rsp.ppn))
+        rc_hint = "LAST_REFILL_MATCHED_BUT_CURRENT_P0_HIT_ENTRY_WRONG";
+      else if (v_probe.l1d_p0_pre_sel)
+        rc_hint = "LAST_REFILL_MATCHED_BUT_PRESEL_ACTIVE";
+      else if (!v_probe.l1d_p0_hit_vld)
+        rc_hint = "LAST_REFILL_MATCHED_BUT_NO_P0_HIT_VISIBLE";
+      else
+        rc_hint = "LAST_REFILL_MATCHED_CHECK_PA0_OUTPUT_CHAIN";
+    end else if (v_probe.l1d_p0_hit_vld && (v_probe.l1d_p0_hit_ppn == dut_pa) && (dut_pa != ref_rsp.ppn)) begin
+      rc_hint = "CURRENT_P0_HIT_SELECTED_MISMATCHED_ENTRY";
+    end
+
+    `uvm_info(get_type_name(),
+      $sformatf(
+        "[LSU_P0][WB] VA=0x%010h ref.ppn=0x%07h dut.pa=0x%07h req_vpn=0x%07h src_hint=%s rc_hint=%s | L1: req_vpn=0x%07h addr_hit=%0b hit_vld=%0b miss_vld=%0b pre_sel=%0b expt_match=%0b entry_pa=0x%07h off_pa=0x%07h fin_pa=0x%07h | L1_REFILL: vld=%0b src=%s idx=%0d vpn=0x%07h ppn=0x%07h pgs=0x%0h entry_upd=0x%04h refill_iid0=%0d refill_iid1=%0d refill_iid_sel=%0d | P0_HIT: vec=0x%04h idx=%0d vpn=0x%07h ppn=0x%07h pgs=0x%0h | L2: final_vld=%0b final_hit=%0b miss=%0b is_dtlb=%0b final_vpn=0x%07h final_hit_ppn=0x%07h ref_pavld=%0b ref_cmplt=%0b ref_vpn=0x%07h ref_ppn=0x%07h | PTW: ref_cmplt=%0b ref_id=%0d mb_vld=%0b mb_iid=%0d mb_vpn=0x%07h arb_vpn=0x%07h ref_ppn=0x%07h | LAST_L2: valid=%0b t=%0t pavld=%0b cmplt=%0b vpn=0x%07h ppn=0x%07h | LAST_L1_REFILL: valid=%0b t=%0t src=%s idx=%0d vpn=0x%07h ppn=0x%07h pgs=0x%0h upd=0x%04h | LAST_PTW: valid=%0b t=%0t id=%0d mb_vld=%0b mb_iid=%0d mb_vpn=0x%07h arb_vpn=0x%07h ppn=0x%07h",
+        {1'b0, va}, ref_rsp.ppn, dut_pa, req_vpn, src_hint, rc_hint,
+        v_probe.l1d_p0_req_vpn, v_probe.l1d_p0_addr_hit, v_probe.l1d_p0_hit_vld,
+        v_probe.l1d_p0_miss_vld, v_probe.l1d_p0_pre_sel, v_probe.l1d_p0_expt_match,
+        v_probe.l1d_p0_entry_pa, v_probe.l1d_p0_off_pa, v_probe.l1d_p0_fin_pa,
+        v_probe.l1d_refill_vld, cur_refill_src, v_probe.l1d_refill_idx,
+        v_probe.l1d_refill_vpn, v_probe.l1d_refill_ppn, v_probe.l1d_refill_pgs,
+        v_probe.l1d_entry_upd, v_probe.l1d_refill_iid0, v_probe.l1d_refill_iid1,
+        v_probe.l1d_refill_iid_sel, v_probe.l1d_p0_hit_vec, v_probe.l1d_p0_hit_idx,
+        v_probe.l1d_p0_hit_vpn, v_probe.l1d_p0_hit_ppn, v_probe.l1d_p0_hit_pgs,
+        v_probe.l2_final_vld, v_probe.l2_final_tlb_hit, v_probe.l2_miss,
+        v_probe.l2_final_is_dtlb, v_probe.l2_final_vpn, v_probe.l2_final_hit_ppn,
+        v_probe.l2_dtlb_ref_pavld, v_probe.l2_dtlb_ref_cmplt,
+        v_probe.l2_dtlb_ref_vpn, v_probe.l2_dtlb_ref_ppn,
+        v_probe.ptw_l1d_ref_cmplt, v_probe.ptw_l1d_ref_id,
+        v_probe.l1d_ptw_ref_mb_vld, v_probe.l1d_ptw_ref_mb_iid, v_probe.l1d_ptw_ref_mb_vpn,
+        v_probe.ptw_arb_vpn, v_probe.ptw_l1d_ref_ppn,
+        m_last_l2_ref_valid, m_last_l2_ref_time, m_last_l2_ref_pavld,
+        m_last_l2_ref_cmplt, m_last_l2_ref_vpn, m_last_l2_ref_ppn,
+        m_last_l1_refill_valid, m_last_l1_refill_time, last_refill_src,
+        m_last_l1_refill_idx, m_last_l1_refill_vpn, m_last_l1_refill_ppn,
+        m_last_l1_refill_pgs, m_last_l1_entry_upd, m_last_ptw_ref_valid,
+        m_last_ptw_ref_time, m_last_ptw_ref_id, m_last_ptw_ref_mb_vld,
+        m_last_ptw_ref_mb_iid, m_last_ptw_ref_mb_vpn, m_last_ptw_arb_vpn,
+        m_last_ptw_ref_ppn),
+      UVM_NONE)
   endfunction
 
   protected function void _dump_lsu_p1_whitebox(

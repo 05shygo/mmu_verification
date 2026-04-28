@@ -235,6 +235,10 @@ module tb_top;
   );
 
   logic [1:0]  tb_l1d_refill_src;
+  logic [3:0]  tb_l1d_p0_hit_idx;
+  logic [26:0] tb_l1d_p0_hit_vpn;
+  logic [27:0] tb_l1d_p0_hit_ppn;
+  logic [2:0]  tb_l1d_p0_hit_pgs;
   logic [3:0]  tb_l1d_p1_hit_idx;
   logic [26:0] tb_l1d_p1_hit_vpn;
   logic [27:0] tb_l1d_p1_hit_ppn;
@@ -248,6 +252,21 @@ module tb_top;
       tb_l1d_refill_src = 2'b10;
     else if (u_dut.u_mmu_l1dtlb.x_install.sel_wfi)
       tb_l1d_refill_src = 2'b11;
+  end
+
+  always_comb begin
+    tb_l1d_p0_hit_idx = '0;
+    tb_l1d_p0_hit_vpn = '0;
+    tb_l1d_p0_hit_ppn = '0;
+    tb_l1d_p0_hit_pgs = '0;
+    for (int i = 0; i < 16; i++) begin
+      if (u_dut.u_mmu_l1dtlb.entry_hit0[i]) begin
+        tb_l1d_p0_hit_idx = i[3:0];
+        tb_l1d_p0_hit_vpn = u_dut.u_mmu_l1dtlb.l1dtlb_ent_vpn[i];
+        tb_l1d_p0_hit_ppn = u_dut.u_mmu_l1dtlb.l1dtlb_ent_ppn[i];
+        tb_l1d_p0_hit_pgs = u_dut.u_mmu_l1dtlb.l1dtlb_ent_pgs[i];
+      end
+    end
   end
 
   always_comb begin
@@ -271,6 +290,15 @@ module tb_top;
   assign dut_probes_if.l1i_credit_cnt   = u_dut.x_mmu_l1itlb.credit_cnt;
   assign dut_probes_if.l1d_mb_vld        = u_dut.u_mmu_l1dtlb.mb_entry_vld;
   assign dut_probes_if.l1d_mb_st0        = u_dut.u_mmu_l1dtlb.mb_entry_state[0];
+  assign dut_probes_if.l1d_p0_req_vpn    = u_dut.u_mmu_l1dtlb.utlb_req_vpn0;
+  assign dut_probes_if.l1d_p0_addr_hit   = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_addr_hit;
+  assign dut_probes_if.l1d_p0_hit_vld    = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_hit_vld;
+  assign dut_probes_if.l1d_p0_miss_vld   = u_dut.u_mmu_l1dtlb.dutlb_miss_vld0;
+  assign dut_probes_if.l1d_p0_pre_sel    = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_pre_sel;
+  assign dut_probes_if.l1d_p0_expt_match = u_dut.u_mmu_l1dtlb.expt_match0;
+  assign dut_probes_if.l1d_p0_entry_pa   = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_entry_pa;
+  assign dut_probes_if.l1d_p0_off_pa     = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_off_pa;
+  assign dut_probes_if.l1d_p0_fin_pa     = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_fin_pa;
   assign dut_probes_if.l1d_p1_req_vpn    = u_dut.u_mmu_l1dtlb.utlb_req_vpn1;
   assign dut_probes_if.l1d_p1_addr_hit   = u_dut.u_mmu_l1dtlb.x_hit_rd_port1.dutlb_addr_hit;
   assign dut_probes_if.l1d_p1_hit_vld    = u_dut.u_mmu_l1dtlb.x_hit_rd_port1.dutlb_hit_vld;
@@ -290,6 +318,11 @@ module tb_top;
   assign dut_probes_if.l1d_refill_iid0   = u_dut.u_mmu_l1dtlb.refill_id_flop0;
   assign dut_probes_if.l1d_refill_iid1   = u_dut.u_mmu_l1dtlb.refill_id_flop1;
   assign dut_probes_if.l1d_refill_iid_sel = u_dut.u_mmu_l1dtlb.refill_id_flop;
+  assign dut_probes_if.l1d_p0_hit_vec    = u_dut.u_mmu_l1dtlb.entry_hit0;
+  assign dut_probes_if.l1d_p0_hit_idx    = tb_l1d_p0_hit_idx;
+  assign dut_probes_if.l1d_p0_hit_vpn    = tb_l1d_p0_hit_vpn;
+  assign dut_probes_if.l1d_p0_hit_ppn    = tb_l1d_p0_hit_ppn;
+  assign dut_probes_if.l1d_p0_hit_pgs    = tb_l1d_p0_hit_pgs;
   assign dut_probes_if.l1d_p1_hit_vec    = u_dut.u_mmu_l1dtlb.entry_hit1;
   assign dut_probes_if.l1d_p1_hit_idx    = tb_l1d_p1_hit_idx;
   assign dut_probes_if.l1d_p1_hit_vpn    = tb_l1d_p1_hit_vpn;

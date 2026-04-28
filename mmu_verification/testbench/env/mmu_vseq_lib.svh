@@ -43,11 +43,18 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       automatic int idx = (m_table_size > 0) ? (i % m_table_size) : 0;
+      // Phase12 PTW/DTLB pressure tests model a small set of in-flight LSU slots.
+      // Leaving iid fully random creates non-architectural alias/noise on the
+      // busy/wakeup + expt_CAM ownership path. Keep pipe0/pipe1 on stable,
+      // low-collision slot ids while still varying age/order with i.
+      automatic bit [6:0] slot_id;
+      slot_id = ((i * 2) + ((m_kind == LSU_PIPE1) ? 1 : 0)) % 12;
       `uvm_create(tr)
       tr.c_kind_default.constraint_mode(0);
       assert(tr.randomize() with {
         kind == m_kind;
         va == {25'b0, m_va_table[idx]};
+        id == slot_id;
         abort == 1'b0;
         st_inst == m_st_inst;
         idle_cycles inside {[0:3]};
@@ -120,13 +127,16 @@ class mmu_vseq_lsu_interleave3_seq extends lsu_base_seq;
       int           idx  = (m_table_size > 0) ? (i % m_table_size) : 0;
       int           ph   = (i % 3);
       lsu_kind_e    knd  = (ph == 0) ? LSU_PIPE0 : (ph == 1) ? LSU_PIPE1 : LSU_PIPE2;
+      bit [6:0]     slot_id;
       bit [27:0]    va2_local;
+      slot_id = i % 12;
       `uvm_create(tr)
       tr.c_kind_default.constraint_mode(0);
       va2_local = 28'(({25'b0, m_va_table[idx]}) >> 12);
       assert(tr.randomize() with {
         kind    == knd;
         va      == {25'b0, m_va_table[idx]};
+        id      == slot_id;
         va2     == va2_local;
         vabuf   == 28'(({25'b0, m_va_table[idx]}) >> 11);
         abort   == 1'b0;

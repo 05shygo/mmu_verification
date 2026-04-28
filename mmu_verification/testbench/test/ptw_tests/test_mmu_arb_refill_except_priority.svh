@@ -15,6 +15,10 @@ class test_mmu_arb_refill_except_priority extends phase12_generated_test_base;
     super.new(name, parent);
   endfunction
 
+  protected virtual function bit phase12_disable_translation_sb();
+    return 1'b1;
+  endfunction
+
   protected virtual function void setup_phase12_plan();
     p12_bucket   = "arb_grant";
     p12_trace_id = "TC-ARB-REFILL-EXCEPT-PRIO-001";

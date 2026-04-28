@@ -8,6 +8,8 @@ input  logic 		regs_ptw_clr,
 input  logic [17:0] ptw_vpn,
 //input  logic [27:0] regs_ptw_satp_ppn,
 input  logic 		L2PDE_entry_upd,
+input  logic [17:0] L2PDE_entry_before_upd_vpn,
+output logic 	    L2PDE_entry_before_upd_hit,
 input  logic [17:0] L2PDE_upd_vpn,
 input  logic [27:0] L2PDE_upd_ppn,
 
@@ -83,7 +85,7 @@ end
 //                  Entry Hit
 //------------------------------------------------------------
 assign L2PDE_hit = (ptw_vpn[17:0] == L2PDE_tag[TAG_WIDTH-1:0]);
-
+assign L2PDE_entry_before_upd_hit = (L2PDE_entry_before_upd_vpn[17:0] == L2PDE_tag[TAG_WIDTH-1:0]);
 //------------------------------------------------------------
 //                  Output
 //------------------------------------------------------------

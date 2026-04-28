@@ -144,6 +144,11 @@ end
 //                  DFF
 //==============================================================================
 //L1PDE_cache
+//logic [26:0] L1PDE_entry_before_upd_vpn;
+logic [15:0] L1PDE_entry_before_upd_hit;
+//logic [26:0] L2PDE_entry_before_upd_vpn;
+logic [15:0] L2PDE_entry_before_upd_hit;
+
 generate
 	for(genvar L1PDE_ent = 0;L1PDE_ent <= 15;L1PDE_ent = L1PDE_ent + 1)begin:u_L1PDE_ent_0_15
 
@@ -155,9 +160,11 @@ generate
 		.regs_ptw_clr					(regs_ptw_clr				),
 	
 		.ptw_vpn						(ptw_vpn[VPN_WIDTH-1:18]	),
-		.L1PDE_entry_upd				(L1PDE_entry_upd[L1PDE_ent]	),	
+		.L1PDE_entry_upd				(L1PDE_entry_upd[L1PDE_ent]	),
+		.L1PDE_entry_before_upd_vpn	    (mbuf_cache_upd_vpn[26:18]	),
 		.L1PDE_upd_vpn					(mbuf_cache_upd_vpn[26:18]	),
 		.L1PDE_upd_ppn					(mbuf_cache_upd_ppn[27:0]   ),
+		.L1PDE_entry_before_upd_hit	    (L1PDE_entry_before_upd_hit[L1PDE_ent]	),
 
 		.L1PDE_entry_ppn				(L1PDE_entry_ppn[L1PDE_ent] ),
 		.L1PDE_entry_vld				(L1PDE_entry_vld[L1PDE_ent]	),
@@ -179,8 +186,10 @@ generate
                                                                     
 		.ptw_vpn						(ptw_vpn[VPN_WIDTH-1:9] 	),
 		.L2PDE_entry_upd				(L2PDE_entry_upd[L2PDE_ent] ),
+		.L2PDE_entry_before_upd_vpn	    (mbuf_cache_upd_vpn[26:9]	),
 		.L2PDE_upd_vpn					(mbuf_cache_upd_vpn[26:9]	),
 		.L2PDE_upd_ppn					(mbuf_cache_upd_ppn[27:0]   ),
+		.L2PDE_entry_before_upd_hit	    (L2PDE_entry_before_upd_hit[L2PDE_ent]	),
 
 		.L2PDE_entry_ppn				(L2PDE_entry_ppn[L2PDE_ent] ),
 		.L2PDE_entry_vld				(L2PDE_entry_vld[L2PDE_ent]	),
@@ -301,8 +310,8 @@ end
 assign L1PDE_plru_read_hit_vld = L1PDE_entry_hit_vld;
 assign L2PDE_plru_read_hit_vld = L2PDE_entry_hit_vld;
 
-assign L1PDE_plru_refill_vld = (mbuf_cache_upd & mbuf_cache_upd_lvl[1]);
-assign L2PDE_plru_refill_vld = (mbuf_cache_upd & mbuf_cache_upd_lvl[0]);
+assign L1PDE_plru_refill_vld = (mbuf_cache_upd & mbuf_cache_upd_lvl[1] & (!(|L1PDE_entry_before_upd_hit[15:0])));
+assign L2PDE_plru_refill_vld = (mbuf_cache_upd & mbuf_cache_upd_lvl[0] & (!(|L2PDE_entry_before_upd_hit[15:0])));
 
 pplru u_L1PDE_cache_pplru(
 .forever_cpuclk					(forever_cpuclk			),               

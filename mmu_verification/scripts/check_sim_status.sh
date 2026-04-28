@@ -4,6 +4,7 @@ set -u
 
 MAX_MATCHES="${MMU_LOG_MAX_MATCHES:-20}"
 CHAIN_MAX_MATCHES="${MMU_LOG_CHAIN_MAX_MATCHES:-8}"
+PTW_RSP_MAX_MATCHES="${MMU_LOG_PTW_RSP_MAX_MATCHES:-6}"
 
 usage() {
   echo "Usage: $0 <log1> [log2 ...]" >&2
@@ -137,6 +138,96 @@ EOF
   fi
 }
 
+print_wb_ppn_summary_for_key() {
+  local log="$1"
+  local channel="$2"
+  local va="$3"
+  awk -v ch="$channel" -v va="$va" '
+    index($0, "[" ch "][WB]") && index($0, "VA=" va) {
+      ptw_ppn = "";
+      refill_ppn = "";
+      last_refill_ppn = "";
+      if (match($0, /PTW:.*ref_ppn=0x[0-9a-fA-F]+/)) {
+        seg = substr($0, RSTART, RLENGTH);
+        if (match(seg, /0x[0-9a-fA-F]+/)) {
+          ptw_ppn = substr(seg, RSTART, RLENGTH);
+        }
+      }
+      if (match($0, /L1_REFILL:.*ppn=0x[0-9a-fA-F]+/)) {
+        seg = substr($0, RSTART, RLENGTH);
+        if (match(seg, /ppn=0x[0-9a-fA-F]+/)) {
+          refill_ppn = substr(seg, RSTART + 4, RLENGTH - 4);
+        }
+      }
+      if (match($0, /LAST_L1_REFILL:.*ppn=0x[0-9a-fA-F]+/)) {
+        seg = substr($0, RSTART, RLENGTH);
+        if (match(seg, /ppn=0x[0-9a-fA-F]+/)) {
+          last_refill_ppn = substr(seg, RSTART + 4, RLENGTH - 4);
+        }
+      }
+      printf("    %s VA=%s | ptw_ref_ppn=%s l1_refill_ppn=%s last_l1_refill_ppn=%s\n",
+        ch, va,
+        (ptw_ppn == "" ? "N/A" : ptw_ppn),
+        (refill_ppn == "" ? "N/A" : refill_ppn),
+        (last_refill_ppn == "" ? "N/A" : last_refill_ppn));
+      found = 1;
+      exit;
+    }
+    END {
+      if (!found) {
+        printf("    %s VA=%s | ptw_ref_ppn=N/A l1_refill_ppn=N/A last_l1_refill_ppn=N/A\n", ch, va);
+      }
+    }
+  ' "$log"
+}
+
+print_translation_ppn_chain_summary() {
+  local log="$1"
+  local key_limit="$2"
+  local keys
+  local key
+  local channel
+  local va
+
+  keys=$(extract_translation_mismatch_keys "$log" "$key_limit")
+  if [ -z "$keys" ]; then
+    return 0
+  fi
+
+  echo "  ptw->l1dtlb refill ppn summary:"
+  while IFS= read -r key; do
+    [ -z "$key" ] && continue
+    channel="${key%% *}"
+    va="${key#* }"
+    print_wb_ppn_summary_for_key "$log" "$channel" "$va"
+  done <<EOF
+$keys
+EOF
+}
+
+print_recent_ptw_rsp_lines() {
+  local log="$1"
+  local limit="$2"
+  awk -v limit="$limit" '
+    /PTW RSP:/ {
+      n++;
+      idx = ((n - 1) % limit) + 1;
+      nums[idx] = NR;
+      lines[idx] = $0;
+    }
+    END {
+      if (n == 0) {
+        return;
+      }
+      start = (n > limit) ? (n - limit + 1) : 1;
+      for (i = start; i <= n; i++) {
+        idx = ((i - 1) % limit) + 1;
+        printf("    %d:%s\n", nums[idx], lines[idx]);
+      }
+    }
+  ' "$log"
+}
+
 check_log() {
   local log="$1"
   local summary_seen
@@ -183,6 +274,9 @@ check_log() {
       echo "    ... truncated, total matched lines: $hit_count"
     fi
     print_translation_whitebox_chain "$log" 4 "$CHAIN_MAX_MATCHES"
+    print_translation_ppn_chain_summary "$log" 4
+    echo "  recent PTW RSP (LSU->PTW) lines:"
+    print_recent_ptw_rsp_lines "$log" "$PTW_RSP_MAX_MATCHES"
   fi
 
   if [ "$status" = "PASS" ]; then

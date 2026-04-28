@@ -93,6 +93,7 @@ class ptw_mem_responder extends uvm_component;
   // addr: the 40-bit physical address of the PTE to read
   virtual task handle_request(bit [39:0] addr, bit req_size);
     bit [63:0] pte;
+    bit [27:0] pte_ppn;
     int        delay;
     bit        inject_err;
 
@@ -105,6 +106,7 @@ class ptw_mem_responder extends uvm_component;
       `uvm_warning(get_type_name(),
         $sformatf("handle_request: m_pt is null, returning 0 for addr=0x%010h", addr))
     end
+    pte_ppn = pte[37:10];
 
     // Decide whether to inject a bus error for this transaction
     inject_err = (m_bus_error_rate_permille > 0) &&
@@ -155,8 +157,8 @@ class ptw_mem_responder extends uvm_component;
       vif.driver_cb.lsu_mmu_data_vld <= 1'b1;
       vif.driver_cb.lsu_mmu_data     <= pte;
       `uvm_info(get_type_name(),
-        $sformatf("PTW RSP: addr=0x%010h pte=0x%016h delay=%0d", addr, pte, delay),
-        UVM_HIGH)
+        $sformatf("PTW RSP: addr=0x%010h pte=0x%016h pte_ppn=0x%07h delay=%0d", addr, pte, pte_ppn, delay),
+        UVM_MEDIUM)
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();

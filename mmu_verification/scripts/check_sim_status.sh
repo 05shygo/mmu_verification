@@ -209,10 +209,16 @@ print_recent_ptw_rsp_lines() {
   local log="$1"
   local limit="$2"
   awk -v limit="$limit" '
+    /\[PTW LSU REQ\]/ {
+      if (match($0, /satp_base=0x[0-9a-fA-F]+/)) {
+        last_satp = substr($0, RSTART + 10, RLENGTH - 10);
+      }
+    }
     /PTW RSP:/ {
       n++;
       idx = ((n - 1) % limit) + 1;
       nums[idx] = NR;
+      satps[idx] = (last_satp == "" ? "N/A" : last_satp);
       lines[idx] = $0;
     }
     END {
@@ -222,7 +228,7 @@ print_recent_ptw_rsp_lines() {
       start = (n > limit) ? (n - limit + 1) : 1;
       for (i = start; i <= n; i++) {
         idx = ((i - 1) % limit) + 1;
-        printf("    %d:%s\n", nums[idx], lines[idx]);
+        printf("    %d:[satp_base=%s] %s\n", nums[idx], satps[idx], lines[idx]);
       }
     }
   ' "$log"

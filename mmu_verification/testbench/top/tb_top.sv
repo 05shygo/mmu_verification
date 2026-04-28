@@ -255,6 +255,7 @@ module tb_top;
                                          && !u_dut.x_mmu_l1itlb.pmp_mmu_flg2[2]
                                          && !(u_dut.x_mmu_l1itlb.cp0_mach_mode
                                            && !u_dut.x_mmu_l1itlb.pmp_mmu_flg2[3]);
+  assign ifu_if_inst.dbg_jtlb_acc_fault_flop = u_dut.x_mmu_l1itlb.jtlb_acc_fault_flop;
 
   // DTLB expt CAM (mmu_l1dtlb_expt_cam): on consume, mmu_l1dtlb_hit_rd muxes
   // PPN=VPN and ORs (expt_match & expt_{pg,ac}flt). Software ref has no CAM.

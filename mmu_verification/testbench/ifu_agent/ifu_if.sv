@@ -30,6 +30,7 @@ interface ifu_if (
   logic        mmu_ifu_sec;
   logic        dbg_iutlb_acc_flt;
   logic        dbg_iutlb_pmp_deny;
+  logic        dbg_jtlb_acc_fault_flop;
 
   // -------------------------------------------------------------------------
   // Clocking Block — Active Driver (ifu_driver uses this)
@@ -66,6 +67,7 @@ interface ifu_if (
     input mmu_ifu_sec;
     input dbg_iutlb_acc_flt;
     input dbg_iutlb_pmp_deny;
+    input dbg_jtlb_acc_fault_flop;
   endclocking
 
   // -------------------------------------------------------------------------

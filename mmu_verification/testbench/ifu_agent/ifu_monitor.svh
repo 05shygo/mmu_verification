@@ -37,6 +37,11 @@ class ifu_monitor extends uvm_monitor;
   protected bit     m_rsp_tail_hold;
   protected va_t    m_rsp_tail_va;
   protected bit     m_rsp_tail_abort;
+  // After a non-abort drop, block reopen for two sampled cycles so a late
+  // response from the dropped transaction cannot be rebound onto a retry.
+  protected int unsigned m_drop_reopen_block;
+  protected va_t         m_drop_reopen_va;
+  protected bit          m_drop_reopen_abort;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -44,6 +49,9 @@ class ifu_monitor extends uvm_monitor;
     m_rsp_tail_hold  = 1'b0;
     m_rsp_tail_va    = '0;
     m_rsp_tail_abort = 1'b0;
+    m_drop_reopen_block = 0;
+    m_drop_reopen_va    = '0;
+    m_drop_reopen_abort = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -68,15 +76,17 @@ class ifu_monitor extends uvm_monitor;
   //
   // Ordering each cycle:
   //   1. Release any post-rsp holdoff once req deasserts or turns over.
-  //   2. Open new request if the bus shows a true new request and we are idle.
-  //   3. Consume pavld (same-cycle hit remains legal: open first, then rsp).
-  //   4. If req disappears without rsp, emit ap_drop for compensation.
+  //   2. Honor any post-drop reopen barrier before accepting a retry.
+  //   3. Open new request if the bus shows a true new request and we are idle.
+  //   4. Consume pavld (same-cycle hit remains legal: open first, then rsp).
+  //   5. If req disappears without rsp, emit ap_drop for compensation.
   protected task _collect();
     ifu_txn req_tr, rsp_tr, drop_tr;
     va_t cur_va;
     bit  req_seen;
     bit  rsp_seen;
     bit  cur_abort;
+    bit  drop_blocks_reopen;
     bit  hold_blocks_reopen;
     forever begin
       @(vif.monitor_cb);
@@ -86,6 +96,9 @@ class ifu_monitor extends uvm_monitor;
         m_rsp_tail_hold  = 1'b0;
         m_rsp_tail_va    = '0;
         m_rsp_tail_abort = 1'b0;
+        m_drop_reopen_block = 0;
+        m_drop_reopen_va    = '0;
+        m_drop_reopen_abort = 1'b0;
         continue;
       end
 
@@ -110,12 +123,14 @@ class ifu_monitor extends uvm_monitor;
         end
       end
 
+      drop_blocks_reopen = (m_drop_reopen_block != 0);
       hold_blocks_reopen = m_rsp_tail_hold
                         && req_seen
                         && (cur_va === m_rsp_tail_va)
                         && (cur_abort === m_rsp_tail_abort);
+      hold_blocks_reopen = hold_blocks_reopen || drop_blocks_reopen;
 
-      // 2) Open request whenever the bus is presenting a true new request and
+      // 2/3) Open request whenever the bus is presenting a true new request and
       //    we have no outstanding req. Same-cycle req+rsp hits remain legal.
       if (req_seen && !m_has_pending && !hold_blocks_reopen) begin
         req_tr       = ifu_txn::type_id::create("ifu_req_mon");
@@ -135,11 +150,24 @@ class ifu_monitor extends uvm_monitor;
       // 3) Consume response.
       if (rsp_seen) begin
         if (!m_has_pending) begin
-          `uvm_warning(get_type_name(),
-            $sformatf("IFU rsp observed without pending req: pa=0x%07h pgflt=%0b deny=%0b",
-              vif.monitor_cb.mmu_ifu_pa,
-              vif.monitor_cb.mmu_ifu_pgflt,
-              vif.monitor_cb.mmu_ifu_deny))
+          if (drop_blocks_reopen) begin
+            `uvm_warning(get_type_name(),
+              $sformatf("[IFU_LATE_RSP_AFTER_DROP] ignore rsp during drop barrier: dropped_va=0x%010h cur_va=0x%010h dropped_abort=%0b cur_abort=%0b pa=0x%07h pgflt=%0b deny=%0b",
+                {1'b0, m_drop_reopen_va[38:0]}, {1'b0, cur_va[38:0]},
+                m_drop_reopen_abort, cur_abort,
+                vif.monitor_cb.mmu_ifu_pa,
+                vif.monitor_cb.mmu_ifu_pgflt,
+                vif.monitor_cb.mmu_ifu_deny))
+            m_drop_reopen_block = 0;
+            m_drop_reopen_va    = '0;
+            m_drop_reopen_abort = 1'b0;
+          end else begin
+            `uvm_warning(get_type_name(),
+              $sformatf("IFU rsp observed without pending req: pa=0x%07h pgflt=%0b deny=%0b",
+                vif.monitor_cb.mmu_ifu_pa,
+                vif.monitor_cb.mmu_ifu_pgflt,
+                vif.monitor_cb.mmu_ifu_deny))
+          end
         end else begin
           rsp_tr         = ifu_txn::type_id::create("ifu_rsp_mon");
           rsp_tr.pavld   = 1'b1;
@@ -153,13 +181,15 @@ class ifu_monitor extends uvm_monitor;
           rsp_tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
           rsp_tr.dbg_iutlb_acc_flt = vif.monitor_cb.dbg_iutlb_acc_flt;
           rsp_tr.dbg_iutlb_pmp_deny = vif.monitor_cb.dbg_iutlb_pmp_deny;
+          rsp_tr.dbg_jtlb_acc_fault_flop = vif.monitor_cb.dbg_jtlb_acc_fault_flop;
           rsp_tr.va      = m_pending_req.va;
           rsp_tr.abort   = m_pending_req.abort;
           `uvm_info(get_type_name(),
-            $sformatf("[IFU_MON_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h pa=0x%07h pavld=%0b pgflt=%0b deny=%0b dbg_pmp_deny=%0b dbg_accerr=%0b",
+            $sformatf("[IFU_MON_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h pa=0x%07h pavld=%0b pgflt=%0b deny=%0b dbg_pmp_deny=%0b dbg_accerr=%0b dbg_jtlb_accflt_flop=%0b",
               {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.pa,
               vif.monitor_cb.mmu_ifu_pavld, rsp_tr.pgflt, rsp_tr.deny,
-              rsp_tr.dbg_iutlb_pmp_deny, rsp_tr.dbg_iutlb_acc_flt),
+              rsp_tr.dbg_iutlb_pmp_deny, rsp_tr.dbg_iutlb_acc_flt,
+              rsp_tr.dbg_jtlb_acc_fault_flop),
             UVM_DEBUG)
           m_rsp_tail_hold  = req_seen;
           m_rsp_tail_va    = m_pending_req.va;
@@ -204,9 +234,21 @@ class ifu_monitor extends uvm_monitor;
               {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]},
               vif.monitor_cb.mmu_ifu_pavld, vif.monitor_cb.mmu_ifu_pa))
           // Clear local pending and emit drop so downstream credit scoreboard
-          // can compensate req-without-rsp accounting.
-          m_has_pending = 1'b0;
+          // can compensate req-without-rsp accounting. Hold reopen long enough
+          // to absorb a near-tail late rsp before rebinding any retry.
+          m_has_pending       = 1'b0;
+          m_drop_reopen_block = 2;
+          m_drop_reopen_va    = drop_tr.va;
+          m_drop_reopen_abort = drop_tr.abort;
           ap_drop.write(drop_tr);
+        end
+      end
+
+      if (drop_blocks_reopen && (m_drop_reopen_block != 0)) begin
+        m_drop_reopen_block--;
+        if (m_drop_reopen_block == 0) begin
+          m_drop_reopen_va    = '0;
+          m_drop_reopen_abort = 1'b0;
         end
       end
 

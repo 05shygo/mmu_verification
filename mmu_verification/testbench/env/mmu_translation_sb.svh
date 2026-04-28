@@ -108,6 +108,7 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     _compare(.channel("IFU"), .va(va), .ref_rsp(ref_rsp),
              .dut_pa(tr.pa),  .dut_fault(dut_fault),
+             .tr_pgflt(tr.pgflt), .tr_deny(tr.deny),
              .ifu_dbg_iutlb_acc_flt(tr.dbg_iutlb_acc_flt));
   endfunction
 
@@ -265,6 +266,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit           tr_stall = 1'b0,
     bit           tr_pgflt = 1'b0,
     bit           tr_access_fault = 1'b0,
+    bit           tr_deny = 1'b0,
     bit           tr_mmu_en = 1'b0,
     bit           skip_ref_ppn_check = 1'b0,
     bit           dtlb_expt_match = 1'b0,
@@ -335,6 +337,12 @@ class mmu_translation_sb extends uvm_scoreboard;
           $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h req_vpn(va[38:12])=0x%07h | stall=%0b pgflt=%0b access_fault=%0b mmu_lsu_mmu_en=%0b",
             channel, {1'b0, va}, dut_pa, req_vpn,
             tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en))
+      end else begin
+        `uvm_info(get_type_name(),
+          $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h | pgflt=%0b deny=%0b dbg_iutlb_acc_flt=%0b",
+            channel, {1'b0, va}, dut_pa, tr_pgflt, tr_deny,
+            ifu_dbg_iutlb_acc_flt),
+          UVM_NONE)
       end
       m_mismatch++;
     end else begin

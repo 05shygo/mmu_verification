@@ -1,7 +1,7 @@
 // =============================================================================
 // MMU UVM Verification — testbench/ifu_agent/ifu_monitor.svh
 // Phase 3 (Engineer B): IFU monitor skeleton
-// Observes IFU↔MMU interface; publishes to two analysis ports.
+// Observes IFU↔MMU interface; publishes req/rsp/drop analysis events.
 //   ap_req: fires when ifu_mmu_va_vld=1 (request observed)
 //   ap_rsp: fires when mmu_ifu_pavld=1 (merged req+rsp txn containing VA+PA)
 //
@@ -31,10 +31,19 @@ class ifu_monitor extends uvm_monitor;
   // IFU hold protocol is 1-outstanding: keep a single pending request.
   protected ifu_txn m_pending_req;
   protected bit     m_has_pending;
+  // After a response, the request bus may remain HIGH for one or more sampled
+  // cycles before it deasserts or turns over to a new VA. Suppress reopen
+  // while the retiring request signature is still visible on the bus.
+  protected bit     m_rsp_tail_hold;
+  protected va_t    m_rsp_tail_va;
+  protected bit     m_rsp_tail_abort;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
-    m_has_pending = 1'b0;
+    m_has_pending    = 1'b0;
+    m_rsp_tail_hold  = 1'b0;
+    m_rsp_tail_va    = '0;
+    m_rsp_tail_abort = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -51,26 +60,67 @@ class ifu_monitor extends uvm_monitor;
   endtask
 
   // ── Cycle-accurate collector for IFU hold protocol ────────────────────────
-  // One request can be outstanding at a time. IFU may hold va_vld high across
-  // consecutive fetches. Open when (va_vld && !has_pending) — not only on a
-  // rising edge of va_vld — or pavld would fire with m_has_pending==0.
-  // Ordering each cycle: (1) open new request if bus shows va_vld and idle,
-  // (2) consume pavld (same-cycle hit: open first, then pavld in one tick).
+  // One request can be outstanding at a time. Responses are consumed against
+  // the currently pending request; after completion, the monitor suppresses
+  // any reopen while the bus is still showing the retiring request signature.
+  // This avoids tail-cycle duplicate opens when the driver or DUT deasserts
+  // ifu_mmu_va_vld one sampled cycle after pavld.
+  //
+  // Ordering each cycle:
+  //   1. Release any post-rsp holdoff once req deasserts or turns over.
+  //   2. Open new request if the bus shows a true new request and we are idle.
+  //   3. Consume pavld (same-cycle hit remains legal: open first, then rsp).
+  //   4. If req disappears without rsp, emit ap_drop for compensation.
   protected task _collect();
-    ifu_txn req_tr, rsp_tr;
+    ifu_txn req_tr, rsp_tr, drop_tr;
     va_t cur_va;
+    bit  req_seen;
+    bit  rsp_seen;
+    bit  cur_abort;
+    bit  hold_blocks_reopen;
     forever begin
       @(vif.monitor_cb);
 
-      // ifu_mmu_va is VA[63:1] on interface, restore byte-address form VA[63:0].
-      cur_va = va_t'({vif.monitor_cb.ifu_mmu_va, 1'b0});
+      if (vif.rst_ni !== 1'b1) begin
+        m_has_pending    = 1'b0;
+        m_rsp_tail_hold  = 1'b0;
+        m_rsp_tail_va    = '0;
+        m_rsp_tail_abort = 1'b0;
+        continue;
+      end
 
-      // 1) Open request whenever the bus is presenting a VA and we have no
-      //    outstanding request (covers first fetch and back-to-back with va_vld held).
-      if (vif.monitor_cb.ifu_mmu_va_vld && !m_has_pending) begin
+      // ifu_mmu_va is VA[63:1] on interface, restore byte-address form VA[63:0].
+      cur_va    = va_t'({vif.monitor_cb.ifu_mmu_va, 1'b0});
+      req_seen  = (vif.monitor_cb.ifu_mmu_va_vld === 1'b1);
+      rsp_seen  = (vif.monitor_cb.mmu_ifu_pavld  === 1'b1);
+      cur_abort = (vif.monitor_cb.ifu_mmu_abort  === 1'b1);
+
+      // 1) Clear the post-rsp holdoff once the retiring request disappears or
+      //    the bus turns over to a new request signature.
+      if (m_rsp_tail_hold) begin
+        if (!req_seen) begin
+          m_rsp_tail_hold = 1'b0;
+        end else if ((cur_va !== m_rsp_tail_va) || (cur_abort !== m_rsp_tail_abort)) begin
+          `uvm_info(get_type_name(),
+            $sformatf("[IFU_MON_REQ_TURNOVER] retired_va=0x%010h cur_va=0x%010h retired_abort=%0b cur_abort=%0b",
+              {1'b0, m_rsp_tail_va[38:0]}, {1'b0, cur_va[38:0]},
+              m_rsp_tail_abort, cur_abort),
+            UVM_DEBUG)
+          m_rsp_tail_hold = 1'b0;
+        end
+      end
+
+      hold_blocks_reopen = m_rsp_tail_hold
+                        && req_seen
+                        && (cur_va === m_rsp_tail_va)
+                        && (cur_abort === m_rsp_tail_abort);
+
+      // 2) Open request whenever the bus is presenting a true new request and
+      //    we have no outstanding req. Same-cycle req+rsp hits remain legal.
+      if (req_seen && !m_has_pending && !hold_blocks_reopen) begin
         req_tr       = ifu_txn::type_id::create("ifu_req_mon");
         req_tr.va    = cur_va;
-        req_tr.abort = vif.monitor_cb.ifu_mmu_abort;
+        req_tr.abort = cur_abort;
         m_pending_req = req_tr;
         m_has_pending = 1'b1;
         `uvm_info(get_type_name(),
@@ -82,8 +132,8 @@ class ifu_monitor extends uvm_monitor;
         ap_req.write(req_tr);
       end
 
-      // 2) Consume response.
-      if (vif.monitor_cb.mmu_ifu_pavld) begin
+      // 3) Consume response.
+      if (rsp_seen) begin
         if (!m_has_pending) begin
           `uvm_warning(get_type_name(),
             $sformatf("IFU rsp observed without pending req: pa=0x%07h pgflt=%0b deny=%0b",
@@ -109,7 +159,10 @@ class ifu_monitor extends uvm_monitor;
               {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.pa,
               vif.monitor_cb.mmu_ifu_pavld, rsp_tr.pgflt, rsp_tr.deny),
             UVM_DEBUG)
-          m_has_pending  = 1'b0;
+          m_rsp_tail_hold  = req_seen;
+          m_rsp_tail_va    = m_pending_req.va;
+          m_rsp_tail_abort = m_pending_req.abort;
+          m_has_pending    = 1'b0;
           `uvm_info(get_type_name(), {"IFU RSP: ", rsp_tr.convert2string()}, UVM_HIGH)
           ap_rsp.write(rsp_tr);
         end
@@ -117,20 +170,20 @@ class ifu_monitor extends uvm_monitor;
 
       // Protocol sanity: VA should stay stable while request is outstanding
       // and before response returns.
-      if (m_has_pending && vif.monitor_cb.ifu_mmu_va_vld &&
-          !vif.monitor_cb.mmu_ifu_pavld && (cur_va !== m_pending_req.va)) begin
+      if (m_has_pending && req_seen && !rsp_seen &&
+          ((cur_va !== m_pending_req.va) || (cur_abort !== m_pending_req.abort))) begin
         `uvm_error(get_type_name(),
-          $sformatf("[IFU_HOLD_PROTOCOL] VA changed before rsp: pending_va=0x%010h cur_va=0x%010h",
-            {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}))
+          $sformatf("[IFU_HOLD_PROTOCOL] req changed before rsp: pending_va=0x%010h cur_va=0x%010h pending_abort=%0b cur_abort=%0b",
+            {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]},
+            m_pending_req.abort, cur_abort))
       end
 
       // If request disappears without a response:
       // - abort req: close immediately (expected cancel path)
       // - non-abort req: treat as monitor-visible drop (e.g. driver timeout),
       //   close with warning and publish ap_drop for credit compensation.
-      if (m_has_pending && !vif.monitor_cb.ifu_mmu_va_vld) begin
+      if (!rsp_seen && m_has_pending && !req_seen) begin
         if (m_pending_req.abort) begin
-          ifu_txn drop_tr;
           drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
           drop_tr.va    = m_pending_req.va;
           drop_tr.abort = m_pending_req.abort;
@@ -141,7 +194,6 @@ class ifu_monitor extends uvm_monitor;
           m_has_pending = 1'b0;
           ap_drop.write(drop_tr);
         end else begin
-          ifu_txn drop_tr;
           drop_tr       = ifu_txn::type_id::create("ifu_drop_mon");
           drop_tr.va    = m_pending_req.va;
           drop_tr.abort = m_pending_req.abort;

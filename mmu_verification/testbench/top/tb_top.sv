@@ -249,6 +249,64 @@ module tb_top;
   assign dut_probes_if.ptw_mbuf_twu_lvl  = u_dut.x_ct_mmu_ptw.mbuf_twu_lvl;
   assign dut_probes_if.ptw_fault_any     = u_dut.x_ct_mmu_ptw.pgflt_vld
                                          | u_dut.x_ct_mmu_ptw.acc_err_vld;
+  assign dut_probes_if.ptw_jtlb_ready    = u_dut.x_ct_mmu_ptw.ptw_jtlb_ready;
+  assign dut_probes_if.ptw_twu_idle      = u_dut.x_ct_mmu_ptw.twu_idle;
+  assign dut_probes_if.ptw_twu_mask      = u_dut.x_ct_mmu_ptw.twu_mask;
+  assign dut_probes_if.ptw_twu_data_ready = u_dut.x_ct_mmu_ptw.twu_data_ready;
+  assign dut_probes_if.ptw_mbuf_twu_have = u_dut.x_ct_mmu_ptw.mbuf_twu_have;
+  assign dut_probes_if.ptw_twu_ref_req   = u_dut.x_ct_mmu_ptw.twu_arb_ref_req;
+  assign dut_probes_if.ptw_twu_pgflt_vec = u_dut.x_ct_mmu_ptw.twu_l2tlb_ref_pgflt;
+  assign dut_probes_if.ptw_twu_acc_err_vec = u_dut.x_ct_mmu_ptw.twu_l2tlb_ref_acc_err;
+  assign dut_probes_if.ptw_pgflt_vld     = u_dut.x_ct_mmu_ptw.pgflt_vld;
+  assign dut_probes_if.ptw_acc_err_vld   = u_dut.x_ct_mmu_ptw.acc_err_vld;
+  assign dut_probes_if.arb_ptw_grant     = u_dut.arb_ptw_grant;
+  assign dut_probes_if.arb_l2tlb_req     = u_dut.arb_l2tlb_req;
+  assign dut_probes_if.ptw_arb_pgs       = u_dut.ptw_arb_pgs;
+  assign dut_probes_if.ptw_arb_vpn       = u_dut.ptw_arb_vpn;
+  assign dut_probes_if.ptw_arb_ref_tag_din = u_dut.ptw_arb_ref_tag_din;
+  assign dut_probes_if.ptw_cp0_maee      = u_dut.cp0_mmu_maee;
+  // MAEE path/leaf is inferred from per-TWU leaf request outputs because
+  // the RTL does not expose a single encoded MAEE-path/leaf signal.
+  assign dut_probes_if.maee_leaf_lvl1_hit = u_dut.x_ct_mmu_ptw.twu_one.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_one.fst_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_two.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_two.fst_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_three.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_three.fst_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_four.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_four.fst_chk_refill_req;
+  assign dut_probes_if.maee_leaf_lvl2_hit = u_dut.x_ct_mmu_ptw.twu_one.scd_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_two.scd_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_two.scd_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_three.scd_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_three.scd_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_four.scd_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_four.scd_chk_refill_req;
+  assign dut_probes_if.maee_leaf_lvl3_hit = u_dut.x_ct_mmu_ptw.twu_one.thd_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_two.thd_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_three.thd_chk_refill_req
+                                          | u_dut.x_ct_mmu_ptw.twu_four.thd_chk_refill_req;
+  assign dut_probes_if.maee_csr_path_hit  = u_dut.x_ct_mmu_ptw.twu_one.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_two.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_two.scd_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_three.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_three.scd_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_four.fst_chk_csr_req
+                                          | u_dut.x_ct_mmu_ptw.twu_four.scd_chk_csr_req;
+  assign dut_probes_if.maee_refill_path_hit = u_dut.x_ct_mmu_ptw.twu_one.fst_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_one.thd_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_two.fst_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_two.scd_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_two.thd_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_three.fst_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_three.scd_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_three.thd_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_four.fst_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_four.scd_chk_refill_req
+                                            | u_dut.x_ct_mmu_ptw.twu_four.thd_chk_refill_req;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
   assign ifu_if_inst.dbg_iutlb_acc_flt   = u_dut.x_mmu_l1itlb.iutlb_acc_flt;
   assign ifu_if_inst.dbg_iutlb_pmp_deny  = u_dut.x_mmu_l1itlb.pmp_flg_vld

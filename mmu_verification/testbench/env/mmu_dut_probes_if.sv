@@ -33,6 +33,27 @@ interface mmu_dut_probes_if (
   wire [1:0]   ptw_xbar_hit_lvl;
   wire [2:0]   ptw_mbuf_twu_lvl;
   wire         ptw_fault_any;    // pgflt_vld | acc_err_vld
+  wire         ptw_jtlb_ready;
+  wire [3:0]   ptw_twu_idle;
+  wire [3:0]   ptw_twu_mask;
+  wire [3:0][2:0] ptw_twu_data_ready;
+  wire [3:0]   ptw_mbuf_twu_have;
+  wire [3:0]   ptw_twu_ref_req;
+  wire [3:0]   ptw_twu_pgflt_vec;
+  wire [3:0]   ptw_twu_acc_err_vec;
+  wire         ptw_pgflt_vld;
+  wire         ptw_acc_err_vld;
+  wire         arb_ptw_grant;
+  wire         arb_l2tlb_req;
+  wire [2:0]   ptw_arb_pgs;
+  wire [26:0]  ptw_arb_vpn;
+  wire [47:0]  ptw_arb_ref_tag_din;
+  wire         ptw_cp0_maee;
+  wire         maee_leaf_lvl1_hit;
+  wire         maee_leaf_lvl2_hit;
+  wire         maee_leaf_lvl3_hit;
+  wire         maee_csr_path_hit;
+  wire         maee_refill_path_hit;
 
   // ct_mmu_tlboper
   wire [3:0]   tlbiva_cur_st;
@@ -45,6 +66,12 @@ interface mmu_dut_probes_if (
     input l2_bank0, l2_final_way_hit, l2_raw_pre_pgs0;
     input l2_reqq_vld_vec, l2_reqq_qid;
     input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any;
+    input ptw_jtlb_ready, ptw_twu_idle, ptw_twu_mask, ptw_twu_data_ready;
+    input ptw_mbuf_twu_have, ptw_twu_ref_req, ptw_twu_pgflt_vec, ptw_twu_acc_err_vec;
+    input ptw_pgflt_vld, ptw_acc_err_vld, arb_ptw_grant, arb_l2tlb_req;
+    input ptw_arb_pgs, ptw_arb_vpn, ptw_arb_ref_tag_din, ptw_cp0_maee;
+    input maee_leaf_lvl1_hit, maee_leaf_lvl2_hit, maee_leaf_lvl3_hit;
+    input maee_csr_path_hit, maee_refill_path_hit;
     input tlbiva_cur_st;
   endclocking
 

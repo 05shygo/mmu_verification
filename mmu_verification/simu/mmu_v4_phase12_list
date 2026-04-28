@@ -1,0 +1,31 @@
+# Phase 12 v4 MAEE / PTW-ready / TWU bypass regression union
+# Recommended external seed set:
+#   95101 95102 95103
+#
+# MAEE family
+test_mmu_twu_maee0_csr_path
+test_mmu_twu_maee0_csr_symmetric
+test_mmu_twu_maee1_direct_refill
+test_mmu_twu_maee_dynamic_switch
+#
+# PTW-ready family
+test_mmu_ptw_ready_all_mask_low
+test_mmu_ptw_ready_one_unblock
+test_mmu_ptw_ready_l2tlb_stall
+#
+# TWU bypass / PTW / MBUF / Arb family
+test_mmu_twu_idle_implies_no_mask
+test_mmu_pde_cache_hit_l3_skip_thd
+test_mmu_pde_cache_hit_l2_skip_scd
+test_mmu_pde_cache_full_miss_full_ptw
+test_mmu_twu_pgflt_bypass_arb
+test_mmu_twu_accerr_bypass_arb
+test_mmu_twu_except_conflict_pgflt_accflt
+test_mmu_mbuf_ready_gate_no_early_vld
+test_mmu_mbuf_have_no_resend
+test_mmu_mbuf_multi_twu_independent_ready
+test_mmu_arb_grant_onehot_check
+test_mmu_arb_refill_except_priority
+test_mmu_arb_multi_twu_fairness
+test_mmu_arb_vpn_match_tag_din
+test_mmu_arb_pgs_bank_select

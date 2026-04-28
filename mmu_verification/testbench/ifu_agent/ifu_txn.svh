@@ -19,6 +19,7 @@ class ifu_txn extends uvm_sequence_item;
     `uvm_field_int(sec,         UVM_ALL_ON)
     `uvm_field_int(ca,          UVM_ALL_ON)
     `uvm_field_int(buf_bit,     UVM_ALL_ON)
+    `uvm_field_int(dbg_iutlb_acc_flt, UVM_ALL_ON)
   `uvm_object_utils_end
 
   // ── Stimulus fields (driven by ifu_driver) ──────────────────────────────
@@ -34,6 +35,7 @@ class ifu_txn extends uvm_sequence_item;
   bit        sec;     // Secure attribute
   bit        ca;      // Cacheable attribute
   bit        buf_bit; // Bufferable attribute
+  bit        dbg_iutlb_acc_flt; // Whitebox: IFU response completed on PTW acc_err
 
   // ── Constraints ──────────────────────────────────────────────────────────
   // Sv39 canonical VA: bits[62:39] must all equal bit[38] (sign extension)
@@ -51,8 +53,9 @@ class ifu_txn extends uvm_sequence_item;
 
   virtual function string convert2string();
     return $sformatf(
-      "va=0x%016h abort=%0b idle=%0d | pa=0x%07h pavld=%0b pgflt=%0b deny=%0b sec=%0b ca=%0b",
-      {1'b0, va}, abort, idle_cycles, pa, pavld, pgflt, deny, sec, ca);
+      "va=0x%016h abort=%0b idle=%0d | pa=0x%07h pavld=%0b pgflt=%0b deny=%0b sec=%0b ca=%0b dbg_accerr=%0b",
+      {1'b0, va}, abort, idle_cycles, pa, pavld, pgflt, deny, sec, ca,
+      dbg_iutlb_acc_flt);
   endfunction
 
 endclass : ifu_txn

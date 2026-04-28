@@ -6,9 +6,9 @@
 // (ct_mmu_top.v lines ~158-185)
 //
 // Port Allocation (BuildPlan §6.5 / F7.NEW.9):
-//   pa0/flg0: IFU (L1 ITLB → PMP port 0)
-//   pa1/flg1: LSU Pipe0 (L1 DTLB → PMP port 1)
-//   pa2/flg2: LSU Pipe1 (L1 DTLB → PMP port 2)
+//   pa0/flg0: LSU Pipe0 (L1 DTLB → PMP port 0)
+//   pa1/flg1: LSU Pipe1 (L1 DTLB → PMP port 1)
+//   pa2/flg2: IFU (L1 ITLB → PMP port 2)
 //   pa3/flg3: PTW twu_one  (ptw.sv:L291/300)
 //   pa4/flg4: LSU Pipe2 / prefetch
 //   pa5/flg5: PTW twu_two  (ptw.sv:L344/353)

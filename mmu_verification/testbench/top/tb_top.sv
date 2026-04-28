@@ -250,6 +250,7 @@ module tb_top;
   assign dut_probes_if.ptw_fault_any     = u_dut.x_ct_mmu_ptw.pgflt_vld
                                          | u_dut.x_ct_mmu_ptw.acc_err_vld;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
+  assign ifu_if_inst.dbg_iutlb_acc_flt   = u_dut.x_mmu_l1itlb.iutlb_acc_flt;
 
   // DTLB expt CAM (mmu_l1dtlb_expt_cam): on consume, mmu_l1dtlb_hit_rd muxes
   // PPN=VPN and ORs (expt_match & expt_{pg,ac}flt). Software ref has no CAM.

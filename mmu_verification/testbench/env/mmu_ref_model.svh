@@ -220,10 +220,11 @@ class mmu_ref_model extends uvm_component;
       resolved_pmp_port_idx = pmp_port_idx;
     end else begin
       unique case (acc)
-        ACC_FETCH: resolved_pmp_port_idx = 0;
-        ACC_LOAD:  resolved_pmp_port_idx = 1;
-        ACC_STORE: resolved_pmp_port_idx = 1;
-        default:   resolved_pmp_port_idx = 1; // PFU uses read-like permission model
+        ACC_FETCH: resolved_pmp_port_idx = 2;
+        ACC_LOAD:  resolved_pmp_port_idx = 0;
+        ACC_STORE: resolved_pmp_port_idx = 0;
+        ACC_PFU:   resolved_pmp_port_idx = 4;
+        default:   resolved_pmp_port_idx = 0;
       endcase
     end
 

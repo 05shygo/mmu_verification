@@ -101,6 +101,7 @@ class ifu_monitor extends uvm_monitor;
           rsp_tr.sec     = vif.monitor_cb.mmu_ifu_sec;
           rsp_tr.ca      = vif.monitor_cb.mmu_ifu_ca;
           rsp_tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
+          rsp_tr.dbg_iutlb_acc_flt = vif.monitor_cb.dbg_iutlb_acc_flt;
           rsp_tr.va      = m_pending_req.va;
           rsp_tr.abort   = m_pending_req.abort;
           `uvm_info(get_type_name(),

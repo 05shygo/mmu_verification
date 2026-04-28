@@ -149,8 +149,8 @@ print_wb_ppn_summary_for_key() {
       last_refill_ppn = "";
       if (match($0, /PTW:.*ref_ppn=0x[0-9a-fA-F]+/)) {
         seg = substr($0, RSTART, RLENGTH);
-        if (match(seg, /0x[0-9a-fA-F]+/)) {
-          ptw_ppn = substr(seg, RSTART, RLENGTH);
+        if (match(seg, /ref_ppn=0x[0-9a-fA-F]+/)) {
+          ptw_ppn = substr(seg, RSTART + 8, RLENGTH - 8);
         }
       }
       if (match($0, /L1_REFILL:.*ppn=0x[0-9a-fA-F]+/)) {
@@ -217,7 +217,7 @@ print_recent_ptw_rsp_lines() {
     }
     END {
       if (n == 0) {
-        return;
+        exit;
       }
       start = (n > limit) ? (n - limit + 1) : 1;
       for (i = start; i <= n; i++) {

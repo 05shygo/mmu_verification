@@ -234,6 +234,37 @@ module tb_top;
     .rtu_yy_xx_flush          (misc_if_inst.rtu_yy_xx_flush)
   );
 
+  logic [1:0]  tb_l1d_refill_src;
+  logic [3:0]  tb_l1d_p1_hit_idx;
+  logic [26:0] tb_l1d_p1_hit_vpn;
+  logic [27:0] tb_l1d_p1_hit_ppn;
+  logic [2:0]  tb_l1d_p1_hit_pgs;
+
+  always_comb begin
+    tb_l1d_refill_src = 2'b00;
+    if (u_dut.u_mmu_l1dtlb.x_install.sel_ptw)
+      tb_l1d_refill_src = 2'b01;
+    else if (u_dut.u_mmu_l1dtlb.x_install.sel_jtlb)
+      tb_l1d_refill_src = 2'b10;
+    else if (u_dut.u_mmu_l1dtlb.x_install.sel_wfi)
+      tb_l1d_refill_src = 2'b11;
+  end
+
+  always_comb begin
+    tb_l1d_p1_hit_idx = '0;
+    tb_l1d_p1_hit_vpn = '0;
+    tb_l1d_p1_hit_ppn = '0;
+    tb_l1d_p1_hit_pgs = '0;
+    for (int i = 0; i < 16; i++) begin
+      if (u_dut.u_mmu_l1dtlb.entry_hit1[i]) begin
+        tb_l1d_p1_hit_idx = i[3:0];
+        tb_l1d_p1_hit_vpn = u_dut.u_mmu_l1dtlb.l1dtlb_ent_vpn[i];
+        tb_l1d_p1_hit_ppn = u_dut.u_mmu_l1dtlb.l1dtlb_ent_ppn[i];
+        tb_l1d_p1_hit_pgs = u_dut.u_mmu_l1dtlb.l1dtlb_ent_pgs[i];
+      end
+    end
+  end
+
   // Phase 7 whitebox: hierarchical refs only in module (not in mmu_env_pkg)
   assign dut_probes_if.l1i_entry_vld    = u_dut.x_mmu_l1itlb.entry_vld;
   assign dut_probes_if.l1i_ref_fsm      = u_dut.x_mmu_l1itlb.iutlb_top_ref_cur_st;
@@ -249,6 +280,24 @@ module tb_top;
   assign dut_probes_if.l1d_p1_entry_pa   = u_dut.u_mmu_l1dtlb.x_hit_rd_port1.dutlb_entry_pa;
   assign dut_probes_if.l1d_p1_off_pa     = u_dut.u_mmu_l1dtlb.x_hit_rd_port1.dutlb_off_pa;
   assign dut_probes_if.l1d_p1_fin_pa     = u_dut.u_mmu_l1dtlb.x_hit_rd_port1.dutlb_fin_pa;
+  assign dut_probes_if.l1d_refill_vld    = u_dut.u_mmu_l1dtlb.utlb_refill_vld;
+  assign dut_probes_if.l1d_refill_src    = tb_l1d_refill_src;
+  assign dut_probes_if.l1d_refill_idx    = u_dut.u_mmu_l1dtlb.utlb_refill_idx;
+  assign dut_probes_if.l1d_refill_vpn    = u_dut.u_mmu_l1dtlb.utlb_refill_vpn;
+  assign dut_probes_if.l1d_refill_ppn    = u_dut.u_mmu_l1dtlb.utlb_refill_ppn;
+  assign dut_probes_if.l1d_refill_pgs    = u_dut.u_mmu_l1dtlb.utlb_refill_pgs;
+  assign dut_probes_if.l1d_entry_upd     = u_dut.u_mmu_l1dtlb.entry_upd;
+  assign dut_probes_if.l1d_refill_iid0   = u_dut.u_mmu_l1dtlb.refill_id_flop0;
+  assign dut_probes_if.l1d_refill_iid1   = u_dut.u_mmu_l1dtlb.refill_id_flop1;
+  assign dut_probes_if.l1d_refill_iid_sel = u_dut.u_mmu_l1dtlb.refill_id_flop;
+  assign dut_probes_if.l1d_p1_hit_vec    = u_dut.u_mmu_l1dtlb.entry_hit1;
+  assign dut_probes_if.l1d_p1_hit_idx    = tb_l1d_p1_hit_idx;
+  assign dut_probes_if.l1d_p1_hit_vpn    = tb_l1d_p1_hit_vpn;
+  assign dut_probes_if.l1d_p1_hit_ppn    = tb_l1d_p1_hit_ppn;
+  assign dut_probes_if.l1d_p1_hit_pgs    = tb_l1d_p1_hit_pgs;
+  assign dut_probes_if.l1d_ptw_ref_mb_vld = u_dut.u_mmu_l1dtlb.mb_entry_vld[u_dut.ptw_l1dtlb_id[2:0]];
+  assign dut_probes_if.l1d_ptw_ref_mb_iid = u_dut.u_mmu_l1dtlb.mb_entry_iid[u_dut.ptw_l1dtlb_id[2:0]];
+  assign dut_probes_if.l1d_ptw_ref_mb_vpn = u_dut.u_mmu_l1dtlb.mb_entry_vpn[u_dut.ptw_l1dtlb_id[2:0]];
   assign dut_probes_if.l2_bank0          = u_dut.x_mmu_l2tlb.way_index[0][2:0];
   assign dut_probes_if.l2_final_way_hit  = u_dut.x_mmu_l2tlb.final_way_hit;
   assign dut_probes_if.l2_raw_pre_pgs0  = u_dut.x_mmu_l2tlb.raw_pre_pgs[0];

@@ -28,6 +28,24 @@ interface mmu_dut_probes_if (
   wire [27:0]  l1d_p1_entry_pa;
   wire [27:0]  l1d_p1_off_pa;
   wire [27:0]  l1d_p1_fin_pa;
+  wire         l1d_refill_vld;
+  wire [1:0]   l1d_refill_src;
+  wire [3:0]   l1d_refill_idx;
+  wire [26:0]  l1d_refill_vpn;
+  wire [27:0]  l1d_refill_ppn;
+  wire [2:0]   l1d_refill_pgs;
+  wire [15:0]  l1d_entry_upd;
+  wire [6:0]   l1d_refill_iid0;
+  wire [6:0]   l1d_refill_iid1;
+  wire [6:0]   l1d_refill_iid_sel;
+  wire [15:0]  l1d_p1_hit_vec;
+  wire [3:0]   l1d_p1_hit_idx;
+  wire [26:0]  l1d_p1_hit_vpn;
+  wire [27:0]  l1d_p1_hit_ppn;
+  wire [2:0]   l1d_p1_hit_pgs;
+  wire         l1d_ptw_ref_mb_vld;
+  wire [6:0]   l1d_ptw_ref_mb_iid;
+  wire [26:0]  l1d_ptw_ref_mb_vpn;
 
   // mmu_l2tlb
   wire [2:0]   l2_bank0;   // way_index[0][2:0]
@@ -87,6 +105,10 @@ interface mmu_dut_probes_if (
     input l1d_mb_vld, l1d_mb_st0, l1d_p1_req_vpn, l1d_p1_addr_hit, l1d_p1_hit_vld;
     input l1d_p1_miss_vld, l1d_p1_pre_sel, l1d_p1_expt_match, l1d_p1_entry_pa;
     input l1d_p1_off_pa, l1d_p1_fin_pa;
+    input l1d_refill_vld, l1d_refill_src, l1d_refill_idx, l1d_refill_vpn, l1d_refill_ppn;
+    input l1d_refill_pgs, l1d_entry_upd, l1d_refill_iid0, l1d_refill_iid1, l1d_refill_iid_sel;
+    input l1d_p1_hit_vec, l1d_p1_hit_idx, l1d_p1_hit_vpn, l1d_p1_hit_ppn, l1d_p1_hit_pgs;
+    input l1d_ptw_ref_mb_vld, l1d_ptw_ref_mb_iid, l1d_ptw_ref_mb_vpn;
     input l2_bank0, l2_final_way_hit, l2_raw_pre_pgs0, l2_final_vld, l2_final_tlb_hit;
     input l2_miss, l2_final_is_dtlb, l2_final_vpn, l2_final_hit_ppn;
     input l2_dtlb_ref_pavld, l2_dtlb_ref_cmplt, l2_dtlb_ref_vpn, l2_dtlb_ref_ppn;

@@ -33,25 +33,6 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     super.new(name, parent);
   endfunction
 
-  // Some Phase12 wrappers sign off only whitebox/SVA intent. Those tests can
-  // disable translation_sb before m_env builds when DUT completion timing is
-  // not architecturally comparable to the software translation model.
-  protected virtual function bit phase12_disable_translation_sb();
-    return 1'b0;
-  endfunction
-
-  virtual function void build_phase(uvm_phase phase);
-    if (phase12_disable_translation_sb()) begin
-      mmu_top_cfg tcfg;
-      if (!uvm_config_db #(mmu_top_cfg)::get(this, "", "m_cfg", tcfg) || tcfg == null) begin
-        tcfg = mmu_top_cfg::type_id::create("m_cfg");
-        uvm_config_db #(mmu_top_cfg)::set(this, "*", "m_cfg", tcfg);
-      end
-      tcfg.en_translation_sb = 1'b0;
-    end
-    super.build_phase(phase);
-  endfunction
-
   protected virtual function void setup_phase12_plan();
   endfunction
 

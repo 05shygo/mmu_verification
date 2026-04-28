@@ -1,0 +1,46 @@
+{
+  "name": "codex-usage-monitor",
+  "version": "0.1.0",
+  "description": "Track Codex token usage, estimated spend, and live API activity from local session exports.",
+  "author": {
+    "name": "Local Codex Customization",
+    "email": "local@codex.invalid",
+    "url": "https://openai.com/"
+  },
+  "homepage": "https://openai.com/",
+  "repository": "https://github.com/openai/plugins",
+  "license": "MIT",
+  "keywords": [
+    "codex",
+    "usage",
+    "tokens",
+    "cost",
+    "dashboard",
+    "monitor"
+  ],
+  "skills": "./skills/",
+  "hooks": "./hooks.json",
+  "interface": {
+    "displayName": "Codex Usage Monitor",
+    "shortDescription": "Live token and estimated spend monitor for local Codex sessions",
+    "longDescription": "Tracks cumulative and today token usage from local Codex session exports, estimates USD from your custom ratio, and surfaces live API activity with a polished local dashboard.",
+    "developerName": "Local Plugin",
+    "category": "Productivity",
+    "capabilities": [
+      "Interactive",
+      "Read"
+    ],
+    "websiteURL": "https://openai.com/",
+    "privacyPolicyURL": "https://openai.com/policies/privacy-policy/",
+    "termsOfServiceURL": "https://openai.com/policies/terms-of-use/",
+    "defaultPrompt": [
+      "Show my current Codex usage snapshot.",
+      "Start the Codex usage dashboard.",
+      "Refresh the local usage monitor snapshot."
+    ],
+    "brandColor": "#0F766E",
+    "composerIcon": "./assets/icon.svg",
+    "logo": "./assets/logo.svg",
+    "screenshots": []
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "codex-usage-monitor",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "snapshot": "node ./scripts/build-usage-snapshot.mjs",
+    "serve": "node ./scripts/serve-dashboard.mjs",
+    "test": "node ./tests/usage-core.test.mjs"
+  }
+}

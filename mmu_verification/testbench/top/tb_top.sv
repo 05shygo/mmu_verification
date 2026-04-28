@@ -358,6 +358,7 @@ bind mmu_arb      mmu_arb_sva         u_arb_sva   (.*);
 bind mmu_l2tlb    mmu_l2tlb_rrpv_sva  u_l2tlb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
 bind twu          mmu_twu_sva         u_twu_sva   (.*);
+bind twu          mmu_maee_twu_sva    u_maee_twu_sva (.*);
 bind ptw_mbuf     mmu_ptw_lsu_protocol_sva u_ptw_lsu_protocol_sva (.*);
 bind ct_mmu_iplru mmu_plru_sva        u_iplru_sva (.*);
 bind ct_mmu_dplru mmu_dplru_sva       u_dplru_sva (.*);

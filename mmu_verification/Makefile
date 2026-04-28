@@ -240,6 +240,13 @@ PHASE11_PROTOCOL_SUMMARY  ?= $(REGRESS_DIR)/phase11_protocol/summary.txt
 PHASE11_V3_SUMMARY        ?= $(REGRESS_DIR)/phase11_v3_gap/summary.txt
 
 #===============================================================================
+# Phase 12 - v4.0 MAEE / PTW-ready / TWU bypass regression
+#===============================================================================
+PHASE12_LIST              ?= $(SIMU_DIR)/mmu_v4_phase12_list
+PHASE12_SEEDS             ?= 95101 95102 95103
+PHASE12_SUMMARY           ?= $(REGRESS_DIR)/phase12_v4/summary.txt
+
+#===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
 #  phase7:  comp 后 3 个 TEST_NAME 各 run 一次，log 中 UVM_ERROR/FATAL=0
 #  phase7_cov: 同上以 run_cov 落 .vdb，再 urg → $(COV_DIR)/urgReport
@@ -288,6 +295,11 @@ print-phase11:
 	@echo "PHASE11_PROTOCOL_LIST  = $(PHASE11_PROTOCOL_LIST)"
 	@echo "PHASE11_V3_LIST        = $(PHASE11_V3_LIST)"
 	@echo "PHASE11_V3_SUMMARY     = $(PHASE11_V3_SUMMARY)"
+
+print-phase12:
+	@echo "PHASE12_LIST           = $(PHASE12_LIST)"
+	@echo "PHASE12_SEEDS          = $(PHASE12_SEEDS)"
+	@echo "PHASE12_SUMMARY        = $(PHASE12_SUMMARY)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -412,7 +424,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
         regress regress_smoke regress_nightly print-regress \
-        print-phase11 regress_v3_gap phase11_exit_check phase11_show_failures
+        print-phase11 print-phase12 regress_v3_gap regress_v4_maee_ptw phase11_exit_check phase11_show_failures
 
 all: comp run
 
@@ -504,6 +516,30 @@ regress_v3_gap: comp
 		echo "regress_v3_gap: scan_logs/check_sim_status returned $$scan_rc"; \
 	fi; \
 	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+regress_v4_maee_ptw: comp
+	@set +e; \
+	$(MAKE) regress \
+		LIST="$(PHASE12_LIST)" \
+		REGRESS_MODE=run_cov \
+		REGRESS_NAME=phase12_v4 \
+		REGRESS_SUMMARY="$(PHASE12_SUMMARY)" \
+		REGRESS_SEEDS="$(PHASE12_SEEDS)" \
+		REGRESS_MIN_PASS_RATE=1.0 \
+		VERBOSITY="$(VERBOSITY)" \
+		TIMEOUT="$(TIMEOUT)" \
+		UVM_ERR_ONLY="$(UVM_ERR_ONLY)"; \
+	reg_rc=$$?; \
+	set -e; \
+	if ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
+		$(MAKE) cov; \
+	else \
+		echo "No coverage databases found under $(COV_DIR); skipping URG."; \
+	fi; \
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "regress_v4_maee_ptw: underlying regression returned $$reg_rc"; \
 		exit 1; \
 	fi
 
@@ -715,6 +751,11 @@ help:
 	@echo "  Optional: PHASE11_BUG015_REVIEW=../doc/<closed_review>.md"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md §5):"
+	@echo "Phase 12 (MMU_UVM_TaskDivision.md Â§12):"
+	@echo "  make print-phase12                                    # show Phase12 list/seed/summary defaults"
+	@echo "  make regress_v4_maee_ptw                              # 3-seed Phase12 regression + coverage merge"
+	@echo ""
+	@echo "Phase 5 (MMU_UVM_TaskDivision.md Â§5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"
 	@echo "  make phase5_fast               # comp_fast + 5+3 SEEDs + UVM 0/0 检查（日常）"
 	@echo "  make phase5                    # comp + 5+3 SEEDs + UVM 0/0 检查（签核/CI）"

@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-28（Phase 11 已完成并完成退出准则检查；Phase 12 已解锁）
+> **更新**：2026-04-28（Phase 11 已完成并完成退出准则检查；Phase 12 A 侧 SVA / 回归入口已落地，B 侧 TC / CG / 回归待联调）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -22,7 +22,7 @@
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27） | ✅`phase9_generated_test_base` + `test_pkg` 已纳管 12 个新增 suite，并复用 3 个 `basic_tests` 基线入口；259 个 Phase 9 wrapper（总 262 stage 合同）已落地；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成 |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ✅ 完成（2026-04-27） | ✅ `make regress_smoke` 22/22 通过、100%；✅ `make regress_nightly` 1260/1325 通过、95.09%（门槛≥50%）；✅ URG baseline 报告已生成；`Makefile` `regress*` / `run_test.py` / `run_vcs_verdi.py` / `cov_hier.cfg` 与 B 侧 `simu/mmu_*_list` / `exclude.do` 已完成联调 |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28） | ✅ `bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `phase11_b_stage_manifest.csv` / `phase11_bug_hunt_matrix.md` 已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
-| **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | ⏳ 未开始（已解锁）   | —                                                                                                                                                               |
+| **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | 🔄 进行中（A 侧已落地） | A 侧：✅ `mmu_maee_twu_sva.sv` / `mmu_pmp_twu_sva.sv` / `Files.f` / `tb_top.sv` / `Makefile` `print-phase12` + `regress_v4_maee_ptw` 已落地；B 侧 TC / covergroup / `mmu_v4_phase12_list` 与 compile/regression 收口待完成 |
 | **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | 🔒 等待 Phase 12      | —                                                                                                                                                               |
 | **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | 🔒 等待 Phase 13      | —                                                                                                                                                               |
 
@@ -637,6 +637,41 @@
 
 ---
 
+## Phase 12 详细进度（🔄 进行中 — 2026-04-28）
+
+**负责**：工程师 B（主实现）/ 工程师 A（Phase 12 SVA + 回归入口）  
+**当前快照**：
+
+- A 侧：✅ 新增 `testbench/top/mmu_maee_twu_sva.sv`，落地 3 条 MAEE/TWU SVA：`sva_twu_maee_paths_mutex` / `sva_maee0_triggers_csr_req` / `sva_maee1_skips_csr_fsm`，并为每条断言补齐 `cover property`
+- A 侧：✅ 新增 `testbench/top/mmu_pmp_twu_sva.sv` 骨架，作为 Phase 13 完整 PMP/TWU SVA 的承接文件；本 phase 不提前实现完整 PMP 断言
+- A 侧：✅ `testbench/Files.f`、`testbench/top/tb_top.sv`、`Makefile` 已接入 Phase 12 SVA 与回归入口：`print-phase12`、`regress_v4_maee_ptw`
+- RTL 边界：当前 `twu.sv` 不存在 `thd_chk_csr_req` 路径，因此 MAEE SVA 按 RTL 真实实现锚定 FST/SCD 两级 CSR-vs-refill 选择点，不臆造 THD CSR 路径
+- B 侧待办：`testbench/test/maee_twu_tests/`、`ptw_tests/` Phase 12 扩展、9 个 covergroup、`simu/mmu_v4_phase12_list`，以及 compile / regression / coverage 联调收口
+- 本地验证说明：本次已完成静态接线自检；当前终端环境缺少可执行 `make` / 可用 `bash` 入口，尚未在本机完成 `make print-phase12`、compile、regression 实跑
+
+| 项目 | 负责人 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `testbench/top/mmu_maee_twu_sva.sv` | A | ✅ | Phase 12 MAEE/TWU 断言文件已落地，含 3 条 assert + 3 条 cover |
+| `testbench/top/mmu_pmp_twu_sva.sv` | A | ✅ | Phase 12 要求的可编译骨架已落地，完整属性留到 Phase 13 |
+| `testbench/Files.f` / `testbench/top/tb_top.sv` | A | ✅ | 已加入两份 Phase 12 SVA 文件，并为 `mmu_maee_twu_sva` 增加 `bind twu ...` |
+| `Makefile` `print-phase12` / `regress_v4_maee_ptw` | A | ✅ | 已补 `PHASE12_*` 默认变量与 Phase 12 回归入口 |
+| `maee_twu_tests/` + `ptw_tests/` Phase 12 扩展 | B | ⏳ | 待 B 侧补齐 Phase 12 testcase |
+| 9 个 Phase 12 covergroup + `mmu_v4_phase12_list` | B | ⏳ | 待 B 侧补齐覆盖率与回归列表 |
+
+### Phase 12 当前门禁状态
+
+| # | 检查项 | 状态 | 说明 |
+| - | ------ | ---- | ---- |
+| 1 | A 侧 Phase 12 SVA / 回归入口交付 | ✅ | `mmu_maee_twu_sva.sv`、`mmu_pmp_twu_sva.sv`、`Files.f`、`tb_top.sv`、`Makefile` 已更新 |
+| 2 | `mmu_maee_twu_sva.sv` 3 条 SVA 各有对应 `cover property` | ✅ | 已按 Phase 12 约束补齐 |
+| 3 | `mmu_pmp_twu_sva.sv` 骨架可继续承接 Phase 13 | ✅ | 当前仅保留骨架，不提前实现完整 PMP 逻辑 |
+| 4 | `print-phase12` / `regress_v4_maee_ptw` 入口落地 | ✅ | Makefile 已接入默认 list / seeds / summary |
+| 5 | Phase 12 testcase / covergroup / list 联调 | ⏳ | 依赖 B 侧交付 |
+| 6 | `make print-phase12` / compile / regression 实跑 | ⏳ | 当前终端环境缺少可执行 `make` / 可用 `bash` 入口，且 B 侧列表尚未收口 |
+| 7 | Phase 12 整体退出准则 | ⏳ | 待 B 侧 TC / CG / 回归与运行结果收口后再更新 |
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师      | 负责 Phase                                                                       | 主要文件数  | 核心难点                                                             |
@@ -660,5 +695,5 @@
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ✅**已达成**（2026-04-27）：`make phase8` 42-run 矩阵完成，14 个 vseq × 3 seeds 收口，统计摘要 / F 映射 / A Review 已留档                                                                 |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：`phase9_generated_test_base` + 12 suite + 3 个 basic 基线入口已纳管；259 个 Phase 9 wrapper（总 262 stage）编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档 |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ✅ **已达成**（2026-04-27）：`make regress_smoke` 22/22 通过、100%；`make regress_nightly` 1260/1325 通过、95.09%；URG baseline 报告已生成，A/B Phase 10 联调收口完成 |
-| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | 🔄 Phase 11 已达成（2026-04-28）；Phase 12–13 待后续                                                                                                                                      |
+| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | 🔄 Phase 11 已达成（2026-04-28）；Phase 12 A 侧 SVA / 回归入口已落地，待 B 侧 TC / CG / 回归收口；Phase 13 待后续                                                                                                    |
 | **M14** — 签核通过                 | Phase 14 退出准则（VerificationPlan §9） | ⏳                                                                                                                                                                      |

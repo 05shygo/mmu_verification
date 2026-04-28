@@ -30,10 +30,13 @@
 //       (not STAMO skip path) — covers probe wiring / hierarchy mismatch.
 // IFU: mmu_l1itlb can also complete a response on internal completion sources
 //   that the software ref does not observe cycle-accurately:
-//   - iutlb_acc_flt   : PTW/TWU access-fault completion
+//   - iutlb_acc_flt   : PTW/TWU access-fault completion. On this pulse
+//                       mmu_ifu_pavld can assert one cycle before the
+//                       architected deny bit (jtlb_acc_fault_flop) is visible
+//                       to the monitor.
 //   - iutlb_ref_pgflt : refill-state page-fault completion
-//   Only waive IFU fault mismatch when monitor observes the exact matching
-//   whitebox bit on the response cycle, under a narrow fault signature.
+//   Only waive IFU compare when monitor observes the exact matching whitebox
+//   bit on the response cycle, under a narrow completion signature.
 //
 // Pipe2 note: monitor does not yet merge VA into pipe2 rsp txn (Phase 6).
 //   If va2==0, the transaction is counted but PA comparison is skipped.
@@ -289,6 +292,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     // Ref does not model DTLB pre_sel/expt CAM; see file header.
     bit skip_lsu_dtlb_ref_fault_compare;
     bit skip_ifu_accerr_fault_compare;
+    bit skip_ifu_accerr_completion_compare;
     bit skip_ifu_refpgflt_fault_compare;
 
     // LSU: stats for fault responses under MMU (legacy visibility)
@@ -307,10 +311,24 @@ class mmu_translation_sb extends uvm_scoreboard;
             && (dut_pa == req_vpn) && !skip_ref_ppn_check)
       );
 
+    // IFU access-fault can surface in two observable forms:
+    //   1) completion-only pulse: pavld is visible while deny/pgflt are still 0
+    //   2) faulted response: deny is already visible on the sampled rsp cycle
+    // In both cases the software ref is not comparable because the rsp came
+    // from the internal PTW/TWU acc_err completion path rather than a normal
+    // translated fetch result.
+    skip_ifu_accerr_completion_compare = ifu_dbg_iutlb_acc_flt
+      && !tr_pgflt
+      && !tr_deny
+      && !ifu_dbg_iutlb_pmp_deny
+      && !ifu_dbg_iutlb_ref_pgflt
+      && !ifu_dbg_jtlb_acc_fault_flop;
+
     skip_ifu_accerr_fault_compare = ifu_dbg_iutlb_acc_flt
-      && (ref_rsp.exc == EXC_NONE)
-      && !ref_rsp.deny
-      && dut_fault;
+      && dut_fault
+      && !tr_pgflt
+      && !ifu_dbg_iutlb_pmp_deny
+      && !ifu_dbg_iutlb_ref_pgflt;
 
     skip_ifu_refpgflt_fault_compare = ifu_dbg_iutlb_ref_pgflt
       && (ref_rsp.exc == EXC_NONE)
@@ -321,7 +339,7 @@ class mmu_translation_sb extends uvm_scoreboard;
       && !ifu_dbg_iutlb_acc_flt
       && !ifu_dbg_jtlb_acc_fault_flop;
 
-    if (skip_ifu_accerr_fault_compare)
+    if (skip_ifu_accerr_fault_compare || skip_ifu_accerr_completion_compare)
       m_ifu_accerr_waive_rsp++;
     if (skip_ifu_refpgflt_fault_compare)
       m_ifu_refpgflt_waive_rsp++;
@@ -329,6 +347,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     // ── Exception / fault check ───────────────────────────────────────────
     if (exp_fault !== dut_fault) begin
       if (!skip_lsu_dtlb_ref_fault_compare
+          && !skip_ifu_accerr_completion_compare
           && !skip_ifu_accerr_fault_compare
           && !skip_ifu_refpgflt_fault_compare) begin
         if (fault_replay_rsp) begin
@@ -355,7 +374,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     end
 
     // ── PA check — only when both ref and DUT predict no fault ────────────
-    if (!exp_fault && !dut_fault) begin
+    if (!exp_fault && !dut_fault && !skip_ifu_accerr_completion_compare) begin
       if (!skip_ref_ppn_check && (ref_rsp.ppn !== dut_pa)) begin
         `uvm_error(get_type_name(),
           $sformatf("[%s] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h",
@@ -386,9 +405,14 @@ class mmu_translation_sb extends uvm_scoreboard;
           $sformatf("[%s] VA=0x%010h  DTLB pre_sel/expt path: not vs ref  exc=%s  expt_match=%0b  dut_fault=%0b  dut.pa=0x%07h  PASS (SB waive)",
             channel, {1'b0, va}, ref_rsp.exc.name(), dtlb_expt_match, dut_fault, dut_pa),
           UVM_HIGH)
+      end else if (skip_ifu_accerr_completion_compare) begin
+        `uvm_info(get_type_name(),
+          $sformatf("[%s] VA=0x%010h  PTW acc_err completion-only IFU rsp observed (dbg_iutlb_acc_flt=1, pavld before deny flop): compare waived  ref.exc=%s ref.deny=%0b dut.pgflt=%0b dut.deny=%0b",
+            channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, tr_pgflt, tr_deny),
+          UVM_HIGH)
       end else if (skip_ifu_accerr_fault_compare) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] VA=0x%010h  PTW acc_err completion observed (dbg_iutlb_acc_flt=1): fault mismatch waived  ref.exc=%s ref.deny=%0b dut_fault=%0b",
+          $sformatf("[%s] VA=0x%010h  PTW acc_err IFU rsp observed (dbg_iutlb_acc_flt=1): fault mismatch waived  ref.exc=%s ref.deny=%0b dut_fault=%0b",
             channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, dut_fault),
           UVM_HIGH)
       end else if (skip_ifu_refpgflt_fault_compare) begin

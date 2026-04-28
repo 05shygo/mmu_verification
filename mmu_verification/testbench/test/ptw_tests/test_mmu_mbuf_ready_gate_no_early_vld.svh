@@ -25,7 +25,7 @@ class test_mmu_mbuf_ready_gate_no_early_vld extends phase12_generated_test_base;
     p12_checker  = "sva_mbuf_waits_twu_ready + cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
     num_txn      = 96;
-    m_post_drain = 800ns;
+    m_post_drain = 1600ns;
   endfunction
 
   virtual task run_test_body();
@@ -50,6 +50,8 @@ class test_mmu_mbuf_ready_gate_no_early_vld extends phase12_generated_test_base;
       phase12_drive_lsu_rr(39'h0_3000_2000, 1, 1, LSU_PIPE1, 1'b1);
       phase12_cp0_tlb_allinv();
     end
+
+    phase12_config_ptw_responder(1, 4, 0);
 
     #(m_post_drain);
   endtask

@@ -2,8 +2,8 @@
 // MMU UVM Verification — testbench/env/mmu_ref_model.svh
 // Phase 4: MMU software reference model
 //
-// Implements Sv39 3-level page walk in software (4K happy path complete;
-// 2M/1G stubs in Phase 5).  Acts as the golden model for translation_sb.
+// Implements Sv39 3-level page walk in software, including 4K / 2M / 1G
+// leaf translation. Acts as the golden model for translation_sb.
 //
 // CSR mirror fields are updated via four TLM FIFOs (consumed in run_phase):
 //   af_csr_write    ← cp0_monitor.ap       (fan-out, Phase 5 connect)
@@ -174,8 +174,10 @@ class mmu_ref_model extends uvm_component;
   //   · A/D bit: Phase 4 — warn if A=0 or (store && D=0); no fault
   //
   // [Decision 5] Assemble PA:
-  //   PA = {leaf_ppn[PPN_WIDTH-1:0], VA[11:0]}  (4K page)
-  //   For huge pages (level>0 leaf): also zero the lower PPN bits (Phase 5)
+  //   level 0 (4K): PA[39:12] = leaf_ppn[27:0]
+  //   level 1 (2M): PA[39:12] = {leaf_ppn[27:9],  VA[20:12]}
+  //   level 2 (1G): PA[39:12] = {leaf_ppn[27:18], VA[29:12]}
+  //   Misaligned superpages (leaf lower PPN bits non-zero) fault per Sv39.
   //
   // Returns xlation_rsp_t with ppn, exc, and attribute bits.
   // sec/ca/buf_en/sh/so are set to 0 in Phase 4 (Phase 5: drive from SysMap)
@@ -252,6 +254,7 @@ class mmu_ref_model extends uvm_component;
       automatic pte_t  pte;
       automatic bit    is_leaf;
       automatic ppn_t  leaf_ppn;
+      automatic ppn_t  final_ppn;
 
       is_leaf = 0;
 
@@ -371,21 +374,44 @@ class mmu_ref_model extends uvm_component;
               UVM_HIGH)
 
           // ---- [Decision 5] Assemble PA --------------------------------
-          // For 4K (level=0): PA[39:12] = leaf_ppn[27:0], PA[11:0] = VA[11:0]
-          // For huge pages: Phase 5 (zero lower PPN bits per level)
-          if (level > 0) begin
-            // Huge page detected: Phase 5 TODO
-            // For now: warn and use leaf_ppn directly
-            `uvm_info(get_type_name(),
-              $sformatf("translate HUGE PAGE L%0d va=0x%010h (phase 4: ppn used as-is)",
-                level, va), UVM_LOW)
-          end
-          rsp.ppn = leaf_ppn;
+          // Sv39 superpages splice lower PA PPN bits from the VA VPN fields.
+          // The leaf PTE must therefore be aligned at the corresponding level.
+          final_ppn = leaf_ppn;
+          unique case (level)
+            2: begin
+              if (leaf_ppn[17:0] != '0) begin
+                rsp.exc = EXC_PAGE_FAULT;
+                m_n_page_faults++;
+                `uvm_info(get_type_name(),
+                  $sformatf("translate PAGE_FAULT (misaligned 1G leaf): va=0x%010h leaf_ppn=0x%07h",
+                    va, leaf_ppn),
+                  UVM_MEDIUM)
+                return rsp;
+              end
+              final_ppn = {leaf_ppn[PPN_WIDTH-1:18], va[29:12]};
+            end
+            1: begin
+              if (leaf_ppn[8:0] != '0) begin
+                rsp.exc = EXC_PAGE_FAULT;
+                m_n_page_faults++;
+                `uvm_info(get_type_name(),
+                  $sformatf("translate PAGE_FAULT (misaligned 2M leaf): va=0x%010h leaf_ppn=0x%07h",
+                    va, leaf_ppn),
+                  UVM_MEDIUM)
+                return rsp;
+              end
+              final_ppn = {leaf_ppn[PPN_WIDTH-1:9], va[20:12]};
+            end
+            default: begin
+              final_ppn = leaf_ppn;
+            end
+          endcase
+          rsp.ppn = final_ppn;
 
           // PMP deny is modeled as fault-class outcome so translation_sb can
           // compare against IFU deny / LSU access_fault consistently.
           begin
-            pa_t pa_full = pa_t'({leaf_ppn, va[11:0]});
+            pa_t pa_full = pa_t'({rsp.ppn, va[11:0]});
             if (!check_pmp(pa_full, acc, resolved_pmp_port_idx)) begin
               rsp.deny = 1'b1;
               rsp.exc  = (acc == ACC_FETCH) ? EXC_PMP_DENY : EXC_ACCESS_FAULT;
@@ -398,8 +424,8 @@ class mmu_ref_model extends uvm_component;
           end
 
           `uvm_info(get_type_name(),
-            $sformatf("translate OK: va=0x%010h → ppn=0x%07h L%0d pte=0x%016h",
-              va, leaf_ppn, level, pte), UVM_MEDIUM)
+            $sformatf("translate OK: va=0x%010h → ppn=0x%07h leaf_ppn=0x%07h L%0d pte=0x%016h",
+              va, rsp.ppn, leaf_ppn, level, pte), UVM_MEDIUM)
           return rsp;
         end
 

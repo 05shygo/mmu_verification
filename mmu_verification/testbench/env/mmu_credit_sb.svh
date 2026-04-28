@@ -357,9 +357,11 @@ class mmu_credit_sb extends uvm_scoreboard;
   endtask
 
   // ── phase_ready_to_end: allow late PTW completion / abort settle ─────────
-  // The PTW->LSU channel is single-outstanding and responder latency is small
-  // (normally 1..8 cycles). Give it one bounded settle window before
-  // report_phase so a final in-flight memory response can retire cleanly.
+  // The PTW->LSU channel is single-outstanding, but some directed tests
+  // intentionally stretch responder latency into the 64..160 cycle range and
+  // may leave a bounded PTW mbuf backlog draining after stimulus stops. Give
+  // it one bounded settle window before report_phase so a final in-flight
+  // response or cancel path can retire cleanly without hiding real leaks.
   virtual function void phase_ready_to_end(uvm_phase phase);
     if (phase.get_name() != "run")
       return;
@@ -389,7 +391,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     int unsigned max_wait_cycles;
 
     wait_cycles     = 0;
-    max_wait_cycles = 64;
+    max_wait_cycles = 2048;
 
     while ((m_ptw_mbuf_cnt != 0) &&
            (wait_cycles < max_wait_cycles)) begin

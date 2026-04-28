@@ -11,6 +11,9 @@
 //   pipe0/pipe1 are each 1-outstanding per stall protocol; FIFO order holds.
 //   ap_pipe0_rsp / ap_pipe1_rsp txns carry VA+id+st_inst merged from the req
 //   so that downstream mmu_translation_sb can call ref_model.translate().
+//   Same-cycle hit responses are sampled immediately once the pending queue
+//   becomes non-empty, and AP broadcasts use cloned objects so downstream
+//   subscribers cannot mutate monitor-owned pending state.
 //
 // Phase 5 downstream connections:
 //   ap_pipe0_rsp → mmu_translation_sb.af_lsu_pipe0_rsp
@@ -52,6 +55,43 @@ class lsu_monitor extends uvm_monitor;
   // 0 when va_vld falls, the driver timed out → discard the pending entry.
   protected bit m_p0_rsp_seen;
   protected bit m_p1_rsp_seen;
+
+  protected function lsu_txn _clone_txn(lsu_txn src, string name);
+    lsu_txn dst;
+    dst = lsu_txn::type_id::create(name);
+    dst.copy(src);
+    return dst;
+  endfunction
+
+  protected function void _sample_pipe0_rsp_fields(ref lsu_txn tr);
+    tr.kind             = LSU_PIPE0;
+    tr.pa               = vif.monitor_cb.mmu_lsu_pa0;
+    tr.pgflt            = vif.monitor_cb.mmu_lsu_page_fault0;
+    tr.access_fault     = vif.monitor_cb.mmu_lsu_access_fault0;
+    tr.stall            = vif.monitor_cb.mmu_lsu_stall0;
+    tr.sec              = vif.monitor_cb.mmu_lsu_sec0;
+    tr.mmu_en           = vif.monitor_cb.mmu_lsu_mmu_en;
+    tr.tlb_busy         = vif.monitor_cb.mmu_lsu_tlb_busy;
+    tr.tlb_wakeup       = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+    tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
+    tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
+    tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match0;
+  endfunction
+
+  protected function void _sample_pipe1_rsp_fields(ref lsu_txn tr);
+    tr.kind             = LSU_PIPE1;
+    tr.pa               = vif.monitor_cb.mmu_lsu_pa1;
+    tr.pgflt            = vif.monitor_cb.mmu_lsu_page_fault1;
+    tr.access_fault     = vif.monitor_cb.mmu_lsu_access_fault1;
+    tr.stall            = vif.monitor_cb.mmu_lsu_stall1;
+    tr.sec              = vif.monitor_cb.mmu_lsu_sec1;
+    tr.mmu_en           = vif.monitor_cb.mmu_lsu_mmu_en;
+    tr.tlb_busy         = vif.monitor_cb.mmu_lsu_tlb_busy;
+    tr.tlb_wakeup       = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+    tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
+    tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
+    tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match1;
+  endfunction
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -111,8 +151,8 @@ class lsu_monitor extends uvm_monitor;
         UVM_DEBUG)
       `uvm_info(get_type_name(), {"P0 REQ: ", tr.convert2string()}, UVM_HIGH)
       m_p0_rsp_seen = 0;
-      m_pending_p0.push_back(tr);
-      ap_pipe0_req.write(tr);
+      m_pending_p0.push_back(_clone_txn(tr, "lsu_p0_req_pending"));
+      ap_pipe0_req.write(_clone_txn(tr, "lsu_p0_req_ap"));
       // Wait for va0_vld to deassert (rising-edge semantics)
       @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va0_vld);
       // If va0_vld fell without a matching pa0_vld (driver timeout),
@@ -123,32 +163,23 @@ class lsu_monitor extends uvm_monitor;
         `uvm_info(get_type_name(),
           $sformatf("P0 REQ dropped (no pa0_vld before va0_vld deassert): VA=0x%016h id=%0d",
             tr.va, tr.id), UVM_DEBUG)
-        ap_pipe0_drop.write(drop_tr);
+        ap_pipe0_drop.write(_clone_txn(drop_tr, "lsu_p0_drop_ap"));
       end
     end
   endtask
 
   // ── Pipe 0 response ───────────────────────────────────────────────────────
-  // Wait for a matching req in the queue before latching pa_vld, so tr.pa
-  // cannot be sampled while the FIFO is empty (race with the req process).
+  // Wait for a matching req in the queue before latching pa_vld. If pa0_vld is
+  // already high on the same sampled cycle as the req, capture it immediately
+  // instead of waiting for a later edge and risking req/rsp skew.
   protected task _collect_pipe0_rsp();
     lsu_txn tr, req_tr;
     forever begin
       wait(m_pending_p0.size() > 0);
-      @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa0_vld);
+      if (!vif.monitor_cb.mmu_lsu_pa0_vld)
+        @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa0_vld);
       tr              = lsu_txn::type_id::create("lsu_p0_rsp");
-      tr.kind         = LSU_PIPE0;
-      tr.pa           = vif.monitor_cb.mmu_lsu_pa0;
-      tr.pgflt        = vif.monitor_cb.mmu_lsu_page_fault0;
-      tr.access_fault = vif.monitor_cb.mmu_lsu_access_fault0;
-      tr.stall        = vif.monitor_cb.mmu_lsu_stall0;
-      tr.sec          = vif.monitor_cb.mmu_lsu_sec0;
-      tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
-      tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
-      tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
-      tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
-      tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
-      tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match0;
+      _sample_pipe0_rsp_fields(tr);
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
       req_tr      = m_pending_p0.pop_front();
       m_p0_rsp_seen = 1;
@@ -162,7 +193,7 @@ class lsu_monitor extends uvm_monitor;
           vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup, m_pending_p0.size()),
         UVM_DEBUG)
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
-      ap_pipe0_rsp.write(tr);
+      ap_pipe0_rsp.write(_clone_txn(tr, "lsu_p0_rsp_ap"));
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa0_vld);
     end
   endtask
@@ -189,8 +220,8 @@ class lsu_monitor extends uvm_monitor;
           vif.monitor_cb.mmu_lsu_mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup),
         UVM_DEBUG)
       m_p1_rsp_seen = 0;
-      m_pending_p1.push_back(tr);
-      ap_pipe1_req.write(tr);
+      m_pending_p1.push_back(_clone_txn(tr, "lsu_p1_req_pending"));
+      ap_pipe1_req.write(_clone_txn(tr, "lsu_p1_req_ap"));
       @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va1_vld);
       if (!m_p1_rsp_seen && m_pending_p1.size() > 0) begin
         lsu_txn drop_tr;
@@ -198,7 +229,7 @@ class lsu_monitor extends uvm_monitor;
         `uvm_info(get_type_name(),
           $sformatf("P1 REQ dropped (no pa1_vld before va1_vld deassert): VA=0x%016h id=%0d",
             tr.va, tr.id), UVM_DEBUG)
-        ap_pipe1_drop.write(drop_tr);
+        ap_pipe1_drop.write(_clone_txn(drop_tr, "lsu_p1_drop_ap"));
       end
     end
   endtask
@@ -208,20 +239,10 @@ class lsu_monitor extends uvm_monitor;
     lsu_txn tr, req_tr;
     forever begin
       wait(m_pending_p1.size() > 0);
-      @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa1_vld);
+      if (!vif.monitor_cb.mmu_lsu_pa1_vld)
+        @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa1_vld);
       tr              = lsu_txn::type_id::create("lsu_p1_rsp");
-      tr.kind         = LSU_PIPE1;
-      tr.pa           = vif.monitor_cb.mmu_lsu_pa1;
-      tr.pgflt        = vif.monitor_cb.mmu_lsu_page_fault1;
-      tr.access_fault = vif.monitor_cb.mmu_lsu_access_fault1;
-      tr.stall        = vif.monitor_cb.mmu_lsu_stall1;
-      tr.sec          = vif.monitor_cb.mmu_lsu_sec1;
-      tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
-      tr.tlb_busy     = vif.monitor_cb.mmu_lsu_tlb_busy;
-      tr.tlb_wakeup   = vif.monitor_cb.mmu_lsu_tlb_wakeup;
-      tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
-      tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
-      tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match1;
+      _sample_pipe1_rsp_fields(tr);
       req_tr      = m_pending_p1.pop_front();
       m_p1_rsp_seen = 1;
       tr.va       = req_tr.va;
@@ -248,7 +269,7 @@ class lsu_monitor extends uvm_monitor;
             vif.monitor_cb.mmu_lsu_mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup),
           UVM_NONE)
       end
-      ap_pipe1_rsp.write(tr);
+      ap_pipe1_rsp.write(_clone_txn(tr, "lsu_p1_rsp_ap"));
       @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa1_vld);
     end
   endtask

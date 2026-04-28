@@ -25,7 +25,7 @@ class test_mmu_mbuf_have_no_resend extends phase12_generated_test_base;
     p12_checker  = "sva_mbuf_have_no_resend + cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
     num_txn      = 96;
-    m_post_drain = 800ns;
+    m_post_drain = 2200ns;
   endfunction
 
   virtual task run_test_body();
@@ -52,6 +52,8 @@ class test_mmu_mbuf_have_no_resend extends phase12_generated_test_base;
         end
       join
     end
+
+    phase12_config_ptw_responder(1, 4, 0);
 
     #(m_post_drain);
   endtask

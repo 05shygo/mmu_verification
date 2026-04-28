@@ -25,7 +25,10 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
     num_txn      = 128;
-    m_post_drain = 800ns;
+    // Slow PTW plus repeated invalidate can leave a genuine PTW mbuf backlog
+    // after direct traffic generation stops. Give the tail enough time to
+    // retire cleanly before end-of-sim conservation checks.
+    m_post_drain = 3000ns;
   endfunction
 
   virtual task run_test_body();
@@ -55,6 +58,11 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
           phase12_cp0_tlb_allinv();
       end
     join
+
+    // Stop creating new backpressure and switch the responder back to the
+    // normal fast mode so any remaining PTW mbuf backlog can drain.
+    phase12_set_pmp_allow_all();
+    phase12_config_ptw_responder(1, 4, 0);
 
     #(m_post_drain);
   endtask

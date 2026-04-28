@@ -25,7 +25,7 @@ class test_mmu_twu_idle_implies_no_mask extends phase12_generated_test_base;
     p12_checker  = "sva_twu_idle_implies_no_mask + cg_twu_idle_vs_mask_state";
     p12_reviewer = "A+B";
     num_txn      = 96;
-    m_post_drain = 700ns;
+    m_post_drain = 1600ns;
   endfunction
 
   virtual task run_test_body();
@@ -56,6 +56,8 @@ class test_mmu_twu_idle_implies_no_mask extends phase12_generated_test_base;
         phase12_set_pmp_allow_all();
       end
     join
+
+    phase12_config_ptw_responder(1, 4, 0);
 
     #(m_post_drain);
   endtask

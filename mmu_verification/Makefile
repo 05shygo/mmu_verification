@@ -199,11 +199,19 @@ URG_OPTS        := -dir $(COV_DIR)/*.vdb \
                    -format both \
                    -report $(COV_DIR)/urgReport
 
+# Coverage must be enabled at compile time; otherwise run_cov can launch simv
+# with -cm_* switches yet still miss the instrumentation needed for URG/VDB.
+# Phase 12 whitebox covergroups share the same VDB flow and therefore also
+# require the compile step to be coverage-enabled.
 COV_TAG         ?= $(TEST_NAME)_$(SEED)
-COV_OPTS        := -cm line+cond+fsm+tgl+branch+assert \
+COV_METRICS     := line+cond+fsm+tgl+branch+assert
+COV_HIER_CFG    := $(PROJECT_DIR)/scripts/cov_hier.cfg
+COV_COMPILE_OPTS:= -cm $(COV_METRICS) \
+                   -cm_hier $(COV_HIER_CFG)
+COV_RUN_OPTS    := -cm $(COV_METRICS) \
                    -cm_name $(COV_TAG) \
                    -cm_dir $(COV_DIR)/$(COV_TAG).vdb \
-                   -cm_hier $(PROJECT_DIR)/scripts/cov_hier.cfg
+                   -cm_hier $(COV_HIER_CFG)
 
 #===============================================================================
 # Phase 10 - regression wrappers and coverage baseline
@@ -889,6 +897,7 @@ comp_all: setup check_env
 	TB_DIR=$(TB_DIR) \
 	CV_DV_UTILS_DIR=$(CV_DV_UTILS_DIR) \
 	$(VCS) $(VCS_ELAB_OPTS) \
+		$(COV_COMPILE_OPTS) \
 		$(INCDIR) \
 		$(TB_FLIST) \
 		$(TOP_FILE) \
@@ -1035,7 +1044,7 @@ run_cov: setup
 		cd $(OUTPUT_DIR) && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
-			$(COV_OPTS) \
+			$(COV_RUN_OPTS) \
 			-l $(LOG_DIR)/$(COV_TAG)_cov.log; \
 	fi
 

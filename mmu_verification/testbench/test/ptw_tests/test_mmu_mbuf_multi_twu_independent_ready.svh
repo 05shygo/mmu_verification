@@ -25,7 +25,7 @@ class test_mmu_mbuf_multi_twu_independent_ready extends phase12_generated_test_b
     p12_checker  = "cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
     num_txn      = 128;
-    m_post_drain = 900ns;
+    m_post_drain = 1600ns;
   endfunction
 
   virtual task run_test_body();
@@ -49,6 +49,8 @@ class test_mmu_mbuf_multi_twu_independent_ready extends phase12_generated_test_b
         end
       join
     end
+
+    phase12_config_ptw_responder(1, 4, 0);
 
     #(m_post_drain);
   endtask

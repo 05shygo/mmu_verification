@@ -25,7 +25,7 @@ class test_mmu_arb_refill_except_priority extends phase12_generated_test_base;
     p12_checker  = "sva_twu_din_stable_on_grant + cg_arb_grant_type";
     p12_reviewer = "A+B";
     num_txn      = 128;
-    m_post_drain = 900ns;
+    m_post_drain = 1600ns;
   endfunction
 
   virtual task run_test_body();
@@ -56,6 +56,8 @@ class test_mmu_arb_refill_except_priority extends phase12_generated_test_base;
         end
       end
     join
+
+    phase12_config_ptw_responder(1, 4, 0);
 
     #(m_post_drain);
   endtask

@@ -30,6 +30,7 @@ interface ifu_if (
   logic        mmu_ifu_sec;
   logic        dbg_iutlb_acc_flt;
   logic        dbg_iutlb_pmp_deny;
+  logic        dbg_iutlb_ref_pgflt;
   logic        dbg_jtlb_acc_fault_flop;
 
   // -------------------------------------------------------------------------
@@ -67,6 +68,7 @@ interface ifu_if (
     input mmu_ifu_sec;
     input dbg_iutlb_acc_flt;
     input dbg_iutlb_pmp_deny;
+    input dbg_iutlb_ref_pgflt;
     input dbg_jtlb_acc_fault_flop;
   endclocking
 

@@ -118,6 +118,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected task _drive_pipe0();
     lsu_txn tr;
     forever begin
+      bit got_rsp;
       _get_kind(LSU_PIPE0, tr);
       `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_DEBUG)
       repeat (tr.idle_cycles) @(vif.driver_cb);
@@ -136,11 +137,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_vabuf0   <= tr.vabuf;
       @(vif.driver_cb);
 
+      got_rsp = 1'b0;
       if (tr.abort != 1'b1) begin
         fork
           begin : wait_rsp_p0
             if (vif.driver_cb.mmu_lsu_pa0_vld !== 1'b1)
               @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa0_vld === 1'b1);
+            got_rsp         = 1'b1;
             tr.pa           = vif.driver_cb.mmu_lsu_pa0;
             tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
             tr.access_fault = vif.driver_cb.mmu_lsu_access_fault0;
@@ -157,6 +160,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         disable fork;
       end
 
+      // Keep the request stable through the sampled response beat. Dropping
+      // va*_vld on the very same beat as pa*_vld can make monitor-side
+      // sampling ambiguous when DUT response muxing is still driven from the
+      // retiring request context.
+      if (got_rsp)
+        @(vif.driver_cb);
+
       vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
       vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
       @(vif.driver_cb);
@@ -169,6 +179,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected task _drive_pipe1();
     lsu_txn tr;
     forever begin
+      bit got_rsp;
       _get_kind(LSU_PIPE1, tr);
       `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_DEBUG)
       repeat (tr.idle_cycles) @(vif.driver_cb);
@@ -187,11 +198,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_vabuf1   <= tr.vabuf;
       @(vif.driver_cb);
 
+      got_rsp = 1'b0;
       if (tr.abort != 1'b1) begin
         fork
           begin : wait_rsp_p1
             if (vif.driver_cb.mmu_lsu_pa1_vld !== 1'b1)
               @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa1_vld === 1'b1);
+            got_rsp         = 1'b1;
             tr.pa           = vif.driver_cb.mmu_lsu_pa1;
             tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;
             tr.access_fault = vif.driver_cb.mmu_lsu_access_fault1;
@@ -207,6 +220,9 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         join_any
         disable fork;
       end
+
+      if (got_rsp)
+        @(vif.driver_cb);
 
       vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
       vif.driver_cb.lsu_mmu_abort1  <= 1'b0;

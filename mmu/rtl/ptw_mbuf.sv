@@ -591,9 +591,8 @@ end
 //                                                       (最后一级不应再作为 PDE 缓存)
 assign mbuf_cache_upd = pde_updata_data_vld
                       & pde_updata_data_flop[0]                    // V = 1
-                      & (!pde_updata_data_flop[1]                  // R = 0
-                      &  !pde_updata_data_flop[3])                 // X = 0   -> 非叶子
-                      & (!(pde_updata_data_flop[2] | pde_updata_lvl[0]));  // W = 0 且 非第 3 级 PTW 检查
+                      & (!(pde_updata_data_flop[1] |pde_updata_data_flop[3]      //R=0           // X = 0   -> 非叶子
+                           pde_updata_data_flop[2] | pde_updata_lvl[0]));  // W = 0 且 非第 3 级 PTW 检查
 
 assign mbuf_cache_upd_ppn[PPN_WIDTH-1:0] = pde_updata_data_flop[PPN_WIDTH+9:10];
 assign mbuf_cache_upd_lvl[1:0] = pde_updata_lvl[2:1];

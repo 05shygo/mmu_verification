@@ -115,15 +115,348 @@ class lsu_monitor extends uvm_monitor;
 
   virtual task run_phase(uvm_phase phase);
     fork
-      _collect_pipe0_req();
-      _collect_pipe0_rsp();
-      _collect_pipe1_req();
-      _collect_pipe1_rsp();
+      _collect_pipe0_sm();
+      _collect_pipe1_sm();
       _collect_pipe2_req();
       _collect_pipe2_rsp();
       _collect_inv();
       _collect_stamo();
     join_none
+  endtask
+
+  // ── Pipe 0 single-state monitor ──────────────────────────────────────────
+  // Use a single per-pipe state machine so request open / response bind /
+  // drop cleanup all observe one coherent sampled timeline. This avoids
+  // binding a residual pa0_vld tail from the previous request to a new req.
+  protected task _collect_pipe0_sm();
+    lsu_txn pending_req;
+    bit     has_pending;
+    bit     prev_rsp_seen;
+    bit     rsp_tail_hold;
+    bit [63:0] rsp_tail_va;
+    bit [6:0]  rsp_tail_id;
+    bit        rsp_tail_st_inst;
+    bit        rsp_tail_abort;
+    int unsigned drop_reopen_block;
+    bit [63:0] drop_reopen_va;
+    bit        drop_reopen_abort;
+
+    has_pending       = 1'b0;
+    prev_rsp_seen     = 1'b0;
+    rsp_tail_hold     = 1'b0;
+    rsp_tail_va       = '0;
+    rsp_tail_id       = '0;
+    rsp_tail_st_inst  = 1'b0;
+    rsp_tail_abort    = 1'b0;
+    drop_reopen_block = 0;
+    drop_reopen_va    = '0;
+    drop_reopen_abort = 1'b0;
+
+    forever begin
+      lsu_txn req_tr, rsp_tr, drop_tr;
+      bit     req_seen;
+      bit     rsp_seen;
+      bit     fresh_rsp;
+      bit     hold_blocks_reopen;
+      bit [63:0] cur_va;
+      bit [6:0]  cur_id;
+      bit        cur_st_inst;
+      bit        cur_abort;
+      bit [27:0] cur_vabuf;
+
+      @(vif.monitor_cb);
+
+      if (vif.rst_ni !== 1'b1) begin
+        has_pending       = 1'b0;
+        prev_rsp_seen     = 1'b0;
+        rsp_tail_hold     = 1'b0;
+        rsp_tail_va       = '0;
+        rsp_tail_id       = '0;
+        rsp_tail_st_inst  = 1'b0;
+        rsp_tail_abort    = 1'b0;
+        drop_reopen_block = 0;
+        drop_reopen_va    = '0;
+        drop_reopen_abort = 1'b0;
+        continue;
+      end
+
+      req_seen    = vif.monitor_cb.lsu_mmu_va0_vld;
+      rsp_seen    = vif.monitor_cb.mmu_lsu_pa0_vld;
+      fresh_rsp   = rsp_seen && !prev_rsp_seen;
+      cur_va      = vif.monitor_cb.lsu_mmu_va0;
+      cur_id      = vif.monitor_cb.lsu_mmu_id0;
+      cur_st_inst = vif.monitor_cb.lsu_mmu_st_inst0;
+      cur_abort   = vif.monitor_cb.lsu_mmu_abort0;
+      cur_vabuf   = vif.monitor_cb.lsu_mmu_vabuf0;
+
+      if (rsp_tail_hold &&
+          (!req_seen
+           || (cur_va      !== rsp_tail_va)
+           || (cur_id      !== rsp_tail_id)
+           || (cur_st_inst !== rsp_tail_st_inst)
+           || (cur_abort   !== rsp_tail_abort))) begin
+        rsp_tail_hold = 1'b0;
+      end
+
+      hold_blocks_reopen = rsp_tail_hold
+                        && req_seen
+                        && (cur_va      === rsp_tail_va)
+                        && (cur_id      === rsp_tail_id)
+                        && (cur_st_inst === rsp_tail_st_inst)
+                        && (cur_abort   === rsp_tail_abort);
+      hold_blocks_reopen = hold_blocks_reopen || (drop_reopen_block != 0);
+
+      if (req_seen && !has_pending && !hold_blocks_reopen) begin
+        req_tr           = lsu_txn::type_id::create("lsu_p0_req_sm");
+        req_tr.kind      = LSU_PIPE0;
+        req_tr.va        = cur_va;
+        req_tr.id        = cur_id;
+        req_tr.st_inst   = cur_st_inst;
+        req_tr.abort     = cur_abort;
+        req_tr.vabuf     = cur_vabuf;
+        req_tr.tlb_busy  = vif.monitor_cb.mmu_lsu_tlb_busy;
+        req_tr.tlb_wakeup= vif.monitor_cb.mmu_lsu_tlb_wakeup;
+        pending_req      = _clone_txn(req_tr, "lsu_p0_req_pending_sm");
+        has_pending      = 1'b1;
+        `uvm_info(get_type_name(),
+          $sformatf("[LSU_P0_REQ_DBG] open pending: va=0x%010h id=%0d st=%0b abort=%0b pavld=%0b pa=0x%07h mmu_en=%0b tlb_busy=%0b wakeup=0x%03h",
+            {1'b0, req_tr.va[38:0]}, req_tr.id, req_tr.st_inst, req_tr.abort,
+            vif.monitor_cb.mmu_lsu_pa0_vld, vif.monitor_cb.mmu_lsu_pa0,
+            vif.monitor_cb.mmu_lsu_mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy,
+            vif.monitor_cb.mmu_lsu_tlb_wakeup),
+          UVM_DEBUG)
+        `uvm_info(get_type_name(), {"P0 REQ: ", req_tr.convert2string()}, UVM_HIGH)
+        ap_pipe0_req.write(_clone_txn(req_tr, "lsu_p0_req_ap_sm"));
+      end
+
+      if (fresh_rsp) begin
+        if (!has_pending) begin
+          if (drop_reopen_block != 0) begin
+            `uvm_warning(get_type_name(),
+              $sformatf("[LSU_P0_LATE_RSP_AFTER_DROP] ignore rsp during drop barrier: dropped_va=0x%010h dropped_abort=%0b cur_va=0x%010h pa=0x%07h pgflt=%0b acflt=%0b",
+                {1'b0, drop_reopen_va[38:0]}, drop_reopen_abort,
+                {1'b0, cur_va[38:0]}, vif.monitor_cb.mmu_lsu_pa0,
+                vif.monitor_cb.mmu_lsu_page_fault0, vif.monitor_cb.mmu_lsu_access_fault0))
+          end else begin
+            `uvm_warning(get_type_name(),
+              $sformatf("[LSU_P0_ORPHAN_RSP] rsp observed without pending req: cur_va=0x%010h pa=0x%07h pgflt=%0b acflt=%0b",
+                {1'b0, cur_va[38:0]}, vif.monitor_cb.mmu_lsu_pa0,
+                vif.monitor_cb.mmu_lsu_page_fault0, vif.monitor_cb.mmu_lsu_access_fault0))
+          end
+        end else begin
+          rsp_tr = lsu_txn::type_id::create("lsu_p0_rsp_sm");
+          _sample_pipe0_rsp_fields(rsp_tr);
+          rsp_tr.va      = pending_req.va;
+          rsp_tr.id      = pending_req.id;
+          rsp_tr.st_inst = pending_req.st_inst;
+          rsp_tr.abort   = pending_req.abort;
+          rsp_tr.vabuf   = pending_req.vabuf;
+          `uvm_info(get_type_name(),
+            $sformatf("[LSU_P0_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h",
+              {1'b0, pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.id,
+              rsp_tr.pa, rsp_tr.pgflt, rsp_tr.access_fault, rsp_tr.stall,
+              rsp_tr.mmu_en, rsp_tr.dtlb_expt_match,
+              vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup),
+            UVM_DEBUG)
+          rsp_tail_hold    = req_seen;
+          rsp_tail_va      = pending_req.va;
+          rsp_tail_id      = pending_req.id;
+          rsp_tail_st_inst = pending_req.st_inst;
+          rsp_tail_abort   = pending_req.abort;
+          has_pending      = 1'b0;
+          `uvm_info(get_type_name(), {"P0 RSP: ", rsp_tr.convert2string()}, UVM_HIGH)
+          ap_pipe0_rsp.write(_clone_txn(rsp_tr, "lsu_p0_rsp_ap_sm"));
+        end
+      end
+
+      if (!fresh_rsp && has_pending && !req_seen) begin
+        drop_tr       = _clone_txn(pending_req, "lsu_p0_drop_sm");
+        has_pending   = 1'b0;
+        drop_reopen_block = 2;
+        drop_reopen_va    = drop_tr.va;
+        drop_reopen_abort = drop_tr.abort;
+        `uvm_info(get_type_name(),
+          $sformatf("P0 REQ dropped before rsp: VA=0x%016h id=%0d",
+            drop_tr.va, drop_tr.id), UVM_DEBUG)
+        ap_pipe0_drop.write(_clone_txn(drop_tr, "lsu_p0_drop_ap_sm"));
+      end
+
+      if (drop_reopen_block != 0) begin
+        drop_reopen_block--;
+        if (drop_reopen_block == 0) begin
+          drop_reopen_va    = '0;
+          drop_reopen_abort = 1'b0;
+        end
+      end
+
+      prev_rsp_seen = rsp_seen;
+    end
+  endtask
+
+  // ── Pipe 1 single-state monitor ──────────────────────────────────────────
+  protected task _collect_pipe1_sm();
+    lsu_txn pending_req;
+    bit     has_pending;
+    bit     prev_rsp_seen;
+    bit     rsp_tail_hold;
+    bit [63:0] rsp_tail_va;
+    bit [6:0]  rsp_tail_id;
+    bit        rsp_tail_st_inst;
+    bit        rsp_tail_abort;
+    int unsigned drop_reopen_block;
+    bit [63:0] drop_reopen_va;
+    bit        drop_reopen_abort;
+
+    has_pending       = 1'b0;
+    prev_rsp_seen     = 1'b0;
+    rsp_tail_hold     = 1'b0;
+    rsp_tail_va       = '0;
+    rsp_tail_id       = '0;
+    rsp_tail_st_inst  = 1'b0;
+    rsp_tail_abort    = 1'b0;
+    drop_reopen_block = 0;
+    drop_reopen_va    = '0;
+    drop_reopen_abort = 1'b0;
+
+    forever begin
+      lsu_txn req_tr, rsp_tr, drop_tr;
+      bit     req_seen;
+      bit     rsp_seen;
+      bit     fresh_rsp;
+      bit     hold_blocks_reopen;
+      bit [63:0] cur_va;
+      bit [6:0]  cur_id;
+      bit        cur_st_inst;
+      bit        cur_abort;
+      bit [27:0] cur_vabuf;
+
+      @(vif.monitor_cb);
+
+      if (vif.rst_ni !== 1'b1) begin
+        has_pending       = 1'b0;
+        prev_rsp_seen     = 1'b0;
+        rsp_tail_hold     = 1'b0;
+        rsp_tail_va       = '0;
+        rsp_tail_id       = '0;
+        rsp_tail_st_inst  = 1'b0;
+        rsp_tail_abort    = 1'b0;
+        drop_reopen_block = 0;
+        drop_reopen_va    = '0;
+        drop_reopen_abort = 1'b0;
+        continue;
+      end
+
+      req_seen    = vif.monitor_cb.lsu_mmu_va1_vld;
+      rsp_seen    = vif.monitor_cb.mmu_lsu_pa1_vld;
+      fresh_rsp   = rsp_seen && !prev_rsp_seen;
+      cur_va      = vif.monitor_cb.lsu_mmu_va1;
+      cur_id      = vif.monitor_cb.lsu_mmu_id1;
+      cur_st_inst = vif.monitor_cb.lsu_mmu_st_inst1;
+      cur_abort   = vif.monitor_cb.lsu_mmu_abort1;
+      cur_vabuf   = vif.monitor_cb.lsu_mmu_vabuf1;
+
+      if (rsp_tail_hold &&
+          (!req_seen
+           || (cur_va      !== rsp_tail_va)
+           || (cur_id      !== rsp_tail_id)
+           || (cur_st_inst !== rsp_tail_st_inst)
+           || (cur_abort   !== rsp_tail_abort))) begin
+        rsp_tail_hold = 1'b0;
+      end
+
+      hold_blocks_reopen = rsp_tail_hold
+                        && req_seen
+                        && (cur_va      === rsp_tail_va)
+                        && (cur_id      === rsp_tail_id)
+                        && (cur_st_inst === rsp_tail_st_inst)
+                        && (cur_abort   === rsp_tail_abort);
+      hold_blocks_reopen = hold_blocks_reopen || (drop_reopen_block != 0);
+
+      if (req_seen && !has_pending && !hold_blocks_reopen) begin
+        req_tr            = lsu_txn::type_id::create("lsu_p1_req_sm");
+        req_tr.kind       = LSU_PIPE1;
+        req_tr.va         = cur_va;
+        req_tr.id         = cur_id;
+        req_tr.st_inst    = cur_st_inst;
+        req_tr.abort      = cur_abort;
+        req_tr.vabuf      = cur_vabuf;
+        req_tr.tlb_busy   = vif.monitor_cb.mmu_lsu_tlb_busy;
+        req_tr.tlb_wakeup = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+        pending_req       = _clone_txn(req_tr, "lsu_p1_req_pending_sm");
+        has_pending       = 1'b1;
+        `uvm_info(get_type_name(),
+          $sformatf("[LSU_P1_REQ_DBG] open pending: va=0x%010h id=%0d st=%0b abort=%0b pavld=%0b pa=0x%07h mmu_en=%0b tlb_busy=%0b wakeup=0x%03h",
+            {1'b0, req_tr.va[38:0]}, req_tr.id, req_tr.st_inst, req_tr.abort,
+            vif.monitor_cb.mmu_lsu_pa1_vld, vif.monitor_cb.mmu_lsu_pa1,
+            vif.monitor_cb.mmu_lsu_mmu_en, vif.monitor_cb.mmu_lsu_tlb_busy,
+            vif.monitor_cb.mmu_lsu_tlb_wakeup),
+          UVM_DEBUG)
+        `uvm_info(get_type_name(), {"P1 REQ: ", req_tr.convert2string()}, UVM_HIGH)
+        ap_pipe1_req.write(_clone_txn(req_tr, "lsu_p1_req_ap_sm"));
+      end
+
+      if (fresh_rsp) begin
+        if (!has_pending) begin
+          if (drop_reopen_block != 0) begin
+            `uvm_warning(get_type_name(),
+              $sformatf("[LSU_P1_LATE_RSP_AFTER_DROP] ignore rsp during drop barrier: dropped_va=0x%010h dropped_abort=%0b cur_va=0x%010h pa=0x%07h pgflt=%0b acflt=%0b",
+                {1'b0, drop_reopen_va[38:0]}, drop_reopen_abort,
+                {1'b0, cur_va[38:0]}, vif.monitor_cb.mmu_lsu_pa1,
+                vif.monitor_cb.mmu_lsu_page_fault1, vif.monitor_cb.mmu_lsu_access_fault1))
+          end else begin
+            `uvm_warning(get_type_name(),
+              $sformatf("[LSU_P1_ORPHAN_RSP] rsp observed without pending req: cur_va=0x%010h pa=0x%07h pgflt=%0b acflt=%0b",
+                {1'b0, cur_va[38:0]}, vif.monitor_cb.mmu_lsu_pa1,
+                vif.monitor_cb.mmu_lsu_page_fault1, vif.monitor_cb.mmu_lsu_access_fault1))
+          end
+        end else begin
+          rsp_tr = lsu_txn::type_id::create("lsu_p1_rsp_sm");
+          _sample_pipe1_rsp_fields(rsp_tr);
+          rsp_tr.va      = pending_req.va;
+          rsp_tr.id      = pending_req.id;
+          rsp_tr.st_inst = pending_req.st_inst;
+          rsp_tr.abort   = pending_req.abort;
+          rsp_tr.vabuf   = pending_req.vabuf;
+          `uvm_info(get_type_name(),
+            $sformatf("[LSU_P1_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h",
+              {1'b0, pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.id,
+              rsp_tr.pa, rsp_tr.pgflt, rsp_tr.access_fault, rsp_tr.stall,
+              rsp_tr.mmu_en, rsp_tr.dtlb_expt_match,
+              vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup),
+            UVM_DEBUG)
+          rsp_tail_hold    = req_seen;
+          rsp_tail_va      = pending_req.va;
+          rsp_tail_id      = pending_req.id;
+          rsp_tail_st_inst = pending_req.st_inst;
+          rsp_tail_abort   = pending_req.abort;
+          has_pending      = 1'b0;
+          `uvm_info(get_type_name(), {"P1 RSP: ", rsp_tr.convert2string()}, UVM_HIGH)
+          ap_pipe1_rsp.write(_clone_txn(rsp_tr, "lsu_p1_rsp_ap_sm"));
+        end
+      end
+
+      if (!fresh_rsp && has_pending && !req_seen) begin
+        drop_tr       = _clone_txn(pending_req, "lsu_p1_drop_sm");
+        has_pending   = 1'b0;
+        drop_reopen_block = 2;
+        drop_reopen_va    = drop_tr.va;
+        drop_reopen_abort = drop_tr.abort;
+        `uvm_info(get_type_name(),
+          $sformatf("P1 REQ dropped before rsp: VA=0x%016h id=%0d",
+            drop_tr.va, drop_tr.id), UVM_DEBUG)
+        ap_pipe1_drop.write(_clone_txn(drop_tr, "lsu_p1_drop_ap_sm"));
+      end
+
+      if (drop_reopen_block != 0) begin
+        drop_reopen_block--;
+        if (drop_reopen_block == 0) begin
+          drop_reopen_va    = '0;
+          drop_reopen_abort = 1'b0;
+        end
+      end
+
+      prev_rsp_seen = rsp_seen;
+    end
   endtask
 
   // ── Pipe 0 request ────────────────────────────────────────────────────────

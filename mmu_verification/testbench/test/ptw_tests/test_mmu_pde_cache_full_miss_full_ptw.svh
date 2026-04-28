@@ -25,9 +25,23 @@ class test_mmu_pde_cache_full_miss_full_ptw extends phase12_generated_test_base;
     p12_reviewer = "A+B";
     num_txn      = 128;
     m_post_drain = 800ns;
-    m_ptw_seq_names.push_back("ptw_mem_normal_rsp_seq");
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_map_hugepage_fixture();
+    phase12_drive_lsu_rr(39'h0_3000_1000, 1, 1, LSU_PIPE0, 1'b0);
+    phase12_cp0_tlb_allinv();
+    phase12_drive_lsu_rr(39'h0_3000_2000, 1, 1, LSU_PIPE1, 1'b1);
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_pde_cache_full_miss_full_ptw
 

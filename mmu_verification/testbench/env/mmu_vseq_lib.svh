@@ -120,11 +120,14 @@ class mmu_vseq_lsu_interleave3_seq extends lsu_base_seq;
       int           idx  = (m_table_size > 0) ? (i % m_table_size) : 0;
       int           ph   = (i % 3);
       lsu_kind_e    knd  = (ph == 0) ? LSU_PIPE0 : (ph == 1) ? LSU_PIPE1 : LSU_PIPE2;
+      bit [27:0]    va2_local;
       `uvm_create(tr)
       tr.c_kind_default.constraint_mode(0);
+      va2_local = 28'(({25'b0, m_va_table[idx]}) >> 12);
       assert(tr.randomize() with {
         kind    == knd;
         va      == {25'b0, m_va_table[idx]};
+        va2     == va2_local;
         vabuf   == 28'(({25'b0, m_va_table[idx]}) >> 11);
         abort   == 1'b0;
         st_inst == (knd == LSU_PIPE1);
@@ -323,19 +326,35 @@ class mmu_ptw_thrash_vseq extends mmu_base_vseq;
   function new(string name = "mmu_ptw_thrash_vseq"); super.new(name); endfunction
   virtual task body();
     mmu_env env = get_env();
-    int nmap, r, c;
-    mmu_vseq_lsu_one_ld_seq one;
-    va_t v;
+    int nmap;
+    mmu_vseq_ifu_rr_seq      ifq;
+    mmu_vseq_lsu_interleave3_seq seq_itr3;
+    va_t va_tbl[$];
     nmap = (num_txn > 5000) ? 2000 : (num_txn * 2);
     if (nmap > 5000) nmap = 5000;
     vseq_bringup_sv39_4k(env, 28'h0, 16'h0, nmap, 39'h0_4000_0000, 28'h2000);
-    for (c = 0; c < int'(num_txn) && c < 500; c++) begin
-      r = $urandom_range(0, nmap - 1);
-      v = va_t'(39'h0_4000_0000) + va_t'(r << 12);
-      one = mmu_vseq_lsu_one_ld_seq::type_id::create($sformatf("ld_%0d", c));
-      one.m_va = v;
-      one.start(p_sequencer.lsu_sqr);
-    end
+    for (int i = 0; i < nmap; i++)
+      va_tbl.push_back(va_t'(39'h0_4000_0000) + va_t'(i << 12));
+
+    fork
+      begin
+        ifq = mmu_vseq_ifu_rr_seq::type_id::create("ptw_ifq");
+        ifq.m_va_table   = new[nmap];
+        ifq.m_table_size = nmap;
+        foreach (va_tbl[j]) ifq.m_va_table[j] = va_tbl[j];
+        ifq.num_txn = _scale(num_txn, 35);
+        ifq.start(p_sequencer.ifu_sqr);
+      end
+      begin
+        seq_itr3 = mmu_vseq_lsu_interleave3_seq::type_id::create("ptw_seq_itr3");
+        seq_itr3.m_va_table   = new[nmap];
+        seq_itr3.m_table_size = nmap;
+        foreach (va_tbl[j]) seq_itr3.m_va_table[j] = va_tbl[j];
+        seq_itr3.num_txn = _scale(num_txn, 100);
+        if (seq_itr3.num_txn < 18) seq_itr3.num_txn = 18;
+        seq_itr3.start(p_sequencer.lsu_sqr);
+      end
+    join
     #200000ns;
   endtask
 endclass

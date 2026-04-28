@@ -21,13 +21,40 @@ class test_mmu_mbuf_have_no_resend extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.10";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "mmu_ptw_thrash_vseq";
+    p12_seq_desc = "phase12 same-VA replay under slow PTW to force mbuf_have";
     p12_checker  = "sva_mbuf_have_no_resend + cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
     num_txn      = 96;
     m_post_drain = 800ns;
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_config_ptw_responder(64, 128, 0);
+
+    repeat (3) begin
+      phase12_cp0_tlb_allinv();
+      fork
+        begin
+          phase12_drive_ifu_rr(39'h10_0000, 1, 16);
+        end
+        begin
+          phase12_drive_lsu_rr(39'h10_0000, 1, 16, LSU_PIPE0, 1'b0);
+        end
+        begin
+          phase12_drive_lsu_rr(39'h10_0000, 1, 16, LSU_PIPE1, 1'b1);
+        end
+      join
+    end
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_mbuf_have_no_resend
 

@@ -26,8 +26,28 @@ class test_mmu_twu_maee0_csr_symmetric extends phase12_generated_test_base;
     num_txn      = 128;
     m_post_drain = 800ns;
     m_cp0_seq_names.push_back("cp0_maee_disable_seq");
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    start_cp0_seq_by_name("cp0_maee_disable_seq");
+    phase12_map_hugepage_fixture();
+
+    repeat (4) begin
+      phase12_drive_lsu_rr(39'h0_8000_0000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_2600_0000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+    end
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_twu_maee0_csr_symmetric
 

@@ -25,9 +25,24 @@ class test_mmu_pde_cache_hit_l2_skip_scd extends phase12_generated_test_base;
     p12_reviewer = "A+B";
     num_txn      = 96;
     m_post_drain = 800ns;
-    m_ptw_seq_names.push_back("ptw_page_table_build_2m_seq");
-    m_vseq_names.push_back("mmu_huge_page_mix_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_map_hugepage_fixture();
+    phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
+    phase12_cp0_tlb_allinv();
+    repeat (3)
+      phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_pde_cache_hit_l2_skip_scd
 

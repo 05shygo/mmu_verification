@@ -21,13 +21,39 @@ class test_mmu_arb_grant_onehot_check extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.11";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "mmu_stress_all_ports_vseq";
+    p12_seq_desc = "phase12 repeated refill pressure with mixed page sizes";
     p12_checker  = "sva_arb_twu_grant_onehot + cg_arb_grant_type";
     p12_reviewer = "A+B";
     num_txn      = 128;
     m_post_drain = 900ns;
-    m_vseq_names.push_back("mmu_stress_all_ports_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_map_hugepage_fixture();
+    phase12_config_ptw_responder(24, 48, 0);
+
+    repeat (6) begin
+      phase12_cp0_tlb_allinv();
+      fork
+        begin
+          phase12_drive_ifu_rr(39'h0_4000_0000, 2, 4);
+        end
+        begin
+          phase12_drive_lsu_interleave3(39'h0_3000_1000, 2, 12);
+        end
+      join
+      phase12_drive_lsu_rr(39'h0_2200_0000, 1, 2, LSU_PIPE1, 1'b1);
+    end
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_arb_grant_onehot_check
 

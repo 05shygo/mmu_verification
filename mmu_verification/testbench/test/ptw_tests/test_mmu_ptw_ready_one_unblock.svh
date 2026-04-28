@@ -21,14 +21,42 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.6";
     p12_priority = "P0";
     p12_status   = "Implemented";
-    p12_seq_desc = "pmp_flg_normal_seq + mmu_ptw_thrash_vseq";
+    p12_seq_desc = "phase12 all-mask then single-PTW unblock recovery";
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
     num_txn      = 96;
     m_post_drain = 800ns;
-    m_pmp_seq_names.push_back("pmp_flg_normal_seq");
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_set_pmp_deny_ptw_reads(4'b1111);
+
+    fork
+      begin
+        phase12_drive_ifu_rr(39'h10_2000, 24, 48);
+      end
+      begin
+        phase12_drive_lsu_interleave3(39'h10_2000, 24, 72);
+      end
+      begin
+        #250ns;
+        phase12_set_pmp_deny_ptw_reads(4'b1110);
+        #250ns;
+        phase12_set_pmp_deny_ptw_reads(4'b1100);
+        #250ns;
+        phase12_set_pmp_allow_all();
+      end
+    join
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_ptw_ready_one_unblock
 

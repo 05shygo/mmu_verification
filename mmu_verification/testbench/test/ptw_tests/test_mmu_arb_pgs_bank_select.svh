@@ -26,9 +26,29 @@ class test_mmu_arb_pgs_bank_select extends phase12_generated_test_base;
     p12_reviewer = "A+B";
     num_txn      = 64;
     m_post_drain = 900ns;
-    m_ifu_seq_names.push_back("ifu_huge_page_fetch_seq");
-    m_lsu_seq_names.push_back("lsu_huge_page_seq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_map_hugepage_fixture();
+
+    repeat (2) begin
+      phase12_drive_lsu_rr(39'h0_3000_2000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_2600_0000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_8000_0000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+    end
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_arb_pgs_bank_select
 

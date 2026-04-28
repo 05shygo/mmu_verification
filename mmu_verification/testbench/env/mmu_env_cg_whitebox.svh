@@ -173,8 +173,15 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- Phase 12: cg_ptw_arb_pgs_type -----------------------------------------
   covergroup cg_ptw_arb_pgs_type;
     option.per_instance = 1;
-    cp_pgs_type: coverpoint wb_ptw_arb_pgs iff (wb_arb_ptw_grant) { bins pgs[] = {[0:7]}; }
-    cp_vpn_match: coverpoint wb_ptw_vpn_tag_match iff (wb_arb_ptw_grant) { bins miss = {0}; bins match = {1}; }
+    cp_pgs_type: coverpoint wb_ptw_arb_pgs iff (wb_arb_ptw_grant) {
+      bins pgs_4k = {3'b001};
+      bins pgs_2m = {3'b010};
+      bins pgs_1g = {3'b100};
+    }
+    cp_vpn_match: coverpoint wb_ptw_vpn_tag_match iff (wb_arb_ptw_grant) {
+      bins match = {1};
+      illegal_bins mismatch = {0};
+    }
     cx_pgs_vpn: cross cp_pgs_type, cp_vpn_match;
   endgroup
 

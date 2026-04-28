@@ -440,6 +440,15 @@ class phase9_generated_test_base extends test_base;
         void'(seq.randomize());
         seq.start(m_env.m_pmp.m_sequencer);
       end
+      "pmp_flg_raw_seq": begin
+        pmp_flg_raw_seq seq = pmp_flg_raw_seq::type_id::create(seq_name);
+        seq.start(m_env.m_pmp.m_sequencer);
+      end
+      "pmp_flg_deny_ptw_rd_seq": begin
+        pmp_flg_deny_ptw_rd_seq seq = pmp_flg_deny_ptw_rd_seq::type_id::create(seq_name);
+        void'(seq.randomize());
+        seq.start(m_env.m_pmp.m_sequencer);
+      end
       default:
         `uvm_fatal(get_type_name(), $sformatf("Unknown PMP sequence '%s'", seq_name))
     endcase
@@ -539,6 +548,7 @@ class phase9_generated_test_base extends test_base;
       end
       "ptw_mem_illegal_pte_seq": begin
         ptw_mem_illegal_pte_seq seq = ptw_mem_illegal_pte_seq::type_id::create(seq_name);
+        seq.set_builder(m_env.m_pt_mem.m_builder);
         void'(seq.randomize());
         seq.start(m_env.m_ptw_mem.m_sequencer);
       end
@@ -550,10 +560,14 @@ class phase9_generated_test_base extends test_base;
       end
       "ptw_page_table_build_2m_seq": begin
         ptw_page_table_build_2m_seq seq = ptw_page_table_build_2m_seq::type_id::create(seq_name);
+        seq.set_builder(m_env.m_pt_mem.m_builder);
+        void'(seq.randomize());
         seq.start(m_env.m_ptw_mem.m_sequencer);
       end
       "ptw_page_table_build_1g_seq": begin
         ptw_page_table_build_1g_seq seq = ptw_page_table_build_1g_seq::type_id::create(seq_name);
+        seq.set_builder(m_env.m_pt_mem.m_builder);
+        void'(seq.randomize());
         seq.start(m_env.m_ptw_mem.m_sequencer);
       end
       "ptw_pte_ad_update_seq": begin

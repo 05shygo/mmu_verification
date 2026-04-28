@@ -41,19 +41,26 @@ class test_mmu_twu_maee_dynamic_switch extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
+    phase12_map_hugepage_fixture();
     start_cp0_seq_by_name("cp0_maee_disable_seq");
 
-    fork
-      begin
-        start_vseq_by_name("mmu_huge_page_mix_vseq");
-      end
-      begin
-        #200ns;
-        start_cp0_seq_by_name("cp0_maee_enable_seq");
-        #200ns;
-        start_cp0_seq_by_name("cp0_maee_disable_seq");
-      end
-    join
+    repeat (2) begin
+      phase12_drive_lsu_rr(39'h0_4000_0000, 1, 1, LSU_PIPE0, 1'b0);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
+      phase12_cp0_tlb_allinv();
+    end
+
+    start_cp0_seq_by_name("cp0_maee_enable_seq");
+    repeat (2) begin
+      phase12_drive_lsu_rr(39'h0_8000_0000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_2600_0000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+    end
+
+    start_cp0_seq_by_name("cp0_maee_disable_seq");
+    phase12_drive_lsu_rr(39'h0_4000_0000, 1, 1, LSU_PIPE0, 1'b0);
 
     #(m_post_drain);
   endtask

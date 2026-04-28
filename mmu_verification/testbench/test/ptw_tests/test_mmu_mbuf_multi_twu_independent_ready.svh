@@ -21,13 +21,37 @@ class test_mmu_mbuf_multi_twu_independent_ready extends phase12_generated_test_b
     p12_fid      = "F4.NEW.10";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "mmu_stress_all_ports_vseq";
+    p12_seq_desc = "phase12 IFU+LSU shared-page pressure across multiple TWUs";
     p12_checker  = "cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
     num_txn      = 128;
     m_post_drain = 900ns;
-    m_vseq_names.push_back("mmu_stress_all_ports_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_config_ptw_responder(48, 96, 0);
+
+    repeat (3) begin
+      phase12_cp0_tlb_allinv();
+      fork
+        begin
+          phase12_drive_ifu_rr(39'h10_0000, 2, 24);
+        end
+        begin
+          phase12_drive_lsu_interleave3(39'h10_0000, 2, 36);
+        end
+      join
+    end
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_mbuf_multi_twu_independent_ready
 

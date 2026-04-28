@@ -21,15 +21,39 @@ class test_mmu_twu_except_conflict_pgflt_accflt extends phase12_generated_test_b
     p12_fid      = "F4.NEW.9";
     p12_priority = "P0";
     p12_status   = "Implemented";
-    p12_seq_desc = "pmp_flg_deny_rw_seq + ptw_mem_illegal_pte_seq + mmu_ptw_thrash_vseq";
+    p12_seq_desc = "phase12 mixed pgflt + bus-error accerr under concurrent IFU/LSU pressure";
     p12_checker  = "sva_twu_pgflt_acc_mutex + cg_twu_except_while_arb_busy";
     p12_reviewer = "A+B";
     num_txn      = 128;
     m_post_drain = 900ns;
-    m_pmp_seq_names.push_back("pmp_flg_deny_rw_seq");
-    m_ptw_seq_names.push_back("ptw_mem_illegal_pte_seq");
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    m_env.m_pt_mem.m_builder.inject_fault(39'h10_0000, "V_OFF");
+    phase12_config_ptw_responder(32, 72, 350);
+
+    fork
+      begin
+        phase12_drive_ifu_rr(39'h10_0000, 1, 12);
+      end
+      begin
+        #150ns;
+        repeat (6) begin
+          phase12_cp0_tlb_allinv();
+          phase12_drive_lsu_rr(39'h10_1000, 1, 1, LSU_PIPE0, 1'b0);
+        end
+      end
+    join
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_twu_except_conflict_pgflt_accflt
 

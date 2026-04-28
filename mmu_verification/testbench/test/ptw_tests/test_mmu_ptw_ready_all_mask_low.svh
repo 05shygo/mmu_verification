@@ -21,14 +21,40 @@ class test_mmu_ptw_ready_all_mask_low extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.6";
     p12_priority = "P0";
     p12_status   = "Implemented";
-    p12_seq_desc = "pmp_flg_cross_8port_seq + mmu_ptw_thrash_vseq";
+    p12_seq_desc = "phase12 all-PTW-read-deny window + IFU/LSU pressure";
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
     num_txn      = 96;
     m_post_drain = 800ns;
-    m_pmp_seq_names.push_back("pmp_flg_cross_8port_seq");
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_set_pmp_deny_ptw_reads(4'b1111);
+
+    fork
+      begin
+        phase12_drive_ifu_rr(39'h10_1000, 16, 32);
+      end
+      begin
+        phase12_drive_lsu_interleave3(39'h10_1000, 16, 48);
+      end
+      begin
+        #350ns;
+        phase12_set_pmp_allow_all();
+        phase12_cp0_tlb_allinv();
+        phase12_drive_lsu_rr(39'h10_1000, 4, 12, LSU_PIPE0, 1'b0);
+      end
+    join
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_ptw_ready_all_mask_low
 

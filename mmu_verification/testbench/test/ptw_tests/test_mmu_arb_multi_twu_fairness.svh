@@ -21,13 +21,39 @@ class test_mmu_arb_multi_twu_fairness extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.11";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "mmu_stress_all_ports_vseq";
+    p12_seq_desc = "phase12 sustained multi-TWU refill rotation";
     p12_checker  = "cg_arb_grant_type";
     p12_reviewer = "A+B";
     num_txn      = 160;
     m_post_drain = 900ns;
-    m_vseq_names.push_back("mmu_stress_all_ports_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_map_hugepage_fixture();
+    phase12_config_ptw_responder(32, 64, 0);
+
+    repeat (8) begin
+      phase12_cp0_tlb_allinv();
+      fork
+        begin
+          phase12_drive_ifu_rr(39'h0_4000_0000, 2, 4);
+        end
+        begin
+          phase12_drive_lsu_interleave3(39'h0_3000_1000, 2, 18);
+        end
+      join
+      phase12_drive_lsu_rr(39'h0_2600_0000, 1, 2, LSU_PIPE0, 1'b0);
+    end
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_arb_multi_twu_fairness
 

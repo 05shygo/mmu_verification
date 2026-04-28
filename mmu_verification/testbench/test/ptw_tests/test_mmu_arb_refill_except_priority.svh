@@ -21,14 +21,44 @@ class test_mmu_arb_refill_except_priority extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.11";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "pmp_flg_deny_rw_seq + mmu_stress_all_ports_vseq";
+    p12_seq_desc = "phase12 concurrent refill traffic plus pgflt bypass pressure";
     p12_checker  = "sva_twu_din_stable_on_grant + cg_arb_grant_type";
     p12_reviewer = "A+B";
     num_txn      = 128;
     m_post_drain = 900ns;
-    m_pmp_seq_names.push_back("pmp_flg_deny_rw_seq");
-    m_vseq_names.push_back("mmu_stress_all_ports_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_map_hugepage_fixture();
+    m_env.m_pt_mem.m_builder.inject_fault(39'h10_0000, "V_OFF");
+    phase12_config_ptw_responder(48, 96, 0);
+
+    fork
+      begin
+        repeat (6) begin
+          phase12_cp0_tlb_allinv();
+          phase12_drive_ifu_rr(39'h0_4000_0000, 1, 1);
+          phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
+        end
+      end
+      begin
+        #200ns;
+        repeat (6) begin
+          phase12_cp0_tlb_allinv();
+          phase12_drive_lsu_rr(39'h10_0000, 1, 1, LSU_PIPE1, 1'b1);
+        end
+      end
+    join
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_arb_refill_except_priority
 

@@ -9,24 +9,50 @@
 `ifndef PTW_MEM_SEQUENCES_SVH
 `define PTW_MEM_SEQUENCES_SVH
 
+class ptw_mem_cfg_base_seq extends uvm_sequence #(ptw_mem_txn);
+  `uvm_object_utils(ptw_mem_cfg_base_seq)
+  `uvm_declare_p_sequencer(ptw_mem_sequencer)
+
+  function new(string name = "ptw_mem_cfg_base_seq");
+    super.new(name);
+  endfunction
+
+  protected function ptw_mem_responder get_responder();
+    uvm_component parent_comp;
+    ptw_mem_agent agent_h;
+
+    parent_comp = p_sequencer.get_parent();
+    if (parent_comp == null)
+      `uvm_fatal(get_type_name(), "ptw_mem sequencer parent is null")
+    if (!$cast(agent_h, parent_comp))
+      `uvm_fatal(get_type_name(), "ptw_mem sequencer parent is not ptw_mem_agent")
+    if (agent_h.m_responder == null)
+      `uvm_fatal(get_type_name(), "ptw_mem responder is null")
+    return agent_h.m_responder;
+  endfunction
+endclass
+
 // -----------------------------------------------------------------------------
 // 1. Normal in-order response (default)
 // -----------------------------------------------------------------------------
-class ptw_mem_normal_rsp_seq extends uvm_sequence;
+class ptw_mem_normal_rsp_seq extends ptw_mem_cfg_base_seq;
   `uvm_object_utils(ptw_mem_normal_rsp_seq)
   function new(string name = "ptw_mem_normal_rsp_seq");
     super.new(name);
   endfunction
-  // Body: configure responder delay range, then let responder run naturally
   virtual task body();
-    // TODO (Phase 5): set responder m_rsp_delay_min/max via config handle
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.m_rsp_delay_min           = 1;
+    rsp_h.m_rsp_delay_max           = 4;
+    rsp_h.m_bus_error_rate_permille = 0;
   endtask
 endclass : ptw_mem_normal_rsp_seq
 
 // -----------------------------------------------------------------------------
 // 2. Out-of-order response (protocol does not support OOO; reserved for future)
 // -----------------------------------------------------------------------------
-class ptw_mem_ooo_rsp_seq extends uvm_sequence;
+class ptw_mem_ooo_rsp_seq extends ptw_mem_cfg_base_seq;
   `uvm_object_utils(ptw_mem_ooo_rsp_seq)
   function new(string name = "ptw_mem_ooo_rsp_seq"); super.new(name); endfunction
   virtual task body();
@@ -39,41 +65,66 @@ endclass : ptw_mem_ooo_rsp_seq
 // -----------------------------------------------------------------------------
 // 3. Slow response (high delay to stress PTW latency sensitivity)
 // -----------------------------------------------------------------------------
-class ptw_mem_slow_rsp_seq extends uvm_sequence;
+class ptw_mem_slow_rsp_seq extends ptw_mem_cfg_base_seq;
   `uvm_object_utils(ptw_mem_slow_rsp_seq)
   rand int unsigned slow_min;
   rand int unsigned slow_max;
-  constraint c_slow { slow_min inside {[20:50]}; slow_max inside {[50:200]}; slow_min < slow_max; }
-  function new(string name = "ptw_mem_slow_rsp_seq"); super.new(name); endfunction
+  constraint c_slow { slow_min inside {[24:64]}; slow_max inside {[64:160]}; slow_min < slow_max; }
+  function new(string name = "ptw_mem_slow_rsp_seq");
+    super.new(name);
+    slow_min = 32;
+    slow_max = 96;
+  endfunction
   virtual task body();
-    // TODO (Phase 5): update responder delay range to slow_min/max
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.m_rsp_delay_min           = slow_min;
+    rsp_h.m_rsp_delay_max           = slow_max;
+    rsp_h.m_bus_error_rate_permille = 0;
   endtask
 endclass : ptw_mem_slow_rsp_seq
 
 // -----------------------------------------------------------------------------
 // 4. Bus error injection sequence
 // -----------------------------------------------------------------------------
-class ptw_mem_bus_error_inject_seq extends uvm_sequence;
+class ptw_mem_bus_error_inject_seq extends ptw_mem_cfg_base_seq;
   `uvm_object_utils(ptw_mem_bus_error_inject_seq)
   rand int unsigned error_rate_permille;  // e.g. 100 = 10%
-  constraint c_rate { error_rate_permille inside {[10:200]}; }
-  function new(string name = "ptw_mem_bus_error_inject_seq"); super.new(name); endfunction
+  constraint c_rate { error_rate_permille inside {[100:400]}; }
+  function new(string name = "ptw_mem_bus_error_inject_seq");
+    super.new(name);
+    error_rate_permille = 250;
+  endfunction
   virtual task body();
-    // TODO (Phase 5): set m_responder.m_bus_error_rate_permille
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.m_rsp_delay_min           = 1;
+    rsp_h.m_rsp_delay_max           = 8;
+    rsp_h.m_bus_error_rate_permille = error_rate_permille;
   endtask
 endclass : ptw_mem_bus_error_inject_seq
 
 // -----------------------------------------------------------------------------
 // 5. Illegal PTE injection (manually write fault PTE via builder)
 // -----------------------------------------------------------------------------
-class ptw_mem_illegal_pte_seq extends uvm_sequence;
+class ptw_mem_illegal_pte_seq extends uvm_sequence #(ptw_mem_txn);
   `uvm_object_utils(ptw_mem_illegal_pte_seq)
+  page_table_builder m_builder;
   rand va_t target_va;
   string fault_kind;  // "V_OFF" / "RW_RESERVED" / etc.
-  function new(string name = "ptw_mem_illegal_pte_seq"); super.new(name); endfunction
+  function new(string name = "ptw_mem_illegal_pte_seq");
+    super.new(name);
+    target_va   = 39'h0_4000_0000;
+    fault_kind  = "V_OFF";
+  endfunction
   virtual task body();
-    // TODO (Phase 5): call builder.inject_fault(target_va, fault_kind)
+    if (m_builder == null)
+      `uvm_fatal(get_type_name(), "m_builder not set; call set_builder() before start()")
+    m_builder.inject_fault(target_va, fault_kind);
   endtask
+  function void set_builder(page_table_builder b);
+    m_builder = b;
+  endfunction
 endclass : ptw_mem_illegal_pte_seq
 
 // -----------------------------------------------------------------------------
@@ -114,23 +165,65 @@ endclass : ptw_page_table_build_4k_seq
 // -----------------------------------------------------------------------------
 // 7. Build 2M page table (stub)
 // -----------------------------------------------------------------------------
-class ptw_page_table_build_2m_seq extends uvm_sequence;
+class ptw_page_table_build_2m_seq extends uvm_sequence #(ptw_mem_txn);
   `uvm_object_utils(ptw_page_table_build_2m_seq)
-  function new(string name = "ptw_page_table_build_2m_seq"); super.new(name); endfunction
+  page_table_builder m_builder;
+  rand va_t va;
+  rand pa_t pa;
+  rand bit  r, w, x, u;
+  constraint c_va_align    { va[20:0] == 21'b0; }
+  constraint c_pa_align    { pa[20:0] == 21'b0; }
+  constraint c_va_canonical { va[38] == 1'b0; va[38:30] != 9'h1ff; }
+  constraint c_perm_valid  { r | x; }
+  function new(string name = "ptw_page_table_build_2m_seq");
+    super.new(name);
+    va = 39'h0_2000_0000;
+    pa = 40'h0_0200_0000;
+    r  = 1'b1;
+    w  = 1'b1;
+    x  = 1'b1;
+    u  = 1'b0;
+  endfunction
   virtual task body();
-    // TODO (Phase 5): call builder.map_2m()
+    if (m_builder == null)
+      `uvm_fatal(get_type_name(), "m_builder not set; call set_builder() before start()")
+    m_builder.map_2m(.va(va), .pa(pa), .r(r), .w(w), .x(x), .u(u));
   endtask
+  function void set_builder(page_table_builder b);
+    m_builder = b;
+  endfunction
 endclass : ptw_page_table_build_2m_seq
 
 // -----------------------------------------------------------------------------
 // 8. Build 1G page table (stub)
 // -----------------------------------------------------------------------------
-class ptw_page_table_build_1g_seq extends uvm_sequence;
+class ptw_page_table_build_1g_seq extends uvm_sequence #(ptw_mem_txn);
   `uvm_object_utils(ptw_page_table_build_1g_seq)
-  function new(string name = "ptw_page_table_build_1g_seq"); super.new(name); endfunction
+  page_table_builder m_builder;
+  rand va_t va;
+  rand pa_t pa;
+  rand bit  r, w, x, u;
+  constraint c_va_align    { va[29:0] == 30'b0; }
+  constraint c_pa_align    { pa[29:0] == 30'b0; }
+  constraint c_va_canonical { va[38] == 1'b0; va[38:30] != 9'h1ff; }
+  constraint c_perm_valid  { r | x; }
+  function new(string name = "ptw_page_table_build_1g_seq");
+    super.new(name);
+    va = 39'h0_4000_0000;
+    pa = 40'h0_4000_0000;
+    r  = 1'b1;
+    w  = 1'b1;
+    x  = 1'b1;
+    u  = 1'b0;
+  endfunction
   virtual task body();
-    // TODO (Phase 5): call builder.map_1g()
+    if (m_builder == null)
+      `uvm_fatal(get_type_name(), "m_builder not set; call set_builder() before start()")
+    m_builder.map_1g(.va(va), .pa(pa), .r(r), .w(w), .x(x), .u(u));
   endtask
+  function void set_builder(page_table_builder b);
+    m_builder = b;
+  endfunction
 endclass : ptw_page_table_build_1g_seq
 
 // -----------------------------------------------------------------------------

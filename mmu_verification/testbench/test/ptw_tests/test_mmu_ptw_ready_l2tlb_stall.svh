@@ -21,14 +21,43 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.6";
     p12_priority = "P0";
     p12_status   = "Implemented";
-    p12_seq_desc = "ptw_mem_slow_rsp_seq + mmu_ptw_thrash_vseq";
+    p12_seq_desc = "phase12 slow PTW + deny/unblock stall window";
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
     num_txn      = 128;
     m_post_drain = 800ns;
-    m_ptw_seq_names.push_back("ptw_mem_slow_rsp_seq");
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_config_ptw_responder(64, 128, 0);
+    phase12_set_pmp_allow_all();
+
+    fork
+      begin
+        phase12_drive_ifu_rr(39'h10_0000, 24, 64);
+      end
+      begin
+        phase12_drive_lsu_interleave3(39'h10_0000, 24, 96);
+      end
+      begin
+        #200ns;
+        phase12_set_pmp_deny_ptw_reads(4'b1111);
+        #300ns;
+        phase12_set_pmp_allow_all();
+        repeat (4)
+          phase12_cp0_tlb_allinv();
+      end
+    join
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_ptw_ready_l2tlb_stall
 

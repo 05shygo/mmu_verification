@@ -36,6 +36,119 @@ class phase12_generated_test_base extends phase9_generated_test_base;
   protected virtual function void setup_phase12_plan();
   endfunction
 
+  protected virtual task phase12_config_ptw_responder(
+    input int unsigned rsp_min = 1,
+    input int unsigned rsp_max = 8,
+    input int unsigned bus_error_rate_permille = 0
+  );
+    if ((m_env == null) || (m_env.m_ptw_mem == null) || (m_env.m_ptw_mem.m_responder == null))
+      `uvm_fatal(get_type_name(), "PTW responder handle is null")
+
+    m_env.m_ptw_mem.m_responder.m_rsp_delay_min           = rsp_min;
+    m_env.m_ptw_mem.m_responder.m_rsp_delay_max           = rsp_max;
+    m_env.m_ptw_mem.m_responder.m_bus_error_rate_permille = bus_error_rate_permille;
+  endtask
+
+  protected virtual task phase12_cp0_tlb_allinv();
+    start_cp0_seq_by_name("cp0_tlb_allinv_seq");
+    #100ns;
+  endtask
+
+  protected virtual task phase12_set_pmp_raw(input bit [3:0] raw_flg[8]);
+    pmp_flg_raw_seq seq;
+    seq = pmp_flg_raw_seq::type_id::create("phase12_pmp_raw_seq");
+    foreach (raw_flg[i]) seq.raw_flg[i] = raw_flg[i];
+    seq.start(m_env.m_pmp.m_sequencer);
+    #50ns;
+  endtask
+
+  protected virtual task phase12_set_pmp_allow_all();
+    bit [3:0] raw_flg[8];
+    foreach (raw_flg[i]) raw_flg[i] = 4'h7;
+    phase12_set_pmp_raw(raw_flg);
+  endtask
+
+  protected virtual task phase12_set_pmp_deny_ptw_reads(input bit [3:0] deny_twu_mask = 4'b1111);
+    bit [3:0] raw_flg[8];
+    foreach (raw_flg[i]) raw_flg[i] = 4'h7;
+    raw_flg[3] = deny_twu_mask[0] ? 4'h6 : 4'h7;
+    raw_flg[5] = deny_twu_mask[1] ? 4'h6 : 4'h7;
+    raw_flg[6] = deny_twu_mask[2] ? 4'h6 : 4'h7;
+    raw_flg[7] = deny_twu_mask[3] ? 4'h6 : 4'h7;
+    phase12_set_pmp_raw(raw_flg);
+  endtask
+
+  protected virtual task phase12_drive_ifu_rr(input va_t base_va, input int npage, input int n_txn);
+    mmu_vseq_ifu_rr_seq seq;
+    seq = mmu_vseq_ifu_rr_seq::type_id::create($sformatf("phase12_ifu_rr_%0t", $time));
+    seq.m_va_table   = new[npage];
+    seq.m_table_size = npage;
+    for (int i = 0; i < npage; i++)
+      seq.m_va_table[i] = base_va + va_t'(i << 12);
+    seq.num_txn = n_txn;
+    seq.start(m_env.m_ifu.m_sequencer);
+  endtask
+
+  protected virtual task phase12_drive_lsu_rr(
+    input va_t base_va,
+    input int npage,
+    input int n_txn,
+    input lsu_kind_e kind = LSU_PIPE0,
+    input bit st_inst = 1'b0
+  );
+    mmu_vseq_lsu_rr_seq seq;
+    seq = mmu_vseq_lsu_rr_seq::type_id::create($sformatf("phase12_lsu_rr_%0t", $time));
+    seq.m_va_table   = new[npage];
+    seq.m_table_size = npage;
+    seq.m_kind       = kind;
+    seq.m_st_inst    = st_inst;
+    for (int i = 0; i < npage; i++)
+      seq.m_va_table[i] = base_va + va_t'(i << 12);
+    seq.num_txn = n_txn;
+    seq.start(m_env.m_lsu.m_sequencer);
+  endtask
+
+  protected virtual task phase12_drive_lsu_interleave3(
+    input va_t base_va,
+    input int npage,
+    input int n_txn
+  );
+    mmu_vseq_lsu_interleave3_seq seq;
+    seq = mmu_vseq_lsu_interleave3_seq::type_id::create($sformatf("phase12_lsu_itr3_%0t", $time));
+    seq.m_va_table   = new[npage];
+    seq.m_table_size = npage;
+    for (int i = 0; i < npage; i++)
+      seq.m_va_table[i] = base_va + va_t'(i << 12);
+    seq.num_txn = n_txn;
+    seq.start(m_env.m_lsu.m_sequencer);
+  endtask
+
+  protected virtual task phase12_map_hugepage_fixture();
+    // Two 1G regions, two 2M regions, and a dedicated 4K window keep page-size
+    // coverage and MAEE/FST/SCD paths disjoint.
+    m_env.m_pt_mem.m_builder.map_1g(
+      .va(39'h0_4000_0000), .pa(40'h0_4000_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env.m_pt_mem.m_builder.map_1g(
+      .va(39'h0_8000_0000), .pa(40'h0_8000_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+
+    m_env.m_pt_mem.m_builder.map_2m(
+      .va(39'h0_2200_0000), .pa(40'h0_0200_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env.m_pt_mem.m_builder.map_2m(
+      .va(39'h0_2600_0000), .pa(40'h0_0600_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+
+    m_env.m_pt_mem.m_builder.map_4k(
+      .va(39'h0_3000_1000), .pa(40'h0_0300_1000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env.m_pt_mem.m_builder.map_4k(
+      .va(39'h0_3000_2000), .pa(40'h0_0300_2000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    #200ns;
+  endtask
+
   virtual function void setup_plan();
     super.setup_plan();
 

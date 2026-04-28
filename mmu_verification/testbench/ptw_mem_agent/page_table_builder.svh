@@ -179,7 +179,7 @@ class page_table_builder extends uvm_object;
         va, pa, leaf_ppn, pte0), UVM_MEDIUM)
   endfunction
 
-  // Map a 2M huge page: VA → PA (Phase 4: stub — body in Phase 5)
+  // Map a 2M huge page: VA → PA.
   // Non-leaf PTE at level-2; mega-leaf at level-1 with PPN[8:0]=0.
   virtual function void map_2m(
     va_t va,
@@ -193,11 +193,46 @@ class page_table_builder extends uvm_object;
     bit  a = 1,
     bit  d = 1
   );
-    // TODO (Phase 5) — implement 2M huge-page mapping
-    `uvm_info("PAGE_TABLE_BUILDER", "map_2m: not yet implemented (Phase 5)", UVM_LOW)
+    logic [8:0] vpn2, vpn1;
+    pa_t        pte_addr_2, pte_addr_1;
+    pte_t       pte2, pte1;
+    ppn_t       l1_ppn, leaf_ppn;
+
+    vpn2 = va[38:30];
+    vpn1 = va[29:21];
+
+    if (va[20:0] != 21'b0)
+      `uvm_warning("PAGE_TABLE_BUILDER",
+        $sformatf("map_2m: VA 0x%010h is not 2M-aligned; low offset bits are ignored", va))
+    if (pa[20:0] != 21'b0)
+      `uvm_warning("PAGE_TABLE_BUILDER",
+        $sformatf("map_2m: PA 0x%010h is not 2M-aligned; PPN[8:0] will be forced to 0", pa))
+
+    // ---- Level 2 (root -> L1) ----------------------------------------------
+    pte_addr_2 = _pte_addr(m_root_ppn, vpn2);
+    pte2       = read_pte_at(pte_addr_2);
+    if (!pte2[PTE_V] || pte2[PTE_R] || pte2[PTE_X]) begin
+      l1_ppn = _alloc_ppn();
+      pte2   = _make_pointer_pte(l1_ppn);
+      write_pte_at(pte_addr_2, pte2);
+    end else begin
+      l1_ppn = pte2[PTE_PPN_LSB +: PPN_WIDTH];
+    end
+
+    // ---- Level 1 (leaf) ----------------------------------------------------
+    leaf_ppn   = pa[PA_WIDTH-1:PAGE_OFFSET];
+    leaf_ppn[8:0] = 9'b0;
+    pte1       = make_pte(.ppn(leaf_ppn), .v(v), .r(r), .w(w), .x(x),
+                          .u(u), .g(g), .a(a), .d(d));
+    pte_addr_1 = _pte_addr(l1_ppn, vpn1);
+    write_pte_at(pte_addr_1, pte1);
+
+    `uvm_info("PAGE_TABLE_BUILDER",
+      $sformatf("map_2m: va=0x%010h -> pa=0x%010h ppn=0x%07h pte=0x%016h",
+        va, pa, leaf_ppn, pte1), UVM_MEDIUM)
   endfunction
 
-  // Map a 1G huge page: VA → PA (Phase 4: stub — body in Phase 5)
+  // Map a 1G huge page: VA → PA.
   // Giga-leaf at level-2; PPN[17:0]=0 required.
   virtual function void map_1g(
     va_t va,
@@ -211,8 +246,30 @@ class page_table_builder extends uvm_object;
     bit  a = 1,
     bit  d = 1
   );
-    // TODO (Phase 5) — implement 1G huge-page mapping
-    `uvm_info("PAGE_TABLE_BUILDER", "map_1g: not yet implemented (Phase 5)", UVM_LOW)
+    logic [8:0] vpn2;
+    pa_t        pte_addr_2;
+    pte_t       pte2;
+    ppn_t       leaf_ppn;
+
+    vpn2 = va[38:30];
+
+    if (va[29:0] != 30'b0)
+      `uvm_warning("PAGE_TABLE_BUILDER",
+        $sformatf("map_1g: VA 0x%010h is not 1G-aligned; low offset bits are ignored", va))
+    if (pa[29:0] != 30'b0)
+      `uvm_warning("PAGE_TABLE_BUILDER",
+        $sformatf("map_1g: PA 0x%010h is not 1G-aligned; PPN[17:0] will be forced to 0", pa))
+
+    leaf_ppn      = pa[PA_WIDTH-1:PAGE_OFFSET];
+    leaf_ppn[17:0] = 18'b0;
+    pte2          = make_pte(.ppn(leaf_ppn), .v(v), .r(r), .w(w), .x(x),
+                             .u(u), .g(g), .a(a), .d(d));
+    pte_addr_2    = _pte_addr(m_root_ppn, vpn2);
+    write_pte_at(pte_addr_2, pte2);
+
+    `uvm_info("PAGE_TABLE_BUILDER",
+      $sformatf("map_1g: va=0x%010h -> pa=0x%010h ppn=0x%07h pte=0x%016h",
+        va, pa, leaf_ppn, pte2), UVM_MEDIUM)
   endfunction
 
   // Remove (invalidate) a 4K leaf PTE by clearing the V bit.

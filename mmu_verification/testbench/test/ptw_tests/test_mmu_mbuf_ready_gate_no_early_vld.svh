@@ -21,13 +21,38 @@ class test_mmu_mbuf_ready_gate_no_early_vld extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.10";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "mmu_ptw_thrash_vseq";
+    p12_seq_desc = "phase12 slow 1G/2M/4K walks for stage-ready gating";
     p12_checker  = "sva_mbuf_waits_twu_ready + cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
     num_txn      = 96;
     m_post_drain = 800ns;
-    m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase12_map_hugepage_fixture();
+    phase12_config_ptw_responder(48, 96, 0);
+
+    repeat (3) begin
+      phase12_drive_ifu_rr(39'h0_4000_0000, 1, 1);
+      phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
+      phase12_drive_lsu_rr(39'h0_3000_1000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+
+      phase12_drive_ifu_rr(39'h0_8000_0000, 1, 1);
+      phase12_drive_lsu_rr(39'h0_2600_0000, 1, 1, LSU_PIPE0, 1'b0);
+      phase12_drive_lsu_rr(39'h0_3000_2000, 1, 1, LSU_PIPE1, 1'b1);
+      phase12_cp0_tlb_allinv();
+    end
+
+    #(m_post_drain);
+  endtask
 
 endclass : test_mmu_mbuf_ready_gate_no_early_vld
 

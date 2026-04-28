@@ -251,6 +251,10 @@ module tb_top;
                                          | u_dut.x_ct_mmu_ptw.acc_err_vld;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
   assign ifu_if_inst.dbg_iutlb_acc_flt   = u_dut.x_mmu_l1itlb.iutlb_acc_flt;
+  assign ifu_if_inst.dbg_iutlb_pmp_deny  = u_dut.x_mmu_l1itlb.pmp_flg_vld
+                                         && !u_dut.x_mmu_l1itlb.pmp_mmu_flg2[2]
+                                         && !(u_dut.x_mmu_l1itlb.cp0_mach_mode
+                                           && !u_dut.x_mmu_l1itlb.pmp_mmu_flg2[3]);
 
   // DTLB expt CAM (mmu_l1dtlb_expt_cam): on consume, mmu_l1dtlb_hit_rd muxes
   // PPN=VPN and ORs (expt_match & expt_{pg,ac}flt). Software ref has no CAM.

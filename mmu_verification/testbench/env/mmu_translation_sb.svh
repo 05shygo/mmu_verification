@@ -109,7 +109,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     _compare(.channel("IFU"), .va(va), .ref_rsp(ref_rsp),
              .dut_pa(tr.pa),  .dut_fault(dut_fault),
              .tr_pgflt(tr.pgflt), .tr_deny(tr.deny),
-             .ifu_dbg_iutlb_acc_flt(tr.dbg_iutlb_acc_flt));
+             .ifu_dbg_iutlb_acc_flt(tr.dbg_iutlb_acc_flt),
+             .ifu_dbg_iutlb_pmp_deny(tr.dbg_iutlb_pmp_deny));
   endfunction
 
   // =========================================================================
@@ -270,7 +271,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit           tr_mmu_en = 1'b0,
     bit           skip_ref_ppn_check = 1'b0,
     bit           dtlb_expt_match = 1'b0,
-    bit           ifu_dbg_iutlb_acc_flt = 1'b0
+    bit           ifu_dbg_iutlb_acc_flt = 1'b0,
+    bit           ifu_dbg_iutlb_pmp_deny = 1'b0
   );
     // Treat deny as a fault-class outcome as well (for PMP/SysMap modeled paths).
     bit exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
@@ -313,9 +315,16 @@ class mmu_translation_sb extends uvm_scoreboard;
               channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault, dut_pa, req_vpn))
           m_lsu_replay_mismatch++;
         end else begin
-          `uvm_error(get_type_name(),
-            $sformatf("[%s] VA=0x%010h: fault mismatch — ref.exc=%s ref.deny=%0b (exp_fault=%0b)  dut_fault=%0b",
-              channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault))
+          if (dbg_valid) begin
+            `uvm_error(get_type_name(),
+              $sformatf("[%s] VA=0x%010h: fault mismatch — ref.exc=%s ref.deny=%0b (exp_fault=%0b) dut_fault=%0b",
+                channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault))
+          end else begin
+            `uvm_error(get_type_name(),
+              $sformatf("[%s] VA=0x%010h: fault mismatch — ref.exc=%s ref.deny=%0b (exp_fault=%0b) dut_fault=%0b dut.pgflt=%0b dut.deny=%0b dbg_ifu_pmp_deny=%0b dbg_iutlb_acc_flt=%0b",
+                channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault,
+                tr_pgflt, tr_deny, ifu_dbg_iutlb_pmp_deny, ifu_dbg_iutlb_acc_flt))
+          end
         end
         local_mismatch = 1;
       end
@@ -339,9 +348,9 @@ class mmu_translation_sb extends uvm_scoreboard;
             tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en))
       end else begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h | pgflt=%0b deny=%0b dbg_iutlb_acc_flt=%0b",
+          $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h | pgflt=%0b deny=%0b dbg_ifu_pmp_deny=%0b dbg_iutlb_acc_flt=%0b",
             channel, {1'b0, va}, dut_pa, tr_pgflt, tr_deny,
-            ifu_dbg_iutlb_acc_flt),
+            ifu_dbg_iutlb_pmp_deny, ifu_dbg_iutlb_acc_flt),
           UVM_NONE)
       end
       m_mismatch++;

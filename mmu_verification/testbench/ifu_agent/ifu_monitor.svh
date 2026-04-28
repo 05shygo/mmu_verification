@@ -152,12 +152,14 @@ class ifu_monitor extends uvm_monitor;
           rsp_tr.ca      = vif.monitor_cb.mmu_ifu_ca;
           rsp_tr.buf_bit = vif.monitor_cb.mmu_ifu_buf;
           rsp_tr.dbg_iutlb_acc_flt = vif.monitor_cb.dbg_iutlb_acc_flt;
+          rsp_tr.dbg_iutlb_pmp_deny = vif.monitor_cb.dbg_iutlb_pmp_deny;
           rsp_tr.va      = m_pending_req.va;
           rsp_tr.abort   = m_pending_req.abort;
           `uvm_info(get_type_name(),
-            $sformatf("[IFU_MON_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h pa=0x%07h pavld=%0b pgflt=%0b deny=%0b",
+            $sformatf("[IFU_MON_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h pa=0x%07h pavld=%0b pgflt=%0b deny=%0b dbg_pmp_deny=%0b dbg_accerr=%0b",
               {1'b0, m_pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.pa,
-              vif.monitor_cb.mmu_ifu_pavld, rsp_tr.pgflt, rsp_tr.deny),
+              vif.monitor_cb.mmu_ifu_pavld, rsp_tr.pgflt, rsp_tr.deny,
+              rsp_tr.dbg_iutlb_pmp_deny, rsp_tr.dbg_iutlb_acc_flt),
             UVM_DEBUG)
           m_rsp_tail_hold  = req_seen;
           m_rsp_tail_va    = m_pending_req.va;

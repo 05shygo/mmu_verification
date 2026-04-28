@@ -1125,7 +1125,7 @@ always_ff @(posedge twu_clk or negedge cpurst_b)begin
 		csr_data_flop[DATA_WIDTH-1:0] <= csr_data[DATA_WIDTH-1:0];
 	else if(twu_crs2_1g && twu_csr_cross)
 		csr_data_flop[DATA_WIDTH-1:0] <= {csr_data_flop[58:PPN_WIDTH], csr_vpn_flop[17:9], csr_data_flop[18:0]};
-	else if(twu_crs2_1g && twu_csr_cross)
+	else if(twu_crs2_2m && twu_csr_cross)
 		csr_data_flop[DATA_WIDTH-1:0] <= {csr_data_flop[58:PPN_WIDTH-9], csr_vpn_flop[8:0], csr_data_flop[9:0]};
 end
 

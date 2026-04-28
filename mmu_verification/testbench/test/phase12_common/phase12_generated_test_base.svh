@@ -33,6 +33,14 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     super.new(name, parent);
   endfunction
 
+  // Phase12 whitebox covergroup gate depends on m_cg_whitebox; keep it enabled
+  // even if inherited/global config was modified by unrelated tests.
+  virtual function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    if (m_cfg != null)
+      m_cfg.en_whitebox_cg = 1'b1;
+  endfunction
+
   protected virtual function void setup_phase12_plan();
   endfunction
 

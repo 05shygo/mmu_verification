@@ -54,6 +54,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   logic [2:0]  wb_maee_leaf_vec;
   logic [1:0]  wb_maee_path;
   logic [3:0]  wb_tlbiva;
+  int unsigned wb_sample_cycles;
 
   // --- §10.2: cg_ptw_walk ----------------------------------------------------
   covergroup cg_ptw_walk;
@@ -257,6 +258,7 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    wb_sample_cycles               = 0;
     cg_ptw_walk                  = new();
     cg_l2tlb_bank                = new();
     cg_l1itlb                    = new();
@@ -305,8 +307,26 @@ class mmu_env_cg_whitebox extends uvm_component;
       cg_ptw_arb_pgs_type.sample();
       cg_maee_leaf_level.sample();
       cg_maee_path.sample();
+      wb_sample_cycles++;
     end
   endtask
+
+  virtual function void final_phase(uvm_phase phase);
+    super.final_phase(phase);
+    `uvm_info(get_type_name(),
+      $sformatf("whitebox_cg summary: sampled_cycles=%0d ptw_ready=%0.2f twu_idle_mask=%0.2f xbar_hit=%0.2f twu_except_busy=%0.2f twu_stage_ready=%0.2f arb_grant=%0.2f arb_pgs=%0.2f maee_leaf=%0.2f maee_path=%0.2f",
+        wb_sample_cycles,
+        cg_ptw_ready_transition.get_inst_coverage(),
+        cg_twu_idle_vs_mask_state.get_inst_coverage(),
+        cg_xbar_hit_level.get_inst_coverage(),
+        cg_twu_except_while_arb_busy.get_inst_coverage(),
+        cg_twu_data_ready_per_stage.get_inst_coverage(),
+        cg_arb_grant_type.get_inst_coverage(),
+        cg_ptw_arb_pgs_type.get_inst_coverage(),
+        cg_maee_leaf_level.get_inst_coverage(),
+        cg_maee_path.get_inst_coverage()),
+      UVM_LOW)
+  endfunction
 
   virtual function void sample_dut;
     wb_ptw_ready_hist_valid = wb_ptw_ready_prev_valid;

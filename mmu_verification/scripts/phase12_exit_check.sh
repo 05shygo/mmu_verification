@@ -412,6 +412,32 @@ step_maee_cover_gate() {
 }
 
 step_covergroup_gate() {
+  local log
+  local probe_idle_hits=0
+
+  load_phase12_tests || return 1
+  load_phase12_seeds || return 1
+
+  for test_name in "${PHASE12_TESTS[@]}"; do
+    for seed in "${PHASE12_SEED_ARR[@]}"; do
+      log="${PHASE12_LOG_DIR}/${test_name}_${seed}_cov.log"
+      if [[ ! -f "${log}" ]]; then
+        echo "Missing regression log: ${log}"
+        return 1
+      fi
+      if grep -Fq "whitebox CG idle" "${log}" \
+        || grep -Fq "MMU_DUT_PROBES_VIF not in config_db" "${log}"; then
+        echo "Whitebox covergroup probe not bound in log: ${log}"
+        probe_idle_hits=$((probe_idle_hits + 1))
+      fi
+    done
+  done
+
+  if [[ "${probe_idle_hits}" -ne 0 ]]; then
+    echo "Detected ${probe_idle_hits} run(s) where mmu_env_cg_whitebox was idle."
+    return 1
+  fi
+
   "${PYTHON_BIN}" "${PHASE12_COV_GATE_PY}" \
     --report-dir "${PHASE12_URG_REPORT}" \
     --threshold "${PHASE12_CG_MIN_PERCENT}" \

@@ -283,7 +283,7 @@ module tb_top;
   assign dut_probes_if.ptw_arb_pgs       = u_dut.ptw_arb_pgs;
   assign dut_probes_if.ptw_arb_vpn       = u_dut.ptw_arb_vpn;
   assign dut_probes_if.ptw_l1d_ref_cmplt = u_dut.ptw_l1dtlb_cmplt;
-  assign dut_probes_if.ptw_l1d_ref_id    = u_dut.ptw_l1dtlb_ref_id;
+  assign dut_probes_if.ptw_l1d_ref_id    = u_dut.ptw_l1dtlb_id[2:0];
   assign dut_probes_if.ptw_l1d_ref_ppn   = u_dut.ptw_l1dtlb_ref_ppn;
   assign dut_probes_if.ptw_arb_ref_tag_din = u_dut.ptw_arb_ref_tag_din;
   assign dut_probes_if.ptw_cp0_maee      = u_dut.cp0_mmu_maee;

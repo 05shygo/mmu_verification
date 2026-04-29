@@ -157,6 +157,23 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     #200ns;
   endtask
 
+  // Drive repeated PTW-read deny / allow windows so `ptw_jtlb_ready` toggles
+  // across consecutive cycles (rise/fall/stay_high/stay_low) for cg_ptw_ready_transition.
+  protected virtual task phase12_pulse_ptw_ready_for_cov(input int unsigned rounds = 4);
+    int unsigned r;
+    for (r = 0; r < rounds; r++) begin
+      phase12_set_pmp_deny_ptw_reads(4'b1111);
+      #220ns;
+      phase12_set_pmp_allow_all();
+      #180ns;
+      phase12_set_pmp_deny_ptw_reads(4'b1010);
+      #160ns;
+      phase12_set_pmp_allow_all();
+      #140ns;
+    end
+    phase12_set_pmp_allow_all();
+  endtask
+
   virtual function void setup_plan();
     super.setup_plan();
 

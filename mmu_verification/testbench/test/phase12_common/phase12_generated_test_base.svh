@@ -159,17 +159,25 @@ class phase12_generated_test_base extends phase9_generated_test_base;
 
   // Drive repeated PTW-read deny / allow windows so `ptw_jtlb_ready` toggles
   // across consecutive cycles (rise/fall/stay_high/stay_low) for cg_ptw_ready_transition.
-  protected virtual task phase12_pulse_ptw_ready_for_cov(input int unsigned rounds = 4);
+  // Longer settle delays + short IFU/LSU bursts during deny windows keep PTW/PDE active
+  // so `ptw_jtlb_ready` is more likely to edge (vs quiescent constant ready).
+  protected virtual task phase12_pulse_ptw_ready_for_cov(input int unsigned rounds = 6);
     int unsigned r;
+    va_t pulse_base;
+    pulse_base = 39'h10_5000;
     for (r = 0; r < rounds; r++) begin
       phase12_set_pmp_deny_ptw_reads(4'b1111);
+      #280ns;
+      phase12_drive_lsu_rr(pulse_base + va_t'(r << 12), 1, 4, LSU_PIPE0, 1'b0);
+      #80ns;
+      phase12_set_pmp_allow_all();
       #220ns;
+      phase12_set_pmp_deny_ptw_reads(4'b1010);
+      #200ns;
+      phase12_drive_ifu_rr(pulse_base + va_t'(r << 12) + 39'h80, 1, 6);
+      #80ns;
       phase12_set_pmp_allow_all();
       #180ns;
-      phase12_set_pmp_deny_ptw_reads(4'b1010);
-      #160ns;
-      phase12_set_pmp_allow_all();
-      #140ns;
     end
     phase12_set_pmp_allow_all();
   endtask

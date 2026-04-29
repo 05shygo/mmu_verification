@@ -25,7 +25,7 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
     num_txn      = 96;
-    m_post_drain = 800ns;
+    m_post_drain = 1400ns;
   endfunction
 
   virtual task run_test_body();
@@ -55,7 +55,11 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
       end
     join
 
-    phase12_pulse_ptw_ready_for_cov(5);
+    phase12_pulse_ptw_ready_for_cov(8);
+    phase12_cp0_tlb_allinv();
+    phase12_drive_lsu_rr(39'h10_3000, 1, 12, LSU_PIPE0, 1'b0);
+    #120ns;
+    phase12_pulse_ptw_ready_for_cov(4);
 
     #(m_post_drain);
   endtask

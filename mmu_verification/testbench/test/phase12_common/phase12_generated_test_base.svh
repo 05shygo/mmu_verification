@@ -202,13 +202,23 @@ class phase12_generated_test_base extends phase9_generated_test_base;
   protected virtual task phase12_pulse_ptw_ready_for_cov(input int unsigned rounds = 6);
     int unsigned r;
     va_t b_ifu, b_lsu, four_base;
+    pa_t pa_base;
     for (r = 0; r < rounds; r++) begin
       b_ifu = 39'h10_6000 + va_t'(r << 13);
       b_lsu = 39'h10_E000 + va_t'(r << 13);
       four_base = 39'h10_2000 + va_t'(r << 16);
+      pa_base = 40'h0_2100_0000 + pa_t'(r << 20);
+
+      phase12_map_4k_window(four_base,               22, pa_base + 40'h0_0000);
+      phase12_map_4k_window(four_base + 39'h4_0000,  22, pa_base + 40'h4_0000);
+      phase12_map_4k_window(four_base + 39'h8_0000,  22, pa_base + 40'h8_0000);
+      phase12_map_4k_window(four_base + 39'hC_0000,  22, pa_base + 40'hC_0000);
+      phase12_map_4k_window(b_ifu + 39'h2000,         8, pa_base + 40'h1_0000);
+      phase12_map_4k_window(b_lsu + 39'h2000,         8, pa_base + 40'h2_0000);
 
       phase12_concurrent_four_twus_under_full_pmp_deny(four_base, 22, 110);
 
+      phase12_cp0_tlb_allinv();
       phase12_set_pmp_deny_ptw_reads(4'b1010);
       #80ns;
       fork

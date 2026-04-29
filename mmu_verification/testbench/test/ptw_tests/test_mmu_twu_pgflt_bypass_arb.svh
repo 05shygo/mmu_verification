@@ -36,6 +36,7 @@ class test_mmu_twu_pgflt_bypass_arb extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
+    phase12_map_4k_window(39'h10_0000, 8, 40'h0_2010_0000);
     m_env.m_pt_mem.m_builder.inject_fault(39'h10_0000, "V_OFF");
     phase12_config_ptw_responder(48, 96, 0);
 

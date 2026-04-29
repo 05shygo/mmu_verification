@@ -17,7 +17,7 @@
 | `cg_xbar_hit_level` | `F4.NEW.8` PDE hit level | `ptw_xbar_hit_lvl`；`ptw_arb_pgs` | `miss_00`；`hit_l2_10`；`hit_l3_01`；`reserved_11` | `test_mmu_pde_cache_full_miss_full_ptw`；`test_mmu_pde_cache_hit_l2_skip_scd`；`test_mmu_pde_cache_hit_l3_skip_thd` | 已落地 |
 | `cg_twu_except_while_arb_busy` | `F4.NEW.9` 异常直通旁路 | `ptw_twu_pgflt_vec`；`ptw_twu_acc_err_vec`；`ptw_pgflt_vld`；`ptw_acc_err_vld`；`arb_ptw_grant`；`arb_l2tlb_req` | `pgflt_when_arb_busy`；`accerr_when_arb_busy`；`conflict_filtered` | `test_mmu_twu_pgflt_bypass_arb`；`test_mmu_twu_accerr_bypass_arb`；`test_mmu_twu_except_conflict_pgflt_accflt` | 已落地 |
 | `cg_twu_data_ready_per_stage` | `F4.NEW.10` MBUF ready/have 门控 | `ptw_twu_data_ready[3:0][2:0]`；`ptw_mbuf_twu_have[3:0]`；`ptw_twu_ref_req[3:0]` | `fst_wait_no_vld`；`scd_have_no_resend`；`thd_multi_twu_independent` | `test_mmu_mbuf_ready_gate_no_early_vld`；`test_mmu_mbuf_have_no_resend`；`test_mmu_mbuf_multi_twu_independent_ready` | 已落地 |
-| `cg_arb_grant_type` | `F4.NEW.11` arb grant/prio/fairness | `arb_ptw_grant`；`ptw_pgflt_vld`；`ptw_acc_err_vld`；`ptw_twu_ref_req[3:0]` | `grant_onehot_refill`；`grant_onehot_pgflt`；`grant_onehot_accerr`；`except_over_refill`；`fairness_rotation` | `test_mmu_arb_grant_onehot_check`；`test_mmu_arb_refill_except_priority`；`test_mmu_arb_multi_twu_fairness` | 已落地 |
+| `cg_arb_grant_type` | `F4.NEW.11` arb grant/prio/fairness | `arb_ptw_grant`；`ptw_pgflt_vld`；`ptw_acc_err_vld`；`ptw_l2tlb_ref_pgflt`；`ptw_l2tlb_ref_acc_err`；`ptw_twu_ref_req[3:0]` | `grant_onehot_refill`；`grant_onehot_pgflt`；`grant_onehot_accerr`；`except_over_refill`；`fairness_rotation` | `test_mmu_arb_grant_onehot_check`；`test_mmu_arb_refill_except_priority`；`test_mmu_arb_multi_twu_fairness` | 已落地 |
 | `cg_ptw_arb_pgs_type` | `F5.16` PTW->arb VPN/PGS | `ptw_arb_pgs`；`ptw_arb_vpn`；`ptw_arb_ref_tag_din` | `vpn_match_4k`；`vpn_match_2m`；`vpn_match_1g`；`bank_select_per_pgs` | `test_mmu_arb_vpn_match_tag_din`；`test_mmu_arb_pgs_bank_select` | 已落地 |
 | `cg_maee_leaf_level` | `F4.NEW.12` MAEE 叶级分布 | `ptw_cp0_maee`；`maee_leaf_lvl1_hit`；`maee_leaf_lvl2_hit`；`maee_leaf_lvl3_hit` | `maee0_fst_csr`；`maee0_scd_csr`；`maee1_leaf_refill` | `test_mmu_twu_maee0_csr_path`；`test_mmu_twu_maee0_csr_symmetric`；`test_mmu_twu_maee1_direct_refill` | 已落地 |
 | `cg_maee_path` | `F4.NEW.12` MAEE path / switch | `ptw_cp0_maee`；`maee_csr_path_hit`；`maee_refill_path_hit`；`ptw_jtlb_ready` | `maee0_csr_only`；`maee1_refill_only`；`switch_no_mixed_fire` | `test_mmu_twu_maee0_csr_path`；`test_mmu_twu_maee1_direct_refill`；`test_mmu_twu_maee_dynamic_switch` | 已落地 |
@@ -46,6 +46,8 @@
 - `ptw_twu_acc_err_vec[3:0]`
 - `ptw_pgflt_vld`
 - `ptw_acc_err_vld`
+- `ptw_l2tlb_ref_pgflt`
+- `ptw_l2tlb_ref_acc_err`
 - `arb_ptw_grant`
 - `arb_l2tlb_req`
 - `ptw_arb_pgs`

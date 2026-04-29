@@ -37,6 +37,7 @@ class test_mmu_arb_refill_except_priority extends phase12_generated_test_base;
       do_sv39_4k_bringup();
 
     phase12_map_hugepage_fixture();
+    phase12_map_4k_window(39'h10_0000, 8, 40'h0_2010_0000);
     m_env.m_pt_mem.m_builder.inject_fault(39'h10_0000, "V_OFF");
     phase12_config_ptw_responder(48, 96, 0);
 
@@ -56,6 +57,13 @@ class test_mmu_arb_refill_except_priority extends phase12_generated_test_base;
         end
       end
     join
+
+    phase12_set_pmp_deny_ptw_reads(4'b1111);
+    repeat (6) begin
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h10_1000, 1, 2, LSU_PIPE0, 1'b0);
+    end
+    phase12_set_pmp_allow_all();
 
     phase12_config_ptw_responder(1, 4, 0);
 

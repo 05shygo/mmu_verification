@@ -43,6 +43,8 @@ class mmu_env_cg_whitebox extends uvm_component;
   int unsigned wb_mbuf_have_cnt;
   bit          wb_ptw_pgflt_vld;
   bit          wb_ptw_acc_err_vld;
+  bit          wb_ptw_pgflt_rsp;
+  bit          wb_ptw_acc_err_rsp;
   bit          wb_arb_ptw_grant;
   bit          wb_arb_busy;
   bit          wb_ptw_activity;
@@ -159,12 +161,16 @@ class mmu_env_cg_whitebox extends uvm_component;
     cp_have_cnt: coverpoint wb_mbuf_have_cnt { bins z = {0}; bins one = {1}; bins few = {[2:3]}; bins all = {4}; }
   endgroup
 
-  // Grant type is inferred from PTW priority outputs:
-  // acc_err_vld > pgflt_vld > arb_ptw_grant(refill).
+  // Grant type is inferred from PTW priority and response outputs:
+  // acc_err > pgflt > refill.  The response bits are included because the
+  // pre-grant exception vld window can be narrower than the final PTW response
+  // pulse seen by L1/L2 TLB consumers.
   covergroup cg_arb_grant_type;
     option.per_instance = 1;
     cp_grant_type: coverpoint wb_arb_grant_type
-                   iff (wb_ptw_acc_err_vld || wb_ptw_pgflt_vld || wb_arb_ptw_grant) {
+                   iff (wb_ptw_acc_err_vld || wb_ptw_acc_err_rsp
+                     || wb_ptw_pgflt_vld || wb_ptw_pgflt_rsp
+                     || wb_arb_ptw_grant) {
       bins refill = {2'd1};
       bins pgflt  = {2'd2};
       bins accerr = {2'd3};
@@ -360,12 +366,17 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_mbuf_have_cnt        = cnt4(v_probe.ptw_mbuf_twu_have);
     wb_ptw_pgflt_vld        = v_probe.ptw_pgflt_vld;
     wb_ptw_acc_err_vld      = v_probe.ptw_acc_err_vld;
+    wb_ptw_pgflt_rsp        = v_probe.ptw_l2tlb_ref_pgflt;
+    wb_ptw_acc_err_rsp      = v_probe.ptw_l2tlb_ref_acc_err;
     wb_arb_ptw_grant        = v_probe.arb_ptw_grant;
     wb_arb_busy             = v_probe.arb_l2tlb_req;
     wb_ptw_vpn_tag_match    = (v_probe.ptw_arb_vpn == v_probe.ptw_arb_ref_tag_din[46:20]);
     wb_ptw_cp0_maee         = v_probe.ptw_cp0_maee;
     wb_twu_except_kind      = f_twu_except_kind(v_probe.ptw_twu_pgflt_vec, v_probe.ptw_twu_acc_err_vec);
-    wb_arb_grant_type       = f_arb_grant_type(wb_ptw_acc_err_vld, wb_ptw_pgflt_vld, wb_arb_ptw_grant);
+    wb_arb_grant_type       = f_arb_grant_type(
+                                wb_ptw_acc_err_vld || wb_ptw_acc_err_rsp,
+                                wb_ptw_pgflt_vld || wb_ptw_pgflt_rsp,
+                                wb_arb_ptw_grant);
     wb_ptw_arb_pgs          = v_probe.ptw_arb_pgs;
     wb_maee_leaf_vec        = {v_probe.maee_leaf_lvl3_hit, v_probe.maee_leaf_lvl2_hit, v_probe.maee_leaf_lvl1_hit};
     wb_maee_path            = f_maee_path(v_probe.maee_csr_path_hit, v_probe.maee_refill_path_hit);

@@ -131,6 +131,20 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     seq.start(m_env.m_lsu.m_sequencer);
   endtask
 
+  protected virtual task phase12_map_4k_window(
+    input va_t base_va,
+    input int unsigned npage,
+    input pa_t base_pa = 40'h0_2010_0000
+  );
+    for (int unsigned i = 0; i < npage; i++) begin
+      m_env.m_pt_mem.m_builder.map_4k(
+        .va(base_va + va_t'(i << 12)),
+        .pa(base_pa + pa_t'(i << 12)),
+        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    end
+    #100ns;
+  endtask
+
   protected virtual task phase12_map_hugepage_fixture();
     // Two 1G regions, two 2M regions, and a dedicated 4K window keep page-size
     // coverage and MAEE/FST/SCD paths disjoint.

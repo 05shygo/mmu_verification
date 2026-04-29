@@ -360,6 +360,8 @@ module tb_top;
   assign dut_probes_if.ptw_twu_acc_err_vec = u_dut.x_ct_mmu_ptw.twu_l2tlb_ref_acc_err;
   assign dut_probes_if.ptw_pgflt_vld     = u_dut.x_ct_mmu_ptw.pgflt_vld;
   assign dut_probes_if.ptw_acc_err_vld   = u_dut.x_ct_mmu_ptw.acc_err_vld;
+  assign dut_probes_if.ptw_l2tlb_ref_pgflt = u_dut.ptw_l2tlb_ref_pgflt;
+  assign dut_probes_if.ptw_l2tlb_ref_acc_err = u_dut.ptw_l2tlb_ref_acc_err;
   assign dut_probes_if.arb_ptw_grant     = u_dut.arb_ptw_grant;
   assign dut_probes_if.arb_l2tlb_req     = u_dut.arb_l2tlb_req;
   assign dut_probes_if.ptw_arb_pgs       = u_dut.ptw_arb_pgs;

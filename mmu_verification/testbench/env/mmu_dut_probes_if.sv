@@ -94,6 +94,8 @@ interface mmu_dut_probes_if (
   wire [3:0]   ptw_twu_acc_err_vec;
   wire         ptw_pgflt_vld;
   wire         ptw_acc_err_vld;
+  wire         ptw_l2tlb_ref_pgflt;
+  wire         ptw_l2tlb_ref_acc_err;
   wire         arb_ptw_grant;
   wire         arb_l2tlb_req;
   wire [2:0]   ptw_arb_pgs;
@@ -133,7 +135,8 @@ interface mmu_dut_probes_if (
     input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any;
     input ptw_jtlb_ready, ptw_twu_idle, ptw_twu_mask, ptw_twu_data_ready;
     input ptw_mbuf_twu_have, ptw_twu_ref_req, ptw_twu_pgflt_vec, ptw_twu_acc_err_vec;
-    input ptw_pgflt_vld, ptw_acc_err_vld, arb_ptw_grant, arb_l2tlb_req;
+    input ptw_pgflt_vld, ptw_acc_err_vld, ptw_l2tlb_ref_pgflt, ptw_l2tlb_ref_acc_err;
+    input arb_ptw_grant, arb_l2tlb_req;
     input ptw_arb_pgs, ptw_arb_vpn, ptw_l1d_ref_cmplt, ptw_l1d_ref_id, ptw_l1d_ref_ppn;
     input ptw_arb_ref_tag_din, ptw_cp0_maee;
     input maee_leaf_lvl1_hit, maee_leaf_lvl2_hit, maee_leaf_lvl3_hit;

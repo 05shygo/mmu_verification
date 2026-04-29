@@ -10,9 +10,10 @@ from typing import List, Optional, Sequence, Tuple
 
 PREFERRED_FILES = {
     "groups.txt": 0,
-    "dashboard.txt": 1,
-    "dashboard.html": 2,
-    "index.html": 3,
+    "groups.html": 1,
+    "dashboard.txt": 2,
+    "dashboard.html": 3,
+    "index.html": 4,
 }
 TEXT_SUFFIXES = {".txt", ".html", ".htm"}
 
@@ -57,6 +58,64 @@ def sanitize_text(raw_text: str) -> str:
     return re.sub(r"\s+", " ", no_tags)
 
 
+def parse_score_value(text: str) -> Optional[float]:
+    match = re.search(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])", text)
+    if match is None:
+        return None
+
+    try:
+        value = float(match.group(1))
+    except ValueError:
+        return None
+
+    if 0.0 <= value <= 100.0:
+        return value
+    return None
+
+
+def candidate_urg_table_scores(raw_text: str, group_name: str) -> List[float]:
+    """Extract SCORE from URG groups.html table rows.
+
+    URG group-list HTML reports place SCORE in the second <td> of the group row
+    and do not append a literal percent sign. Parsing the row avoids confusing
+    the bottom color legend (0%, 10%, ..., 100%) with the covergroup score.
+    """
+    row_re = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+    cell_re = re.compile(r"<td\b[^>]*>(.*?)</td>", re.IGNORECASE | re.DOTALL)
+
+    values: List[float] = []
+    for row_match in row_re.finditer(raw_text):
+        row = row_match.group(1)
+        if group_name not in html.unescape(row):
+            continue
+
+        cells = [sanitize_text(cell) for cell in cell_re.findall(row)]
+        if len(cells) < 2 or group_name not in cells[0]:
+            continue
+
+        value = parse_score_value(cells[1])
+        if value is not None:
+            values.append(value)
+
+    return values
+
+
+def candidate_text_row_scores(text: str, group_name: str) -> List[float]:
+    """Extract SCORE from text rows where the first number after the name is score."""
+    values: List[float] = []
+    for raw_line in text.splitlines():
+        line = sanitize_text(raw_line)
+        if group_name not in line:
+            continue
+
+        tail = line.split(group_name, 1)[1]
+        value = parse_score_value(tail)
+        if value is not None:
+            values.append(value)
+
+    return values
+
+
 def candidate_percentages(text: str, group_name: str) -> List[float]:
     escaped = re.escape(group_name)
     patterns = (
@@ -80,7 +139,14 @@ def locate_group_percentage(report_dir: Path, group_name: str) -> Optional[Tuple
     for path in iter_report_files(report_dir):
         raw_text = path.read_text(encoding="utf-8", errors="ignore")
         sanitized = sanitize_text(raw_text)
-        values = candidate_percentages(raw_text, group_name)
+
+        values = candidate_urg_table_scores(raw_text, group_name)
+        if not values:
+            values = candidate_text_row_scores(raw_text, group_name)
+        if not values:
+            values = candidate_text_row_scores(sanitized, group_name)
+        if not values:
+            values = candidate_percentages(raw_text, group_name)
         if not values:
             values = candidate_percentages(sanitized, group_name)
         if values:

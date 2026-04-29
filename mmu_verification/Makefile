@@ -1152,7 +1152,20 @@ clean_wave:
 	rm -rf $(WAVE_DIR)/*.fsdb $(WAVE_DIR)/*.vpd $(WAVE_DIR)/*.rc
 
 clean_cov:
-	rm -rf $(COV_DIR)/*.vdb $(COV_DIR)/urgReport $(COV_DIR)/merged*
+	@set -e; \
+	for p in $(COV_DIR)/*.vdb $(COV_DIR)/urgReport $(COV_DIR)/merged* $(COV_DIR)/*.nfs_busy.*; do \
+		[ -e "$$p" ] || continue; \
+		stale="$${p}.nfs_busy.$$(date +%Y%m%d_%H%M%S).$$$$"; \
+		if mv "$$p" "$$stale" 2>/dev/null; then \
+			rm -rf "$$stale" 2>/dev/null || \
+				echo "WARNING: left NFS-busy coverage artifact at $$stale; close the process holding .nfs* files and remove it later."; \
+		elif rm -rf "$$p" 2>/dev/null; then \
+			:; \
+		else \
+			echo "ERROR: could not clean $$p. Close processes holding files under this path and retry."; \
+			exit 1; \
+		fi; \
+	done
 
 clean_all: clean clean_wave clean_cov
 	rm -rf $(OUTPUT_DIR) $(REGRESS_DIR)

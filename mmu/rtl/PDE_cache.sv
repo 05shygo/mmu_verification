@@ -355,16 +355,21 @@ assign PDE_xbar_ppn[PPN_WIDTH-1:0] = PDE_cache_fin_ppn[PPN_WIDTH-1:0];
 assign PDE_xbar_vpn[VPN_WIDTH-1:0] = ptw_vpn[VPN_WIDTH-1:0];
 assign PDE_xbar_type[2:0] = ptw_type[2:0];
 assign PDE_xbar_id[ID_WIDTH-1:0] = ptw_id[ID_WIDTH-1:0];
-assign PDE_xbar_req = ptw_req & xbar_pde_ready;
+// Keep PDE_xbar_req as the registered pending valid.  xbar_pde_ready is the
+// handshake response from one_to_four_xbar; gating valid by ready creates a
+// combinational loop because the xbar computes ready from this valid plus
+// twu_mask.  ptw_req is held while !xbar_pde_ready above, so the request stays
+// stable until accepted.
+assign PDE_xbar_req = ptw_req;
 
 // Trace PDE cache hit details for run_check post-log analysis.
 always_ff @(posedge pde_cache_clk or negedge cpurst_b) begin
 	if(!cpurst_b) begin
 		// no-op
-	end else if(PDE_xbar_req && L2PDE_xbar_hit_vld) begin
+	end else if(PDE_xbar_req && xbar_pde_ready && L2PDE_xbar_hit_vld) begin
 		$display("[%0t][PDE CACHE HIT] lvl=L2 req_vpn=0x%07h tag=0x%05h hit_idx=%0d hit_vec=0x%04h out_ppn=0x%07h",
 		         $time, PDE_xbar_vpn, PDE_xbar_vpn[26:9], L2PDE_hit_idx_num, L2PDE_entry_hit_idx, PDE_xbar_ppn);
-	end else if(PDE_xbar_req && L1PDE_xbar_hit_vld) begin
+	end else if(PDE_xbar_req && xbar_pde_ready && L1PDE_xbar_hit_vld) begin
 		$display("[%0t][PDE CACHE HIT] lvl=L1 req_vpn=0x%07h tag=0x%03h hit_idx=%0d hit_vec=0x%04h out_ppn=0x%07h",
 		         $time, PDE_xbar_vpn, PDE_xbar_vpn[26:18], L1PDE_hit_idx_num, L1PDE_entry_hit_idx, PDE_xbar_ppn);
 	end

@@ -124,6 +124,10 @@ def candidate_group_detail_scores(raw_text: str, group_name: str) -> List[float]
     """
     title_patterns = (
         re.compile(
+            r"<title\b[^>]*>.*?Group\s*::\s*(.*?)</title>",
+            re.IGNORECASE | re.DOTALL,
+        ),
+        re.compile(
             r"<center\b[^>]*class=[\"']pagetitle[\"'][^>]*>\s*Group\s*:\s*(.*?)</center>",
             re.IGNORECASE | re.DOTALL,
         ),

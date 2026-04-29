@@ -157,38 +157,51 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     #200ns;
   endtask
 
+  // twu.sv twu_mask |= fst_pmp_wait|scd_pmp_wait|thd_pmp_wait|... ; fst_pmp_wait is
+  // fst_pmp_vld & !fst_pmp_grant when PTW table walk waits on PMP for that TWU.
+  // one_to_four_xbar: xbar_pde_ready = ~(&twu_mask[3:0]); PTW ptw_jtlb_ready follows that.
+  // To pull ptw_jtlb_ready low we need all four TWUs with twu_mask==1 concurrently — drive
+  // four independent miss sources (IFU + LSU_PIPE0/1/2) in parallel under full PTW-read PMP deny.
+  protected virtual task phase12_concurrent_four_twus_under_full_pmp_deny(
+    input va_t region_base,
+    input int npage = 22,
+    input int n_txn = 100
+  );
+    phase12_cp0_tlb_allinv();
+    #150ns;
+    phase12_set_pmp_deny_ptw_reads(4'b1111);
+    #120ns;
+    fork
+      phase12_drive_ifu_rr(region_base,                  npage, n_txn);
+      phase12_drive_lsu_rr(region_base + 39'h4_0000,    npage, n_txn, LSU_PIPE0, 1'b0);
+      phase12_drive_lsu_rr(region_base + 39'h8_0000,    npage, n_txn, LSU_PIPE1, 1'b1);
+      phase12_drive_lsu_rr(region_base + 39'hC_0000,    npage, n_txn, LSU_PIPE2, 1'b0);
+    join
+    phase12_set_pmp_allow_all();
+    #280ns;
+  endtask
+
   // Drive repeated PTW-read deny / allow windows so `ptw_jtlb_ready` toggles
   // across consecutive cycles (rise/fall/stay_high/stay_low) for cg_ptw_ready_transition.
   //
   // RTL: xbar_pde_ready = ~(&twu_mask[3:0]); ptw_jtlb_ready = pde_cache_ready & !abort_flop.
-  // Thus ready=0 needs (all TWU masks set) and/or tlboper abort_flop. PMP deny alone is
-  // not enough unless four TWUs are concurrently in PMP-wait; parallel IFU+LSU interleave
-  // under deny plus cp0 TLB invalidate (tlboper_ptw_abort path) increases fall/rise/stay_low.
   protected virtual task phase12_pulse_ptw_ready_for_cov(input int unsigned rounds = 6);
     int unsigned r;
-    va_t b_ifu, b_lsu;
+    va_t b_ifu, b_lsu, four_base;
     for (r = 0; r < rounds; r++) begin
       b_ifu = 39'h10_6000 + va_t'(r << 13);
       b_lsu = 39'h10_E000 + va_t'(r << 13);
+      four_base = 39'h10_2000 + va_t'(r << 16);
 
-      phase12_set_pmp_deny_ptw_reads(4'b1111);
-      #150ns;
-      phase12_cp0_tlb_allinv();
-      #120ns;
-      fork
-        phase12_drive_ifu_rr(b_ifu, 12, 72);
-        phase12_drive_lsu_interleave3(b_lsu, 12, 96);
-      join
-      #600ns;
-      phase12_set_pmp_allow_all();
-      #280ns;
+      phase12_concurrent_four_twus_under_full_pmp_deny(four_base, 22, 110);
 
       phase12_set_pmp_deny_ptw_reads(4'b1010);
+      #80ns;
       fork
-        phase12_drive_ifu_rr(b_ifu + 39'h2000, 8, 48);
-        phase12_drive_lsu_rr(b_lsu + 39'h2000, 8, 64, LSU_PIPE0, 1'b0);
+        phase12_drive_ifu_rr(b_ifu + 39'h2000, 8, 56);
+        phase12_drive_lsu_rr(b_lsu + 39'h2000, 8, 72, LSU_PIPE0, 1'b0);
       join
-      #400ns;
+      #450ns;
       phase12_set_pmp_allow_all();
       #220ns;
     end

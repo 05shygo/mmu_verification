@@ -149,7 +149,9 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins accerr = {2'd2};
       bins mixed  = {2'd3};
     }
-    cx_except_busy: cross cp_arb_busy, cp_except_kind iff (wb_twu_except_kind != 2'd0);
+    cx_except_busy: cross cp_arb_busy, cp_except_kind iff (wb_twu_except_kind != 2'd0) {
+      ignore_bins no_exception = binsof(cp_except_kind.none);
+    }
   endgroup
 
   // --- Phase 12: cg_twu_data_ready_per_stage ---------------------------------

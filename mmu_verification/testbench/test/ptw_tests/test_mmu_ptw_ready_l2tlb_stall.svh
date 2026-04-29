@@ -64,7 +64,7 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
     phase12_set_pmp_allow_all();
     phase12_config_ptw_responder(1, 4, 0);
 
-    phase12_pulse_ptw_ready_for_cov(8);
+    phase12_pulse_ptw_ready_for_cov(10);
 
     #(m_post_drain);
   endtask

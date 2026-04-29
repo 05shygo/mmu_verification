@@ -159,25 +159,38 @@ class phase12_generated_test_base extends phase9_generated_test_base;
 
   // Drive repeated PTW-read deny / allow windows so `ptw_jtlb_ready` toggles
   // across consecutive cycles (rise/fall/stay_high/stay_low) for cg_ptw_ready_transition.
-  // Longer settle delays + short IFU/LSU bursts during deny windows keep PTW/PDE active
-  // so `ptw_jtlb_ready` is more likely to edge (vs quiescent constant ready).
+  //
+  // RTL: xbar_pde_ready = ~(&twu_mask[3:0]); ptw_jtlb_ready = pde_cache_ready & !abort_flop.
+  // Thus ready=0 needs (all TWU masks set) and/or tlboper abort_flop. PMP deny alone is
+  // not enough unless four TWUs are concurrently in PMP-wait; parallel IFU+LSU interleave
+  // under deny plus cp0 TLB invalidate (tlboper_ptw_abort path) increases fall/rise/stay_low.
   protected virtual task phase12_pulse_ptw_ready_for_cov(input int unsigned rounds = 6);
     int unsigned r;
-    va_t pulse_base;
-    pulse_base = 39'h10_5000;
+    va_t b_ifu, b_lsu;
     for (r = 0; r < rounds; r++) begin
+      b_ifu = 39'h10_6000 + va_t'(r << 13);
+      b_lsu = 39'h10_E000 + va_t'(r << 13);
+
       phase12_set_pmp_deny_ptw_reads(4'b1111);
+      #150ns;
+      phase12_cp0_tlb_allinv();
+      #120ns;
+      fork
+        phase12_drive_ifu_rr(b_ifu, 12, 72);
+        phase12_drive_lsu_interleave3(b_lsu, 12, 96);
+      join
+      #600ns;
+      phase12_set_pmp_allow_all();
       #280ns;
-      phase12_drive_lsu_rr(pulse_base + va_t'(r << 12), 1, 4, LSU_PIPE0, 1'b0);
-      #80ns;
+
+      phase12_set_pmp_deny_ptw_reads(4'b1010);
+      fork
+        phase12_drive_ifu_rr(b_ifu + 39'h2000, 8, 48);
+        phase12_drive_lsu_rr(b_lsu + 39'h2000, 8, 64, LSU_PIPE0, 1'b0);
+      join
+      #400ns;
       phase12_set_pmp_allow_all();
       #220ns;
-      phase12_set_pmp_deny_ptw_reads(4'b1010);
-      #200ns;
-      phase12_drive_ifu_rr(pulse_base + va_t'(r << 12) + 39'h80, 1, 6);
-      #80ns;
-      phase12_set_pmp_allow_all();
-      #180ns;
     end
     phase12_set_pmp_allow_all();
   endtask

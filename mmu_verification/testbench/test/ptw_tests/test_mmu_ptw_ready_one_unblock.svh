@@ -55,11 +55,11 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
       end
     join
 
-    phase12_pulse_ptw_ready_for_cov(8);
+    phase12_pulse_ptw_ready_for_cov(10);
     phase12_cp0_tlb_allinv();
     phase12_drive_lsu_rr(39'h10_3000, 1, 12, LSU_PIPE0, 1'b0);
     #120ns;
-    phase12_pulse_ptw_ready_for_cov(4);
+    phase12_pulse_ptw_ready_for_cov(6);
 
     #(m_post_drain);
   endtask

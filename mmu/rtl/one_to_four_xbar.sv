@@ -73,7 +73,7 @@ parameter DATA_WIDTH = PPN_WIDTH+FLG_WIDTH;
 
 
 logic twu_xbar_mask;
-
+logic [3:0] twu_req_hash;
 //assign twu_ready = ~(&twu_mask[3:0]);	
 assign twu_xbar_mask = |({4{PDE_xbar_req}} & twu_req_hash[3:0] & twu_mask[3:0]);
 assign xbar_pde_ready = ~twu_xbar_mask;
@@ -85,7 +85,7 @@ assign twu_hash[1:0] =
     PDE_xbar_vpn[19:18] ^
     PDE_xbar_vpn[26:25];
 
-logic [3:0] twu_req_hash;
+
 always_comb begin
     unique case (twu_hash[1:0])
         2'b00: twu_req_hash[3:0] = 4'b0001;

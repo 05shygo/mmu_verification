@@ -2,14 +2,15 @@
 
 ## 推荐执行命令
 
-- Phase 12 单命令 gate（推荐收口入口）：
+- Phase 12 **单命令 gate（推荐收口入口）**：一次满足回归、`run_cov`、URG 合并与 **9 个 covergroup ≥50%** 校验（见 `mmu_verification/Makefile` 中 `phase12_exit_check`）
   - `make phase12_exit_check`
+  - （可选跳过编译或回归）`PHASE12_SKIP_COMPILE=1`、`PHASE12_SKIP_REGRESSION=1` 等见 Makefile
 - 编译：
   - `make comp`
-- Phase 12 主回归：
-  - `make regress LIST=simu/mmu_v4_phase12_list REGRESS_MODE=run_check REGRESS_SEEDS="95101 95102 95103"`
-- 已有 Phase 12 回归 target：
-  - `make regress_v4_maee_ptw REGRESS_SEEDS="95101 95102 95103"`
+- Phase 12 **带覆盖率**主回归（产出 `output/coverage/*.vdb` 与 URG；与 TaskDivision「9 个 CG ≥50%」证据一致）：
+  - `make regress_v4_maee_ptw`（`LIST=simu/mmu_v4_phase12_list`，`REGRESS_MODE=run_cov`，种子见 `PHASE12_SEEDS` 默认）
+  - 或手搓等价：`cd mmu_verification && make regress LIST=simu/mmu_v4_phase12_list REGRESS_MODE=run_cov REGRESS_NAME=phase12_v4 REGRESS_SEEDS="95101 95102 95103" REGRESS_MIN_PASS_RATE=1.0`（需已 `make comp`），结束后 `make cov`
+- 若仅跑功能回归**不设覆盖率**，无法满足 Covergroup 门禁；签核前必须以 **`run_cov`** 合并报告为准。
 
 ## B 侧文档与范围门禁
 
@@ -43,6 +44,8 @@
 - [ ] 既有 `ptw/twu/xbar/arb` 相关 SVA 在 Phase 12 主回归中无新增 false fire。
 
 ## Covergroup 门禁
+
+与 **TaskDivision §Phase 12 退出准则 #5** 一致：仅下列 **9 个** covergroup（宿主 `mmu_env_cg_whitebox.svh`），各自 URG **SCORE ≥ 50%**。自动化校验见 `scripts/phase12_exit_check.sh` → `step_covergroup_gate` → `scripts/phase12_cov_gate.py`（组名列表 `PHASE12_CGS`，阈值默认 `PHASE12_CG_MIN_PERCENT=50`）。**不包括** URG「Total groups」汇总分或其它 agent 内 CG。
 
 - [ ] `cg_ptw_ready_transition` bin 命中率 `>=50%`
 - [ ] `cg_twu_idle_vs_mask_state` bin 命中率 `>=50%`

@@ -55,6 +55,8 @@ MAEE_COVERS=(
   cp_maee1_skips_csr_fsm
 )
 
+# Phase 12 签核 9 个白盒 covergroup（与 doc/MMU_UVM_TaskDivision.md §Phase 12 退出准则 #5
+# 及 doc/phase12_covergroup_matrix.md 一致；修改时须同步更新文档与 phase12_cov_gate 调用方）
 PHASE12_CGS=(
   cg_ptw_ready_transition
   cg_twu_idle_vs_mask_state

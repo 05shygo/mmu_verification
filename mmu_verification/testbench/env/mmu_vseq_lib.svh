@@ -15,17 +15,26 @@ class mmu_vseq_ifu_rr_seq extends ifu_base_seq;
   `uvm_object_utils(mmu_vseq_ifu_rr_seq)
   va_t m_va_table[];
   int  m_table_size;
-  function new(string name = "mmu_vseq_ifu_rr_seq"); super.new(name); endfunction
+  bit  m_zero_idle;
+  function new(string name = "mmu_vseq_ifu_rr_seq"); super.new(name); m_zero_idle = 1'b0; endfunction
   virtual task body();
     ifu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       automatic int idx = (m_table_size > 0) ? (i % m_table_size) : 0;
       `uvm_create(tr)
-      assert(tr.randomize() with {
-        va[38:0] == m_va_table[idx];
-        abort == 1'b0;
-        idle_cycles inside {[0:3]};
-      }) else `uvm_fatal(get_full_name(), "randomize failed")
+      if (m_zero_idle) begin
+        assert(tr.randomize() with {
+          va[38:0] == m_va_table[idx];
+          abort == 1'b0;
+          idle_cycles == 0;
+        }) else `uvm_fatal(get_full_name(), "randomize failed")
+      end else begin
+        assert(tr.randomize() with {
+          va[38:0] == m_va_table[idx];
+          abort == 1'b0;
+          idle_cycles inside {[0:3]};
+        }) else `uvm_fatal(get_full_name(), "randomize failed")
+      end
       `uvm_send(tr)
     end
   endtask
@@ -37,8 +46,9 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
   int        m_table_size;
   lsu_kind_e m_kind;
   bit        m_st_inst;
+  bit        m_zero_idle;
   function new(string name = "mmu_vseq_lsu_rr_seq"); super.new(name);
-    m_kind = LSU_PIPE0; m_st_inst = 1'b0; endfunction
+    m_kind = LSU_PIPE0; m_st_inst = 1'b0; m_zero_idle = 1'b0; endfunction
   virtual task body();
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
@@ -51,15 +61,29 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
       slot_id = ((i * 2) + ((m_kind == LSU_PIPE1) ? 1 : 0)) % 12;
       `uvm_create(tr)
       tr.c_kind_default.constraint_mode(0);
-      assert(tr.randomize() with {
-        kind == m_kind;
-        va == {25'b0, m_va_table[idx]};
-        id == slot_id;
-        abort == 1'b0;
-        st_inst == m_st_inst;
-        idle_cycles inside {[0:3]};
-        vabuf == 28'(({25'b0, m_va_table[idx]}) >> 11);
-      }) else `uvm_fatal(get_full_name(), "randomize failed")
+      if (m_zero_idle) begin
+        assert(tr.randomize() with {
+          kind == m_kind;
+          va == {25'b0, m_va_table[idx]};
+          va2 == 28'(({25'b0, m_va_table[idx]}) >> 12);
+          id == slot_id;
+          abort == 1'b0;
+          st_inst == m_st_inst;
+          idle_cycles == 0;
+          vabuf == 28'(({25'b0, m_va_table[idx]}) >> 11);
+        }) else `uvm_fatal(get_full_name(), "randomize failed")
+      end else begin
+        assert(tr.randomize() with {
+          kind == m_kind;
+          va == {25'b0, m_va_table[idx]};
+          va2 == 28'(({25'b0, m_va_table[idx]}) >> 12);
+          id == slot_id;
+          abort == 1'b0;
+          st_inst == m_st_inst;
+          idle_cycles inside {[0:3]};
+          vabuf == 28'(({25'b0, m_va_table[idx]}) >> 11);
+        }) else `uvm_fatal(get_full_name(), "randomize failed")
+      end
       `uvm_send(tr)
     end
   endtask

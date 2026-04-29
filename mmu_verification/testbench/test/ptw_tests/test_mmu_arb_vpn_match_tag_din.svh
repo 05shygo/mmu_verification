@@ -21,11 +21,11 @@ class test_mmu_arb_vpn_match_tag_din extends phase12_generated_test_base;
     p12_fid      = "F5.16";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "mmu_ptw_thrash_vseq";
+    p12_seq_desc = "lsu_rr_4K_2M_1G + ifu_rr_4K_2M_1G (F5.16 cg_ptw_arb_pgs_type)";
     p12_checker  = "sva_ptw_arb_vpn_matches_tag + cg_ptw_arb_pgs_type";
     p12_reviewer = "A+B";
     num_txn      = 96;
-    m_post_drain = 800ns;
+    m_post_drain = 1200ns;
   endfunction
 
   virtual task run_test_body();
@@ -38,12 +38,20 @@ class test_mmu_arb_vpn_match_tag_din extends phase12_generated_test_base;
 
     phase12_map_hugepage_fixture();
 
-    repeat (2) begin
-      phase12_drive_lsu_rr(39'h0_3000_1000, 1, 1, LSU_PIPE0, 1'b0);
+    // Drive cg_ptw_arb_pgs_type: arb_ptw_grant + {4K,2M,1G} pgs — LSU and IFU both refill PTW→arb.
+    repeat (4) begin
+      phase12_drive_lsu_rr(39'h0_3000_1000, 1, 8, LSU_PIPE0, 1'b0);
       phase12_cp0_tlb_allinv();
-      phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
+      phase12_drive_lsu_rr(39'h0_2200_0000, 1, 8, LSU_PIPE0, 1'b0);
       phase12_cp0_tlb_allinv();
-      phase12_drive_lsu_rr(39'h0_4000_0000, 1, 1, LSU_PIPE0, 1'b0);
+      phase12_drive_lsu_rr(39'h0_4000_0000, 1, 8, LSU_PIPE0, 1'b0);
+      phase12_cp0_tlb_allinv();
+
+      phase12_drive_ifu_rr(39'h0_3000_1000, 1, 24);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_ifu_rr(39'h0_2200_0000, 1, 24);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_ifu_rr(39'h0_4000_0000, 1, 24);
       phase12_cp0_tlb_allinv();
     end
 

@@ -146,7 +146,7 @@ logic	[2:0]			PDE_xbar_type			    ;
 logic	[5:0]			PDE_xbar_id			        ;
 logic					PDE_xbar_req			    ;
 logic					twu_cache_stop			    ;
-logic	[3:0]			twu_idle				    ;
+//logic	[3:0]			twu_idle				    ;
 logic	[3:0]			xbar_twu_req		        ;
 logic	[1:0]			xbar_twu_hit_level		    ;
 logic	[27:0]			xbar_twu_ppn			    ;
@@ -181,7 +181,7 @@ logic	[3:0][2:0]		twu_l2tlb_ref_pgflt_type 	;
 logic	[3:0]			twu_l2tlb_ref_acc_err	 	;
 logic	[3:0][2:0]		twu_l2tlb_ref_acc_err_type	;
 logic	[3:0][5:0]		twu_l2tlb_ref_acc_err_id	;
-logic	[3:0]			mbuf_twu_have           	;
+//logic	[3:0]			mbuf_twu_have           	;
 logic	[4:0]			acc_err_twu_grant			;
 logic	[3:0]			pgflt_twu_grant				;
 logic					mbuf_entry_on_vld			;
@@ -290,7 +290,7 @@ one_to_four_xbar  u_one_to_four_xbar(
 .forever_cpuclk						(forever_cpuclk		),
 .cpurst_b							(cpurst_b			),
 									
-.twu_idle							(twu_idle			),
+//.twu_idle							(twu_idle			),
 .twu_mask							(twu_mask			),
 									
 .PDE_xbar_req						(PDE_xbar_req		),
@@ -381,9 +381,9 @@ twu twu_one(
 .twu_l2tlb_ref_acc_err_id			(twu_l2tlb_ref_acc_err_id[0]	),
                                      
 .twu_mask							(twu_mask[0]					),
-.twu_idle							(twu_idle[0]					),
+//.twu_idle							(twu_idle[0]					),
 .twu_data_ready                     (twu_data_ready[0][2:0]     	),
-.mbuf_twu_have                      (mbuf_twu_have[0]           	),
+//.mbuf_twu_have                      (mbuf_twu_have[0]           	),
 .acc_err_twu_grant                  (acc_err_twu_grant[0]			),
 .pgflt_twu_grant                    (pgflt_twu_grant[0]  			)
 );
@@ -456,9 +456,9 @@ twu twu_two(
 .twu_l2tlb_ref_acc_err_id			(twu_l2tlb_ref_acc_err_id[1]	),
                                      
 .twu_mask							(twu_mask[1]					),
-.twu_idle							(twu_idle[1]					),
+//.twu_idle							(twu_idle[1]					),
 .twu_data_ready                     (twu_data_ready[1][2:0]     	),
-.mbuf_twu_have                      (mbuf_twu_have[1]           	),
+//.mbuf_twu_have                      (mbuf_twu_have[1]           	),
 .acc_err_twu_grant                  (acc_err_twu_grant[1]       	),
 .pgflt_twu_grant                    (pgflt_twu_grant[1]         	)
 
@@ -533,9 +533,9 @@ twu twu_three(
 .twu_l2tlb_ref_acc_err_id			(twu_l2tlb_ref_acc_err_id[2]	),
                                      
 .twu_mask							(twu_mask[2]					),
-.twu_idle							(twu_idle[2]					),
+//.twu_idle							(twu_idle[2]					),
 .twu_data_ready                     (twu_data_ready[2][2:0]     	),
-.mbuf_twu_have                      (mbuf_twu_have[2]           	),
+//.mbuf_twu_have                      (mbuf_twu_have[2]           	),
 
 .acc_err_twu_grant                  (acc_err_twu_grant[2]           ),
 .pgflt_twu_grant                    (pgflt_twu_grant[2]             )
@@ -609,9 +609,9 @@ twu twu_four(
 .twu_l2tlb_ref_acc_err_id			(twu_l2tlb_ref_acc_err_id[3]	),
                                      
 .twu_mask							(twu_mask[3]					),
-.twu_idle							(twu_idle[3]					),
+//.twu_idle							(twu_idle[3]					),
 .twu_data_ready                     (twu_data_ready[3][2:0]     	),
-.mbuf_twu_have                      (mbuf_twu_have[3]           	),
+//.mbuf_twu_have                      (mbuf_twu_have[3]           	),
 
 .acc_err_twu_grant                  (acc_err_twu_grant[3]           ),
 .pgflt_twu_grant                    (pgflt_twu_grant[3]             )
@@ -650,7 +650,7 @@ ptw_mbuf u_ptw_mbuf(
 .mbuf_twu_data_vld					(mbuf_twu_data_vld[3:0]		),
 			
 .mbuf_grant							(mbuf_grant[3:0]			),
-.mbuf_twu_have              		(mbuf_twu_have[3:0]         ),
+//.mbuf_twu_have              		(mbuf_twu_have[3:0]         ),
                                                                  
 .mbuf_cache_upd		                (mbuf_cache_upd				),
 .mbuf_cache_upd_ppn                 (mbuf_cache_upd_ppn			),

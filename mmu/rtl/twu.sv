@@ -93,7 +93,7 @@ output logic [5:0]	twu_l2tlb_ref_acc_err_id,
 //! TWU to xbar
 //!******************************************
 output logic 		twu_mask,
-output logic 		twu_idle,
+//output logic 		twu_idle,
 output logic [2:0]  twu_data_ready,
 input  logic 		mbuf_twu_have,
 
@@ -112,7 +112,7 @@ logic				scd_pmp_cp0_mach_mode;
 logic				thd_chk_cp0_user_mode;
 logic				thd_chk_cp0_supv_mode;
 logic				thd_pmp_cp0_mach_mode;
-logic				twu_busy             ;
+//logic				twu_busy             ;
 logic				fst_pmp_vld          ;
 logic				fst_chk_vld          ;
 logic				scd_pmp_vld          ;
@@ -256,7 +256,7 @@ logic	[63:0]		csr_data             ;
 logic	[2:0]		ptw_cur_st           ;
 logic	[2:0]		ptw_nxt_st           ;
 logic				csr_idle 	         ;
-logic				csr_busy  	         ;
+//logic				csr_busy  	         ;
 logic				twu_crs1_1g          ;
 logic				twu_crs2_1g          ;
 logic				twu_crs1_2m          ;
@@ -362,16 +362,16 @@ assign twu_mask = fst_pmp_wait
 				| (fst_chk_vld & (!fst_chk_page_flt) & (!fst_chk_leaf_vld) & (!scd_pmp_wait))
 				| (scd_chk_vld & (!scd_chk_page_flt) & (!scd_chk_leaf_vld) & (!thd_pmp_wait));
 
-assign twu_busy = mbuf_twu_have 
-				| fst_pmp_vld 
-				| fst_chk_vld
-				| scd_pmp_vld 
-				| scd_chk_vld				
-				| thd_pmp_vld 
-				| thd_chk_vld
-				| csr_busy;
+//assign twu_busy = mbuf_twu_have 
+//				| fst_pmp_vld 
+//				| fst_chk_vld
+//				| scd_pmp_vld 
+//				| scd_chk_vld				
+//				| thd_pmp_vld 
+//				| thd_chk_vld
+//				| csr_busy;
 				
-assign twu_idle = ~ twu_busy;	
+//assign twu_idle = ~ twu_busy;	
 
 assign abort = tlboper_ptw_abort;		
 				
@@ -1083,7 +1083,7 @@ always_comb begin
 end
 
 assign csr_idle = ptw_cur_st[2:0] == TWU_IDLE;
-assign csr_busy = ~csr_idle;
+//assign csr_busy = ~csr_idle;
 assign twu_crs1_1g = ptw_cur_st[2:0] == TWU_1G_CRS1;
 assign twu_crs2_1g = ptw_cur_st[2:0] == TWU_1G_CRS2;
 assign twu_crs1_2m = ptw_cur_st[2:0] == TWU_2M_CRS1;

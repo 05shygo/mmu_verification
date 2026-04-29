@@ -350,11 +350,89 @@ module tb_top;
   assign dut_probes_if.ptw_mbuf_twu_lvl  = u_dut.x_ct_mmu_ptw.mbuf_twu_lvl;
   assign dut_probes_if.ptw_fault_any     = u_dut.x_ct_mmu_ptw.pgflt_vld
                                          | u_dut.x_ct_mmu_ptw.acc_err_vld;
+  wire [3:0] tb_ptw_twu_idle;
+  wire [3:0] tb_ptw_mbuf_twu_have;
+
   assign dut_probes_if.ptw_jtlb_ready    = u_dut.x_ct_mmu_ptw.ptw_jtlb_ready;
-  assign dut_probes_if.ptw_twu_idle      = u_dut.x_ct_mmu_ptw.twu_idle;
+  // Reconstruct legacy TWU idle probe from per-TWU internal pipeline/CSR state.
+  // Original RTL twu_idle output was removed from ptw, but coverage/scoreboard still samples it.
+  assign tb_ptw_twu_idle[0] =
+      ~(u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_one.fst_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_one.thd_chk_vld
+      | (~u_dut.x_ct_mmu_ptw.twu_one.csr_idle));
+  assign tb_ptw_twu_idle[1] =
+      ~(u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_two.fst_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_two.scd_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_two.thd_chk_vld
+      | (~u_dut.x_ct_mmu_ptw.twu_two.csr_idle));
+  assign tb_ptw_twu_idle[2] =
+      ~(u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_three.fst_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_three.scd_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_three.thd_chk_vld
+      | (~u_dut.x_ct_mmu_ptw.twu_three.csr_idle));
+  assign tb_ptw_twu_idle[3] =
+      ~(u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_four.fst_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_four.scd_chk_vld
+      | u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_vld
+      | u_dut.x_ct_mmu_ptw.twu_four.thd_chk_vld
+      | (~u_dut.x_ct_mmu_ptw.twu_four.csr_idle));
+  assign dut_probes_if.ptw_twu_idle      = tb_ptw_twu_idle;
   assign dut_probes_if.ptw_twu_mask      = u_dut.x_ct_mmu_ptw.twu_mask;
   assign dut_probes_if.ptw_twu_data_ready = u_dut.x_ct_mmu_ptw.twu_data_ready;
-  assign dut_probes_if.ptw_mbuf_twu_have = u_dut.x_ct_mmu_ptw.mbuf_twu_have;
+  // Reconstruct legacy mbuf_twu_have from mbuf entry ownership.
+  assign tb_ptw_mbuf_twu_have[0] =
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[0] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[0]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[1] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[1]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[2] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[2]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[3] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[3]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[4] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[4]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[5] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[5]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[6] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[6]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[7] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[7]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[8] == 4'b0001) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[8]);
+  assign tb_ptw_mbuf_twu_have[1] =
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[0] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[0]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[1] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[1]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[2] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[2]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[3] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[3]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[4] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[4]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[5] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[5]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[6] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[6]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[7] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[7]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[8] == 4'b0010) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[8]);
+  assign tb_ptw_mbuf_twu_have[2] =
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[0] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[0]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[1] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[1]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[2] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[2]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[3] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[3]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[4] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[4]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[5] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[5]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[6] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[6]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[7] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[7]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[8] == 4'b0100) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[8]);
+  assign tb_ptw_mbuf_twu_have[3] =
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[0] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[0]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[1] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[1]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[2] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[2]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[3] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[3]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[4] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[4]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[5] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[5]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[6] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[6]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[7] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[7]) |
+      ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[8] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[8]);
+  assign dut_probes_if.ptw_mbuf_twu_have = tb_ptw_mbuf_twu_have;
   assign dut_probes_if.ptw_twu_ref_req   = u_dut.x_ct_mmu_ptw.twu_arb_ref_req;
   assign dut_probes_if.ptw_twu_pgflt_vec = u_dut.x_ct_mmu_ptw.twu_l2tlb_ref_pgflt;
   assign dut_probes_if.ptw_twu_acc_err_vec = u_dut.x_ct_mmu_ptw.twu_l2tlb_ref_acc_err;

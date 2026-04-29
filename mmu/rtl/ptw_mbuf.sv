@@ -41,7 +41,7 @@ output logic [63:0] 		mbuf_twu_data,
 output logic [3:0]		mbuf_twu_data_vld,
 
 output logic [3:0]		mbuf_grant,
-output logic [3:0]		mbuf_twu_have,
+//output logic [3:0]		mbuf_twu_have,
 //!******************************************
 //! Refill to PDE Cache
 //!******************************************
@@ -99,7 +99,7 @@ logic	[8:0][2:0]	mbuf_entry_type                     ;
 logic   [8:0][5:0] 	 mbuf_entry_id                       ;
 logic   [8:0][3:0] 	 mbuf_entry_twu_idx                  ;
 logic   [8:0][2:0] 	 mbuf_entry_lvl                      ;
-logic	[3:0]		 twu_have			;
+//logic	[3:0]		 twu_have			;
 //logic	[3:0]		mbuf_twu_idx			;
 //logic	[6:0]		mbuf_twu_id			;	
 //logic   		mbuf_bus_error			;
@@ -165,32 +165,32 @@ assign mbuf_entry_on_vld = |mbuf_entry_on[8:0];
 
 
 
-always_comb begin
+//always_comb begin
     // 
-    twu_have[0] = 1'b0;
-    twu_have[1] = 1'b0;
-    twu_have[2] = 1'b0;
-    twu_have[3] = 1'b0;
+//    twu_have[0] = 1'b0;
+//    twu_have[1] = 1'b0;
+//    twu_have[2] = 1'b0;
+//    twu_have[3] = 1'b0;
     
     // 
-    for(integer i = 0; i <= 8; i = i + 1) begin
-        if(mbuf_entry_twu_idx[i][3:0] == 4'b0001 && mbuf_entry_vld[i]) begin
-            twu_have[0] = 1'b1;
-        end
-        if(mbuf_entry_twu_idx[i][3:0] == 4'b0010 && mbuf_entry_vld[i]) begin
-            twu_have[1] = 1'b1;
-        end
-        if(mbuf_entry_twu_idx[i][3:0] == 4'b0100 && mbuf_entry_vld[i]) begin
-            twu_have[2] = 1'b1;
-        end
-        if(mbuf_entry_twu_idx[i][3:0] == 4'b1000 && mbuf_entry_vld[i]) begin
-            twu_have[3] = 1'b1;
-        end
-    end
-end
+//    for(integer i = 0; i <= 8; i = i + 1) begin
+//        if(mbuf_entry_twu_idx[i][3:0] == 4'b0001 && mbuf_entry_vld[i]) begin
+//            twu_have[0] = 1'b1;
+//        end
+//        if(mbuf_entry_twu_idx[i][3:0] == 4'b0010 && mbuf_entry_vld[i]) begin
+//            twu_have[1] = 1'b1;
+//        end
+//        if(mbuf_entry_twu_idx[i][3:0] == 4'b0100 && mbuf_entry_vld[i]) begin
+//            twu_have[2] = 1'b1;
+//        end
+//        if(mbuf_entry_twu_idx[i][3:0] == 4'b1000 && mbuf_entry_vld[i]) begin
+//            twu_have[3] = 1'b1;
+//        end
+ //   end
+//end
 
 
-assign mbuf_twu_have[3:0] = twu_have[3:0];
+//assign mbuf_twu_have[3:0] = twu_have[3:0];
 
 //==============================================================================
 //                  MBUF Upd Arbiter

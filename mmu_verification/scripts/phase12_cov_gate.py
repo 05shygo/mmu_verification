@@ -58,6 +58,23 @@ def sanitize_text(raw_text: str) -> str:
     return re.sub(r"\s+", " ", no_tags)
 
 
+def html_table_cells(row_html: str, cell_tag: str) -> List[str]:
+    cell_re = re.compile(
+        rf"<{cell_tag}\b[^>]*>(.*?)</{cell_tag}>",
+        re.IGNORECASE | re.DOTALL,
+    )
+    return [sanitize_text(cell).strip() for cell in cell_re.findall(row_html)]
+
+
+def group_name_matches(candidate: str, group_name: str) -> bool:
+    candidate = sanitize_text(candidate).strip()
+    return (
+        candidate == group_name
+        or candidate.endswith(f"::{group_name}")
+        or candidate.endswith(f".{group_name}")
+    )
+
+
 def parse_score_value(text: str) -> Optional[float]:
     match = re.search(r"(?<![\w.])(\d+(?:\.\d+)?)(?![\w.])", text)
     if match is None:
@@ -81,7 +98,6 @@ def candidate_urg_table_scores(raw_text: str, group_name: str) -> List[float]:
     the bottom color legend (0%, 10%, ..., 100%) with the covergroup score.
     """
     row_re = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
-    cell_re = re.compile(r"<td\b[^>]*>(.*?)</td>", re.IGNORECASE | re.DOTALL)
 
     values: List[float] = []
     for row_match in row_re.finditer(raw_text):
@@ -89,8 +105,8 @@ def candidate_urg_table_scores(raw_text: str, group_name: str) -> List[float]:
         if group_name not in html.unescape(row):
             continue
 
-        cells = [sanitize_text(cell) for cell in cell_re.findall(row)]
-        if len(cells) < 2 or group_name not in cells[0]:
+        cells = html_table_cells(row, "td")
+        if len(cells) < 2 or not group_name_matches(cells[0], group_name):
             continue
 
         value = parse_score_value(cells[1])
@@ -98,6 +114,54 @@ def candidate_urg_table_scores(raw_text: str, group_name: str) -> List[float]:
             values.append(value)
 
     return values
+
+
+def candidate_group_detail_scores(raw_text: str, group_name: str) -> List[float]:
+    """Extract SCORE from an individual URG grp*.html covergroup detail page.
+
+    Detail pages contain many unrelated percentages, including the bottom color
+    legend (0%, 10%, ...). Only the first SCORE table is the covergroup score.
+    """
+    title_patterns = (
+        re.compile(
+            r"<center\b[^>]*class=[\"']pagetitle[\"'][^>]*>\s*Group\s*:\s*(.*?)</center>",
+            re.IGNORECASE | re.DOTALL,
+        ),
+        re.compile(
+            r"<span\b[^>]*class=[\"']titlename[\"'][^>]*>\s*Group\s*:\s*(.*?)</span>",
+            re.IGNORECASE | re.DOTALL,
+        ),
+    )
+
+    is_requested_group = any(
+        group_name_matches(match.group(1), group_name)
+        for pattern in title_patterns
+        for match in pattern.finditer(raw_text)
+    )
+    if not is_requested_group:
+        return []
+
+    table_re = re.compile(r"<table\b[^>]*>(.*?)</table>", re.IGNORECASE | re.DOTALL)
+    row_re = re.compile(r"<tr\b[^>]*>(.*?)</tr>", re.IGNORECASE | re.DOTALL)
+
+    for table_match in table_re.finditer(raw_text):
+        rows = row_re.findall(table_match.group(1))
+        if len(rows) < 2:
+            continue
+
+        header_cells = html_table_cells(rows[0], "td")
+        if not header_cells or header_cells[0].upper() != "SCORE":
+            continue
+
+        value_cells = html_table_cells(rows[1], "td")
+        if not value_cells:
+            continue
+
+        value = parse_score_value(value_cells[0])
+        if value is not None:
+            return [value]
+
+    return []
 
 
 def candidate_text_row_scores(text: str, group_name: str) -> List[float]:
@@ -138,17 +202,16 @@ def candidate_percentages(text: str, group_name: str) -> List[float]:
 def locate_group_percentage(report_dir: Path, group_name: str) -> Optional[Tuple[float, Path]]:
     for path in iter_report_files(report_dir):
         raw_text = path.read_text(encoding="utf-8", errors="ignore")
-        sanitized = sanitize_text(raw_text)
 
-        values = candidate_urg_table_scores(raw_text, group_name)
-        if not values:
+        if path.suffix.lower() in {".html", ".htm"}:
+            values = candidate_urg_table_scores(raw_text, group_name)
+            if not values:
+                values = candidate_group_detail_scores(raw_text, group_name)
+        else:
             values = candidate_text_row_scores(raw_text, group_name)
-        if not values:
-            values = candidate_text_row_scores(sanitized, group_name)
-        if not values:
-            values = candidate_percentages(raw_text, group_name)
-        if not values:
-            values = candidate_percentages(sanitized, group_name)
+            if not values:
+                values = candidate_percentages(raw_text, group_name)
+
         if values:
             return max(values), path
     return None

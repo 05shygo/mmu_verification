@@ -95,7 +95,6 @@ output logic [5:0]	twu_l2tlb_ref_acc_err_id,
 output logic 		twu_mask,
 //output logic 		twu_idle,
 output logic [2:0]  twu_data_ready,
-input  logic 		mbuf_twu_have,
 
 input  logic		acc_err_twu_grant,
 input  logic		pgflt_twu_grant,

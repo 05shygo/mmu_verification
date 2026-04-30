@@ -10,10 +10,13 @@ URG_MERGED_DB="${URG_MERGED_DB:?URG_MERGED_DB is required}"
 URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_ALLOW_PARTIAL_MERGE="${URG_ALLOW_PARTIAL_MERGE:-1}"
 URG_BATCH_SIZE="${URG_BATCH_SIZE:-12}"
+URG_VDB_GLOB="${URG_VDB_GLOB:-}"
+RUN_URG_REPORT_VERSION="2026-04-30-pgflt-vdb-filter-v2"
 
 declare -a RUNTIME_VDBS=()
 declare -a GOOD_VDBS=()
 declare -a BAD_VDBS=()
+declare -a GOOD_VDB_PROBE_MODES=()
 
 die() {
   echo "ERROR: $*" >&2
@@ -89,6 +92,16 @@ collect_runtime_vdbs() {
         continue
         ;;
     esac
+    if [[ -n "${URG_VDB_GLOB}" ]]; then
+      case "${base}" in
+        ${URG_VDB_GLOB})
+          ;;
+        *)
+          echo "Skipping runtime coverage database outside URG_VDB_GLOB='${URG_VDB_GLOB}': ${vdb}"
+          continue
+          ;;
+      esac
+    fi
 
     vdb_real="$(cd "${vdb}" && pwd -P)" || continue
     if [[ "${vdb_real}" == "${design_real}" ]]; then
@@ -167,6 +180,69 @@ try_runtime_only_report() {
   report_is_ready
 }
 
+try_runtime_only_batched_report() {
+  local label="$1"
+  shift
+  local -a vdbs=("$@")
+  local -a batch_dbs=()
+  local batch_idx=0
+  local start=0
+  local end
+  local batch_len
+  local count
+  local batch_db
+  local rc=0
+
+  if ! [[ "${URG_BATCH_SIZE}" =~ ^[0-9]+$ ]] || [[ "${URG_BATCH_SIZE}" -le 0 ]]; then
+    URG_BATCH_SIZE=12
+  fi
+
+  remove_artifact "${URG_REPORT_DIR}"
+  remove_artifact "${URG_MERGED_DB}"
+
+  count=${#vdbs[@]}
+  while [[ "${start}" -lt "${count}" ]]; do
+    end=$((start + URG_BATCH_SIZE))
+    if [[ "${end}" -gt "${count}" ]]; then
+      end="${count}"
+    fi
+    batch_len=$((end - start))
+
+    batch_db="${COV_DIR}/.urg_batch_${batch_idx}.vdb"
+    remove_artifact "${batch_db}"
+    batch_dbs+=("${batch_db}")
+
+    run_urg "${label}: batch ${batch_idx}" \
+      "${URG_BIN}" -full64 -dir "${vdbs[@]:start:batch_len}" \
+        -dbname "${batch_db}" || {
+          rc=1
+          break
+        }
+
+    start="${end}"
+    batch_idx=$((batch_idx + 1))
+  done
+
+  if [[ "${rc}" -eq 0 ]]; then
+    run_urg "${label}: merge batches" \
+      "${URG_BIN}" -full64 -dir "${batch_dbs[@]}" \
+        -dbname "${URG_MERGED_DB}" || rc=1
+  fi
+
+  if [[ "${rc}" -eq 0 ]]; then
+    run_urg "${label}: report" \
+      "${URG_BIN}" -full64 -dir "${URG_MERGED_DB}" \
+        -format both \
+        -report "${URG_REPORT_DIR}" || rc=1
+  fi
+
+  for batch_db in "${batch_dbs[@]}"; do
+    remove_artifact "${batch_db}"
+  done
+
+  [[ "${rc}" -eq 0 ]] && report_is_ready
+}
+
 try_batched_report() {
   local label="$1"
   shift
@@ -235,9 +311,11 @@ probe_runtime_vdbs() {
   local base
   local probe_db
   local probe_report
+  local probe_mode
 
   GOOD_VDBS=()
   BAD_VDBS=()
+  GOOD_VDB_PROBE_MODES=()
 
   echo
   echo "Isolating runtime VDBs after URG context failure..."
@@ -248,13 +326,29 @@ probe_runtime_vdbs() {
     remove_artifact "${probe_db}"
     remove_artifact "${probe_report}"
 
-    if run_urg "probe ${base}" \
+    probe_mode=""
+    if run_urg "probe ${base} (design-context)" \
       "${URG_BIN}" -full64 -dir "${COV_DB_DIR}" "${vdb}" \
         -dbname "${probe_db}" \
         -format text \
         -report "${probe_report}"; then
-      echo "VDB probe PASS: ${vdb}"
+      probe_mode="design-context"
+    else
+      remove_artifact "${probe_db}"
+      remove_artifact "${probe_report}"
+
+      if run_urg "probe ${base} (runtime-only)" \
+        "${URG_BIN}" -full64 -dir "${vdb}" \
+          -format text \
+          -report "${probe_report}"; then
+        probe_mode="runtime-only"
+      fi
+    fi
+
+    if [[ -n "${probe_mode}" ]]; then
+      echo "VDB probe PASS (${probe_mode}): ${vdb}"
       GOOD_VDBS+=("${vdb}")
+      GOOD_VDB_PROBE_MODES+=("${probe_mode}")
     else
       echo "VDB probe FAIL: ${vdb}"
       BAD_VDBS+=("${vdb}")
@@ -269,10 +363,16 @@ main() {
   collect_runtime_vdbs
   prepare_output
 
-  echo "Coverage design DB: ${COV_DB_DIR}"
-  echo "Runtime VDB count: ${#RUNTIME_VDBS[@]}"
-  printf '  %s\n' "${RUNTIME_VDBS[@]}"
-  echo "URG log: ${URG_LOG}"
+  {
+    echo "run_urg_report version: ${RUN_URG_REPORT_VERSION}"
+    echo "Coverage design DB: ${COV_DB_DIR}"
+    echo "Runtime VDB count: ${#RUNTIME_VDBS[@]}"
+    if [[ -n "${URG_VDB_GLOB}" ]]; then
+      echo "Runtime VDB glob filter: ${URG_VDB_GLOB}"
+    fi
+    printf '  %s\n' "${RUNTIME_VDBS[@]}"
+    echo "URG log: ${URG_LOG}"
+  } | tee -a "${URG_LOG}"
 
   if try_two_step_report "design-context two-step" "${RUNTIME_VDBS[@]}"; then
     echo "URG report generated: ${URG_REPORT_DIR}"
@@ -294,15 +394,24 @@ main() {
     return 0
   fi
 
+  if try_runtime_only_batched_report "runtime-only batched" "${RUNTIME_VDBS[@]}"; then
+    echo "URG report generated without external design DB using batched merge: ${URG_REPORT_DIR}"
+    return 0
+  fi
+
   probe_runtime_vdbs
   if [[ ${#GOOD_VDBS[@]} -gt 0 && "${URG_ALLOW_PARTIAL_MERGE}" == "1" ]]; then
     echo
     echo "WARNING: excluding ${#BAD_VDBS[@]} unreadable runtime VDB(s) from URG merge."
+    for idx in "${!GOOD_VDBS[@]}"; do
+      printf '  good (%s): %s\n' "${GOOD_VDB_PROBE_MODES[$idx]}" "${GOOD_VDBS[$idx]}"
+    done
     printf '  bad: %s\n' "${BAD_VDBS[@]}"
     if try_two_step_report "partial valid-vdb two-step" "${GOOD_VDBS[@]}" ||
        try_one_step_report "partial valid-vdb one-step" "${GOOD_VDBS[@]}" ||
        try_batched_report "partial valid-vdb batched" "${GOOD_VDBS[@]}" ||
-       try_runtime_only_report "partial valid-vdb runtime-only" "${GOOD_VDBS[@]}"; then
+       try_runtime_only_report "partial valid-vdb runtime-only" "${GOOD_VDBS[@]}" ||
+       try_runtime_only_batched_report "partial valid-vdb runtime-only batched" "${GOOD_VDBS[@]}"; then
       echo "URG report generated from ${#GOOD_VDBS[@]} valid runtime VDB(s): ${URG_REPORT_DIR}"
       return 0
     fi

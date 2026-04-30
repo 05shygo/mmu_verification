@@ -208,6 +208,7 @@ URG_MERGED_DB         ?= $(COV_DIR)/merged.vdb
 URG_LOG               ?= $(COV_DIR)/urg_report.log
 URG_ALLOW_PARTIAL_MERGE ?= 1
 URG_BATCH_SIZE        ?= 12
+URG_VDB_GLOB          ?=
 
 # Coverage must be enabled at compile time and must land in a stable design VDB.
 # run_cov then writes each test/seed into its own runtime VDB via -cm_dir.
@@ -277,8 +278,9 @@ PHASE12_SKIP_REGRESSION   ?= 0
 PHASE12_SKIP_CLEAN_COV    ?= 0
 PHASE12_MAEE_MIN_HITS     ?= 20
 PHASE12_CG_MIN_PERCENT    ?= 50
-PHASE12_REGRESS_JOBS      ?= 4
+PHASE12_REGRESS_JOBS      ?= 1
 PHASE12_FAIL_FAST         ?= 1
+PHASE12_PGFLT_PROBE_SEED  ?= 95103
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -468,7 +470,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
         regress regress_smoke regress_nightly print-regress \
         print-phase11 print-phase12 regress_v3_gap regress_v4_maee_ptw phase11_exit_check phase11_show_failures \
-        phase12_exit_check
+        phase12_exit_check phase12_pgflt_urg_probe
 
 all: comp run
 
@@ -598,6 +600,15 @@ regress_v4_maee_ptw: comp
 	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
 		exit 1; \
 	fi
+
+phase12_pgflt_urg_probe: comp
+	@$(MAKE) run_cov TEST_NAME=test_mmu_twu_pgflt_bypass_arb SEED="$(PHASE12_PGFLT_PROBE_SEED)" \
+		VERBOSITY="$(VERBOSITY)" TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)"
+	@$(MAKE) cov \
+		URG_VDB_GLOB="test_mmu_twu_pgflt_bypass_arb_$(PHASE12_PGFLT_PROBE_SEED).vdb" \
+		URG_REPORT_DIR="$(COV_DIR)/urgReport_pgflt_probe" \
+		URG_MERGED_DB="$(COV_DIR)/merged_pgflt_probe.vdb" \
+		URG_LOG="$(COV_DIR)/urg_pgflt_probe.log"
 
 phase12_exit_check:
 	@MAKE_BIN='$(MAKE)' \
@@ -1066,6 +1077,16 @@ run_cov: setup
 		done; \
 		echo "Completed coverage test group $(TEST_NAME), seed=$(SEED)"; \
 	else \
+		if [ -d "$(COV_DIR)/$(COV_TAG).vdb" ]; then \
+			stale="$(COV_DIR)/$(COV_TAG).vdb.stale.$$(date +%Y%m%d_%H%M%S).$$$$"; \
+			if mv "$(COV_DIR)/$(COV_TAG).vdb" "$$stale" 2>/dev/null; then \
+				rm -rf "$$stale" 2>/dev/null || \
+					{ echo "ERROR: stale VDB is still busy: $$stale"; exit 1; }; \
+			else \
+				echo "ERROR: could not move stale VDB $(COV_DIR)/$(COV_TAG).vdb"; \
+				exit 1; \
+			fi; \
+		fi; \
 		cd $(OUTPUT_DIR) && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
@@ -1123,6 +1144,7 @@ cov:
 	URG_LOG="$(URG_LOG)" \
 	URG_ALLOW_PARTIAL_MERGE="$(URG_ALLOW_PARTIAL_MERGE)" \
 	URG_BATCH_SIZE="$(URG_BATCH_SIZE)" \
+	URG_VDB_GLOB="$(URG_VDB_GLOB)" \
 	bash "$(PROJECT_DIR)/scripts/run_urg_report.sh"
 
 merge_cov:

@@ -143,14 +143,19 @@ class mmu_env_cg_whitebox extends uvm_component;
   covergroup cg_twu_except_while_arb_busy;
     option.per_instance = 1;
     cp_arb_busy: coverpoint wb_arb_busy { bins idle = {0}; bins busy = {1}; }
-    cp_except_kind: coverpoint wb_twu_except_kind {
-      bins none   = {2'd0};
+    cp_except_kind: coverpoint wb_twu_except_kind iff (wb_twu_except_kind != 2'd0) {
       bins pgflt  = {2'd1};
       bins accerr = {2'd2};
       bins mixed  = {2'd3};
     }
-    cx_except_busy: cross cp_arb_busy, cp_except_kind iff (wb_twu_except_kind != 2'd0) {
-      ignore_bins no_exception = binsof(cp_except_kind.none);
+    // Use an encoded coverpoint instead of cross+ignore_bins.  VCS/URG T-2022.06
+    // can produce unreadable VDBs for this hot Phase12 exception cross.
+    cp_except_busy: coverpoint {wb_arb_busy, wb_twu_except_kind} iff (wb_twu_except_kind != 2'd0) {
+      bins pgflt_idle  = {3'b0_01};
+      bins pgflt_busy  = {3'b1_01};
+      bins accerr_idle = {3'b0_10};
+      bins accerr_busy = {3'b1_10};
+      bins mixed_any[] = {3'b0_11, 3'b1_11};
     }
   endgroup
 

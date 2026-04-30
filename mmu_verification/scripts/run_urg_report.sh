@@ -72,6 +72,16 @@ run_urg() {
   return "${rc}"
 }
 
+build_urg_dir_args() {
+  local -n out_ref="$1"
+  shift
+  local d
+  out_ref=()
+  for d in "$@"; do
+    out_ref+=(-dir "${d}")
+  done
+}
+
 runtime_vdb_has_metadata() {
   local vdb="$1"
 
@@ -198,6 +208,13 @@ collect_runtime_vdbs() {
     die "no runtime coverage databases found under ${COV_DIR}; run 'make run_cov TEST_NAME=<test> SEED=<seed>' first"
 }
 
+validate_design_vdb() {
+  [[ -d "${COV_DB_DIR}" ]] || die "coverage design database not found: ${COV_DB_DIR}"
+  if ! find "${COV_DB_DIR}" -type f -print -quit | grep -q .; then
+    die "coverage design database appears empty: ${COV_DB_DIR}. Re-run 'make comp' with coverage-enabled compile."
+  fi
+}
+
 prepare_output() {
   mkdir -p "${COV_DIR}" "$(dirname "${URG_REPORT_DIR}")" "$(dirname "${URG_MERGED_DB}")" "$(dirname "${URG_LOG}")" || \
     die "could not create coverage output directories"
@@ -214,16 +231,21 @@ try_two_step_report() {
   local label="$1"
   shift
   local -a vdbs=("$@")
+  local -a merge_dir_args=()
+  local -a report_dir_args=()
 
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
+  build_urg_dir_args merge_dir_args "${COV_DB_DIR}" "${vdbs[@]}"
+  build_urg_dir_args report_dir_args "${URG_MERGED_DB}"
+
   run_urg "${label}: merge" \
-    "${URG_BIN}" -full64 -dir "${COV_DB_DIR}" "${vdbs[@]}" \
+    "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
       -dbname "${URG_MERGED_DB}" || return 1
 
   run_urg "${label}: report" \
-    "${URG_BIN}" -full64 -dir "${URG_MERGED_DB}" \
+    "${URG_BIN}" -full64 "${report_dir_args[@]}" \
       -format both \
       -report "${URG_REPORT_DIR}" || return 1
 
@@ -234,12 +256,15 @@ try_one_step_report() {
   local label="$1"
   shift
   local -a vdbs=("$@")
+  local -a dir_args=()
 
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
+  build_urg_dir_args dir_args "${COV_DB_DIR}" "${vdbs[@]}"
+
   run_urg "${label}" \
-    "${URG_BIN}" -full64 -dir "${COV_DB_DIR}" "${vdbs[@]}" \
+    "${URG_BIN}" -full64 "${dir_args[@]}" \
       -dbname "${URG_MERGED_DB}" \
       -format both \
       -report "${URG_REPORT_DIR}" || return 1
@@ -251,11 +276,14 @@ try_runtime_only_report() {
   local label="$1"
   shift
   local -a vdbs=("$@")
+  local -a dir_args=()
 
   remove_artifact "${URG_REPORT_DIR}"
 
+  build_urg_dir_args dir_args "${vdbs[@]}"
+
   run_urg "${label}" \
-    "${URG_BIN}" -full64 -dir "${vdbs[@]}" \
+    "${URG_BIN}" -full64 "${dir_args[@]}" \
       -format both \
       -report "${URG_REPORT_DIR}" || return 1
 
@@ -294,8 +322,10 @@ try_runtime_only_batched_report() {
     remove_artifact "${batch_db}"
     batch_dbs+=("${batch_db}")
 
+    local -a batch_dir_args=()
+    build_urg_dir_args batch_dir_args "${vdbs[@]:start:batch_len}"
     run_urg "${label}: batch ${batch_idx}" \
-      "${URG_BIN}" -full64 -dir "${vdbs[@]:start:batch_len}" \
+      "${URG_BIN}" -full64 "${batch_dir_args[@]}" \
         -dbname "${batch_db}" || {
           rc=1
           break
@@ -306,14 +336,18 @@ try_runtime_only_batched_report() {
   done
 
   if [[ "${rc}" -eq 0 ]]; then
+    local -a merge_dir_args=()
+    build_urg_dir_args merge_dir_args "${batch_dbs[@]}"
     run_urg "${label}: merge batches" \
-      "${URG_BIN}" -full64 -dir "${batch_dbs[@]}" \
+      "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
         -dbname "${URG_MERGED_DB}" || rc=1
   fi
 
   if [[ "${rc}" -eq 0 ]]; then
+    local -a report_dir_args=()
+    build_urg_dir_args report_dir_args "${URG_MERGED_DB}"
     run_urg "${label}: report" \
-      "${URG_BIN}" -full64 -dir "${URG_MERGED_DB}" \
+      "${URG_BIN}" -full64 "${report_dir_args[@]}" \
         -format both \
         -report "${URG_REPORT_DIR}" || rc=1
   fi
@@ -357,8 +391,10 @@ try_batched_report() {
     remove_artifact "${batch_db}"
     batch_dbs+=("${batch_db}")
 
+    local -a batch_dir_args=()
+    build_urg_dir_args batch_dir_args "${COV_DB_DIR}" "${vdbs[@]:start:batch_len}"
     run_urg "${label}: batch ${batch_idx}" \
-      "${URG_BIN}" -full64 -dir "${COV_DB_DIR}" "${vdbs[@]:start:batch_len}" \
+      "${URG_BIN}" -full64 "${batch_dir_args[@]}" \
         -dbname "${batch_db}" || {
           rc=1
           break
@@ -369,14 +405,18 @@ try_batched_report() {
   done
 
   if [[ "${rc}" -eq 0 ]]; then
+    local -a merge_dir_args=()
+    build_urg_dir_args merge_dir_args "${COV_DB_DIR}" "${batch_dbs[@]}"
     run_urg "${label}: merge batches" \
-      "${URG_BIN}" -full64 -dir "${COV_DB_DIR}" "${batch_dbs[@]}" \
+      "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
         -dbname "${URG_MERGED_DB}" || rc=1
   fi
 
   if [[ "${rc}" -eq 0 ]]; then
+    local -a report_dir_args=()
+    build_urg_dir_args report_dir_args "${URG_MERGED_DB}"
     run_urg "${label}: report" \
-      "${URG_BIN}" -full64 -dir "${URG_MERGED_DB}" \
+      "${URG_BIN}" -full64 "${report_dir_args[@]}" \
         -format both \
         -report "${URG_REPORT_DIR}" || rc=1
   fi
@@ -409,8 +449,10 @@ probe_runtime_vdbs() {
     remove_artifact "${probe_report}"
 
     probe_mode=""
+    local -a design_probe_dir_args=()
+    build_urg_dir_args design_probe_dir_args "${COV_DB_DIR}" "${vdb}"
     if run_urg "probe ${base} (design-context)" \
-      "${URG_BIN}" -full64 -dir "${COV_DB_DIR}" "${vdb}" \
+      "${URG_BIN}" -full64 "${design_probe_dir_args[@]}" \
         -dbname "${probe_db}" \
         -format text \
         -report "${probe_report}"; then
@@ -419,8 +461,10 @@ probe_runtime_vdbs() {
       remove_artifact "${probe_db}"
       remove_artifact "${probe_report}"
 
+      local -a runtime_probe_dir_args=()
+      build_urg_dir_args runtime_probe_dir_args "${vdb}"
       if run_urg "probe ${base} (runtime-only)" \
-        "${URG_BIN}" -full64 -dir "${vdb}" \
+        "${URG_BIN}" -full64 "${runtime_probe_dir_args[@]}" \
           -format text \
           -report "${probe_report}"; then
         probe_mode="runtime-only"
@@ -445,6 +489,7 @@ main() {
   local preflight_rc
 
   collect_runtime_vdbs
+  validate_design_vdb
   prepare_output
 
   {

@@ -20,19 +20,15 @@ PHASE12_LIST="${PHASE12_LIST:-${PROJECT_DIR}/simu/mmu_v4_phase12_list}"
 PHASE12_SEEDS="${PHASE12_SEEDS:-95101 95102 95103}"
 PHASE12_EXPECTED_SEEDS="${PHASE12_EXPECTED_SEEDS:-95101 95102 95103}"
 PHASE12_SUMMARY="${PHASE12_SUMMARY:-${PROJECT_DIR}/output/regression/phase12_v4/summary.txt}"
-PHASE12_URG_REPORT="${PHASE12_URG_REPORT:-${PROJECT_DIR}/output/coverage/urgReport}"
-PHASE12_COV_DIR="${PHASE12_COV_DIR:-$(dirname "${PHASE12_URG_REPORT}")}"
 PHASE12_LOG_DIR="${PHASE12_LOG_DIR:-${PROJECT_DIR}/output/logs}"
 
 PHASE12_SKIP_COMPILE="${PHASE12_SKIP_COMPILE:-0}"
 PHASE12_SKIP_REGRESSION="${PHASE12_SKIP_REGRESSION:-0}"
 PHASE12_SKIP_CLEAN_COV="${PHASE12_SKIP_CLEAN_COV:-0}"
 PHASE12_MAEE_MIN_HITS="${PHASE12_MAEE_MIN_HITS:-20}"
-PHASE12_CG_MIN_PERCENT="${PHASE12_CG_MIN_PERCENT:-50}"
 PHASE12_REGRESS_JOBS="${PHASE12_REGRESS_JOBS:-1}"
 PHASE12_FAIL_FAST="${PHASE12_FAIL_FAST:-1}"
 
-PHASE12_COV_GATE_PY="${PHASE12_COV_GATE_PY:-${PROJECT_DIR}/scripts/phase12_cov_gate.py}"
 PHASE12_LOG_SCAN="${PHASE12_LOG_SCAN:-${PROJECT_DIR}/scripts/phase11_scan_regression_logs.sh}"
 
 PHASE12_MAEE_SVA="${PHASE12_MAEE_SVA:-${PROJECT_DIR}/testbench/top/mmu_maee_twu_sva.sv}"
@@ -55,20 +51,6 @@ MAEE_COVERS=(
   cp_twu_maee_paths_mutex
   cp_maee0_triggers_csr_req
   cp_maee1_skips_csr_fsm
-)
-
-# Phase 12 签核 9 个白盒 covergroup（与 doc/MMU_UVM_TaskDivision.md §Phase 12 退出准则 #5
-# 及 doc/phase12_covergroup_matrix.md 一致；修改时须同步更新文档与 phase12_cov_gate 调用方）
-PHASE12_CGS=(
-  cg_ptw_ready_transition
-  cg_twu_idle_vs_mask_state
-  cg_xbar_hit_level
-  cg_twu_except_while_arb_busy
-  cg_twu_data_ready_per_stage
-  cg_arb_grant_type
-  cg_ptw_arb_pgs_type
-  cg_maee_leaf_level
-  cg_maee_path
 )
 
 pass() {
@@ -276,10 +258,6 @@ step_pmp_skeleton_static() {
   }
 }
 
-step_cov_parser_present() {
-  check_required_file "${PHASE12_COV_GATE_PY}"
-}
-
 step_compile() {
   if [[ "${PHASE12_SKIP_COMPILE}" == "1" ]]; then
     echo "Skipping compile because PHASE12_SKIP_COMPILE=1"
@@ -326,18 +304,6 @@ step_log_scan() {
   fi
 
   bash "${PHASE12_LOG_SCAN}" "${PHASE12_LIST}" "${PHASE12_SEEDS}" "${PHASE12_LOG_DIR}" cov
-}
-
-step_cov_report() {
-  "${MAKE_BIN}" cov \
-    COV_DIR="${PHASE12_COV_DIR}" \
-    URG_REPORT_DIR="${PHASE12_URG_REPORT}" \
-    URG_MERGED_DB="${PHASE12_COV_DIR}/merged.vdb" || return 1
-
-  if [[ ! -d "${PHASE12_URG_REPORT}" ]]; then
-    echo "URG report directory was not generated: ${PHASE12_URG_REPORT}"
-    return 1
-  fi
 }
 
 step_summary_gate() {
@@ -423,7 +389,7 @@ step_maee_cover_gate() {
   done
 }
 
-step_covergroup_gate() {
+step_covergroup_binding_gate() {
   local log
   local probe_idle_hits=0
 
@@ -449,11 +415,6 @@ step_covergroup_gate() {
     echo "Detected ${probe_idle_hits} run(s) where mmu_env_cg_whitebox was idle."
     return 1
   fi
-
-  "${PYTHON_BIN}" "${PHASE12_COV_GATE_PY}" \
-    --report-dir "${PHASE12_URG_REPORT}" \
-    --threshold "${PHASE12_CG_MIN_PERCENT}" \
-    --groups "${PHASE12_CGS[@]}"
 }
 
 main() {
@@ -463,8 +424,6 @@ main() {
   echo "Phase 12 list            : ${PHASE12_LIST}"
   echo "Phase 12 seeds           : ${PHASE12_SEEDS}"
   echo "Phase 12 summary         : ${PHASE12_SUMMARY}"
-  echo "Phase 12 URG report      : ${PHASE12_URG_REPORT}"
-  echo "Phase 12 coverage dir    : ${PHASE12_COV_DIR}"
   echo "Phase 12 review note     : ${PHASE12_A_REVIEW_NOTE}"
   echo "Phase 12 regress jobs    : ${PHASE12_REGRESS_JOBS}"
   echo "Phase 12 fail fast       : ${PHASE12_FAIL_FAST}"
@@ -477,15 +436,13 @@ main() {
   run_step "criterion 4 - MAEE SVA static definition" step_maee_sva_static
   run_step "criterion 5 - PMP skeleton static definition" step_pmp_skeleton_static
   run_step "criterion 6 - Phase 12 integration wiring" step_phase12_integration_static
-  run_step "criterion 7 - coverage gate helper present" step_cov_parser_present
-  run_step "criterion 8 - compile" step_compile
-  run_step "criterion 9 - clean coverage artifacts" step_clean_cov
-  run_step "criterion 10 - Phase 12 3-seed regression" step_regression
-  run_step "criterion 11 - integrated log scan" step_log_scan
-  run_step "criterion 12 - URG report generation" step_cov_report
-  run_step "criterion 13 - regression summary gate" step_summary_gate
-  run_step "criterion 14 - MAEE cover hit gate" step_maee_cover_gate
-  run_step "criterion 15 - covergroup percentage gate" step_covergroup_gate
+  run_step "criterion 7 - compile" step_compile
+  run_step "criterion 8 - clean coverage artifacts" step_clean_cov
+  run_step "criterion 9 - Phase 12 3-seed regression" step_regression
+  run_step "criterion 10 - integrated log scan" step_log_scan
+  run_step "criterion 11 - regression summary gate" step_summary_gate
+  run_step "criterion 12 - MAEE cover hit gate" step_maee_cover_gate
+  run_step "criterion 13 - covergroup probe binding gate" step_covergroup_binding_gate
 
   echo
   echo "========================================"

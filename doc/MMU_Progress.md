@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-28（Phase 11 已完成并完成退出准则检查；Phase 12 A 侧 SVA / 回归入口已落地，B 侧 TC / CG / 回归待联调）
+> **更新**：2026-04-30（Phase 12 已完成并完成退出准则检查；Phase 13 已解锁）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -22,8 +22,8 @@
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27） | ✅`phase9_generated_test_base` + `test_pkg` 已纳管 12 个新增 suite，并复用 3 个 `basic_tests` 基线入口；259 个 Phase 9 wrapper（总 262 stage 合同）已落地；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成 |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ✅ 完成（2026-04-27） | ✅ `make regress_smoke` 22/22 通过、100%；✅ `make regress_nightly` 1260/1325 通过、95.09%（门槛≥50%）；✅ URG baseline 报告已生成；`Makefile` `regress*` / `run_test.py` / `run_vcs_verdi.py` / `cov_hier.cfg` 与 B 侧 `simu/mmu_*_list` / `exclude.do` 已完成联调 |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28） | ✅ `bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `phase11_b_stage_manifest.csv` / `phase11_bug_hunt_matrix.md` 已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
-| **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | 🔄 进行中（A 侧已落地） | A 侧：✅ `mmu_maee_twu_sva.sv` / `mmu_pmp_twu_sva.sv` / `Files.f` / `tb_top.sv` / `Makefile` `print-phase12` + `regress_v4_maee_ptw` 已落地；B 侧 TC / covergroup / `mmu_v4_phase12_list` 与 compile/regression 收口待完成 |
-| **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | 🔒 等待 Phase 12      | —                                                                                                                                                               |
+| **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | ✅ 完成（2026-04-30） | ✅ `simu/mmu_v4_phase12_list` 22 个 runnable tests × seeds `95101 95102 95103` 纳入 `run_cov` 回归；MAEE SVA / PMP 骨架 / Phase12 白盒 CG / probe / `phase12_exit_check` 门禁完成；历史 URG `No context available` 与覆盖率报告缺失问题已按 debug 记录收口 |
+| **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | ⏳ 未开始（已解锁）   | Phase 12 退出准则已完成，Phase 13 可进入 sysmap / PMP-deny / PMP-port 实现与回归                                                                                 |
 | **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | 🔒 等待 Phase 13      | —                                                                                                                                                               |
 
 ---
@@ -637,38 +637,57 @@
 
 ---
 
-## Phase 12 详细进度（🔄 进行中 — 2026-04-28）
+## Phase 12 详细进度（✅ 已完成 — 2026-04-30）
 
 **负责**：工程师 B（主实现）/ 工程师 A（Phase 12 SVA + 回归入口）  
-**当前快照**：
+**完成口径**：当前项目按 `make phase12_exit_check` 完成记档；覆盖 MAEE / PTW-ready / TWU bypass / PTW->arb VPN&PGS，不提前吸收 Phase 13 的 sysmap / PMP-deny / PMP-port 主体。
 
-- A 侧：✅ 新增 `testbench/top/mmu_maee_twu_sva.sv`，落地 3 条 MAEE/TWU SVA：`sva_twu_maee_paths_mutex` / `sva_maee0_triggers_csr_req` / `sva_maee1_skips_csr_fsm`，并为每条断言补齐 `cover property`
-- A 侧：✅ 新增 `testbench/top/mmu_pmp_twu_sva.sv` 骨架，作为 Phase 13 完整 PMP/TWU SVA 的承接文件；本 phase 不提前实现完整 PMP 断言
-- A 侧：✅ `testbench/Files.f`、`testbench/top/tb_top.sv`、`Makefile` 已接入 Phase 12 SVA 与回归入口：`print-phase12`、`regress_v4_maee_ptw`
-- RTL 边界：当前 `twu.sv` 不存在 `thd_chk_csr_req` 路径，因此 MAEE SVA 按 RTL 真实实现锚定 FST/SCD 两级 CSR-vs-refill 选择点，不臆造 THD CSR 路径
-- B 侧待办：`testbench/test/maee_twu_tests/`、`ptw_tests/` Phase 12 扩展、9 个 covergroup、`simu/mmu_v4_phase12_list`，以及 compile / regression / coverage 联调收口
-- 本地验证说明：本次已完成静态接线自检；当前终端环境缺少可执行 `make` / 可用 `bash` 入口，尚未在本机完成 `make print-phase12`、compile、regression 实跑
+- A 侧：✅ `testbench/top/mmu_maee_twu_sva.sv` 已落地 3 条 MAEE/TWU assert 与对应 cover：`sva_twu_maee_paths_mutex` / `sva_maee0_triggers_csr_req` / `sva_maee1_skips_csr_fsm`，并输出 `PHASE12_MAEE_COVER ... hits=` 供退出门禁聚合。
+- A 侧：✅ `testbench/top/mmu_pmp_twu_sva.sv` 保留 Phase 13 承接骨架；Phase 12 仅检查 module / endmodule 静态完整性，不提前实现完整 PMP/TWU 属性。
+- B 侧：✅ `testbench/test/maee_twu_tests/` 与 `testbench/test/ptw_tests/` Phase 12 wrapper 已完成；`simu/mmu_v4_phase12_list` 固化 22 个 runnable tests，默认 seeds 为 `95101 95102 95103`。
+- 覆盖率：✅ `testbench/env/mmu_env_cg_whitebox.svh` 补齐 9 个 Phase 12 白盒 covergroup，并通过 `MMU_DUT_PROBES_VIF` 绑定检查防止空采样；`scripts/phase12_cov_gate.py` 可从 URG text/html 报告检查每组覆盖率阈值。
+- 回归入口：✅ `Makefile` `print-phase12` / `regress_v4_maee_ptw` / `phase12_exit_check` 已闭环；`scripts/run_test.py` 支持 `REGRESS_JOBS` 并行，`PHASE12_REGRESS_JOBS` 可控制 Phase 12 回归并发。
+- 覆盖率报告：✅ `make cov` 已切到 `scripts/run_urg_report.sh`，统一生成 `output/coverage/urgReport`，并把 URG 调试日志落到 `output/coverage/urg_report.log`。
 
 | 项目 | 负责人 | 状态 | 说明 |
 | --- | --- | --- | --- |
-| `testbench/top/mmu_maee_twu_sva.sv` | A | ✅ | Phase 12 MAEE/TWU 断言文件已落地，含 3 条 assert + 3 条 cover |
-| `testbench/top/mmu_pmp_twu_sva.sv` | A | ✅ | Phase 12 要求的可编译骨架已落地，完整属性留到 Phase 13 |
-| `testbench/Files.f` / `testbench/top/tb_top.sv` | A | ✅ | 已加入两份 Phase 12 SVA 文件，并为 `mmu_maee_twu_sva` 增加 `bind twu ...` |
-| `Makefile` `print-phase12` / `regress_v4_maee_ptw` | A | ✅ | 已补 `PHASE12_*` 默认变量与 Phase 12 回归入口 |
-| `maee_twu_tests/` + `ptw_tests/` Phase 12 扩展 | B | ⏳ | 待 B 侧补齐 Phase 12 testcase |
-| 9 个 Phase 12 covergroup + `mmu_v4_phase12_list` | B | ⏳ | 待 B 侧补齐覆盖率与回归列表 |
+| `testbench/top/mmu_maee_twu_sva.sv` | A | ✅ | Phase 12 MAEE/TWU 断言文件已落地，含 3 条 assert + 3 条 cover，并具备 cover hit 打印 |
+| `testbench/top/mmu_pmp_twu_sva.sv` | A | ✅ | Phase 12 要求的可编译骨架已落地，完整 PMP/TWU 属性留到 Phase 13 |
+| `testbench/Files.f` / `testbench/top/tb_top.sv` | A | ✅ | 两份 Phase 12 SVA 已纳入编译；`mmu_maee_twu_sva` 已 bind 到 `twu` |
+| `Makefile` `print-phase12` / `regress_v4_maee_ptw` / `phase12_exit_check` | A/B | ✅ | Phase 12 默认 list / seeds / summary / fail-fast / 并发变量已接入 |
+| `testbench/test/maee_twu_tests/` + `testbench/test/ptw_tests/` Phase 12 扩展 | B | ✅ | 4 个 MAEE family tests + 18 个 PTW-ready / TWU bypass / MBUF / ARB tests 已纳入 `mmu_v4_phase12_list` |
+| `testbench/env/mmu_env_cg_whitebox.svh` | B | ✅ | 9 个 Phase 12 白盒 covergroup 已落地：PTW-ready、TWU idle/mask、xbar hit、异常旁路、MBUF ready、ARB grant、PTW->arb PGS、MAEE leaf/path |
+| `testbench/env/mmu_dut_probes_if.sv` / `testbench/top/tb_top.sv` | B | ✅ | Phase 12 probe 与 config_db 绑定完成，退出门禁扫描 `whitebox CG idle` / `MMU_DUT_PROBES_VIF not in config_db` |
+| `scripts/run_urg_report.sh` / `scripts/phase12_cov_gate.py` | A/B | ✅ | URG 多路径生成、VDB preflight/probe 与 covergroup 阈值检查工具已落地 |
 
 ### Phase 12 当前门禁状态
 
 | # | 检查项 | 状态 | 说明 |
 | - | ------ | ---- | ---- |
-| 1 | A 侧 Phase 12 SVA / 回归入口交付 | ✅ | `mmu_maee_twu_sva.sv`、`mmu_pmp_twu_sva.sv`、`Files.f`、`tb_top.sv`、`Makefile` 已更新 |
-| 2 | `mmu_maee_twu_sva.sv` 3 条 SVA 各有对应 `cover property` | ✅ | 已按 Phase 12 约束补齐 |
-| 3 | `mmu_pmp_twu_sva.sv` 骨架可继续承接 Phase 13 | ✅ | 当前仅保留骨架，不提前实现完整 PMP 逻辑 |
-| 4 | `print-phase12` / `regress_v4_maee_ptw` 入口落地 | ✅ | Makefile 已接入默认 list / seeds / summary |
-| 5 | Phase 12 testcase / covergroup / list 联调 | ⏳ | 依赖 B 侧交付 |
-| 6 | `make print-phase12` / compile / regression 实跑 | ⏳ | 当前终端环境缺少可执行 `make` / 可用 `bash` 入口，且 B 侧列表尚未收口 |
-| 7 | Phase 12 整体退出准则 | ⏳ | 待 B 侧 TC / CG / 回归与运行结果收口后再更新 |
+| 1 | frozen docs present | ✅ | `phase12_scene_matrix.md` / `phase12_b_stage_manifest.csv` / `phase12_covergroup_matrix.md` / `phase12_a_handoff.md` / `phase12_exit_checklist.md` 已冻结 |
+| 2 | A-side review note present | ✅ | `phase12_a_review.md` 已归档 |
+| 3 | Phase 12 list and seed scope | ✅ | `simu/mmu_v4_phase12_list` 固化 22 项；默认 seeds 为 `95101 95102 95103` |
+| 4 | MAEE SVA static definition | ✅ | 3 条 assert property 与 3 条 cover property 均存在，且 cover hit 打印可被门禁聚合 |
+| 5 | PMP skeleton static definition | ✅ | `mmu_pmp_twu_sva.sv` module / endmodule 静态检查通过，作为 Phase 13 承接文件 |
+| 6 | Phase 12 integration wiring | ✅ | `Files.f` / `tb_top.sv` / `Makefile` 已接入 Phase 12 SVA 与回归入口 |
+| 7 | compile | ✅ | 纳入 `make phase12_exit_check`，未使用 skip 口径时执行 `make comp` |
+| 8 | clean coverage artifacts | ✅ | 退出检查前清理旧覆盖率产物，避免 stale VDB 影响 URG |
+| 9 | Phase 12 3-seed regression | ✅ | 22 tests × 3 seeds 按 `run_cov` 模式纳入 `phase12_v4` summary |
+| 10 | integrated log scan | ✅ | 复用 `phase11_scan_regression_logs.sh` 扫描 Phase 12 `*_cov.log`，要求 UVM summary clean |
+| 11 | regression summary gate | ✅ | 检查 `mode=run_cov`、seed set、`total_runs=66`、`failed_runs=0`、`xpass_unexpected_runs=0`、`pass_rate=1.0000` |
+| 12 | MAEE cover hit gate | ✅ | 聚合 3 个 MAEE cover property hits，默认阈值 `PHASE12_MAEE_MIN_HITS=20` |
+| 13 | covergroup probe binding gate | ✅ | 全部 Phase 12 cov log 不允许出现 probe 未绑定或 whitebox CG idle |
+
+### Phase 12 Debug 记录（2026-04-30 收口）
+
+| # | 调试主题 | 根因 | 已落地修正 / 结果 |
+| - | -------- | ---- | ----------------- |
+| P12-D1 | LSU_P1 PA mismatch：`VA=0x00a403e000`，`ref.ppn=0x002603e`，`dut.pa=0x003603e` | Phase 12 压力用例中 VA/PA window 间隔过近，叠加 L1/P1 refill / hit stale entry，导致同 VPN 族下选中旧 PPN；page table builder 遇到已有 leaf PTE 时未可靠替换为下级 non-leaf table | `phase12_generated_test_base.svh` 扩大并发 TWU / PTW-ready 场景的 VA/PA 间隔；`page_table_builder.svh` 中 `map_4k` / `map_2m` 支持 leaf-to-table 替换并把 `PTE_W` 纳入 leaf 判断；退出回归中该类 PA mismatch 收口 |
+| P12-D2 | URG `No context available`，criterion 12 生成报告失败 | `make cov` 直接消费 `$(COV_DIR)/*.vdb` 时可能混入 stale merged VDB、partial NFS artifact 或缺 design context 的 runtime VDB，URG 无法重建 coverage context | `Makefile` 的 `cov` 目标改为调用 `scripts/run_urg_report.sh`；脚本执行 VDB preflight、过滤 merged/probe/batch 临时库、设计库兼容 merge、batched fallback、单库 probe 与 partial merge；详细日志写入 `output/coverage/urg_report.log` |
+| P12-D3 | criterion 15 报 `output/coverage/urgReport` 不存在 | 上游 URG 失败后没有产出统一 report dir，下游 covergroup percentage gate 无可读报告 | 统一 `URG_REPORT_DIR=$(COV_DIR)/urgReport`、`URG_MERGED_DB=$(COV_DIR)/merged.vdb`、`URG_LOG=$(COV_DIR)/urg_report.log`；criterion 12/15 使用同一报告目录，确保覆盖率报告可被后续 gate 消费 |
+| P12-D4 | Phase 12 回归时间偏长，且用户要求保留运行字段输出 | 串行跑 22×3 个 cov tests 时间长；过度压缩日志会降低现场调试可读性 | `scripts/run_test.py` 增加 `--jobs` 并保持 summary 顺序稳定；`Makefile` / `phase12_exit_check.sh` 暴露 `REGRESS_JOBS`、`PHASE12_REGRESS_JOBS`、`PHASE12_FAIL_FAST`；最终保留默认详细字段输出，是否静默由 `UVM_ERR_ONLY` 全局开关控制 |
+| P12-D5 | whitebox covergroup 可能空采样 | Phase 12 白盒 CG 依赖 DUT probe vif，若 config_db 未设置或 bind 断链，URG 可能生成低覆盖但问题不明显 | `mmu_env_cg_whitebox.svh` 明确打印 `MMU_DUT_PROBES_VIF` / `whitebox CG idle` 诊断；`phase12_exit_check.sh` 扫描全部 cov log 并把 probe 未绑定作为硬失败 |
+| P12-D6 | MAEE cover hit 只看 SVA 结构不够 | 仅检查 cover property 存在不能证明 MAEE0/MAEE1 路径在回归中实际被打到 | `mmu_maee_twu_sva.sv` 在 cover property 命中时输出 `PHASE12_MAEE_COVER prop=... hits=...`；`phase12_exit_check.sh` 聚合 66 份 cov log 并用 `PHASE12_MAEE_MIN_HITS` 做硬门禁 |
 
 ---
 
@@ -695,5 +714,5 @@
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ✅**已达成**（2026-04-27）：`make phase8` 42-run 矩阵完成，14 个 vseq × 3 seeds 收口，统计摘要 / F 映射 / A Review 已留档                                                                 |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：`phase9_generated_test_base` + 12 suite + 3 个 basic 基线入口已纳管；259 个 Phase 9 wrapper（总 262 stage）编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档 |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ✅ **已达成**（2026-04-27）：`make regress_smoke` 22/22 通过、100%；`make regress_nightly` 1260/1325 通过、95.09%；URG baseline 报告已生成，A/B Phase 10 联调收口完成 |
-| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | 🔄 Phase 11 已达成（2026-04-28）；Phase 12 A 侧 SVA / 回归入口已落地，待 B 侧 TC / CG / 回归收口；Phase 13 待后续                                                                                                    |
+| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | 🔄 Phase 11 已达成（2026-04-28）；Phase 12 已达成（2026-04-30，`make phase12_exit_check` 完成口径）；Phase 13 已解锁待执行                                                                                              |
 | **M14** — 签核通过                 | Phase 14 退出准则（VerificationPlan §9） | ⏳                                                                                                                                                                      |

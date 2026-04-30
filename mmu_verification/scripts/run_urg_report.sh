@@ -12,7 +12,7 @@ URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_ALLOW_PARTIAL_MERGE="${URG_ALLOW_PARTIAL_MERGE:-1}"
 URG_BATCH_SIZE="${URG_BATCH_SIZE:-12}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
-RUN_URG_REPORT_VERSION="2026-04-30-direct-seeded-runtime-vdb-v6"
+RUN_URG_REPORT_VERSION="2026-04-30-strict-log-preflight-v7"
 
 declare -a RUNTIME_VDBS=()
 declare -a GOOD_VDBS=()
@@ -109,7 +109,15 @@ print_log_matches() {
   local pattern="$2"
 
   [[ -s "${log}" ]] || return 1
-  grep -Ein -m 8 "${pattern}" "${log}" | sed 's/^/  /'
+  grep -Ev '^[[:space:]]*Command:' "${log}" | grep -Ein -m 8 "${pattern}" | sed 's/^/  /'
+}
+
+log_has_issue() {
+  local log="$1"
+  local pattern="$2"
+
+  [[ -s "${log}" ]] || return 1
+  grep -Ev '^[[:space:]]*Command:' "${log}" | grep -Eiq "${pattern}"
 }
 
 preflight_runtime_vdbs() {
@@ -120,7 +128,7 @@ preflight_runtime_vdbs() {
   local log_issue_pattern
   local log_done_pattern
 
-  log_issue_pattern='UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists|Simulation timeout|UVM_TIMEOUT|timed out|TIMEOUT.*(hit|expired|reached)|killed|Killed'
+  log_issue_pattern='UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists|Simulation timeout|UVM_TIMEOUT|timed out|Timeout hit|Timeout expired|Timeout reached|TIMEOUT hit|TIMEOUT expired|TIMEOUT reached|killed|Killed'
   log_done_pattern='UVM Report Summary|V C S[[:space:]]+S i m u l a t i o n[[:space:]]+R e p o r t|Simulation completed|\$finish'
 
   echo
@@ -148,7 +156,8 @@ preflight_runtime_vdbs() {
     if cov_log="$(cov_log_for_vdb "${vdb}")"; then
       if [[ -s "${cov_log}" ]]; then
         echo "  cov log: ${cov_log}"
-        if print_log_matches "${cov_log}" "${log_issue_pattern}"; then
+        if log_has_issue "${cov_log}" "${log_issue_pattern}"; then
+          print_log_matches "${cov_log}" "${log_issue_pattern}"
           echo "ERROR: coverage log contains fatal/crash/license/timeout pattern for ${base}"
           hard_fail=1
         elif ! grep -Eiq "${log_done_pattern}" "${cov_log}"; then
@@ -181,7 +190,7 @@ print_vdb_diagnostics() {
   if cov_log="$(cov_log_for_vdb "${vdb}")" && [[ -s "${cov_log}" ]]; then
     echo "  Coverage log: ${cov_log}"
     echo "  Relevant coverage log lines:"
-    if ! grep -Ein -m 12 'UVM_(FATAL|ERROR)|Segmentation fault|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists|Simulation timeout|UVM_TIMEOUT|timed out|TIMEOUT.*(hit|expired|reached)|No context available|UCAPI|coverage|cm_dir|cm_name' "${cov_log}" | sed 's/^/    /'; then
+    if ! grep -Ev '^[[:space:]]*Command:' "${cov_log}" | grep -Ein -m 12 'UVM_(FATAL|ERROR)|Segmentation fault|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists|Simulation timeout|UVM_TIMEOUT|timed out|Timeout hit|Timeout expired|Timeout reached|TIMEOUT hit|TIMEOUT expired|TIMEOUT reached|No context available|UCAPI|coverage|cm_dir|cm_name' | sed 's/^/    /'; then
       echo "    (no fatal/crash/license/coverage hint found)"
     fi
   fi

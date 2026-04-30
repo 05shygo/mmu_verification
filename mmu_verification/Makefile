@@ -1262,6 +1262,7 @@ list_tests:
 #===============================================================================
 clean:
 	rm -rf $(OUTPUT_DIR)/simv* \
+	       $(COV_BASELINE_STAMP) \
 	       $(OUTPUT_DIR)/csrc \
 	       $(OUTPUT_DIR)/*.daidir \
 	       $(LOG_DIR)/*.log \
@@ -1272,7 +1273,7 @@ clean_wave:
 
 clean_cov:
 	@set -e; \
-	for p in $(COV_DIR)/*.vdb $(COV_DIR)/*.vdb.failed.* $(COV_DIR)/*.vdb.stale.* $(COV_DIR)/.urg_probe_* $(COV_DIR)/.urg_batch_* $(COV_DIR)/urgReport $(COV_DIR)/merged* $(COV_DIR)/urg_report.log $(COV_DIR)/*.nfs_busy.* $(COV_BASE_DB_DIR) $(COV_BASELINE_STAMP) $(COV_DB_DIR).failed.*; do \
+	for p in $(COV_DIR)/*.vdb $(COV_DIR)/*.vdb.failed.* $(COV_DIR)/*.vdb.stale.* $(COV_DIR)/.urg_probe_* $(COV_DIR)/.urg_batch_* $(COV_DIR)/urgReport $(COV_DIR)/merged* $(COV_DIR)/urg_report.log $(COV_DIR)/*.nfs_busy.* $(COV_DB_DIR).failed.*; do \
 		[ -e "$$p" ] || continue; \
 		stale="$${p}.nfs_busy.$$(date +%Y%m%d_%H%M%S).$$$$"; \
 		if mv "$$p" "$$stale" 2>/dev/null; then \

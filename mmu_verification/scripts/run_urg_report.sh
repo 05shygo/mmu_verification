@@ -219,10 +219,13 @@ collect_runtime_vdbs() {
   local vdb_real
   local base
 
-  [[ -d "${COV_DB_DIR}" ]] || die "coverage design database not found: ${COV_DB_DIR}"
   [[ -d "${COV_DIR}" ]] || die "coverage directory not found: ${COV_DIR}"
 
-  design_real="$(cd "${COV_DB_DIR}" && pwd -P)" || die "cannot resolve ${COV_DB_DIR}"
+  if [[ -d "${COV_DB_DIR}" ]]; then
+    design_real="$(cd "${COV_DB_DIR}" && pwd -P)" || die "cannot resolve ${COV_DB_DIR}"
+  else
+    design_real=""
+  fi
 
   shopt -s nullglob
   for vdb in "${COV_DIR}"/*.vdb; do
@@ -246,7 +249,7 @@ collect_runtime_vdbs() {
     fi
 
     vdb_real="$(cd "${vdb}" && pwd -P)" || continue
-    if [[ "${vdb_real}" == "${design_real}" ]]; then
+    if [[ -n "${design_real}" && "${vdb_real}" == "${design_real}" ]]; then
       echo "Skipping compile-time design database from runtime list: ${vdb}"
       continue
     fi
@@ -504,6 +507,11 @@ probe_runtime_vdbs() {
   local probe_db
   local probe_report
   local probe_mode
+  local have_design_vdb=0
+
+  if [[ -d "${COV_DB_DIR}" ]] && find "${COV_DB_DIR}" -type f -print -quit | grep -q .; then
+    have_design_vdb=1
+  fi
 
   GOOD_VDBS=()
   BAD_VDBS=()
@@ -519,17 +527,23 @@ probe_runtime_vdbs() {
     remove_artifact "${probe_report}"
 
     probe_mode=""
-    local -a design_probe_dir_args=()
-    URG_DIR_ARGS=()
-    append_urg_dir_args "${COV_DB_DIR}" "${vdb}"
-    design_probe_dir_args=("${URG_DIR_ARGS[@]}")
-    if run_urg "probe ${base} (design-context)" \
-      "${URG_BIN}" -full64 "${design_probe_dir_args[@]}" \
-        -dbname "${probe_db}" \
-        -format text \
-        -report "${probe_report}"; then
-      probe_mode="design-context"
+    if [[ "${have_design_vdb}" -eq 1 ]]; then
+      local -a design_probe_dir_args=()
+      URG_DIR_ARGS=()
+      append_urg_dir_args "${COV_DB_DIR}" "${vdb}"
+      design_probe_dir_args=("${URG_DIR_ARGS[@]}")
+      if run_urg "probe ${base} (design-context)" \
+        "${URG_BIN}" -full64 "${design_probe_dir_args[@]}" \
+          -dbname "${probe_db}" \
+          -format text \
+          -report "${probe_report}"; then
+        probe_mode="design-context"
+      fi
     else
+      echo "Skipping design-context probe because coverage design DB is missing/empty: ${COV_DB_DIR}"
+    fi
+
+    if [[ -z "${probe_mode}" ]]; then
       remove_artifact "${probe_db}"
       remove_artifact "${probe_report}"
 
@@ -561,10 +575,10 @@ probe_runtime_vdbs() {
 
 main() {
   local preflight_rc
+  local design_rc
 
-  collect_runtime_vdbs
-  validate_design_vdb
   prepare_output
+  collect_runtime_vdbs
 
   {
     echo "run_urg_report version: ${RUN_URG_REPORT_VERSION}"
@@ -596,6 +610,18 @@ main() {
     return 0
   fi
 
+  validate_design_vdb 2>&1 | tee -a "${URG_LOG}"
+  design_rc=${PIPESTATUS[0]}
+  if [[ "${design_rc}" -ne 0 ]]; then
+    echo "WARNING: coverage design DB is missing/empty; skipping design-context compatibility merges." | tee -a "${URG_LOG}"
+    echo "         Run 'make comp' to regenerate ${COV_DB_DIR}, then re-run 'make run_cov' for old runtime-only VDBs." | tee -a "${URG_LOG}"
+    probe_runtime_vdbs
+    report_unreadable_vdbs
+    echo
+    echo "ERROR: URG could not generate ${URG_REPORT_DIR} from the selected runtime VDB(s)." | tee -a "${URG_LOG}"
+    return "${design_rc}"
+  fi
+
   if try_two_step_report "design-context compatibility two-step" "${RUNTIME_VDBS[@]}"; then
     echo "URG report generated with design-context compatibility merge: ${URG_REPORT_DIR}"
     return 0
@@ -619,7 +645,9 @@ main() {
     for idx in "${!GOOD_VDBS[@]}"; do
       printf '  good (%s): %s\n' "${GOOD_VDB_PROBE_MODES[$idx]}" "${GOOD_VDBS[$idx]}"
     done
-    printf '  bad: %s\n' "${BAD_VDBS[@]}"
+    if [[ ${#BAD_VDBS[@]} -gt 0 ]]; then
+      printf '  bad: %s\n' "${BAD_VDBS[@]}"
+    fi
     if try_two_step_report "partial valid-vdb two-step" "${GOOD_VDBS[@]}" ||
        try_one_step_report "partial valid-vdb one-step" "${GOOD_VDBS[@]}" ||
        try_batched_report "partial valid-vdb batched" "${GOOD_VDBS[@]}" ||

@@ -931,15 +931,9 @@ comp_all: setup check_env
 	@echo "MMU_RTL_DIR=$(MMU_RTL_DIR)"
 	@echo "RELATE_RTL_DIR=$(RELATE_RTL_DIR)"
 	@echo "==============================================================================="
-	@if [ -d "$(COV_DB_DIR)" ]; then \
-		stale="$(COV_DB_DIR).stale.$$(date +%Y%m%d_%H%M%S).$$$$"; \
-		if mv "$(COV_DB_DIR)" "$$stale" 2>/dev/null; then \
-			rm -rf "$$stale" 2>/dev/null || \
-				{ echo "ERROR: stale compile-time coverage VDB is still busy: $$stale"; exit 1; }; \
-		else \
-			echo "ERROR: could not move stale compile-time coverage VDB $(COV_DB_DIR)"; \
-			exit 1; \
-		fi; \
+	@if [ ! -d "$(COV_DB_DIR)" ] || ! find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
+		echo "Coverage design VDB missing/empty; forcing VCS rebuild of $(COV_DB_DIR)"; \
+		rm -f "$(OUTPUT_DIR)/simv.daidir/.vcs.timestamp"; \
 	fi
 	CORE_V_VERIF=$(CORE_V_VERIF) \
 	MMU_RTL_DIR=$(MMU_RTL_DIR) \

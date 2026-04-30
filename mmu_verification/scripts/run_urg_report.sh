@@ -12,7 +12,7 @@ URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_ALLOW_PARTIAL_MERGE="${URG_ALLOW_PARTIAL_MERGE:-1}"
 URG_BATCH_SIZE="${URG_BATCH_SIZE:-12}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
-RUN_URG_REPORT_VERSION="2026-04-30-single-dir-complete-vdb-v5"
+RUN_URG_REPORT_VERSION="2026-04-30-direct-seeded-runtime-vdb-v6"
 
 declare -a RUNTIME_VDBS=()
 declare -a GOOD_VDBS=()
@@ -199,8 +199,11 @@ report_unreadable_vdbs() {
   done
   echo
   echo "Required fix for unreadable runtime-only VDBs:"
+  echo "  This VDB was generated without usable URG design context, or was copied from"
+  echo "  a work database in a shape URG cannot reopen as a standalone runtime VDB."
   echo "  Re-run the selected test with 'make run_cov TEST_NAME=<test> SEED=<seed>' so"
-  echo "  run_cov rebuilds ${COV_DIR}/<test>_<seed>.vdb from the compile-time design VDB."
+  echo "  run_cov first seeds ${COV_DIR}/<test>_<seed>.vdb from the compile-time"
+  echo "  design VDB, then runs simv with -cm_dir pointing directly at that final VDB."
   echo "  Then re-run make cov with the same URG_VDB_GLOB."
 }
 

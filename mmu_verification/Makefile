@@ -197,13 +197,15 @@ VERDI_BASE_OPTS := -nologo -full64 \
 
 #
 # VCS code-coverage run directories must contain the compile-time design
-# context plus per-test runtime data. run_cov seeds each per-test VDB from the
-# compile-time design VDB before simulation, then VCS appends the test/seed
-# coverage into that self-contained database. Old runtime-only VDBs can make
-# URG report "No context available" and must be regenerated.
+# context plus per-test runtime data. run_cov seeds the final per-test VDB from
+# the compile-time design VDB before simulation, then points simv -cm_dir at
+# that same final VDB so VCS writes the test/seed coverage in place. Old
+# runtime-only VDBs can make URG report "No context available" and must be
+# regenerated.
 #
 COV_DB_DIR            ?= $(OUTPUT_DIR)/simv.vdb
 COV_BASE_DB_DIR       ?= $(OUTPUT_DIR)/simv.compile.vdb
+COV_BASELINE_STAMP    ?= $(OUTPUT_DIR)/.simv.compile.vdb.baseline_v2.stamp
 URG_REPORT_DIR        ?= $(COV_DIR)/urgReport
 URG_MERGE_REPORT_DIR  ?= $(COV_DIR)/merged_report
 URG_MERGED_DB         ?= $(COV_DIR)/merged.vdb
@@ -214,8 +216,9 @@ URG_VDB_GLOB          ?=
 
 # Coverage must be enabled at compile time and must land in a stable design VDB.
 # comp_all snapshots that clean compile-time database in COV_BASE_DB_DIR.
-# run_cov restores the clean database to COV_DB_DIR, lets simv write test data
-# into that same VDB path, then copies the complete result to COV_DIR/COV_TAG.vdb.
+# run_cov restores the clean database directly to COV_DIR/COV_TAG.vdb, lets
+# simv write test data into that same VDB path, and leaves COV_DB_DIR as a clean
+# design-context database for URG compatibility probes.
 # Do not pass "$(COV_DIR)/*.vdb" directly to URG: that glob can pick up stale
 # merged.vdb / partial NFS artifacts and make URG lose the design context.
 # Phase 12 whitebox covergroups share the same VDB flow and therefore also
@@ -226,10 +229,11 @@ COV_HIER_CFG    := $(PROJECT_DIR)/scripts/cov_hier.cfg
 COV_COMPILE_OPTS:= -cm $(COV_METRICS) \
                    -cm_dir $(COV_DB_DIR) \
                    -cm_hier $(COV_HIER_CFG)
-COV_RUN_OPTS    := -cm $(COV_METRICS) \
+COV_RUN_COMMON_OPTS := -cm $(COV_METRICS) \
                    -cm_name $(COV_TAG) \
-                   -cm_dir $(COV_DB_DIR) \
                    -cm_hier $(COV_HIER_CFG)
+COV_RUN_OPTS    := $(COV_RUN_COMMON_OPTS) \
+                   -cm_dir $(COV_DB_DIR)
 
 #===============================================================================
 # Phase 10 - regression wrappers and coverage baseline
@@ -933,11 +937,19 @@ comp_all: setup check_env
 	@echo "MMU_RTL_DIR=$(MMU_RTL_DIR)"
 	@echo "RELATE_RTL_DIR=$(RELATE_RTL_DIR)"
 	@echo "==============================================================================="
-	@if [ -d "$(COV_BASE_DB_DIR)" ] && find "$(COV_BASE_DB_DIR)" -type f -print -quit | grep -q .; then \
-		rm -rf "$(COV_DB_DIR)" && cp -a "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" && chmod -R u+w "$(COV_DB_DIR)" 2>/dev/null || true; \
-	else \
-		echo "Coverage baseline VDB missing/empty; forcing VCS rebuild of $(COV_DB_DIR)"; \
+	@if [ -f "$(COV_BASELINE_STAMP)" ] && [ -d "$(COV_BASE_DB_DIR)" ] && find "$(COV_BASE_DB_DIR)" -type f -print -quit | grep -q .; then \
 		rm -rf "$(COV_DB_DIR)"; \
+		cp -a "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" || { \
+			echo "ERROR: could not restore coverage design VDB from baseline"; \
+			echo "       Source: $(COV_BASE_DB_DIR)"; \
+			echo "       Target: $(COV_DB_DIR)"; \
+			exit 1; \
+		}; \
+		chmod -R u+w "$(COV_DB_DIR)" 2>/dev/null || true; \
+	else \
+		echo "Coverage baseline VDB missing/empty/stale; forcing VCS rebuild of $(COV_DB_DIR)"; \
+		rm -rf "$(COV_DB_DIR)"; \
+		rm -rf "$(COV_BASE_DB_DIR)"; \
 		rm -f "$(OUTPUT_DIR)/simv.daidir/.vcs.timestamp"; \
 	fi
 	CORE_V_VERIF=$(CORE_V_VERIF) \
@@ -961,6 +973,7 @@ comp_all: setup check_env
 	fi
 	@rm -rf "$(COV_BASE_DB_DIR)"
 	@cp -a "$(COV_DB_DIR)" "$(COV_BASE_DB_DIR)"
+	@touch "$(COV_BASELINE_STAMP)"
 	@chmod -R u+w "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" 2>/dev/null || true
 	@echo "Build done: $(OUTPUT_DIR)/simv"
 
@@ -1101,6 +1114,11 @@ run_cov: setup
 	else \
 		cov_vdb="$(COV_DIR)/$(COV_TAG).vdb"; \
 		cov_log="$(LOG_DIR)/$(COV_TAG)_cov.log"; \
+		if [ ! -f "$(COV_BASELINE_STAMP)" ]; then \
+			echo "ERROR: compile-time coverage baseline stamp is missing: $(COV_BASELINE_STAMP)"; \
+			echo "       Re-run 'make comp' before 'make run_cov'."; \
+			exit 1; \
+		fi; \
 		if [ ! -d "$(COV_BASE_DB_DIR)" ]; then \
 			echo "ERROR: clean compile-time coverage baseline VDB is missing: $(COV_BASE_DB_DIR)"; \
 			echo "       Re-run 'make comp' before 'make run_cov'."; \
@@ -1121,9 +1139,16 @@ run_cov: setup
 				exit 1; \
 			fi; \
 		fi; \
+		cp -a "$(COV_BASE_DB_DIR)" "$$cov_vdb" || { \
+			echo "ERROR: could not seed runtime coverage VDB from clean compile-time baseline"; \
+			echo "       Source: $(COV_BASE_DB_DIR)"; \
+			echo "       Target: $$cov_vdb"; \
+			exit 1; \
+		}; \
+		chmod -R u+w "$$cov_vdb" 2>/dev/null || true; \
 		rm -rf "$(COV_DB_DIR)"; \
 		cp -a "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" || { \
-			echo "ERROR: could not restore clean compile-time coverage baseline"; \
+			echo "ERROR: could not restore clean design VDB for URG compatibility probes"; \
 			echo "       Source: $(COV_BASE_DB_DIR)"; \
 			echo "       Target: $(COV_DB_DIR)"; \
 			exit 1; \
@@ -1132,18 +1157,18 @@ run_cov: setup
 		cd $(OUTPUT_DIR) && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
-			$(COV_RUN_OPTS) \
+			$(COV_RUN_COMMON_OPTS) \
+			-cm_dir $$cov_vdb \
 			-l $$cov_log; \
 		sim_rc=$$?; \
 		if [ $$sim_rc -ne 0 ]; then \
 			echo "ERROR: run_cov simulation failed: TEST_NAME=$(TEST_NAME) SEED=$(SEED) rc=$$sim_rc"; \
 			echo "       Log: $$cov_log"; \
-			echo "       Work VDB: $(COV_DB_DIR)"; \
-			failed_vdb="$(COV_DB_DIR).failed.$$(date +%Y%m%d_%H%M%S).$$$$"; \
-			if [ -d "$(COV_DB_DIR)" ] && mv "$(COV_DB_DIR)" "$$failed_vdb" 2>/dev/null; then \
+			echo "       Runtime VDB: $$cov_vdb"; \
+			failed_vdb="$$cov_vdb.failed.$$(date +%Y%m%d_%H%M%S).$$$$"; \
+			if [ -d "$$cov_vdb" ] && mv "$$cov_vdb" "$$failed_vdb" 2>/dev/null; then \
 				echo "       Moved incomplete VDB to: $$failed_vdb"; \
 			fi; \
-			cp -a "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" 2>/dev/null || true; \
 			exit $$sim_rc; \
 		fi; \
 		if [ ! -s "$$cov_log" ]; then \
@@ -1155,24 +1180,17 @@ run_cov: setup
 			grep -Ein -m 5 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log" | sed 's/^/  /'; \
 			exit 1; \
 		fi; \
-		if [ ! -d "$(COV_DB_DIR)" ]; then \
-			echo "ERROR: run_cov did not produce work coverage VDB: $(COV_DB_DIR)"; \
+		if [ ! -d "$$cov_vdb" ]; then \
+			echo "ERROR: run_cov did not produce runtime coverage VDB: $$cov_vdb"; \
 			echo "       Log: $$cov_log"; \
 			exit 1; \
 		fi; \
-		if ! find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
-			echo "ERROR: run_cov produced an empty work coverage VDB: $(COV_DB_DIR)"; \
+		if ! find "$$cov_vdb" -type f -print -quit | grep -q .; then \
+			echo "ERROR: run_cov produced an empty runtime coverage VDB: $$cov_vdb"; \
 			echo "       Log: $$cov_log"; \
 			exit 1; \
 		fi; \
-		cp -a "$(COV_DB_DIR)" "$$cov_vdb" || { \
-			echo "ERROR: could not copy completed coverage VDB to runtime VDB"; \
-			echo "       Source: $(COV_DB_DIR)"; \
-			echo "       Target: $$cov_vdb"; \
-			exit 1; \
-		}; \
 		chmod -R u+w "$$cov_vdb" 2>/dev/null || true; \
-		rm -rf "$(COV_DB_DIR)" && cp -a "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" && chmod -R u+w "$(COV_DB_DIR)" 2>/dev/null || true; \
 		if ! grep -Eq 'UVM Report Summary|V C S[[:space:]]+S i m u l a t i o n[[:space:]]+R e p o r t|Simulation completed|\$$finish' "$$cov_log"; then \
 			echo "WARNING: coverage log does not show a normal UVM/VCS completion marker: $$cov_log"; \
 		fi; \
@@ -1260,7 +1278,7 @@ clean_wave:
 
 clean_cov:
 	@set -e; \
-	for p in $(COV_DIR)/*.vdb $(COV_DIR)/.urg_probe_* $(COV_DIR)/.urg_batch_* $(COV_DIR)/urgReport $(COV_DIR)/merged* $(COV_DIR)/urg_report.log $(COV_DIR)/*.nfs_busy.* $(COV_BASE_DB_DIR) $(COV_DB_DIR).failed.*; do \
+	for p in $(COV_DIR)/*.vdb $(COV_DIR)/*.vdb.failed.* $(COV_DIR)/*.vdb.stale.* $(COV_DIR)/.urg_probe_* $(COV_DIR)/.urg_batch_* $(COV_DIR)/urgReport $(COV_DIR)/merged* $(COV_DIR)/urg_report.log $(COV_DIR)/*.nfs_busy.* $(COV_BASE_DB_DIR) $(COV_BASELINE_STAMP) $(COV_DB_DIR).failed.*; do \
 		[ -e "$$p" ] || continue; \
 		stale="$${p}.nfs_busy.$$(date +%Y%m%d_%H%M%S).$$$$"; \
 		if mv "$$p" "$$stale" 2>/dev/null; then \

@@ -73,12 +73,9 @@ run_urg() {
 }
 
 build_urg_dir_args() {
-  local -n out_ref="$1"
-  shift
   local d
-  out_ref=()
   for d in "$@"; do
-    out_ref+=(-dir "${d}")
+    printf -- "-dir\0%s\0" "${d}"
   done
 }
 
@@ -237,8 +234,8 @@ try_two_step_report() {
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
-  build_urg_dir_args merge_dir_args "${COV_DB_DIR}" "${vdbs[@]}"
-  build_urg_dir_args report_dir_args "${URG_MERGED_DB}"
+  while IFS= read -r -d '' tok; do merge_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]}")
+  while IFS= read -r -d '' tok; do report_dir_args+=("${tok}"); done < <(build_urg_dir_args "${URG_MERGED_DB}")
 
   run_urg "${label}: merge" \
     "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
@@ -261,7 +258,7 @@ try_one_step_report() {
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
-  build_urg_dir_args dir_args "${COV_DB_DIR}" "${vdbs[@]}"
+  while IFS= read -r -d '' tok; do dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]}")
 
   run_urg "${label}" \
     "${URG_BIN}" -full64 "${dir_args[@]}" \
@@ -280,7 +277,7 @@ try_runtime_only_report() {
 
   remove_artifact "${URG_REPORT_DIR}"
 
-  build_urg_dir_args dir_args "${vdbs[@]}"
+  while IFS= read -r -d '' tok; do dir_args+=("${tok}"); done < <(build_urg_dir_args "${vdbs[@]}")
 
   run_urg "${label}" \
     "${URG_BIN}" -full64 "${dir_args[@]}" \
@@ -323,7 +320,7 @@ try_runtime_only_batched_report() {
     batch_dbs+=("${batch_db}")
 
     local -a batch_dir_args=()
-    build_urg_dir_args batch_dir_args "${vdbs[@]:start:batch_len}"
+    while IFS= read -r -d '' tok; do batch_dir_args+=("${tok}"); done < <(build_urg_dir_args "${vdbs[@]:start:batch_len}")
     run_urg "${label}: batch ${batch_idx}" \
       "${URG_BIN}" -full64 "${batch_dir_args[@]}" \
         -dbname "${batch_db}" || {
@@ -337,7 +334,7 @@ try_runtime_only_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a merge_dir_args=()
-    build_urg_dir_args merge_dir_args "${batch_dbs[@]}"
+    while IFS= read -r -d '' tok; do merge_dir_args+=("${tok}"); done < <(build_urg_dir_args "${batch_dbs[@]}")
     run_urg "${label}: merge batches" \
       "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
         -dbname "${URG_MERGED_DB}" || rc=1
@@ -345,7 +342,7 @@ try_runtime_only_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a report_dir_args=()
-    build_urg_dir_args report_dir_args "${URG_MERGED_DB}"
+    while IFS= read -r -d '' tok; do report_dir_args+=("${tok}"); done < <(build_urg_dir_args "${URG_MERGED_DB}")
     run_urg "${label}: report" \
       "${URG_BIN}" -full64 "${report_dir_args[@]}" \
         -format both \
@@ -392,7 +389,7 @@ try_batched_report() {
     batch_dbs+=("${batch_db}")
 
     local -a batch_dir_args=()
-    build_urg_dir_args batch_dir_args "${COV_DB_DIR}" "${vdbs[@]:start:batch_len}"
+    while IFS= read -r -d '' tok; do batch_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]:start:batch_len}")
     run_urg "${label}: batch ${batch_idx}" \
       "${URG_BIN}" -full64 "${batch_dir_args[@]}" \
         -dbname "${batch_db}" || {
@@ -406,7 +403,7 @@ try_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a merge_dir_args=()
-    build_urg_dir_args merge_dir_args "${COV_DB_DIR}" "${batch_dbs[@]}"
+    while IFS= read -r -d '' tok; do merge_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${batch_dbs[@]}")
     run_urg "${label}: merge batches" \
       "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
         -dbname "${URG_MERGED_DB}" || rc=1
@@ -414,7 +411,7 @@ try_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a report_dir_args=()
-    build_urg_dir_args report_dir_args "${URG_MERGED_DB}"
+    while IFS= read -r -d '' tok; do report_dir_args+=("${tok}"); done < <(build_urg_dir_args "${URG_MERGED_DB}")
     run_urg "${label}: report" \
       "${URG_BIN}" -full64 "${report_dir_args[@]}" \
         -format both \
@@ -450,7 +447,7 @@ probe_runtime_vdbs() {
 
     probe_mode=""
     local -a design_probe_dir_args=()
-    build_urg_dir_args design_probe_dir_args "${COV_DB_DIR}" "${vdb}"
+    while IFS= read -r -d '' tok; do design_probe_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdb}")
     if run_urg "probe ${base} (design-context)" \
       "${URG_BIN}" -full64 "${design_probe_dir_args[@]}" \
         -dbname "${probe_db}" \
@@ -462,7 +459,7 @@ probe_runtime_vdbs() {
       remove_artifact "${probe_report}"
 
       local -a runtime_probe_dir_args=()
-      build_urg_dir_args runtime_probe_dir_args "${vdb}"
+      while IFS= read -r -d '' tok; do runtime_probe_dir_args+=("${tok}"); done < <(build_urg_dir_args "${vdb}")
       if run_urg "probe ${base} (runtime-only)" \
         "${URG_BIN}" -full64 "${runtime_probe_dir_args[@]}" \
           -format text \

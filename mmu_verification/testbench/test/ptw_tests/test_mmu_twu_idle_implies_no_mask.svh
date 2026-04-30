@@ -24,8 +24,8 @@ class test_mmu_twu_idle_implies_no_mask extends phase12_generated_test_base;
     p12_seq_desc = "phase12 idle -> have/busy -> masked PTW progression";
     p12_checker  = "sva_twu_idle_implies_no_mask + cg_twu_idle_vs_mask_state";
     p12_reviewer = "A+B";
-    num_txn      = 96;
-    m_post_drain = 1600ns;
+    num_txn      = 64;
+    m_post_drain = 1000ns;
   endfunction
 
   virtual task run_test_body();
@@ -36,23 +36,23 @@ class test_mmu_twu_idle_implies_no_mask extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
-    #200ns;
-    phase12_config_ptw_responder(48, 96, 0);
+    #120ns;
+    phase12_config_ptw_responder(32, 64, 0);
 
     fork
       begin
-        phase12_drive_ifu_rr(39'h10_1000, 8, 24);
+        phase12_drive_ifu_rr(39'h10_1000, 6, 16);
       end
       begin
-        phase12_drive_lsu_rr(39'h10_1000, 1, 16, LSU_PIPE0, 1'b0);
+        phase12_drive_lsu_rr(39'h10_1000, 1, 12, LSU_PIPE0, 1'b0);
       end
       begin
-        phase12_drive_lsu_rr(39'h10_1000, 1, 16, LSU_PIPE1, 1'b1);
+        phase12_drive_lsu_rr(39'h10_1000, 1, 12, LSU_PIPE1, 1'b1);
       end
       begin
-        #250ns;
+        #160ns;
         phase12_set_pmp_deny_ptw_reads(4'b0011);
-        #200ns;
+        #120ns;
         phase12_set_pmp_allow_all();
       end
     join

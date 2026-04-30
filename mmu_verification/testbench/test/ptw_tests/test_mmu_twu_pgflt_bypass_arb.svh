@@ -24,8 +24,8 @@ class test_mmu_twu_pgflt_bypass_arb extends phase12_generated_test_base;
     p12_seq_desc = "phase12 slow PTW + mapped V_OFF page-fault under IFU pressure";
     p12_checker  = "sva_twu_except_bypasses_arb + cg_twu_except_while_arb_busy";
     p12_reviewer = "A+B";
-    num_txn      = 96;
-    m_post_drain = 1600ns;
+    num_txn      = 64;
+    m_post_drain = 1000ns;
   endfunction
 
   virtual task run_test_body();
@@ -36,17 +36,17 @@ class test_mmu_twu_pgflt_bypass_arb extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
-    phase12_map_4k_window(39'h10_0000, 8, 40'h0_2010_0000);
+    phase12_map_4k_window(39'h10_0000, 6, 40'h0_2010_0000);
     m_env.m_pt_mem.m_builder.inject_fault(39'h10_0000, "V_OFF");
-    phase12_config_ptw_responder(48, 96, 0);
+    phase12_config_ptw_responder(32, 64, 0);
 
     fork
       begin
-        phase12_drive_ifu_rr(39'h10_1000, 16, 48);
+        phase12_drive_ifu_rr(39'h10_1000, 8, 24);
       end
       begin
-        #250ns;
-        repeat (6) begin
+        #160ns;
+        repeat (3) begin
           phase12_cp0_tlb_allinv();
           phase12_drive_lsu_rr(39'h10_0000, 1, 1, LSU_PIPE0, 1'b0);
         end

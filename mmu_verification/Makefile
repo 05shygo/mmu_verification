@@ -201,19 +201,17 @@ VERDI_BASE_OPTS := -nologo -full64 \
 # followed by the runtime per-test VDBs; otherwise it reports UCAPI-DNYL
 # ("Design not yet loaded").
 #
-COV_DB_DIR      ?= $(OUTPUT_DIR)/simv.vdb
-URG_OPTS        := -dir $(COV_DB_DIR) $(COV_DIR)/*.vdb \
-                   -format both \
-                   -report $(COV_DIR)/urgReport
-URG_MERGE_OPTS  := -dir $(COV_DB_DIR) $(COV_DIR)/*.vdb \
-                   -dbname $(COV_DIR)/merged.vdb \
-                   -format both \
-                   -report $(COV_DIR)/merged_report
+COV_DB_DIR            ?= $(OUTPUT_DIR)/simv.vdb
+URG_REPORT_DIR        ?= $(COV_DIR)/urgReport
+URG_MERGE_REPORT_DIR  ?= $(COV_DIR)/merged_report
+URG_MERGED_DB         ?= $(COV_DIR)/merged.vdb
 
 # Coverage must be enabled at compile time and must land in a stable design VDB.
 # run_cov then writes each test/seed into its own runtime VDB via -cm_dir.
 # URG merges those simulation-only VDBs by loading the compile-time design VDB
-# first, then the runtime VDBs.
+# first, then the runtime VDBs.  Do not pass "$(COV_DIR)/*.vdb" directly to
+# URG: that glob can pick up stale merged.vdb / partial NFS artifacts and make
+# URG lose the design context ("No context available").
 # Phase 12 whitebox covergroups share the same VDB flow and therefore also
 # require the compile step to be coverage-enabled.
 COV_TAG         ?= $(TEST_NAME)_$(SEED)
@@ -268,7 +266,7 @@ PHASE11_V3_SUMMARY        ?= $(REGRESS_DIR)/phase11_v3_gap/summary.txt
 PHASE12_LIST              ?= $(SIMU_DIR)/mmu_v4_phase12_list
 PHASE12_SEEDS             ?= 95101 95102 95103
 PHASE12_SUMMARY           ?= $(REGRESS_DIR)/phase12_v4/summary.txt
-PHASE12_URG_REPORT        ?= $(COV_DIR)/urgReport
+PHASE12_URG_REPORT        ?= $(URG_REPORT_DIR)
 PHASE12_A_REVIEW_NOTE     ?= $(PROJECT_DIR)/../doc/phase12_a_review.md
 PHASE12_EXIT_CHECKLIST    ?= $(PROJECT_DIR)/../doc/phase12_exit_checklist.md
 PHASE12_SKIP_COMPILE      ?= 0
@@ -278,6 +276,7 @@ PHASE12_MAEE_MIN_HITS     ?= 20
 PHASE12_CG_MIN_PERCENT    ?= 50
 PHASE12_REGRESS_JOBS      ?= 4
 PHASE12_FAIL_FAST         ?= 1
+PHASE12_UVM_ERR_ONLY      ?= 1
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -342,6 +341,7 @@ print-phase12:
 	@echo "PHASE12_CG_MIN_PERCENT = $(PHASE12_CG_MIN_PERCENT)"
 	@echo "PHASE12_REGRESS_JOBS   = $(PHASE12_REGRESS_JOBS)"
 	@echo "PHASE12_FAIL_FAST      = $(PHASE12_FAIL_FAST)"
+	@echo "PHASE12_UVM_ERR_ONLY   = $(PHASE12_UVM_ERR_ONLY)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -576,7 +576,7 @@ regress_v4_maee_ptw: comp
 		REGRESS_MIN_PASS_RATE=1.0 \
 		VERBOSITY="$(VERBOSITY)" \
 		TIMEOUT="$(TIMEOUT)" \
-		UVM_ERR_ONLY="$(UVM_ERR_ONLY)"; \
+		UVM_ERR_ONLY="$(PHASE12_UVM_ERR_ONLY)"; \
 	reg_rc=$$?; \
 	set -e; \
 	set +e; \
@@ -615,9 +615,10 @@ phase12_exit_check:
 	PHASE12_CG_MIN_PERCENT='$(PHASE12_CG_MIN_PERCENT)' \
 	PHASE12_REGRESS_JOBS='$(PHASE12_REGRESS_JOBS)' \
 	PHASE12_FAIL_FAST='$(PHASE12_FAIL_FAST)' \
+	PHASE12_UVM_ERR_ONLY='$(PHASE12_UVM_ERR_ONLY)' \
 	VERBOSITY='$(VERBOSITY)' \
 	TIMEOUT='$(TIMEOUT)' \
-	UVM_ERR_ONLY='$(UVM_ERR_ONLY)' \
+	UVM_ERR_ONLY='$(PHASE12_UVM_ERR_ONLY)' \
 	bash $(PROJECT_DIR)/scripts/phase12_exit_check.sh
 
 phase11_exit_check:
@@ -1114,30 +1115,70 @@ wave: verdi
 # Coverage
 #===============================================================================
 cov:
-	@if [ ! -d "$(COV_DB_DIR)" ]; then \
+	@set -e; \
+	if [ ! -d "$(COV_DB_DIR)" ]; then \
 		echo "ERROR: coverage design database not found: $(COV_DB_DIR)"; \
 		echo "Run 'make comp' with coverage enabled before 'make cov'."; \
 		exit 2; \
-	fi
-	@if ! ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
+	fi; \
+	if [ -z "$(URG_REPORT_DIR)" ] || [ "$(URG_REPORT_DIR)" = "/" ] || [ "$(URG_REPORT_DIR)" = "." ]; then \
+		echo "ERROR: unsafe URG_REPORT_DIR='$(URG_REPORT_DIR)'"; \
+		exit 2; \
+	fi; \
+	if [ -z "$(URG_MERGED_DB)" ] || [ "$(URG_MERGED_DB)" = "/" ] || [ "$(URG_MERGED_DB)" = "." ]; then \
+		echo "ERROR: unsafe URG_MERGED_DB='$(URG_MERGED_DB)'"; \
+		exit 2; \
+	fi; \
+	design_real=$$(cd "$(COV_DB_DIR)" && pwd -P); \
+	set --; \
+	for vdb in "$(COV_DIR)"/*.vdb; do \
+		[ -d "$$vdb" ] || continue; \
+		base=$${vdb##*/}; \
+		case "$$base" in \
+			merged.vdb|merged_*.vdb|*.nfs_busy.*) \
+				echo "Skipping non-runtime coverage database: $$vdb"; \
+				continue; \
+				;; \
+		esac; \
+		vdb_real=$$(cd "$$vdb" && pwd -P); \
+		if [ "$$vdb_real" = "$$design_real" ]; then \
+			echo "Skipping compile-time design database from runtime list: $$vdb"; \
+			continue; \
+		fi; \
+		set -- "$$@" "$$vdb"; \
+	done; \
+	if [ "$$#" -eq 0 ]; then \
 		echo "ERROR: no runtime coverage databases found under $(COV_DIR)"; \
 		echo "Run 'make run_cov TEST_NAME=<test> SEED=<seed>' before 'make cov'."; \
 		exit 2; \
-	fi
-	$(URG) $(URG_OPTS)
+	fi; \
+	for p in "$(URG_REPORT_DIR)" "$(URG_MERGED_DB)"; do \
+		[ -e "$$p" ] || continue; \
+		stale="$${p}.stale.$$(date +%Y%m%d_%H%M%S).$$$$"; \
+		if mv "$$p" "$$stale" 2>/dev/null; then \
+			rm -rf "$$stale" 2>/dev/null || \
+				echo "WARNING: left stale coverage artifact at $$stale; close the process holding it and remove it later."; \
+		elif rm -rf "$$p" 2>/dev/null; then \
+			:; \
+		else \
+			echo "ERROR: could not clean stale coverage artifact $$p"; \
+			exit 1; \
+		fi; \
+	done; \
+	echo "Coverage design DB: $(COV_DB_DIR)"; \
+	echo "Runtime VDB count: $$#"; \
+	printf '  %s\n' "$$@"; \
+	$(URG) -full64 -dir "$(COV_DB_DIR)" "$$@" \
+		-dbname "$(URG_MERGED_DB)" \
+		-format both \
+		-report "$(URG_REPORT_DIR)"; \
+	test -d "$(URG_REPORT_DIR)" || { \
+		echo "ERROR: URG finished without report directory: $(URG_REPORT_DIR)"; \
+		exit 1; \
+	}
 
 merge_cov:
-	@if [ ! -d "$(COV_DB_DIR)" ]; then \
-		echo "ERROR: coverage design database not found: $(COV_DB_DIR)"; \
-		echo "Run 'make comp' with coverage enabled before 'make merge_cov'."; \
-		exit 2; \
-	fi
-	@if ! ls "$(COV_DIR)"/*.vdb >/dev/null 2>&1; then \
-		echo "ERROR: no runtime coverage databases found under $(COV_DIR)"; \
-		echo "Run 'make run_cov TEST_NAME=<test> SEED=<seed>' before 'make merge_cov'."; \
-		exit 2; \
-	fi
-	$(URG) $(URG_MERGE_OPTS)
+	@$(MAKE) cov URG_REPORT_DIR="$(URG_MERGE_REPORT_DIR)" URG_MERGED_DB="$(URG_MERGED_DB)"
 
 #===============================================================================
 # Test List

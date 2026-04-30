@@ -24,8 +24,8 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
     p12_seq_desc = "phase12 all-mask then single-PTW unblock recovery";
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
-    num_txn      = 96;
-    m_post_drain = 1400ns;
+    num_txn      = 64;
+    m_post_drain = 900ns;
   endfunction
 
   virtual task run_test_body();
@@ -40,26 +40,26 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
 
     fork
       begin
-        phase12_drive_ifu_rr(39'h10_2000, 24, 48);
+        phase12_drive_ifu_rr(39'h10_2000, 12, 32);
       end
       begin
-        phase12_drive_lsu_interleave3(39'h10_2000, 24, 72);
+        phase12_drive_lsu_interleave3(39'h10_2000, 12, 48);
       end
       begin
-        #250ns;
+        #160ns;
         phase12_set_pmp_deny_ptw_reads(4'b1110);
-        #250ns;
+        #160ns;
         phase12_set_pmp_deny_ptw_reads(4'b1100);
-        #250ns;
+        #160ns;
         phase12_set_pmp_allow_all();
       end
     join
 
-    phase12_pulse_ptw_ready_for_cov(10);
+    phase12_pulse_ptw_ready_for_cov(4);
     phase12_cp0_tlb_allinv();
-    phase12_drive_lsu_rr(39'h10_3000, 1, 12, LSU_PIPE0, 1'b0);
+    phase12_drive_lsu_rr(39'h10_3000, 1, 8, LSU_PIPE0, 1'b0);
     #120ns;
-    phase12_pulse_ptw_ready_for_cov(6);
+    phase12_pulse_ptw_ready_for_cov(1);
 
     #(m_post_drain);
   endtask

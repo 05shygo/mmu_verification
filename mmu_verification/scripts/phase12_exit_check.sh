@@ -31,6 +31,7 @@ PHASE12_MAEE_MIN_HITS="${PHASE12_MAEE_MIN_HITS:-20}"
 PHASE12_CG_MIN_PERCENT="${PHASE12_CG_MIN_PERCENT:-50}"
 PHASE12_REGRESS_JOBS="${PHASE12_REGRESS_JOBS:-4}"
 PHASE12_FAIL_FAST="${PHASE12_FAIL_FAST:-1}"
+PHASE12_UVM_ERR_ONLY="${PHASE12_UVM_ERR_ONLY:-${UVM_ERR_ONLY:-1}}"
 
 PHASE12_COV_GATE_PY="${PHASE12_COV_GATE_PY:-${PROJECT_DIR}/scripts/phase12_cov_gate.py}"
 PHASE12_LOG_SCAN="${PHASE12_LOG_SCAN:-${PROJECT_DIR}/scripts/phase11_scan_regression_logs.sh}"
@@ -316,7 +317,7 @@ step_regression() {
     REGRESS_MIN_PASS_RATE=1.0 \
     VERBOSITY="${VERBOSITY:-UVM_MEDIUM}" \
     TIMEOUT="${TIMEOUT:-10000000}" \
-    UVM_ERR_ONLY="${UVM_ERR_ONLY:-0}"
+    UVM_ERR_ONLY="${PHASE12_UVM_ERR_ONLY}"
 }
 
 step_log_scan() {
@@ -329,13 +330,15 @@ step_log_scan() {
 }
 
 step_cov_report() {
-  if ! ls "${PHASE12_COV_DIR}"/*.vdb >/dev/null 2>&1; then
-    echo "No coverage databases found under ${PHASE12_COV_DIR}"
+  "${MAKE_BIN}" cov \
+    COV_DIR="${PHASE12_COV_DIR}" \
+    URG_REPORT_DIR="${PHASE12_URG_REPORT}" \
+    URG_MERGED_DB="${PHASE12_COV_DIR}/merged.vdb" || return 1
+
+  if [[ ! -d "${PHASE12_URG_REPORT}" ]]; then
+    echo "URG report directory was not generated: ${PHASE12_URG_REPORT}"
     return 1
   fi
-
-  "${MAKE_BIN}" cov || return 1
-  [[ -d "${PHASE12_URG_REPORT}" ]]
 }
 
 step_summary_gate() {
@@ -466,6 +469,7 @@ main() {
   echo "Phase 12 review note     : ${PHASE12_A_REVIEW_NOTE}"
   echo "Phase 12 regress jobs    : ${PHASE12_REGRESS_JOBS}"
   echo "Phase 12 fail fast       : ${PHASE12_FAIL_FAST}"
+  echo "Phase 12 UVM err only    : ${PHASE12_UVM_ERR_ONLY}"
   echo "MAKE_BIN                 : ${MAKE_BIN}"
   echo "PYTHON_BIN               : ${PYTHON_BIN}"
 

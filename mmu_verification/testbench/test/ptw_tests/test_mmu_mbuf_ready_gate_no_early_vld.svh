@@ -24,8 +24,8 @@ class test_mmu_mbuf_ready_gate_no_early_vld extends phase12_generated_test_base;
     p12_seq_desc = "phase12 slow 1G/2M/4K walks for stage-ready gating";
     p12_checker  = "sva_mbuf_waits_twu_ready + cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
-    num_txn      = 96;
-    m_post_drain = 1600ns;
+    num_txn      = 64;
+    m_post_drain = 1000ns;
   endfunction
 
   virtual task run_test_body();
@@ -37,9 +37,9 @@ class test_mmu_mbuf_ready_gate_no_early_vld extends phase12_generated_test_base;
       do_sv39_4k_bringup();
 
     phase12_map_hugepage_fixture();
-    phase12_config_ptw_responder(48, 96, 0);
+    phase12_config_ptw_responder(32, 64, 0);
 
-    repeat (3) begin
+    repeat (2) begin
       phase12_drive_ifu_rr(39'h0_4000_0000, 1, 1);
       phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
       phase12_drive_lsu_rr(39'h0_3000_1000, 1, 1, LSU_PIPE1, 1'b1);

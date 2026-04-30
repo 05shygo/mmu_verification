@@ -12,12 +12,13 @@ URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_ALLOW_PARTIAL_MERGE="${URG_ALLOW_PARTIAL_MERGE:-1}"
 URG_BATCH_SIZE="${URG_BATCH_SIZE:-12}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
-RUN_URG_REPORT_VERSION="2026-04-30-pgflt-vdb-preflight-v3"
+RUN_URG_REPORT_VERSION="2026-04-30-self-contained-vdb-v4"
 
 declare -a RUNTIME_VDBS=()
 declare -a GOOD_VDBS=()
 declare -a BAD_VDBS=()
 declare -a GOOD_VDB_PROBE_MODES=()
+declare -a URG_DIR_ARGS=()
 
 die() {
   echo "ERROR: $*" >&2
@@ -72,18 +73,27 @@ run_urg() {
   return "${rc}"
 }
 
-build_urg_dir_args() {
-  local d
-  for d in "$@"; do
-    printf -- "-dir\0%s\0" "${d}"
-  done
-}
-
 runtime_vdb_has_metadata() {
   local vdb="$1"
 
   find "${vdb}" -mindepth 1 \
     \( -name "snps" -o -name "testdata" -o -name "cm.decl_info" -o -name "*.db" \) \
+    -print -quit | grep -q .
+}
+
+append_urg_dir_args() {
+  local d
+
+  for d in "$@"; do
+    URG_DIR_ARGS+=(-dir "${d}")
+  done
+}
+
+runtime_vdb_has_design_context_hint() {
+  local vdb="$1"
+
+  find "${vdb}" -mindepth 1 \
+    \( -name "cm.decl_info" -o -name "scope" -o -name "design" -o -name "hierarchy*" -o -name "module*" \) \
     -print -quit | grep -q .
 }
 
@@ -138,6 +148,10 @@ preflight_runtime_vdbs() {
       hard_fail=1
     elif ! runtime_vdb_has_metadata "${vdb}"; then
       echo "WARNING: selected runtime VDB has files but no obvious Synopsys VDB metadata: ${vdb}"
+    elif ! runtime_vdb_has_design_context_hint "${vdb}"; then
+      echo "WARNING: selected runtime VDB has no obvious design-context metadata."
+      echo "         If URG reports 'No context available', regenerate it with 'make run_cov' so"
+      echo "         the per-test VDB is seeded from ${COV_DB_DIR} before simulation."
     fi
 
     if cov_log="$(cov_log_for_vdb "${vdb}")"; then
@@ -158,6 +172,45 @@ preflight_runtime_vdbs() {
   if [[ "${hard_fail}" -ne 0 ]]; then
     die "runtime VDB preflight failed; fix the run_cov output before invoking URG"
   fi
+}
+
+print_vdb_diagnostics() {
+  local vdb="$1"
+  local cov_log
+
+  echo "  VDB path: ${vdb}"
+  if [[ -d "${vdb}" ]]; then
+    echo "  VDB file count: $(find "${vdb}" -type f 2>/dev/null | wc -l)"
+    echo "  VDB top-level entries:"
+    find "${vdb}" -mindepth 1 -maxdepth 2 -print 2>/dev/null | sed 's/^/    /' | head -30
+  else
+    echo "  VDB directory is missing."
+  fi
+
+  if cov_log="$(cov_log_for_vdb "${vdb}")" && [[ -s "${cov_log}" ]]; then
+    echo "  Coverage log: ${cov_log}"
+    echo "  Relevant coverage log lines:"
+    if ! grep -Ein -m 12 'UVM_(FATAL|ERROR)|Segmentation fault|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists|Simulation timeout|UVM_TIMEOUT|timed out|TIMEOUT.*(hit|expired|reached)|No context available|UCAPI|coverage|cm_dir|cm_name' "${cov_log}" | sed 's/^/    /'; then
+      echo "    (no fatal/crash/license/coverage hint found)"
+    fi
+  fi
+}
+
+report_unreadable_vdbs() {
+  local vdb
+
+  [[ ${#BAD_VDBS[@]} -gt 0 ]] || return 0
+
+  echo
+  echo "Unreadable runtime VDB diagnostics:"
+  for vdb in "${BAD_VDBS[@]}"; do
+    print_vdb_diagnostics "${vdb}"
+  done
+  echo
+  echo "Required fix for unreadable runtime-only VDBs:"
+  echo "  Re-run the selected test with 'make run_cov TEST_NAME=<test> SEED=<seed>' so"
+  echo "  run_cov rebuilds ${COV_DIR}/<test>_<seed>.vdb from the compile-time design VDB."
+  echo "  Then re-run make cov with the same URG_VDB_GLOB."
 }
 
 collect_runtime_vdbs() {
@@ -234,8 +287,12 @@ try_two_step_report() {
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
-  while IFS= read -r -d '' tok; do merge_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]}")
-  while IFS= read -r -d '' tok; do report_dir_args+=("${tok}"); done < <(build_urg_dir_args "${URG_MERGED_DB}")
+  URG_DIR_ARGS=()
+  append_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]}"
+  merge_dir_args=("${URG_DIR_ARGS[@]}")
+  URG_DIR_ARGS=()
+  append_urg_dir_args "${URG_MERGED_DB}"
+  report_dir_args=("${URG_DIR_ARGS[@]}")
 
   run_urg "${label}: merge" \
     "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
@@ -258,7 +315,9 @@ try_one_step_report() {
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
-  while IFS= read -r -d '' tok; do dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]}")
+  URG_DIR_ARGS=()
+  append_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]}"
+  dir_args=("${URG_DIR_ARGS[@]}")
 
   run_urg "${label}" \
     "${URG_BIN}" -full64 "${dir_args[@]}" \
@@ -277,7 +336,9 @@ try_runtime_only_report() {
 
   remove_artifact "${URG_REPORT_DIR}"
 
-  while IFS= read -r -d '' tok; do dir_args+=("${tok}"); done < <(build_urg_dir_args "${vdbs[@]}")
+  URG_DIR_ARGS=()
+  append_urg_dir_args "${vdbs[@]}"
+  dir_args=("${URG_DIR_ARGS[@]}")
 
   run_urg "${label}" \
     "${URG_BIN}" -full64 "${dir_args[@]}" \
@@ -320,7 +381,9 @@ try_runtime_only_batched_report() {
     batch_dbs+=("${batch_db}")
 
     local -a batch_dir_args=()
-    while IFS= read -r -d '' tok; do batch_dir_args+=("${tok}"); done < <(build_urg_dir_args "${vdbs[@]:start:batch_len}")
+    URG_DIR_ARGS=()
+    append_urg_dir_args "${vdbs[@]:start:batch_len}"
+    batch_dir_args=("${URG_DIR_ARGS[@]}")
     run_urg "${label}: batch ${batch_idx}" \
       "${URG_BIN}" -full64 "${batch_dir_args[@]}" \
         -dbname "${batch_db}" || {
@@ -334,7 +397,9 @@ try_runtime_only_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a merge_dir_args=()
-    while IFS= read -r -d '' tok; do merge_dir_args+=("${tok}"); done < <(build_urg_dir_args "${batch_dbs[@]}")
+    URG_DIR_ARGS=()
+    append_urg_dir_args "${batch_dbs[@]}"
+    merge_dir_args=("${URG_DIR_ARGS[@]}")
     run_urg "${label}: merge batches" \
       "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
         -dbname "${URG_MERGED_DB}" || rc=1
@@ -342,7 +407,9 @@ try_runtime_only_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a report_dir_args=()
-    while IFS= read -r -d '' tok; do report_dir_args+=("${tok}"); done < <(build_urg_dir_args "${URG_MERGED_DB}")
+    URG_DIR_ARGS=()
+    append_urg_dir_args "${URG_MERGED_DB}"
+    report_dir_args=("${URG_DIR_ARGS[@]}")
     run_urg "${label}: report" \
       "${URG_BIN}" -full64 "${report_dir_args[@]}" \
         -format both \
@@ -389,7 +456,9 @@ try_batched_report() {
     batch_dbs+=("${batch_db}")
 
     local -a batch_dir_args=()
-    while IFS= read -r -d '' tok; do batch_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]:start:batch_len}")
+    URG_DIR_ARGS=()
+    append_urg_dir_args "${COV_DB_DIR}" "${vdbs[@]:start:batch_len}"
+    batch_dir_args=("${URG_DIR_ARGS[@]}")
     run_urg "${label}: batch ${batch_idx}" \
       "${URG_BIN}" -full64 "${batch_dir_args[@]}" \
         -dbname "${batch_db}" || {
@@ -403,7 +472,9 @@ try_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a merge_dir_args=()
-    while IFS= read -r -d '' tok; do merge_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${batch_dbs[@]}")
+    URG_DIR_ARGS=()
+    append_urg_dir_args "${COV_DB_DIR}" "${batch_dbs[@]}"
+    merge_dir_args=("${URG_DIR_ARGS[@]}")
     run_urg "${label}: merge batches" \
       "${URG_BIN}" -full64 "${merge_dir_args[@]}" \
         -dbname "${URG_MERGED_DB}" || rc=1
@@ -411,7 +482,9 @@ try_batched_report() {
 
   if [[ "${rc}" -eq 0 ]]; then
     local -a report_dir_args=()
-    while IFS= read -r -d '' tok; do report_dir_args+=("${tok}"); done < <(build_urg_dir_args "${URG_MERGED_DB}")
+    URG_DIR_ARGS=()
+    append_urg_dir_args "${URG_MERGED_DB}"
+    report_dir_args=("${URG_DIR_ARGS[@]}")
     run_urg "${label}: report" \
       "${URG_BIN}" -full64 "${report_dir_args[@]}" \
         -format both \
@@ -447,7 +520,9 @@ probe_runtime_vdbs() {
 
     probe_mode=""
     local -a design_probe_dir_args=()
-    while IFS= read -r -d '' tok; do design_probe_dir_args+=("${tok}"); done < <(build_urg_dir_args "${COV_DB_DIR}" "${vdb}")
+    URG_DIR_ARGS=()
+    append_urg_dir_args "${COV_DB_DIR}" "${vdb}"
+    design_probe_dir_args=("${URG_DIR_ARGS[@]}")
     if run_urg "probe ${base} (design-context)" \
       "${URG_BIN}" -full64 "${design_probe_dir_args[@]}" \
         -dbname "${probe_db}" \
@@ -459,7 +534,9 @@ probe_runtime_vdbs() {
       remove_artifact "${probe_report}"
 
       local -a runtime_probe_dir_args=()
-      while IFS= read -r -d '' tok; do runtime_probe_dir_args+=("${tok}"); done < <(build_urg_dir_args "${vdb}")
+      URG_DIR_ARGS=()
+      append_urg_dir_args "${vdb}"
+      runtime_probe_dir_args=("${URG_DIR_ARGS[@]}")
       if run_urg "probe ${base} (runtime-only)" \
         "${URG_BIN}" -full64 "${runtime_probe_dir_args[@]}" \
           -format text \
@@ -509,32 +586,33 @@ main() {
     return "${preflight_rc}"
   fi
 
-  if try_two_step_report "design-context two-step" "${RUNTIME_VDBS[@]}"; then
-    echo "URG report generated: ${URG_REPORT_DIR}"
+  if try_runtime_only_report "self-contained runtime direct report" "${RUNTIME_VDBS[@]}"; then
+    echo "URG report generated from self-contained runtime VDB(s): ${URG_REPORT_DIR}"
     return 0
   fi
 
-  if try_one_step_report "design-context one-step" "${RUNTIME_VDBS[@]}"; then
-    echo "URG report generated: ${URG_REPORT_DIR}"
+  if try_runtime_only_batched_report "self-contained runtime batched" "${RUNTIME_VDBS[@]}"; then
+    echo "URG report generated from self-contained runtime VDB(s) using batched merge: ${URG_REPORT_DIR}"
     return 0
   fi
 
-  if try_batched_report "design-context batched" "${RUNTIME_VDBS[@]}"; then
-    echo "URG report generated with batched merge: ${URG_REPORT_DIR}"
+  if try_two_step_report "design-context compatibility two-step" "${RUNTIME_VDBS[@]}"; then
+    echo "URG report generated with design-context compatibility merge: ${URG_REPORT_DIR}"
     return 0
   fi
 
-  if try_runtime_only_report "runtime-only direct report" "${RUNTIME_VDBS[@]}"; then
-    echo "URG report generated without external design DB: ${URG_REPORT_DIR}"
+  if try_one_step_report "design-context compatibility one-step" "${RUNTIME_VDBS[@]}"; then
+    echo "URG report generated with design-context compatibility merge: ${URG_REPORT_DIR}"
     return 0
   fi
 
-  if try_runtime_only_batched_report "runtime-only batched" "${RUNTIME_VDBS[@]}"; then
-    echo "URG report generated without external design DB using batched merge: ${URG_REPORT_DIR}"
+  if try_batched_report "design-context compatibility batched" "${RUNTIME_VDBS[@]}"; then
+    echo "URG report generated with design-context compatibility batched merge: ${URG_REPORT_DIR}"
     return 0
   fi
 
   probe_runtime_vdbs
+  report_unreadable_vdbs
   if [[ ${#GOOD_VDBS[@]} -gt 0 && "${URG_ALLOW_PARTIAL_MERGE}" == "1" ]]; then
     echo
     echo "WARNING: excluding ${#BAD_VDBS[@]} unreadable runtime VDB(s) from URG merge."

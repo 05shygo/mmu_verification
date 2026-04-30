@@ -196,10 +196,11 @@ VERDI_BASE_OPTS := -nologo -full64 \
                    -logdir $(LOG_DIR)/verdi
 
 #
-# VCS code-coverage run directories created with runtime -cm_dir are
-# simulation-only VDBs. URG therefore needs the compile-time design VDB first,
-# followed by the runtime per-test VDBs; otherwise it reports UCAPI-DNYL
-# ("Design not yet loaded").
+# VCS code-coverage run directories must contain the compile-time design
+# context plus per-test runtime data. run_cov seeds each per-test VDB from the
+# compile-time design VDB before simulation, then VCS appends the test/seed
+# coverage into that self-contained database. Old runtime-only VDBs can make
+# URG report "No context available" and must be regenerated.
 #
 COV_DB_DIR            ?= $(OUTPUT_DIR)/simv.vdb
 URG_REPORT_DIR        ?= $(COV_DIR)/urgReport
@@ -211,11 +212,10 @@ URG_BATCH_SIZE        ?= 12
 URG_VDB_GLOB          ?=
 
 # Coverage must be enabled at compile time and must land in a stable design VDB.
-# run_cov then writes each test/seed into its own runtime VDB via -cm_dir.
-# URG merges those simulation-only VDBs by loading the compile-time design VDB
-# first, then the runtime VDBs.  Do not pass "$(COV_DIR)/*.vdb" directly to
-# URG: that glob can pick up stale merged.vdb / partial NFS artifacts and make
-# URG lose the design context ("No context available").
+# run_cov copies that design VDB into $(COV_DIR)/$(COV_TAG).vdb before running
+# simv, so each selected test/seed VDB is directly readable by URG.
+# Do not pass "$(COV_DIR)/*.vdb" directly to URG: that glob can pick up stale
+# merged.vdb / partial NFS artifacts and make URG lose the design context.
 # Phase 12 whitebox covergroups share the same VDB flow and therefore also
 # require the compile step to be coverage-enabled.
 COV_TAG         ?= $(TEST_NAME)_$(SEED)
@@ -931,6 +931,16 @@ comp_all: setup check_env
 	@echo "MMU_RTL_DIR=$(MMU_RTL_DIR)"
 	@echo "RELATE_RTL_DIR=$(RELATE_RTL_DIR)"
 	@echo "==============================================================================="
+	@if [ -d "$(COV_DB_DIR)" ]; then \
+		stale="$(COV_DB_DIR).stale.$$(date +%Y%m%d_%H%M%S).$$$$"; \
+		if mv "$(COV_DB_DIR)" "$$stale" 2>/dev/null; then \
+			rm -rf "$$stale" 2>/dev/null || \
+				{ echo "ERROR: stale compile-time coverage VDB is still busy: $$stale"; exit 1; }; \
+		else \
+			echo "ERROR: could not move stale compile-time coverage VDB $(COV_DB_DIR)"; \
+			exit 1; \
+		fi; \
+	fi
 	CORE_V_VERIF=$(CORE_V_VERIF) \
 	MMU_RTL_DIR=$(MMU_RTL_DIR) \
 	RELATE_RTL_DIR="$(RELATE_RTL_DIR)" \
@@ -1082,18 +1092,36 @@ run_cov: setup
 		done; \
 		echo "Completed coverage test group $(TEST_NAME), seed=$(SEED)"; \
 	else \
-		if [ -d "$(COV_DIR)/$(COV_TAG).vdb" ]; then \
-			stale="$(COV_DIR)/$(COV_TAG).vdb.stale.$$(date +%Y%m%d_%H%M%S).$$$$"; \
-			if mv "$(COV_DIR)/$(COV_TAG).vdb" "$$stale" 2>/dev/null; then \
+		cov_vdb="$(COV_DIR)/$(COV_TAG).vdb"; \
+		cov_log="$(LOG_DIR)/$(COV_TAG)_cov.log"; \
+		if [ ! -d "$(COV_DB_DIR)" ]; then \
+			echo "ERROR: compile-time coverage design VDB is missing: $(COV_DB_DIR)"; \
+			echo "       Re-run 'make comp' before 'make run_cov'."; \
+			exit 1; \
+		fi; \
+		if ! find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
+			echo "ERROR: compile-time coverage design VDB is empty: $(COV_DB_DIR)"; \
+			echo "       Re-run 'make comp' before 'make run_cov'."; \
+			exit 1; \
+		fi; \
+		if [ -d "$$cov_vdb" ]; then \
+			stale="$$cov_vdb.stale.$$(date +%Y%m%d_%H%M%S).$$$$"; \
+			if mv "$$cov_vdb" "$$stale" 2>/dev/null; then \
 				rm -rf "$$stale" 2>/dev/null || \
 					{ echo "ERROR: stale VDB is still busy: $$stale"; exit 1; }; \
 			else \
-				echo "ERROR: could not move stale VDB $(COV_DIR)/$(COV_TAG).vdb"; \
+				echo "ERROR: could not move stale VDB $$cov_vdb"; \
 				exit 1; \
 			fi; \
 		fi; \
-		cov_vdb="$(COV_DIR)/$(COV_TAG).vdb"; \
-		cov_log="$(LOG_DIR)/$(COV_TAG)_cov.log"; \
+		mkdir -p "$$cov_vdb" || { echo "ERROR: could not create runtime VDB directory: $$cov_vdb"; exit 1; }; \
+		cp -a "$(COV_DB_DIR)/." "$$cov_vdb"/ || { \
+			echo "ERROR: could not seed runtime VDB from compile-time design VDB"; \
+			echo "       Source: $(COV_DB_DIR)"; \
+			echo "       Target: $$cov_vdb"; \
+			exit 1; \
+		}; \
+		chmod -R u+w "$$cov_vdb" 2>/dev/null || true; \
 		cd $(OUTPUT_DIR) && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
@@ -1104,6 +1132,10 @@ run_cov: setup
 			echo "ERROR: run_cov simulation failed: TEST_NAME=$(TEST_NAME) SEED=$(SEED) rc=$$sim_rc"; \
 			echo "       Log: $$cov_log"; \
 			echo "       VDB: $$cov_vdb"; \
+			failed_vdb="$$cov_vdb.failed.$$(date +%Y%m%d_%H%M%S).$$$$"; \
+			if [ -d "$$cov_vdb" ] && mv "$$cov_vdb" "$$failed_vdb" 2>/dev/null; then \
+				echo "       Moved incomplete VDB to: $$failed_vdb"; \
+			fi; \
 			exit $$sim_rc; \
 		fi; \
 		if [ ! -s "$$cov_log" ]; then \

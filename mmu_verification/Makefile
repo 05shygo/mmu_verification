@@ -602,6 +602,11 @@ regress_v4_maee_ptw: comp
 	fi
 
 phase12_pgflt_urg_probe: comp
+	@echo "=== phase12_pgflt_urg_probe coverage probe ==="
+	@echo "  design VDB : $(COV_DB_DIR)"
+	@echo "  runtime VDB: $(COV_DIR)/test_mmu_twu_pgflt_bypass_arb_$(PHASE12_PGFLT_PROBE_SEED).vdb"
+	@echo "  cov log    : $(LOG_DIR)/test_mmu_twu_pgflt_bypass_arb_$(PHASE12_PGFLT_PROBE_SEED)_cov.log"
+	@echo "  URG log    : $(COV_DIR)/urg_pgflt_probe.log"
 	@$(MAKE) run_cov TEST_NAME=test_mmu_twu_pgflt_bypass_arb SEED="$(PHASE12_PGFLT_PROBE_SEED)" \
 		VERBOSITY="$(VERBOSITY)" TIMEOUT="$(TIMEOUT)" UVM_ERR_ONLY="$(UVM_ERR_ONLY)"
 	@$(MAKE) cov \
@@ -1087,11 +1092,43 @@ run_cov: setup
 				exit 1; \
 			fi; \
 		fi; \
+		cov_vdb="$(COV_DIR)/$(COV_TAG).vdb"; \
+		cov_log="$(LOG_DIR)/$(COV_TAG)_cov.log"; \
 		cd $(OUTPUT_DIR) && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(COV_RUN_OPTS) \
-			-l $(LOG_DIR)/$(COV_TAG)_cov.log; \
+			-l $$cov_log; \
+		sim_rc=$$?; \
+		if [ $$sim_rc -ne 0 ]; then \
+			echo "ERROR: run_cov simulation failed: TEST_NAME=$(TEST_NAME) SEED=$(SEED) rc=$$sim_rc"; \
+			echo "       Log: $$cov_log"; \
+			echo "       VDB: $$cov_vdb"; \
+			exit $$sim_rc; \
+		fi; \
+		if [ ! -s "$$cov_log" ]; then \
+			echo "ERROR: run_cov did not produce a non-empty coverage log: $$cov_log"; \
+			exit 1; \
+		fi; \
+		if grep -Eiq 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log"; then \
+			echo "ERROR: coverage log contains fatal/crash/license pattern: $$cov_log"; \
+			grep -Ein -m 5 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log" | sed 's/^/  /'; \
+			exit 1; \
+		fi; \
+		if [ ! -d "$$cov_vdb" ]; then \
+			echo "ERROR: run_cov did not produce runtime VDB: $$cov_vdb"; \
+			echo "       Log: $$cov_log"; \
+			exit 1; \
+		fi; \
+		if ! find "$$cov_vdb" -type f -print -quit | grep -q .; then \
+			echo "ERROR: run_cov produced an empty runtime VDB: $$cov_vdb"; \
+			echo "       Log: $$cov_log"; \
+			exit 1; \
+		fi; \
+		if ! grep -Eq 'UVM Report Summary|V C S[[:space:]]+S i m u l a t i o n[[:space:]]+R e p o r t|Simulation completed|\$$finish' "$$cov_log"; then \
+			echo "WARNING: coverage log does not show a normal UVM/VCS completion marker: $$cov_log"; \
+		fi; \
+		echo "Coverage runtime VDB ready: $$cov_vdb"; \
 	fi
 
 debug: setup
@@ -1139,6 +1176,7 @@ cov:
 	@URG="$(URG)" \
 	COV_DB_DIR="$(COV_DB_DIR)" \
 	COV_DIR="$(COV_DIR)" \
+	LOG_DIR="$(LOG_DIR)" \
 	URG_REPORT_DIR="$(URG_REPORT_DIR)" \
 	URG_MERGED_DB="$(URG_MERGED_DB)" \
 	URG_LOG="$(URG_LOG)" \

@@ -5,13 +5,14 @@ set -uo pipefail
 URG_BIN="${URG:-urg}"
 COV_DB_DIR="${COV_DB_DIR:?COV_DB_DIR is required}"
 COV_DIR="${COV_DIR:?COV_DIR is required}"
+LOG_DIR="${LOG_DIR:-}"
 URG_REPORT_DIR="${URG_REPORT_DIR:?URG_REPORT_DIR is required}"
 URG_MERGED_DB="${URG_MERGED_DB:?URG_MERGED_DB is required}"
 URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_ALLOW_PARTIAL_MERGE="${URG_ALLOW_PARTIAL_MERGE:-1}"
 URG_BATCH_SIZE="${URG_BATCH_SIZE:-12}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
-RUN_URG_REPORT_VERSION="2026-04-30-pgflt-vdb-filter-v2"
+RUN_URG_REPORT_VERSION="2026-04-30-pgflt-vdb-preflight-v3"
 
 declare -a RUNTIME_VDBS=()
 declare -a GOOD_VDBS=()
@@ -69,6 +70,87 @@ run_urg() {
   rc=${PIPESTATUS[0]}
   echo "=== URG attempt '${label}' rc=${rc} ===" | tee -a "${URG_LOG}"
   return "${rc}"
+}
+
+runtime_vdb_has_metadata() {
+  local vdb="$1"
+
+  find "${vdb}" -mindepth 1 \
+    \( -name "snps" -o -name "testdata" -o -name "cm.decl_info" -o -name "*.db" \) \
+    -print -quit | grep -q .
+}
+
+runtime_vdb_has_files() {
+  local vdb="$1"
+
+  find "${vdb}" -type f -print -quit | grep -q .
+}
+
+cov_log_for_vdb() {
+  local vdb="$1"
+  local base
+
+  [[ -n "${LOG_DIR}" ]] || return 1
+  base="${vdb##*/}"
+  base="${base%.vdb}"
+  printf '%s/%s_cov.log\n' "${LOG_DIR}" "${base}"
+}
+
+print_log_matches() {
+  local log="$1"
+  local pattern="$2"
+
+  [[ -s "${log}" ]] || return 1
+  grep -Ein -m 8 "${pattern}" "${log}" | sed 's/^/  /'
+}
+
+preflight_runtime_vdbs() {
+  local vdb
+  local base
+  local cov_log
+  local hard_fail=0
+  local log_issue_pattern
+  local log_done_pattern
+
+  log_issue_pattern='UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists|Simulation timeout|UVM_TIMEOUT|timed out|TIMEOUT.*(hit|expired|reached)|killed|Killed'
+  log_done_pattern='UVM Report Summary|V C S[[:space:]]+S i m u l a t i o n[[:space:]]+R e p o r t|Simulation completed|\$finish'
+
+  echo
+  echo "Preflighting runtime VDBs before URG..."
+  for vdb in "${RUNTIME_VDBS[@]}"; do
+    base="${vdb##*/}"
+    echo "  VDB: ${vdb}"
+
+    if [[ ! -d "${vdb}" ]]; then
+      echo "ERROR: selected runtime VDB is not a directory: ${vdb}"
+      hard_fail=1
+      continue
+    fi
+    if ! runtime_vdb_has_files "${vdb}"; then
+      echo "ERROR: selected runtime VDB is empty: ${vdb}"
+      hard_fail=1
+    elif ! runtime_vdb_has_metadata "${vdb}"; then
+      echo "WARNING: selected runtime VDB has files but no obvious Synopsys VDB metadata: ${vdb}"
+    fi
+
+    if cov_log="$(cov_log_for_vdb "${vdb}")"; then
+      if [[ -s "${cov_log}" ]]; then
+        echo "  cov log: ${cov_log}"
+        if print_log_matches "${cov_log}" "${log_issue_pattern}"; then
+          echo "ERROR: coverage log contains fatal/crash/license/timeout pattern for ${base}"
+          hard_fail=1
+        elif ! grep -Eiq "${log_done_pattern}" "${cov_log}"; then
+          echo "WARNING: coverage log has no normal UVM/VCS completion marker: ${cov_log}"
+        fi
+      else
+        echo "WARNING: expected coverage log is missing or empty: ${cov_log}"
+      fi
+    fi
+  done
+
+  if [[ "${hard_fail}" -ne 0 ]]; then
+    die "runtime VDB preflight failed; fix the run_cov output before invoking URG"
+  fi
 }
 
 collect_runtime_vdbs() {
@@ -360,12 +442,17 @@ probe_runtime_vdbs() {
 }
 
 main() {
+  local preflight_rc
+
   collect_runtime_vdbs
   prepare_output
 
   {
     echo "run_urg_report version: ${RUN_URG_REPORT_VERSION}"
     echo "Coverage design DB: ${COV_DB_DIR}"
+    if [[ -n "${LOG_DIR}" ]]; then
+      echo "Coverage log dir: ${LOG_DIR}"
+    fi
     echo "Runtime VDB count: ${#RUNTIME_VDBS[@]}"
     if [[ -n "${URG_VDB_GLOB}" ]]; then
       echo "Runtime VDB glob filter: ${URG_VDB_GLOB}"
@@ -373,6 +460,12 @@ main() {
     printf '  %s\n' "${RUNTIME_VDBS[@]}"
     echo "URG log: ${URG_LOG}"
   } | tee -a "${URG_LOG}"
+
+  preflight_runtime_vdbs 2>&1 | tee -a "${URG_LOG}"
+  preflight_rc=${PIPESTATUS[0]}
+  if [[ "${preflight_rc}" -ne 0 ]]; then
+    return "${preflight_rc}"
+  fi
 
   if try_two_step_report "design-context two-step" "${RUNTIME_VDBS[@]}"; then
     echo "URG report generated: ${URG_REPORT_DIR}"

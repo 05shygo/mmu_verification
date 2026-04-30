@@ -24,8 +24,8 @@ class test_mmu_twu_except_conflict_pgflt_accflt extends phase12_generated_test_b
     p12_seq_desc = "phase12 mixed pgflt + bus-error accerr under concurrent IFU/LSU pressure";
     p12_checker  = "sva_twu_pgflt_acc_mutex + cg_twu_except_while_arb_busy";
     p12_reviewer = "A+B";
-    num_txn      = 96;
-    m_post_drain = 700ns;
+    num_txn      = 128;
+    m_post_drain = 900ns;
   endfunction
 
   virtual task run_test_body();
@@ -36,17 +36,17 @@ class test_mmu_twu_except_conflict_pgflt_accflt extends phase12_generated_test_b
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
-    phase12_map_4k_window(39'h10_0000, 6, 40'h0_2010_0000);
+    phase12_map_4k_window(39'h10_0000, 8, 40'h0_2010_0000);
     m_env.m_pt_mem.m_builder.inject_fault(39'h10_0000, "V_OFF");
-    phase12_config_ptw_responder(24, 48, 350);
+    phase12_config_ptw_responder(32, 72, 350);
 
     fork
       begin
-        phase12_drive_ifu_rr(39'h10_0000, 1, 8);
+        phase12_drive_ifu_rr(39'h10_0000, 1, 12);
       end
       begin
-        #100ns;
-        repeat (3) begin
+        #150ns;
+        repeat (6) begin
           phase12_cp0_tlb_allinv();
           phase12_drive_lsu_rr(39'h10_1000, 1, 1, LSU_PIPE0, 1'b0);
         end

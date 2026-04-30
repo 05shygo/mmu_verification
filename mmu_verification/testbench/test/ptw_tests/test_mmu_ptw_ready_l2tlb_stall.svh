@@ -24,11 +24,11 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
     p12_seq_desc = "phase12 slow PTW + deny/unblock stall window";
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
-    num_txn      = 96;
+    num_txn      = 128;
     // Slow PTW plus repeated invalidate can leave a genuine PTW mbuf backlog
     // after direct traffic generation stops. Give the tail enough time to
     // retire cleanly before end-of-sim conservation checks.
-    m_post_drain = 2000ns;
+    m_post_drain = 3000ns;
   endfunction
 
   virtual task run_test_body();
@@ -39,22 +39,22 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
-    phase12_config_ptw_responder(48, 96, 0);
+    phase12_config_ptw_responder(64, 128, 0);
     phase12_set_pmp_allow_all();
 
     fork
       begin
-        phase12_drive_ifu_rr(39'h10_0000, 16, 40);
+        phase12_drive_ifu_rr(39'h10_0000, 24, 64);
       end
       begin
-        phase12_drive_lsu_interleave3(39'h10_0000, 16, 56);
+        phase12_drive_lsu_interleave3(39'h10_0000, 24, 96);
       end
       begin
-        #160ns;
+        #200ns;
         phase12_set_pmp_deny_ptw_reads(4'b1111);
-        #220ns;
+        #300ns;
         phase12_set_pmp_allow_all();
-        repeat (2)
+        repeat (4)
           phase12_cp0_tlb_allinv();
       end
     join
@@ -64,7 +64,7 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
     phase12_set_pmp_allow_all();
     phase12_config_ptw_responder(1, 4, 0);
 
-    phase12_pulse_ptw_ready_for_cov(4);
+    phase12_pulse_ptw_ready_for_cov(10);
 
     #(m_post_drain);
   endtask

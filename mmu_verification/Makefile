@@ -276,7 +276,6 @@ PHASE12_MAEE_MIN_HITS     ?= 20
 PHASE12_CG_MIN_PERCENT    ?= 50
 PHASE12_REGRESS_JOBS      ?= 4
 PHASE12_FAIL_FAST         ?= 1
-PHASE12_UVM_ERR_ONLY      ?= 1
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -341,7 +340,6 @@ print-phase12:
 	@echo "PHASE12_CG_MIN_PERCENT = $(PHASE12_CG_MIN_PERCENT)"
 	@echo "PHASE12_REGRESS_JOBS   = $(PHASE12_REGRESS_JOBS)"
 	@echo "PHASE12_FAIL_FAST      = $(PHASE12_FAIL_FAST)"
-	@echo "PHASE12_UVM_ERR_ONLY   = $(PHASE12_UVM_ERR_ONLY)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -576,7 +574,7 @@ regress_v4_maee_ptw: comp
 		REGRESS_MIN_PASS_RATE=1.0 \
 		VERBOSITY="$(VERBOSITY)" \
 		TIMEOUT="$(TIMEOUT)" \
-		UVM_ERR_ONLY="$(PHASE12_UVM_ERR_ONLY)"; \
+		UVM_ERR_ONLY="$(UVM_ERR_ONLY)"; \
 	reg_rc=$$?; \
 	set -e; \
 	set +e; \
@@ -615,10 +613,9 @@ phase12_exit_check:
 	PHASE12_CG_MIN_PERCENT='$(PHASE12_CG_MIN_PERCENT)' \
 	PHASE12_REGRESS_JOBS='$(PHASE12_REGRESS_JOBS)' \
 	PHASE12_FAIL_FAST='$(PHASE12_FAIL_FAST)' \
-	PHASE12_UVM_ERR_ONLY='$(PHASE12_UVM_ERR_ONLY)' \
 	VERBOSITY='$(VERBOSITY)' \
 	TIMEOUT='$(TIMEOUT)' \
-	UVM_ERR_ONLY='$(PHASE12_UVM_ERR_ONLY)' \
+	UVM_ERR_ONLY='$(UVM_ERR_ONLY)' \
 	bash $(PROJECT_DIR)/scripts/phase12_exit_check.sh
 
 phase11_exit_check:

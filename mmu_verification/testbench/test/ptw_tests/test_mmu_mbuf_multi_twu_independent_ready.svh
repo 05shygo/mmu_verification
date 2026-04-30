@@ -24,8 +24,8 @@ class test_mmu_mbuf_multi_twu_independent_ready extends phase12_generated_test_b
     p12_seq_desc = "phase12 IFU+LSU shared-page pressure across multiple TWUs";
     p12_checker  = "cg_twu_data_ready_per_stage";
     p12_reviewer = "A+B";
-    num_txn      = 96;
-    m_post_drain = 1000ns;
+    num_txn      = 128;
+    m_post_drain = 1600ns;
   endfunction
 
   virtual task run_test_body();
@@ -36,16 +36,16 @@ class test_mmu_mbuf_multi_twu_independent_ready extends phase12_generated_test_b
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
-    phase12_config_ptw_responder(24, 48, 0);
+    phase12_config_ptw_responder(48, 96, 0);
 
-    repeat (2) begin
+    repeat (3) begin
       phase12_cp0_tlb_allinv();
       fork
         begin
-          phase12_drive_ifu_rr(39'h10_0000, 2, 16);
+          phase12_drive_ifu_rr(39'h10_0000, 2, 24);
         end
         begin
-          phase12_drive_lsu_interleave3(39'h10_0000, 2, 24);
+          phase12_drive_lsu_interleave3(39'h10_0000, 2, 36);
         end
       join
     end

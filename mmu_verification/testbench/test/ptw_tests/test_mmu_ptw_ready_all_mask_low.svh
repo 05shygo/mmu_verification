@@ -24,8 +24,8 @@ class test_mmu_ptw_ready_all_mask_low extends phase12_generated_test_base;
     p12_seq_desc = "phase12 all-PTW-read-deny window + IFU/LSU pressure";
     p12_checker  = "sva_ptw_l2tlb_ready_when_all_mask + cg_ptw_ready_transition";
     p12_reviewer = "A+B";
-    num_txn      = 64;
-    m_post_drain = 900ns;
+    num_txn      = 96;
+    m_post_drain = 1400ns;
   endfunction
 
   virtual task run_test_body();
@@ -40,20 +40,20 @@ class test_mmu_ptw_ready_all_mask_low extends phase12_generated_test_base;
 
     fork
       begin
-        phase12_drive_ifu_rr(39'h10_1000, 12, 24);
+        phase12_drive_ifu_rr(39'h10_1000, 16, 32);
       end
       begin
-        phase12_drive_lsu_interleave3(39'h10_1000, 12, 36);
+        phase12_drive_lsu_interleave3(39'h10_1000, 16, 48);
       end
       begin
-        #250ns;
+        #350ns;
         phase12_set_pmp_allow_all();
         phase12_cp0_tlb_allinv();
-        phase12_drive_lsu_rr(39'h10_1000, 2, 8, LSU_PIPE0, 1'b0);
+        phase12_drive_lsu_rr(39'h10_1000, 4, 12, LSU_PIPE0, 1'b0);
       end
     join
 
-    phase12_pulse_ptw_ready_for_cov(4);
+    phase12_pulse_ptw_ready_for_cov(10);
 
     #(m_post_drain);
   endtask

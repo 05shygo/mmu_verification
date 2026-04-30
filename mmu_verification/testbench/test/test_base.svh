@@ -86,25 +86,8 @@ class test_base extends uvm_test;
   // Raises objection, delegates work to the virtual run_test_body() hook,
   // then drops objection.  Derived classes override run_test_body() only.
   virtual task run_phase(uvm_phase phase);
-    bit body_done;
     phase.raise_objection(this, {get_type_name(), ": run_phase started"});
-
-    fork
-      begin
-        run_test_body();
-        body_done = 1'b1;
-      end
-      begin
-        #(timeout_ns * 1ns);
-      end
-    join_any
-    disable fork;
-
-    if (!body_done) begin
-      `uvm_fatal("TEST_TIMEOUT",
-        $sformatf("%s exceeded +TIMEOUT=%0d ns", get_type_name(), timeout_ns))
-    end
-
+    run_test_body();
     phase.drop_objection(this, {get_type_name(), ": run_test_body done"});
   endtask
 

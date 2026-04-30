@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
 
 import argparse
-import os
 import re
 import shlex
 import subprocess
 import sys
 import time
-from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Iterable, List, Optional, Tuple
 
@@ -364,7 +363,7 @@ def run_regression(
 
     def run_indexed(item: Tuple[int, RegressionEntry, str, str]) -> Tuple[int, RegressionResult]:
         index, entry, seed, plus_args = item
-        print(f"=== regression: {entry.test_name} seed={seed} mode={mode} ===", flush=True)
+        print(f"=== regression: {entry.test_name} seed={seed} mode={mode} ===")
         result = run_single(
             mode=mode,
             test_name=entry.test_name,
@@ -376,12 +375,6 @@ def run_regression(
             expected_fail=entry.expected_fail,
             xfail_reason=entry.xfail_reason,
         )
-        status = "PASS" if result.passed else "FAIL"
-        print(
-            f"=== regression done: {status} {entry.test_name} seed={seed} "
-            f"duration_s={result.duration_s:.2f} rc={result.return_code} ===",
-            flush=True,
-        )
         return index, result
 
     if jobs == 1:
@@ -389,30 +382,12 @@ def run_regression(
             index, result = run_indexed(item)
             results_by_index[index] = result
     else:
-        print(f"=== regression parallel jobs={jobs} total_runs={len(runs)} ===", flush=True)
+        print(f"=== regression parallel jobs={jobs} total_runs={len(runs)} ===")
         with ThreadPoolExecutor(max_workers=jobs) as executor:
             future_to_index = {executor.submit(run_indexed, item): item[0] for item in runs}
-            pending = set(future_to_index)
-            progress_interval_s = max(10.0, float(os.environ.get("REGRESS_PROGRESS_INTERVAL_S", "60")))
-            completed = 0
-            while pending:
-                done, pending = wait(
-                    pending,
-                    timeout=progress_interval_s,
-                    return_when=FIRST_COMPLETED,
-                )
-                if not done:
-                    print(
-                        "=== regression progress: "
-                        f"completed={completed}/{len(runs)} pending={len(pending)} "
-                        f"(no run finished in {progress_interval_s:.0f}s) ===",
-                        flush=True,
-                    )
-                    continue
-                for future in done:
-                    index, result = future.result()
-                    results_by_index[index] = result
-                    completed += 1
+            for future in as_completed(future_to_index):
+                index, result = future.result()
+                results_by_index[index] = result
 
     results = [item for item in results_by_index if item is not None]
 

@@ -208,25 +208,10 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     input int unsigned npage,
     input pa_t pa_base
   );
-    for (int unsigned i = 0; i < npage; i++) begin
-      m_env.m_pt_mem.m_builder.map_4k(
-        .va(region_base + va_t'(i << 12)),
-        .pa(pa_base + pa_t'(i << 12)),
-        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
-      m_env.m_pt_mem.m_builder.map_4k(
-        .va(region_base + 39'h0200_0000 + va_t'(i << 12)),
-        .pa(pa_base + 40'h0200_0000 + pa_t'(i << 12)),
-        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
-      m_env.m_pt_mem.m_builder.map_4k(
-        .va(region_base + 39'h0400_0000 + va_t'(i << 12)),
-        .pa(pa_base + 40'h0400_0000 + pa_t'(i << 12)),
-        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
-      m_env.m_pt_mem.m_builder.map_4k(
-        .va(region_base + 39'h0600_0000 + va_t'(i << 12)),
-        .pa(pa_base + 40'h0600_0000 + pa_t'(i << 12)),
-        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
-    end
-    #100ns;
+    phase12_map_4k_window(region_base,                 npage, pa_base + 40'h0000_0000);
+    phase12_map_4k_window(region_base + 39'h0200_0000, npage, pa_base + 40'h0200_0000);
+    phase12_map_4k_window(region_base + 39'h0400_0000, npage, pa_base + 40'h0400_0000);
+    phase12_map_4k_window(region_base + 39'h0600_0000, npage, pa_base + 40'h0600_0000);
   endtask
 
   // Create real four-TWU backpressure with cold L1/L2 misses.
@@ -239,9 +224,9 @@ class phase12_generated_test_base extends phase9_generated_test_base;
   // cache or TLB hits.
   protected virtual task phase12_concurrent_four_twus_slow_miss_pressure(
     input va_t region_base,
-    input int unsigned npage = 64,
-    input int unsigned n_txn = 96,
-    input int unsigned bursts = 1,
+    input int unsigned npage = 128,
+    input int unsigned n_txn = 256,
+    input int unsigned bursts = 4,
     input pa_t region_pa_base = 40'h0_2200_0000
   );
     for (int unsigned b = 0; b < bursts; b++) begin
@@ -252,9 +237,9 @@ class phase12_generated_test_base extends phase9_generated_test_base;
 
       phase12_map_four_twu_pressure_window(burst_base, npage, pa_base);
       phase12_set_pmp_allow_all();
-      phase12_config_ptw_responder(64, 128, 0);
+      phase12_config_ptw_responder(96, 192, 0);
       phase12_cp0_tlb_allinv();
-      #80ns;
+      #120ns;
 
       fork
         phase12_drive_ifu_rr(burst_base,                 npage, n_txn, 1'b1);
@@ -263,13 +248,12 @@ class phase12_generated_test_base extends phase9_generated_test_base;
         phase12_drive_lsu_rr(burst_base + 39'h0600_0000, npage, n_txn, LSU_PIPE2, 1'b0, 1'b1);
       join
 
-      // Keep a bounded tail sample after request streams finish; this is long
-      // enough for late PTW stages but avoids making every ready pulse a stress
-      // regression by itself.
-      #650ns;
+      // Keep sampling after the request streams finish; late PTW stages often
+      // hold the all-mask condition for the ready stay_low/fall/rise bins.
+      #1200ns;
       phase12_config_ptw_responder(1, 4, 0);
       phase12_set_pmp_allow_all();
-      #180ns;
+      #400ns;
     end
   endtask
 
@@ -281,7 +265,7 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     int unsigned r, effective_rounds;
     va_t b_ifu, b_lsu, four_base;
     pa_t pa_base;
-    effective_rounds = (rounds > 2) ? 2 : rounds;
+    effective_rounds = (rounds > 3) ? 3 : rounds;
     for (r = 0; r < effective_rounds; r++) begin
       b_ifu    = 39'h0_A000_0000 + va_t'(r << 24);
       b_lsu    = 39'h0_A800_0000 + va_t'(r << 24);
@@ -292,24 +276,24 @@ class phase12_generated_test_base extends phase9_generated_test_base;
       pa_base  = 40'h0_3000_0000 + pa_t'(r << 24);
 
       phase12_concurrent_four_twus_slow_miss_pressure(
-        four_base, 64, 96, 1, 40'h0_2200_0000 + (pa_t'(r) << 29));
+        four_base, 128, 256, 2, 40'h0_2200_0000 + (pa_t'(r) << 29));
 
       // Recovery / partial-mask phase to create ready rise and additional
       // non-all-mask samples after the low window.
-      phase12_map_4k_window(b_ifu + 39'h2000, 16, pa_base + 40'h0010_0000);
-      phase12_map_4k_window(b_lsu + 39'h2000, 16, pa_base + 40'h0020_0000);
-      phase12_config_ptw_responder(24, 48, 0);
+      phase12_map_4k_window(b_ifu + 39'h2000, 32, pa_base + 40'h0010_0000);
+      phase12_map_4k_window(b_lsu + 39'h2000, 32, pa_base + 40'h0020_0000);
+      phase12_config_ptw_responder(48, 96, 0);
       phase12_cp0_tlb_allinv();
       phase12_set_pmp_allow_all();
-      #60ns;
+      #80ns;
       fork
-        phase12_drive_ifu_rr(b_ifu + 39'h2000, 16, 64, 1'b1);
-        phase12_drive_lsu_rr(b_lsu + 39'h2000, 16, 80, LSU_PIPE0, 1'b0, 1'b1);
+        phase12_drive_ifu_rr(b_ifu + 39'h2000, 32, 128, 1'b1);
+        phase12_drive_lsu_rr(b_lsu + 39'h2000, 32, 160, LSU_PIPE0, 1'b0, 1'b1);
       join
-      #280ns;
+      #450ns;
       phase12_config_ptw_responder(1, 4, 0);
       phase12_set_pmp_allow_all();
-      #140ns;
+      #220ns;
     end
     phase12_set_pmp_allow_all();
   endtask

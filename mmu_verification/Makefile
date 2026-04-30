@@ -205,6 +205,9 @@ COV_DB_DIR            ?= $(OUTPUT_DIR)/simv.vdb
 URG_REPORT_DIR        ?= $(COV_DIR)/urgReport
 URG_MERGE_REPORT_DIR  ?= $(COV_DIR)/merged_report
 URG_MERGED_DB         ?= $(COV_DIR)/merged.vdb
+URG_LOG               ?= $(COV_DIR)/urg_report.log
+URG_ALLOW_PARTIAL_MERGE ?= 1
+URG_BATCH_SIZE        ?= 12
 
 # Coverage must be enabled at compile time and must land in a stable design VDB.
 # run_cov then writes each test/seed into its own runtime VDB via -cm_dir.
@@ -1112,67 +1115,15 @@ wave: verdi
 # Coverage
 #===============================================================================
 cov:
-	@set -e; \
-	if [ ! -d "$(COV_DB_DIR)" ]; then \
-		echo "ERROR: coverage design database not found: $(COV_DB_DIR)"; \
-		echo "Run 'make comp' with coverage enabled before 'make cov'."; \
-		exit 2; \
-	fi; \
-	if [ -z "$(URG_REPORT_DIR)" ] || [ "$(URG_REPORT_DIR)" = "/" ] || [ "$(URG_REPORT_DIR)" = "." ]; then \
-		echo "ERROR: unsafe URG_REPORT_DIR='$(URG_REPORT_DIR)'"; \
-		exit 2; \
-	fi; \
-	if [ -z "$(URG_MERGED_DB)" ] || [ "$(URG_MERGED_DB)" = "/" ] || [ "$(URG_MERGED_DB)" = "." ]; then \
-		echo "ERROR: unsafe URG_MERGED_DB='$(URG_MERGED_DB)'"; \
-		exit 2; \
-	fi; \
-	design_real=$$(cd "$(COV_DB_DIR)" && pwd -P); \
-	set --; \
-	for vdb in "$(COV_DIR)"/*.vdb; do \
-		[ -d "$$vdb" ] || continue; \
-		base=$${vdb##*/}; \
-		case "$$base" in \
-			merged.vdb|merged_*.vdb|*.nfs_busy.*) \
-				echo "Skipping non-runtime coverage database: $$vdb"; \
-				continue; \
-				;; \
-		esac; \
-		vdb_real=$$(cd "$$vdb" && pwd -P); \
-		if [ "$$vdb_real" = "$$design_real" ]; then \
-			echo "Skipping compile-time design database from runtime list: $$vdb"; \
-			continue; \
-		fi; \
-		set -- "$$@" "$$vdb"; \
-	done; \
-	if [ "$$#" -eq 0 ]; then \
-		echo "ERROR: no runtime coverage databases found under $(COV_DIR)"; \
-		echo "Run 'make run_cov TEST_NAME=<test> SEED=<seed>' before 'make cov'."; \
-		exit 2; \
-	fi; \
-	for p in "$(URG_REPORT_DIR)" "$(URG_MERGED_DB)"; do \
-		[ -e "$$p" ] || continue; \
-		stale="$${p}.stale.$$(date +%Y%m%d_%H%M%S).$$$$"; \
-		if mv "$$p" "$$stale" 2>/dev/null; then \
-			rm -rf "$$stale" 2>/dev/null || \
-				echo "WARNING: left stale coverage artifact at $$stale; close the process holding it and remove it later."; \
-		elif rm -rf "$$p" 2>/dev/null; then \
-			:; \
-		else \
-			echo "ERROR: could not clean stale coverage artifact $$p"; \
-			exit 1; \
-		fi; \
-	done; \
-	echo "Coverage design DB: $(COV_DB_DIR)"; \
-	echo "Runtime VDB count: $$#"; \
-	printf '  %s\n' "$$@"; \
-	$(URG) -full64 -dir "$(COV_DB_DIR)" "$$@" \
-		-dbname "$(URG_MERGED_DB)" \
-		-format both \
-		-report "$(URG_REPORT_DIR)"; \
-	test -d "$(URG_REPORT_DIR)" || { \
-		echo "ERROR: URG finished without report directory: $(URG_REPORT_DIR)"; \
-		exit 1; \
-	}
+	@URG="$(URG)" \
+	COV_DB_DIR="$(COV_DB_DIR)" \
+	COV_DIR="$(COV_DIR)" \
+	URG_REPORT_DIR="$(URG_REPORT_DIR)" \
+	URG_MERGED_DB="$(URG_MERGED_DB)" \
+	URG_LOG="$(URG_LOG)" \
+	URG_ALLOW_PARTIAL_MERGE="$(URG_ALLOW_PARTIAL_MERGE)" \
+	URG_BATCH_SIZE="$(URG_BATCH_SIZE)" \
+	bash "$(PROJECT_DIR)/scripts/run_urg_report.sh"
 
 merge_cov:
 	@$(MAKE) cov URG_REPORT_DIR="$(URG_MERGE_REPORT_DIR)" URG_MERGED_DB="$(URG_MERGED_DB)"
@@ -1201,7 +1152,7 @@ clean_wave:
 
 clean_cov:
 	@set -e; \
-	for p in $(COV_DIR)/*.vdb $(COV_DIR)/urgReport $(COV_DIR)/merged* $(COV_DIR)/*.nfs_busy.*; do \
+	for p in $(COV_DIR)/*.vdb $(COV_DIR)/.urg_probe_* $(COV_DIR)/.urg_batch_* $(COV_DIR)/urgReport $(COV_DIR)/merged* $(COV_DIR)/urg_report.log $(COV_DIR)/*.nfs_busy.*; do \
 		[ -e "$$p" ] || continue; \
 		stale="$${p}.nfs_busy.$$(date +%Y%m%d_%H%M%S).$$$$"; \
 		if mv "$$p" "$$stale" 2>/dev/null; then \

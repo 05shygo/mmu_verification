@@ -146,8 +146,9 @@ class page_table_builder extends uvm_object;
     // ---- Level 2 (root → L1) ------------------------------------------------
     pte_addr_2 = _pte_addr(m_root_ppn, vpn2);
     pte2       = read_pte_at(pte_addr_2);
-    if (!pte2[PTE_V]) begin
-      // No L1 page table yet — allocate one
+    if (!pte2[PTE_V] || pte2[PTE_R] || pte2[PTE_W] || pte2[PTE_X]) begin
+      // No L1 page table yet, or an existing giga-page/invalid leaf is being
+      // replaced by a finer 4K mapping.
       l1_ppn = _alloc_ppn();
       pte2   = _make_pointer_pte(l1_ppn);
       write_pte_at(pte_addr_2, pte2);
@@ -159,7 +160,9 @@ class page_table_builder extends uvm_object;
     // ---- Level 1 (L1 → L0) --------------------------------------------------
     pte_addr_1 = _pte_addr(l1_ppn, vpn1);
     pte1       = read_pte_at(pte_addr_1);
-    if (!pte1[PTE_V]) begin
+    if (!pte1[PTE_V] || pte1[PTE_R] || pte1[PTE_W] || pte1[PTE_X]) begin
+      // No L0 page table yet, or an existing 2M leaf is being replaced by 4K
+      // mappings under the same VPN[2:1].
       l0_ppn = _alloc_ppn();
       pte1   = _make_pointer_pte(l0_ppn);
       write_pte_at(pte_addr_1, pte1);
@@ -211,7 +214,7 @@ class page_table_builder extends uvm_object;
     // ---- Level 2 (root -> L1) ----------------------------------------------
     pte_addr_2 = _pte_addr(m_root_ppn, vpn2);
     pte2       = read_pte_at(pte_addr_2);
-    if (!pte2[PTE_V] || pte2[PTE_R] || pte2[PTE_X]) begin
+    if (!pte2[PTE_V] || pte2[PTE_R] || pte2[PTE_W] || pte2[PTE_X]) begin
       l1_ppn = _alloc_ppn();
       pte2   = _make_pointer_pte(l1_ppn);
       write_pte_at(pte_addr_2, pte2);

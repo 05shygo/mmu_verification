@@ -236,6 +236,7 @@ REGRESS_NAME              ?= adhoc
 REGRESS_SEEDS             ?= 1
 REGRESS_MIN_PASS_RATE     ?= 1.0
 REGRESS_SUMMARY           ?= $(REGRESS_DIR)/$(REGRESS_NAME)/summary.txt
+REGRESS_JOBS              ?= 1
 REGRESS_SMOKE_LIST        ?= $(SIMU_DIR)/mmu_smoke_list
 REGRESS_NIGHTLY_LIST      ?= $(SIMU_DIR)/mmu_nightly_list
 REGRESS_SMOKE_SEEDS       ?= 91001
@@ -275,6 +276,8 @@ PHASE12_SKIP_REGRESSION   ?= 0
 PHASE12_SKIP_CLEAN_COV    ?= 0
 PHASE12_MAEE_MIN_HITS     ?= 20
 PHASE12_CG_MIN_PERCENT    ?= 50
+PHASE12_REGRESS_JOBS      ?= 4
+PHASE12_FAIL_FAST         ?= 1
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -337,6 +340,8 @@ print-phase12:
 	@echo "PHASE12_SKIP_CLEAN_COV = $(PHASE12_SKIP_CLEAN_COV)"
 	@echo "PHASE12_MAEE_MIN_HITS  = $(PHASE12_MAEE_MIN_HITS)"
 	@echo "PHASE12_CG_MIN_PERCENT = $(PHASE12_CG_MIN_PERCENT)"
+	@echo "PHASE12_REGRESS_JOBS   = $(PHASE12_REGRESS_JOBS)"
+	@echo "PHASE12_FAIL_FAST      = $(PHASE12_FAIL_FAST)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -477,6 +482,7 @@ print-regress:
 	@echo "REGRESS_SEEDS          = $(REGRESS_SEEDS)"
 	@echo "REGRESS_MIN_PASS_RATE  = $(REGRESS_MIN_PASS_RATE)"
 	@echo "REGRESS_SUMMARY        = $(REGRESS_SUMMARY)"
+	@echo "REGRESS_JOBS           = $(REGRESS_JOBS)"
 	@echo "REGRESS_SMOKE_LIST     = $(REGRESS_SMOKE_LIST)"
 	@echo "REGRESS_NIGHTLY_LIST   = $(REGRESS_NIGHTLY_LIST)"
 	@echo "REGRESS_V3_NAME        = $(REGRESS_V3_NAME)"
@@ -497,7 +503,8 @@ regress: setup
 		--uvm-err-only "$(UVM_ERR_ONLY)" \
 		--plus-args "$(PLUS_ARGS)" \
 		--summary "$(REGRESS_SUMMARY)" \
-		--min-pass-rate "$(REGRESS_MIN_PASS_RATE)"
+		--min-pass-rate "$(REGRESS_MIN_PASS_RATE)" \
+		--jobs "$(REGRESS_JOBS)"
 
 regress_smoke: comp
 	@$(MAKE) regress \
@@ -565,6 +572,7 @@ regress_v4_maee_ptw: comp
 		REGRESS_NAME=phase12_v4 \
 		REGRESS_SUMMARY="$(PHASE12_SUMMARY)" \
 		REGRESS_SEEDS="$(PHASE12_SEEDS)" \
+		REGRESS_JOBS="$(PHASE12_REGRESS_JOBS)" \
 		REGRESS_MIN_PASS_RATE=1.0 \
 		VERBOSITY="$(VERBOSITY)" \
 		TIMEOUT="$(TIMEOUT)" \
@@ -605,6 +613,8 @@ phase12_exit_check:
 	PHASE12_SKIP_CLEAN_COV='$(PHASE12_SKIP_CLEAN_COV)' \
 	PHASE12_MAEE_MIN_HITS='$(PHASE12_MAEE_MIN_HITS)' \
 	PHASE12_CG_MIN_PERCENT='$(PHASE12_CG_MIN_PERCENT)' \
+	PHASE12_REGRESS_JOBS='$(PHASE12_REGRESS_JOBS)' \
+	PHASE12_FAIL_FAST='$(PHASE12_FAIL_FAST)' \
 	VERBOSITY='$(VERBOSITY)' \
 	TIMEOUT='$(TIMEOUT)' \
 	UVM_ERR_ONLY='$(UVM_ERR_ONLY)' \

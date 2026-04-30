@@ -226,13 +226,14 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     input va_t region_base,
     input int unsigned npage = 128,
     input int unsigned n_txn = 256,
-    input int unsigned bursts = 4
+    input int unsigned bursts = 4,
+    input pa_t region_pa_base = 40'h0_2200_0000
   );
     for (int unsigned b = 0; b < bursts; b++) begin
       va_t burst_base;
       pa_t pa_base;
       burst_base = region_base + va_t'(b << 28);
-      pa_base    = 40'h0_2200_0000 + pa_t'(b << 28);
+      pa_base    = region_pa_base + pa_t'(b << 28);
 
       phase12_map_four_twu_pressure_window(burst_base, npage, pa_base);
       phase12_set_pmp_allow_all();
@@ -268,10 +269,14 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     for (r = 0; r < effective_rounds; r++) begin
       b_ifu    = 39'h0_A000_0000 + va_t'(r << 24);
       b_lsu    = 39'h0_A800_0000 + va_t'(r << 24);
-      four_base = 39'h0_9000_0000 + va_t'(r << 28);
+      // Each pressure call spans two 256MB bursts plus four per-TWU windows.
+      // Keep outer rounds 512MB apart so late PTW/TLB completions can never be
+      // compared against a freshly remapped copy of the same VA.
+      four_base = 39'h0_9000_0000 + (va_t'(r) << 29);
       pa_base  = 40'h0_3000_0000 + pa_t'(r << 24);
 
-      phase12_concurrent_four_twus_slow_miss_pressure(four_base, 128, 256, 2);
+      phase12_concurrent_four_twus_slow_miss_pressure(
+        four_base, 128, 256, 2, 40'h0_2200_0000 + (pa_t'(r) << 29));
 
       // Recovery / partial-mask phase to create ready rise and additional
       // non-all-mask samples after the low window.

@@ -6,8 +6,9 @@ import shlex
 import subprocess
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Iterable, List, Optional
+from typing import Iterable, List, Optional, Tuple
 
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
@@ -346,26 +347,49 @@ def run_regression(
     global_plus_args: str,
     summary_path: Path,
     min_pass_rate: float,
+    jobs: int = 1,
 ) -> int:
     entries = load_regression_list(list_path)
-    results: List[RegressionResult] = []
+    runs: List[Tuple[int, RegressionEntry, str, str]] = []
+    results_by_index: List[Optional[RegressionResult]] = []
 
     for entry in entries:
         for seed in seeds:
             plus_args = combine_plus_args(global_plus_args, entry.plus_args)
-            print(f"=== regression: {entry.test_name} seed={seed} mode={mode} ===")
-            result = run_single(
-                mode=mode,
-                test_name=entry.test_name,
-                seed=seed,
-                verbosity=verbosity,
-                timeout=timeout,
-                uvm_err_only=uvm_err_only,
-                plus_args=plus_args,
-                expected_fail=entry.expected_fail,
-                xfail_reason=entry.xfail_reason,
-            )
-            results.append(result)
+            runs.append((len(runs), entry, seed, plus_args))
+
+    results_by_index = [None] * len(runs)
+    jobs = max(1, jobs)
+
+    def run_indexed(item: Tuple[int, RegressionEntry, str, str]) -> Tuple[int, RegressionResult]:
+        index, entry, seed, plus_args = item
+        print(f"=== regression: {entry.test_name} seed={seed} mode={mode} ===")
+        result = run_single(
+            mode=mode,
+            test_name=entry.test_name,
+            seed=seed,
+            verbosity=verbosity,
+            timeout=timeout,
+            uvm_err_only=uvm_err_only,
+            plus_args=plus_args,
+            expected_fail=entry.expected_fail,
+            xfail_reason=entry.xfail_reason,
+        )
+        return index, result
+
+    if jobs == 1:
+        for item in runs:
+            index, result = run_indexed(item)
+            results_by_index[index] = result
+    else:
+        print(f"=== regression parallel jobs={jobs} total_runs={len(runs)} ===")
+        with ThreadPoolExecutor(max_workers=jobs) as executor:
+            future_to_index = {executor.submit(run_indexed, item): item[0] for item in runs}
+            for future in as_completed(future_to_index):
+                index, result = future.result()
+                results_by_index[index] = result
+
+    results = [item for item in results_by_index if item is not None]
 
     write_summary(summary_path, list_path, mode, seeds, results, min_pass_rate)
 
@@ -401,6 +425,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--seeds", default="1", help="Whitespace or comma separated seed list for regression mode")
     parser.add_argument("--summary", help="Summary file path for regression mode")
     parser.add_argument("--min-pass-rate", type=float, default=1.0, help="Minimum pass rate before returning failure")
+    parser.add_argument("--jobs", type=int, default=1, help="Number of regression runs to execute in parallel")
     parser.add_argument("--list", action="store_true", help="List registered tests and directory aliases")
     return parser
 
@@ -432,6 +457,7 @@ def main() -> int:
                 global_plus_args=args.plus_args,
                 summary_path=summary,
                 min_pass_rate=args.min_pass_rate,
+                jobs=args.jobs,
             )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)

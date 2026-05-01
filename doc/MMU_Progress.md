@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-04-30（Phase 12 已完成并完成退出准则检查；Phase 13 已解锁）
+> **更新**：2026-05-01（Phase 13 A 侧 SVA / 回归入口 / DA-003 记录已完成；等待 B 侧列表/测试/覆盖率与服务器回归验证）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -23,7 +23,7 @@
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ✅ 完成（2026-04-27） | ✅ `make regress_smoke` 22/22 通过、100%；✅ `make regress_nightly` 1260/1325 通过、95.09%（门槛≥50%）；✅ URG baseline 报告已生成；`Makefile` `regress*` / `run_test.py` / `run_vcs_verdi.py` / `cov_hier.cfg` 与 B 侧 `simu/mmu_*_list` / `exclude.do` 已完成联调 |
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28） | ✅ `bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `phase11_b_stage_manifest.csv` / `phase11_bug_hunt_matrix.md` 已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
 | **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | ✅ 完成（2026-04-30） | ✅ `simu/mmu_v4_phase12_list` 22 个 runnable tests × seeds `95101 95102 95103` 纳入 `run_cov` 回归；MAEE SVA / PMP 骨架 / Phase12 白盒 CG / probe / `phase12_exit_check` 门禁完成；历史 URG `No context available` 与覆盖率报告缺失问题已按 debug 记录收口 |
-| **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | ⏳ 未开始（已解锁）   | Phase 12 退出准则已完成，Phase 13 可进入 sysmap / PMP-deny / PMP-port 实现与回归                                                                                 |
+| **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | 🔄 进行中（A 侧完成） | A 侧 `mmu_pmp_twu_sva.sv` / `mmu_sysmap_sva.sv` / `regress_v4_sysmap_pmp` / DA-003 记录已落地；待 B 侧 Phase 13 list/tests/covergroup 与服务器 `make comp` / `make regress_v4_sysmap_pmp` 验证 |
 | **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | 🔒 等待 Phase 13      | —                                                                                                                                                               |
 
 ---
@@ -138,7 +138,7 @@
 
 | ID     | 描述                                                                           | 状态                               |
 | ------ | ------------------------------------------------------------------------------ | ---------------------------------- |
-| DA-003 | sysmap RTL force 路径（`sysmap_cfg_driver.svh` 中 force 目标路径需设计确认） | ⏳ Phase 3 已退出，留 Phase 6 处理 |
+| DA-003 | sysmap RTL force 路径与 Phase 13 PMP PTW 端口映射跟踪 | 🔄 Phase 13 A 侧已归档 [DA-003_phase13_port_mapping.md](DA-003_phase13_port_mapping.md)；sysmap force 路径仍待设计确认或 waiver |
 
 ---
 
@@ -691,6 +691,52 @@
 
 ---
 
+## Phase 13 详细进度（🔄 进行中 — A 侧已完成 2026-05-01）
+
+**负责**：工程师 B（测试 / covergroup / Phase 13 list 主实现）/ 工程师 A（PMP/TWU SVA + SysMap SVA + 回归入口 + DA-003 书面记录）  
+**当前口径**：A 侧交付已落地；未在本机执行 make。最终退出仍需 B 侧 `simu/mmu_v4_phase13_list`、测试与 covergroup 完成后，在服务器执行 `make comp` / `make regress_v4_sysmap_pmp` 并检查 SVA 无 fire。
+
+- A 侧：✅ `testbench/top/mmu_pmp_twu_sva.sv` 已由 Phase 12 骨架升级为 Phase 13 属性版，覆盖 PMP wait/mask、grant onehot、deny->access fault、deny no refill / no LSU req、PTW PMP fetch=0 等约束，并为每条主属性保留 `cover property`。
+- A 侧：✅ 新增 `testbench/top/mmu_sysmap_sva.sv`，覆盖 SysMap flag 替换、跨界降级、no-cross 不降级与 PA 对齐场景；每类属性均有对应 `cover property`。
+- A 侧：✅ `testbench/Files.f` / `testbench/top/tb_top.sv` 已接入 Phase 13 SVA；`scripts/cov_hier.cfg` 已排除新增 SVA module，避免覆盖率统计污染。
+- A 侧：✅ `Makefile` 已新增 `PHASE13_*` 变量、`print-phase13` 与 `regress_v4_sysmap_pmp`；该 target 复用现有 `run_cov`、日志扫描与 URG 生成流程，并在 Phase 13 list 缺失时明确报错。
+- A 侧：✅ DA-003 书面记录已归档：[DA-003_phase13_port_mapping.md](DA-003_phase13_port_mapping.md)，当前按 `pa3/flg3->twu_one`、`pa5/flg5->twu_two`、`pa6/flg6->twu_three`、`pa7/flg7->twu_four` 跟踪。
+- B 侧：⏳ `simu/mmu_v4_phase13_list`、`pmp_twu_tests_v6/`、`sysmap_tests/` 扩展与 13 个 covergroup 命中率仍待完成 / 服务器验证。
+
+| 项目 | 负责人 | 状态 | 说明 |
+| --- | --- | --- | --- |
+| `testbench/top/mmu_pmp_twu_sva.sv` | A | ✅ | Phase 13 PMP/TWU SVA 已补全，含 assert + cover |
+| `testbench/top/mmu_sysmap_sva.sv` | A | ✅ | 新增 SysMap/TWU SVA，含 flag / cross degrade / PA align 相关 assert + cover |
+| `testbench/Files.f` / `testbench/top/tb_top.sv` | A | ✅ | `mmu_pmp_twu_sva` 与 `mmu_sysmap_sva` 已编译接入并 bind 到 `twu` |
+| `scripts/cov_hier.cfg` | A | ✅ | 新增排除 `mmu_pmp_twu_sva` / `mmu_sysmap_sva` module |
+| `Makefile` `print-phase13` / `regress_v4_sysmap_pmp` | A | ✅ | 默认 seeds `96101 96102 96103`；等待 B 侧 list 后可跑 |
+| `doc/DA-003_phase13_port_mapping.md` | A | ✅ | 记录 Phase 13 PMP PTW port mapping 与 fetch spelling 口径 |
+| `simu/mmu_v4_phase13_list` | B | ⏳ | A 侧未创建；由 B 侧测试列表交付 |
+| Phase 13 tests / covergroups | B | ⏳ | B 侧负责，A 本次未修改 |
+
+### Phase 13 待服务器验证命令
+
+```bash
+cd mmu_verification
+make print-phase13
+make comp
+make regress_v4_sysmap_pmp
+```
+
+### Phase 13 当前门禁状态
+
+| # | 检查项 | 状态 | 说明 |
+| - | ------ | ---- | ---- |
+| 1 | A-side SVA implementation | ✅ | PMP/TWU 与 SysMap/TWU SVA 文件已落地 |
+| 2 | A-side integration wiring | ✅ | `Files.f` / `tb_top.sv` / `cov_hier.cfg` / `Makefile` 已接入 |
+| 3 | DA-003 written record | ✅ | `DA-003_phase13_port_mapping.md` 已归档 |
+| 4 | Phase 13 list present | ⏳ | 当前由 B 侧交付，A 侧 target 会在缺失时报错 |
+| 5 | compile on server | ⏳ | 待服务器执行 `make comp` |
+| 6 | 3-seed Phase 13 regression | ⏳ | 待服务器执行 `make regress_v4_sysmap_pmp` |
+| 7 | Phase 13 covergroup threshold | ⏳ | 由 B 侧 covergroup 与 URG 报告闭环 |
+
+---
+
 ## Phase 4–14 工作量汇总
 
 | 工程师      | 负责 Phase                                                                       | 主要文件数  | 核心难点                                                             |
@@ -714,5 +760,5 @@
 | **M8** — 全部 Vseq 可运行          | Phase 8 退出准则                          | ✅**已达成**（2026-04-27）：`make phase8` 42-run 矩阵完成，14 个 vseq × 3 seeds 收口，统计摘要 / F 映射 / A Review 已留档                                                                 |
 | **M9** — 冒烟回归 100%             | Phase 9 退出准则                          | ✅**已达成**（2026-04-27）：`phase9_generated_test_base` + 12 suite + 3 个 basic 基线入口已纳管；259 个 Phase 9 wrapper（总 262 stage）编译通过，seed=1 单跑与 smoke 3-seed 回归收口，`scan_logs.pl` 与 A review 结果已记档 |
 | **M10** — 回归脚本就绪             | Phase 10 退出准则                         | ✅ **已达成**（2026-04-27）：`make regress_smoke` 22/22 通过、100%；`make regress_nightly` 1260/1325 通过、95.09%；URG baseline 报告已生成，A/B Phase 10 联调收口完成 |
-| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | 🔄 Phase 11 已达成（2026-04-28）；Phase 12 已达成（2026-04-30，`make phase12_exit_check` 完成口径）；Phase 13 已解锁待执行                                                                                              |
+| **M11~M13** — 高级特性验证         | Phase 11–13 退出准则                     | 🔄 Phase 11 已达成（2026-04-28）；Phase 12 已达成（2026-04-30，`make phase12_exit_check` 完成口径）；Phase 13 A 侧已完成（2026-05-01），等待 B 侧 list/tests/covergroup 与服务器回归验证 |
 | **M14** — 签核通过                 | Phase 14 退出准则（VerificationPlan §9） | ⏳                                                                                                                                                                      |

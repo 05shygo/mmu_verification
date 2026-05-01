@@ -285,6 +285,14 @@ PHASE12_FAIL_FAST         ?= 1
 PHASE12_PGFLT_PROBE_SEED  ?= 95103
 
 #===============================================================================
+# Phase 13 - v4.0 SysMap / PMP-deny / PMP-port regression
+#===============================================================================
+PHASE13_LIST              ?= $(SIMU_DIR)/mmu_v4_phase13_list
+PHASE13_SEEDS             ?= 96101 96102 96103
+PHASE13_SUMMARY           ?= $(REGRESS_DIR)/phase13_v4/summary.txt
+PHASE13_REGRESS_JOBS      ?= 1
+
+#===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
 #  phase7:  comp 后 3 个 TEST_NAME 各 run 一次，log 中 UVM_ERROR/FATAL=0
 #  phase7_cov: 同上以 run_cov 追加到 $(COV_DB_DIR)，再 urg → $(COV_DIR)/urgReport
@@ -345,6 +353,12 @@ print-phase12:
 	@echo "PHASE12_MAEE_MIN_HITS  = $(PHASE12_MAEE_MIN_HITS)"
 	@echo "PHASE12_REGRESS_JOBS   = $(PHASE12_REGRESS_JOBS)"
 	@echo "PHASE12_FAIL_FAST      = $(PHASE12_FAIL_FAST)"
+
+print-phase13:
+	@echo "PHASE13_LIST           = $(PHASE13_LIST)"
+	@echo "PHASE13_SEEDS          = $(PHASE13_SEEDS)"
+	@echo "PHASE13_SUMMARY        = $(PHASE13_SUMMARY)"
+	@echo "PHASE13_REGRESS_JOBS   = $(PHASE13_REGRESS_JOBS)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -469,7 +483,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
         regress regress_smoke regress_nightly print-regress \
-        print-phase11 print-phase12 regress_v3_gap regress_v4_maee_ptw phase11_exit_check phase11_show_failures \
+        print-phase11 print-phase12 print-phase13 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp phase11_exit_check phase11_show_failures \
         phase12_exit_check phase12_pgflt_urg_probe
 
 all: comp run
@@ -601,6 +615,41 @@ regress_v4_maee_ptw: comp
 	fi; \
 	if [ $$scan_rc -ne 0 ]; then \
 		echo "regress_v4_maee_ptw: scan_logs/check_sim_status returned $$scan_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+regress_v4_sysmap_pmp: comp
+	@test -f "$(PHASE13_LIST)" || (echo "ERROR: Phase13 list missing: $(PHASE13_LIST)"; exit 2)
+	@set +e; \
+	$(MAKE) regress \
+		LIST="$(PHASE13_LIST)" \
+		REGRESS_MODE=run_cov \
+		REGRESS_NAME=phase13_v4 \
+		REGRESS_SUMMARY="$(PHASE13_SUMMARY)" \
+		REGRESS_SEEDS="$(PHASE13_SEEDS)" \
+		REGRESS_JOBS="$(PHASE13_REGRESS_JOBS)" \
+		REGRESS_MIN_PASS_RATE=1.0 \
+		VERBOSITY="$(VERBOSITY)" \
+		TIMEOUT="$(TIMEOUT)" \
+		UVM_ERR_ONLY="$(UVM_ERR_ONLY)"; \
+	reg_rc=$$?; \
+	set -e; \
+	set +e; \
+	bash $(PROJECT_DIR)/scripts/phase11_scan_regression_logs.sh "$(PHASE13_LIST)" "$(PHASE13_SEEDS)" "$(LOG_DIR)" cov; \
+	scan_rc=$$?; \
+	set -e; \
+	if [ -d "$(COV_DB_DIR)" ] && find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
+		$(MAKE) cov; \
+	else \
+		echo "No aggregate coverage database found at $(COV_DB_DIR); skipping URG."; \
+	fi; \
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "regress_v4_sysmap_pmp: underlying regression returned $$reg_rc"; \
+	fi; \
+	if [ $$scan_rc -ne 0 ]; then \
+		echo "regress_v4_sysmap_pmp: scan_logs/check_sim_status returned $$scan_rc"; \
 	fi; \
 	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
 		exit 1; \

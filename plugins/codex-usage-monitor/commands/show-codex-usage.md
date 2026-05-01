@@ -1,3 +1,7 @@
+---
+description: Collect the latest local Codex usage snapshot and summarize total, today, and API activity.
+---
+
 # /show-codex-usage
 
 Collect the latest local Codex usage snapshot and summarize it in chat.

@@ -82,6 +82,7 @@ ${TB_DIR}/top/mmu_twu_sva.sv
 ${TB_DIR}/top/mmu_ptw_lsu_protocol_sva.sv
 ${TB_DIR}/top/mmu_maee_twu_sva.sv
 ${TB_DIR}/top/mmu_pmp_twu_sva.sv
+${TB_DIR}/top/mmu_sysmap_sva.sv
 
 # ---------------------------------------------------------------------------
 # Phase 2: Testbench interfaces (must come after RTL & params package)

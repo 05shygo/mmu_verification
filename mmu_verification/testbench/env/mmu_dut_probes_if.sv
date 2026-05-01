@@ -111,6 +111,28 @@ interface mmu_dut_probes_if (
   wire         maee_csr_path_hit;
   wire         maee_refill_path_hit;
 
+  // Phase 13 PMP/TWU and SysMap/TWU probes.
+  wire [3:0][2:0] p13_pmp_vld_vec;
+  wire [3:0][2:0] p13_pmp_grant_vec;
+  wire [3:0][2:0] p13_pmp_deny_vec;
+  wire [3:0][2:0] p13_pmp_wait_vec;
+  wire [3:0][2:0] p13_pmp_mbuf_req_vec;
+  wire [3:0][2:0][2:0] p13_pmp_type_vec;
+  wire [3:0][3:0] p13_pmp_flg_vec;
+  wire [3:0][27:0] p13_pmp_pa_vec;
+  wire [3:0] p13_pmp_fetch_vec;
+  wire [3:0][4:0] p13_sysmap_flg_vec;
+  wire [3:0][7:0] p13_sysmap_hit_vec;
+  wire [3:0][27:0] p13_sysmap_pa_vec;
+  wire [3:0][39:0] p13_twu_sysmap_adder_vec;
+  wire [3:0] p13_twu_csr_cross_vec;
+  wire [3:0] p13_twu_crs2_1g_vec;
+  wire [3:0] p13_twu_crs2_2m_vec;
+  wire [3:0] p13_twu_crs2_chk_vec;
+  wire [3:0] p13_csr_refill_req_vec;
+  wire [3:0][2:0] p13_csr_refill_pgs_vec;
+  wire [3:0][41:0] p13_csr_refill_data_vec;
+
   // ct_mmu_tlboper
   wire [3:0]   tlbiva_cur_st;
 
@@ -141,6 +163,13 @@ interface mmu_dut_probes_if (
     input ptw_arb_ref_tag_din, ptw_cp0_maee;
     input maee_leaf_lvl1_hit, maee_leaf_lvl2_hit, maee_leaf_lvl3_hit;
     input maee_csr_path_hit, maee_refill_path_hit;
+    input p13_pmp_vld_vec, p13_pmp_grant_vec, p13_pmp_deny_vec;
+    input p13_pmp_wait_vec, p13_pmp_mbuf_req_vec, p13_pmp_type_vec;
+    input p13_pmp_flg_vec, p13_pmp_pa_vec, p13_pmp_fetch_vec;
+    input p13_sysmap_flg_vec, p13_sysmap_hit_vec, p13_sysmap_pa_vec;
+    input p13_twu_sysmap_adder_vec, p13_twu_csr_cross_vec;
+    input p13_twu_crs2_1g_vec, p13_twu_crs2_2m_vec, p13_twu_crs2_chk_vec;
+    input p13_csr_refill_req_vec, p13_csr_refill_pgs_vec, p13_csr_refill_data_vec;
     input tlbiva_cur_st;
   endclocking
 

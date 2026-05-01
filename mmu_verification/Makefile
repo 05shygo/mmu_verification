@@ -293,6 +293,7 @@ PHASE13_LIST              ?= $(SIMU_DIR)/mmu_v4_phase13_list
 PHASE13_SEEDS             ?= 96101 96102 96103
 PHASE13_SUMMARY           ?= $(REGRESS_DIR)/phase13_v4/summary.txt
 PHASE13_REGRESS_JOBS      ?= 1
+PHASE13_SKIP_COV          ?= 1
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -361,6 +362,7 @@ print-phase13:
 	@echo "PHASE13_SEEDS          = $(PHASE13_SEEDS)"
 	@echo "PHASE13_SUMMARY        = $(PHASE13_SUMMARY)"
 	@echo "PHASE13_REGRESS_JOBS   = $(PHASE13_REGRESS_JOBS)"
+	@echo "PHASE13_SKIP_COV       = $(PHASE13_SKIP_COV)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -642,7 +644,9 @@ regress_v4_sysmap_pmp: comp
 	bash $(PROJECT_DIR)/scripts/phase11_scan_regression_logs.sh "$(PHASE13_LIST)" "$(PHASE13_SEEDS)" "$(LOG_DIR)" cov; \
 	scan_rc=$$?; \
 	set -e; \
-	if [ -d "$(COV_DB_DIR)" ] && find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
+	if [ "$(PHASE13_SKIP_COV)" = "1" ]; then \
+		echo "regress_v4_sysmap_pmp: skipping URG because PHASE13_SKIP_COV=1"; \
+	elif [ -d "$(COV_DB_DIR)" ] && find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
 		$(MAKE) cov; \
 	else \
 		echo "No aggregate coverage database found at $(COV_DB_DIR); skipping URG."; \

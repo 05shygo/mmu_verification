@@ -1,11 +1,27 @@
-# Phase 13 v4 SysMap / PMP-deny / PMP-port bootstrap regression list
-# A-side scope: enable regress_v4_sysmap_pmp to run existing PMP/SysMap tests
-# after Phase 13 SVA bind is compiled. B-side may expand/replace this list with
-# pmp_twu_tests_v6 and additional sysmap tests for final Phase 13 closure.
-# Recommended external seed set:
+# Phase 13 v4 SysMap / PMP-deny / PMP-port final regression list
+# Owner: B-side tests / covergroups
+# External seed set:
 #   96101 96102 96103
 #
-# PMP deny / port family
+# PMP/TWU Phase 13 family
+test_twu_pmp_serial
+test_twu_pmp_wait_stall
+test_ptw_pmp_before_lsu
+test_ptw_pmp_deny_stop
+test_twu_pmp_grant_onehot
+test_ptw_pmp_pa_1g
+test_ptw_pmp_pa_2m
+test_ptw_pmp_pa_4k
+test_ptw_pmp_wait_no_lsu
+test_ptw_pmp_pa_zero
+test_ptw_pmp_deny_accflt
+test_ptw_pmp_deny_no_refill
+test_ptw_pmp_mmode_l0
+test_twu_mask_pmp_wait_all4
+test_ptw_pmp_fetch_zero
+test_ptw_pmp_port_map_concurrent
+#
+# Existing PMP deny / port baseline family
 test_mmu_pmp_deny_access_fault
 test_mmu_pmp_deny_fetch_fault
 test_mmu_pmp_cross_port_deny
@@ -20,7 +36,18 @@ test_mmu_pmp_pde_cache_flow
 test_mmu_pmp_fetch_selective
 test_pmp_deny_walk_abort
 #
-# SysMap family
+# SysMap Phase 13 family
+test_sysmap_phase13_flg_refill_region0
+test_sysmap_phase13_flg_refill_region7
+test_sysmap_phase13_cross_1g_degrade
+test_sysmap_phase13_cross_2m_degrade
+test_sysmap_phase13_no_cross_no_degrade
+test_sysmap_phase13_pa_align_1g
+test_sysmap_phase13_pa_align_2m_4k
+test_sysmap_phase13_4twu_concurrent
+test_sysmap_phase13_default_flag
+#
+# Existing SysMap baseline family
 test_mmu_sysmap_alignment
 test_mmu_sysmap_disabled
 test_mmu_sysmap_flag_r

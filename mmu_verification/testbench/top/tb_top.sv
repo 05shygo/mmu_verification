@@ -491,6 +491,45 @@ module tb_top;
                                             | u_dut.x_ct_mmu_ptw.twu_four.fst_chk_refill_req
                                             | u_dut.x_ct_mmu_ptw.twu_four.scd_chk_refill_req
                                             | u_dut.x_ct_mmu_ptw.twu_four.thd_chk_refill_req;
+  // Phase 13 whitebox probes: DA-003 maps PTW PMP ports 3/5/6/7 to TWU one/two/three/four.
+  assign dut_probes_if.p13_pmp_vld_vec[0]      = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vld,   u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vld,   u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_vld};
+  assign dut_probes_if.p13_pmp_vld_vec[1]      = {u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_vld,   u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_vld,   u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_vld};
+  assign dut_probes_if.p13_pmp_vld_vec[2]      = {u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_vld, u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_vld, u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_vld};
+  assign dut_probes_if.p13_pmp_vld_vec[3]      = {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_vld,  u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_vld,  u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_vld};
+  assign dut_probes_if.p13_pmp_grant_vec[0]    = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_grant,   u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_grant,   u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_grant};
+  assign dut_probes_if.p13_pmp_grant_vec[1]    = {u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_grant,   u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_grant,   u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_grant};
+  assign dut_probes_if.p13_pmp_grant_vec[2]    = {u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_grant, u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_grant, u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_grant};
+  assign dut_probes_if.p13_pmp_grant_vec[3]    = {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_grant,  u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_grant,  u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_grant};
+  assign dut_probes_if.p13_pmp_deny_vec[0]     = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_deny,   u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_deny,   u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_deny};
+  assign dut_probes_if.p13_pmp_deny_vec[1]     = {u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_deny,   u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_deny,   u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_deny};
+  assign dut_probes_if.p13_pmp_deny_vec[2]     = {u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_deny, u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_deny, u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_deny};
+  assign dut_probes_if.p13_pmp_deny_vec[3]     = {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_deny,  u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_deny,  u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_deny};
+  assign dut_probes_if.p13_pmp_wait_vec[0]     = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_wait,   u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_wait,   u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_wait};
+  assign dut_probes_if.p13_pmp_wait_vec[1]     = {u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_wait,   u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_wait,   u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_wait};
+  assign dut_probes_if.p13_pmp_wait_vec[2]     = {u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_wait, u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_wait, u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_wait};
+  assign dut_probes_if.p13_pmp_wait_vec[3]     = {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_wait,  u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_wait,  u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_wait};
+  assign dut_probes_if.p13_pmp_mbuf_req_vec[0] = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_mbuf_req,   u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_mbuf_req,   u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_mbuf_req};
+  assign dut_probes_if.p13_pmp_mbuf_req_vec[1] = {u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_mbuf_req,   u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_mbuf_req,   u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_mbuf_req};
+  assign dut_probes_if.p13_pmp_mbuf_req_vec[2] = {u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_mbuf_req, u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_mbuf_req, u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_mbuf_req};
+  assign dut_probes_if.p13_pmp_mbuf_req_vec[3] = {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_mbuf_req,  u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_mbuf_req,  u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_mbuf_req};
+  assign dut_probes_if.p13_pmp_type_vec[0]     = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_type,   u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_type,   u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_type};
+  assign dut_probes_if.p13_pmp_type_vec[1]     = {u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_type,   u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_type,   u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_type};
+  assign dut_probes_if.p13_pmp_type_vec[2]     = {u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_type, u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_type, u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_type};
+  assign dut_probes_if.p13_pmp_type_vec[3]     = {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_type,  u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_type,  u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_type};
+  assign dut_probes_if.p13_pmp_flg_vec         = {pmp_if_inst.pmp_mmu_flg7, pmp_if_inst.pmp_mmu_flg6, pmp_if_inst.pmp_mmu_flg5, pmp_if_inst.pmp_mmu_flg3};
+  assign dut_probes_if.p13_pmp_pa_vec          = {pmp_if_inst.mmu_pmp_pa7, pmp_if_inst.mmu_pmp_pa6, pmp_if_inst.mmu_pmp_pa5, pmp_if_inst.mmu_pmp_pa3};
+  assign dut_probes_if.p13_pmp_fetch_vec       = {pmp_if_inst.mmu_pmp_fetch7, pmp_if_inst.mmu_pmp_fetch6, pmp_if_inst.mmu_pmp_fetch5, pmp_if_inst.mmu_pmp_fetch3};
+  assign dut_probes_if.p13_sysmap_flg_vec      = {u_dut.x_ct_mmu_ptw.twu_four.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_three.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_two.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_one.sysmap_mmu_flg};
+  assign dut_probes_if.p13_sysmap_hit_vec      = {u_dut.x_ct_mmu_ptw.twu_four.sysmap_mmu_hit, u_dut.x_ct_mmu_ptw.twu_three.sysmap_mmu_hit, u_dut.x_ct_mmu_ptw.twu_two.sysmap_mmu_hit, u_dut.x_ct_mmu_ptw.twu_one.sysmap_mmu_hit};
+  assign dut_probes_if.p13_sysmap_pa_vec       = {u_dut.x_ct_mmu_ptw.twu_four.mmu_sysmap_pa, u_dut.x_ct_mmu_ptw.twu_three.mmu_sysmap_pa, u_dut.x_ct_mmu_ptw.twu_two.mmu_sysmap_pa, u_dut.x_ct_mmu_ptw.twu_one.mmu_sysmap_pa};
+  assign dut_probes_if.p13_twu_sysmap_adder_vec = {u_dut.x_ct_mmu_ptw.twu_four.twu_sysmap_adder, u_dut.x_ct_mmu_ptw.twu_three.twu_sysmap_adder, u_dut.x_ct_mmu_ptw.twu_two.twu_sysmap_adder, u_dut.x_ct_mmu_ptw.twu_one.twu_sysmap_adder};
+  assign dut_probes_if.p13_twu_csr_cross_vec   = {u_dut.x_ct_mmu_ptw.twu_four.twu_csr_cross, u_dut.x_ct_mmu_ptw.twu_three.twu_csr_cross, u_dut.x_ct_mmu_ptw.twu_two.twu_csr_cross, u_dut.x_ct_mmu_ptw.twu_one.twu_csr_cross};
+  assign dut_probes_if.p13_twu_crs2_1g_vec     = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs2_1g, u_dut.x_ct_mmu_ptw.twu_three.twu_crs2_1g, u_dut.x_ct_mmu_ptw.twu_two.twu_crs2_1g, u_dut.x_ct_mmu_ptw.twu_one.twu_crs2_1g};
+  assign dut_probes_if.p13_twu_crs2_2m_vec     = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs2_2m, u_dut.x_ct_mmu_ptw.twu_three.twu_crs2_2m, u_dut.x_ct_mmu_ptw.twu_two.twu_crs2_2m, u_dut.x_ct_mmu_ptw.twu_one.twu_crs2_2m};
+  assign dut_probes_if.p13_twu_crs2_chk_vec    = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs2_chk, u_dut.x_ct_mmu_ptw.twu_three.twu_crs2_chk, u_dut.x_ct_mmu_ptw.twu_two.twu_crs2_chk, u_dut.x_ct_mmu_ptw.twu_one.twu_crs2_chk};
+  assign dut_probes_if.p13_csr_refill_req_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_req};
+  assign dut_probes_if.p13_csr_refill_pgs_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_pgs};
+  assign dut_probes_if.p13_csr_refill_data_vec = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_data};
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
   assign ifu_if_inst.dbg_iutlb_acc_flt   = u_dut.x_mmu_l1itlb.iutlb_acc_flt;
   assign ifu_if_inst.dbg_iutlb_pmp_deny  = u_dut.x_mmu_l1itlb.pmp_flg_vld

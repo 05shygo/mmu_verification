@@ -721,6 +721,10 @@ cd mmu_verification
 make print-phase13
 make comp
 make regress_v4_sysmap_pmp
+# Optional coverage HTML, after functional regression is clean:
+make cov
+# Or run Phase 13 with URG enabled:
+make regress_v4_sysmap_pmp PHASE13_SKIP_COV=0
 ```
 
 ### Phase 13 当前门禁状态
@@ -732,8 +736,8 @@ make regress_v4_sysmap_pmp
 | 3 | DA-003 written record | ✅ | `DA-003_phase13_port_mapping.md` 已归档 |
 | 4 | Phase 13 list present | ✅ | A 侧 bootstrap list 已落地；最终内容仍待 B 侧覆盖率闭环确认 |
 | 5 | compile on server | ⏳ | 待服务器执行 `make comp` |
-| 6 | 3-seed Phase 13 regression | ⏳ | 待服务器执行 `make regress_v4_sysmap_pmp` |
-| 7 | Phase 13 covergroup threshold | ⏳ | 由 B 侧 covergroup 与 URG 报告闭环 |
+| 6 | 3-seed Phase 13 functional regression | ⏳ | 待服务器执行 `make regress_v4_sysmap_pmp`；默认 `PHASE13_SKIP_COV=1`，避免 URG 工具失败掩盖功能回归结果 |
+| 7 | Phase 13 covergroup threshold | ⏳ | 由 B 侧 covergroup 与 URG 报告闭环；需要时执行 `make cov` 或 `PHASE13_SKIP_COV=0` |
 
 ---
 

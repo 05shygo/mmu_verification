@@ -285,17 +285,17 @@ class mmu_env_cg_whitebox extends uvm_component;
     cx_region_flg: cross cp_region, cp_flg;
   endgroup
 
-  covergroup cg_sysmap_cross_1g with function sample(bit cross, int unsigned region, bit hit_any);
+  covergroup cg_sysmap_cross_1g with function sample(bit cross_seen, int unsigned region, bit hit_any);
     option.per_instance = 1;
-    cp_cross: coverpoint cross { bins no = {0}; bins yes = {1}; }
+    cp_cross: coverpoint cross_seen { bins no = {0}; bins yes = {1}; }
     cp_region: coverpoint region { bins r[] = {[0:7]}; bins no_hit = {8}; }
     cp_hit_any: coverpoint hit_any { bins no = {0}; bins yes = {1}; }
     cx_cross_hit: cross cp_cross, cp_hit_any;
   endgroup
 
-  covergroup cg_sysmap_cross_2m with function sample(bit cross, int unsigned region, bit hit_any);
+  covergroup cg_sysmap_cross_2m with function sample(bit cross_seen, int unsigned region, bit hit_any);
     option.per_instance = 1;
-    cp_cross: coverpoint cross { bins no = {0}; bins yes = {1}; }
+    cp_cross: coverpoint cross_seen { bins no = {0}; bins yes = {1}; }
     cp_region: coverpoint region { bins r[] = {[0:7]}; bins no_hit = {8}; }
     cp_hit_any: coverpoint hit_any { bins no = {0}; bins yes = {1}; }
     cx_cross_hit: cross cp_cross, cp_hit_any;

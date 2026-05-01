@@ -1,5 +1,7 @@
 # MMU UVM 验证环境框架说明
 
+> **Phase 13 Errata（2026-05-02）**：`mmu_pmp_twu_sva.sv` 不再使用旧 `sva_ptw_pmp_fetch_zero` 语义；`mmu_pmp_fecth` 是 walk 的原始 miss fetch sideband，不是 PTW PTE bus-read 类型。当前有效检查为 `sva_pmp_fetch_matches_grant_stage` 与 `sva_pmp_deny_uses_original_type_perm`。
+
 > **详细骨架**：[MMU_UVM_BuildPlan_v3_final.md](MMU_UVM_BuildPlan_v3_final.md)  
 > **数据流连接索引**：见 §6（C01–C48，绘图时须确保每条连接均呈现于图中）
 

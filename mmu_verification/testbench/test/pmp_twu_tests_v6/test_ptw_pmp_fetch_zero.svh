@@ -9,11 +9,11 @@ class test_ptw_pmp_fetch_zero extends phase12_generated_test_base;
   endfunction
 
   protected virtual function void setup_phase12_plan();
-    p12_bucket = "pmp_twu"; p12_trace_id = "TC-PTW-PMP-FETCH-ZERO-001";
+    p12_bucket = "pmp_twu"; p12_trace_id = "TC-PTW-PMP-ORIG-FETCH-PROP-001";
     p12_fid = "F7.NEW.7";
     p12_priority = "P0";
-    p12_seq_desc = "PTW PMP port fetch output remains zero";
-    p12_checker = "sva_ptw_pmp_fetch_zero + cg_ptw_pmp_port_map";
+    p12_seq_desc = "PTW PMP fetch sideband propagates original miss type (legacy test name)";
+    p12_checker = "sva_pmp_fetch_matches_grant_stage + sva_pmp_deny_uses_original_type_perm + cg_ptw_pmp_port_map";
     p12_reviewer = "A+B";
     num_txn = 128; m_post_drain = 900ns;
   endfunction

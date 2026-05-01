@@ -264,13 +264,15 @@ class mmu_env_cg_whitebox extends uvm_component;
     cx_level_mask: cross cp_level, cp_mask_cnt;
   endgroup
 
-  covergroup cg_ptw_pmp_port_map with function sample(int unsigned twu_idx, int unsigned port_id, bit pa_seen, bit fetch_zero);
+  covergroup cg_ptw_pmp_port_map with function sample(int unsigned twu_idx, int unsigned port_id, bit pa_seen, int unsigned acc_kind, bit fetch_sideband);
     option.per_instance = 1;
     cp_twu: coverpoint twu_idx { bins one = {0}; bins two = {1}; bins three = {2}; bins four = {3}; }
     cp_port: coverpoint port_id { bins p3 = {3}; bins p5 = {5}; bins p6 = {6}; bins p7 = {7}; }
     cp_pa_seen: coverpoint pa_seen { bins idle = {0}; bins active = {1}; }
-    cp_fetch_zero: coverpoint fetch_zero { bins zero = {1}; bins nonzero = {0}; }
+    cp_acc: coverpoint acc_kind { bins load = {1}; bins store = {2}; bins fetch = {3}; bins pref = {4}; bins other = {7}; }
+    cp_fetch_sideband: coverpoint fetch_sideband { bins data_origin = {0}; bins fetch_origin = {1}; }
     cx_twu_port: cross cp_twu, cp_port;
+    cx_acc_fetch: cross cp_acc, cp_fetch_sideband;
   endgroup
 
   covergroup cg_sysmap_flg_per_region with function sample(int unsigned region, logic [4:0] flg, bit refill_match);
@@ -409,6 +411,16 @@ class mmu_env_cg_whitebox extends uvm_component;
       3'b100: return 4; // prefetch
       default: return 7;
     endcase
+  endfunction
+
+  function int unsigned f_p13_selected_pmp_acc_kind(
+    input logic [2:0] grant,
+    input logic [2:0][2:0] typ_vec
+  );
+    if (grant[2]) return f_p13_acc_kind(typ_vec[2]);
+    if (grant[1]) return f_p13_acc_kind(typ_vec[1]);
+    if (grant[0]) return f_p13_acc_kind(typ_vec[0]);
+    return 7;
   endfunction
 
   function int unsigned f_p13_pmp_align_class(input int unsigned level, input logic [27:0] pa);
@@ -585,7 +597,8 @@ class mmu_env_cg_whitebox extends uvm_component;
         cg_ptw_pmp_port_map.sample(
           t, f_p13_port_id(t),
           (v_probe.p13_pmp_pa_vec[t] != 28'h0),
-          (v_probe.p13_pmp_fetch_vec[t] == 1'b0));
+          f_p13_selected_pmp_acc_kind(grant, v_probe.p13_pmp_type_vec[t]),
+          v_probe.p13_pmp_fetch_vec[t]);
 
       for (int unsigned level = 0; level < 3; level++) begin
         int unsigned bit_idx;

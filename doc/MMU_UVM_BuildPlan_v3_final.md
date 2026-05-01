@@ -18,6 +18,12 @@
 
 ---
 
+### Phase 13 F7.NEW.7 Errata (2026-05-02)
+
+- `mmu_pmp_fetch{3,5,6,7}` / internal `mmu_pmp_fecth` is the original miss fetch sideband for the walk, not the PTW PTE bus-read command type.
+- The old `sva_ptw_pmp_fetch_zero` intent is retired. Active Phase 13 checks are `sva_pmp_fetch_matches_grant_stage` and `sva_pmp_deny_uses_original_type_perm`.
+- PMP permission selection for PTW ports follows the original access type: fetch->X (`flg[2]`), load/prefetch->R (`flg[0]`), store->W (`flg[1]`), with M-mode L=0 bypass.
+
 ## Table of Contents
 
 - [第 0 章 文档定位与范围](#第-0-章-文档定位与范围)

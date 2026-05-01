@@ -25,6 +25,19 @@ The current top-level PMP interface and `ptw.sv` wiring are treated as:
 
 `testbench/pmp_agent/pmp_if.sv` intentionally uses the top-level RTL port spelling `mmu_pmp_fetch7`. Older plan text mentions `mmu_pmp_fecth7`; that typo is not used at the top-level interface. The bound TWU SVA observes the internal `twu` signal `mmu_pmp_fecth`, matching the internal RTL name in `mmu/rtl/twu.sv`.
 
+## PTW PMP Fetch Semantics
+
+`mmu_pmp_fetch{3,5,6,7}` / internal `mmu_pmp_fecth` is the original miss fetch sideband for the walk. It is not the PTW PTE bus-read command type. Current Phase 13 checks therefore verify that the selected TWU PMP stage propagates this sideband consistently and that PMP permission selection follows the original access type:
+
+| Original walk type | PMP permission bit used |
+| --- | --- |
+| fetch | X (`flg[2]`) |
+| load | R (`flg[0]`) |
+| prefetch | R (`flg[0]`) |
+| store | W (`flg[1]`) |
+
+The legacy `test_ptw_pmp_fetch_zero` test name is kept only for regression-list compatibility; its metadata/checker now refer to original-fetch propagation, not a zero-only requirement.
+
 ## Phase 13 A-Side Action
 
 Engineer A added SVA coverage/guards for PMP/TWU and SysMap/TWU behavior and wired `regress_v4_sysmap_pmp`. B-side test list, tests, and covergroups remain outside this record.

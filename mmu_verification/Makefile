@@ -7,15 +7,17 @@
 #===============================================================================
 # Project Directories
 #===============================================================================
-PROJECT_DIR     ?= $(shell pwd)
-MMU_RTL_DIR     ?= $(PROJECT_DIR)/../mmu/rtl
-RELATE_RTL_DIR  ?= $(PROJECT_DIR)/../mmu/rtl/relate_rtl
-RELATE_RTL_REAL ?= $(PROJECT_DIR)/../mmu/rtl/relate rtl
-MMU_PARAMS_DIR  ?= $(PROJECT_DIR)/modules/mmu_params
-TB_DIR          ?= $(PROJECT_DIR)/testbench
-SIMU_DIR        ?= $(PROJECT_DIR)/simu
-CORE_V_VERIF    ?= $(PROJECT_DIR)/modules/dv_utils
-CV_DV_UTILS_DIR ?= $(CORE_V_VERIF)/lib/cv_dv_utils
+# Keep the MMU build self-contained even if the shell still has PROJECT_DIR or
+# HPDCACHE_* variables from hpdcache_verification/setup_env.sh.
+PROJECT_DIR     := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
+MMU_RTL_DIR     := $(PROJECT_DIR)/../mmu/rtl
+RELATE_RTL_DIR  := $(PROJECT_DIR)/../mmu/rtl/relate_rtl
+RELATE_RTL_REAL := $(PROJECT_DIR)/../mmu/rtl/relate rtl
+MMU_PARAMS_DIR  := $(PROJECT_DIR)/modules/mmu_params
+TB_DIR          := $(PROJECT_DIR)/testbench
+SIMU_DIR        := $(PROJECT_DIR)/simu
+CORE_V_VERIF    := $(PROJECT_DIR)/modules/dv_utils
+CV_DV_UTILS_DIR := $(CORE_V_VERIF)/lib/cv_dv_utils
 OUTPUT_DIR      ?= $(PROJECT_DIR)/output
 LOG_DIR         ?= $(OUTPUT_DIR)/logs
 WAVE_DIR        ?= $(OUTPUT_DIR)/waves

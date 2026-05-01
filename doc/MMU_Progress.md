@@ -694,14 +694,14 @@
 ## Phase 13 详细进度（🔄 进行中 — A 侧已完成 2026-05-01）
 
 **负责**：工程师 B（测试 / covergroup / Phase 13 list 主实现）/ 工程师 A（PMP/TWU SVA + SysMap SVA + 回归入口 + DA-003 书面记录）  
-**当前口径**：A 侧交付已落地；未在本机执行 make。最终退出仍需 B 侧 `simu/mmu_v4_phase13_list`、测试与 covergroup 完成后，在服务器执行 `make comp` / `make regress_v4_sysmap_pmp` 并检查 SVA 无 fire。
+**当前口径**：A 侧交付已落地；未在本机执行 make。A 侧已提供 `simu/mmu_v4_phase13_list` bootstrap 列表以便 `regress_v4_sysmap_pmp` 可运行；最终退出仍需 B 侧测试与 covergroup 完成/扩展后，在服务器执行 `make comp` / `make regress_v4_sysmap_pmp` 并检查 SVA 无 fire。
 
 - A 侧：✅ `testbench/top/mmu_pmp_twu_sva.sv` 已由 Phase 12 骨架升级为 Phase 13 属性版，覆盖 PMP wait/mask、grant onehot、deny->access fault、deny no refill / no LSU req、PTW PMP fetch=0 等约束，并为每条主属性保留 `cover property`。
 - A 侧：✅ 新增 `testbench/top/mmu_sysmap_sva.sv`，覆盖 SysMap flag 替换、跨界降级、no-cross 不降级与 PA 对齐场景；每类属性均有对应 `cover property`。
 - A 侧：✅ `testbench/Files.f` / `testbench/top/tb_top.sv` 已接入 Phase 13 SVA；`scripts/cov_hier.cfg` 已排除新增 SVA module，避免覆盖率统计污染。
 - A 侧：✅ `Makefile` 已新增 `PHASE13_*` 变量、`print-phase13` 与 `regress_v4_sysmap_pmp`；该 target 复用现有 `run_cov`、日志扫描与 URG 生成流程，并在 Phase 13 list 缺失时明确报错。
 - A 侧：✅ DA-003 书面记录已归档：[DA-003_phase13_port_mapping.md](DA-003_phase13_port_mapping.md)，当前按 `pa3/flg3->twu_one`、`pa5/flg5->twu_two`、`pa6/flg6->twu_three`、`pa7/flg7->twu_four` 跟踪。
-- B 侧：⏳ `simu/mmu_v4_phase13_list`、`pmp_twu_tests_v6/`、`sysmap_tests/` 扩展与 13 个 covergroup 命中率仍待完成 / 服务器验证。
+- B 侧：⏳ `pmp_twu_tests_v6/`、`sysmap_tests/` 扩展与 13 个 covergroup 命中率仍待完成 / 服务器验证；可在 A 侧 bootstrap list 基础上扩展或替换最终 Phase 13 list。
 
 | 项目 | 负责人 | 状态 | 说明 |
 | --- | --- | --- | --- |
@@ -711,7 +711,7 @@
 | `scripts/cov_hier.cfg` | A | ✅ | 新增排除 `mmu_pmp_twu_sva` / `mmu_sysmap_sva` module |
 | `Makefile` `print-phase13` / `regress_v4_sysmap_pmp` | A | ✅ | 默认 seeds `96101 96102 96103`；等待 B 侧 list 后可跑 |
 | `doc/DA-003_phase13_port_mapping.md` | A | ✅ | 记录 Phase 13 PMP PTW port mapping 与 fetch spelling 口径 |
-| `simu/mmu_v4_phase13_list` | B | ⏳ | A 侧未创建；由 B 侧测试列表交付 |
+| `simu/mmu_v4_phase13_list` | A/B | ✅ / ⏳ | A 侧已提供 bootstrap list（现有 PMP/SysMap tests）；B 侧仍可扩展/替换用于最终闭环 |
 | Phase 13 tests / covergroups | B | ⏳ | B 侧负责，A 本次未修改 |
 
 ### Phase 13 待服务器验证命令
@@ -730,7 +730,7 @@ make regress_v4_sysmap_pmp
 | 1 | A-side SVA implementation | ✅ | PMP/TWU 与 SysMap/TWU SVA 文件已落地 |
 | 2 | A-side integration wiring | ✅ | `Files.f` / `tb_top.sv` / `cov_hier.cfg` / `Makefile` 已接入 |
 | 3 | DA-003 written record | ✅ | `DA-003_phase13_port_mapping.md` 已归档 |
-| 4 | Phase 13 list present | ⏳ | 当前由 B 侧交付，A 侧 target 会在缺失时报错 |
+| 4 | Phase 13 list present | ✅ | A 侧 bootstrap list 已落地；最终内容仍待 B 侧覆盖率闭环确认 |
 | 5 | compile on server | ⏳ | 待服务器执行 `make comp` |
 | 6 | 3-seed Phase 13 regression | ⏳ | 待服务器执行 `make regress_v4_sysmap_pmp` |
 | 7 | Phase 13 covergroup threshold | ⏳ | 由 B 侧 covergroup 与 URG 报告闭环 |

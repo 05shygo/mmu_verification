@@ -1,0 +1,40 @@
+# Phase 13 v4 SysMap / PMP-deny / PMP-port bootstrap regression list
+# A-side scope: enable regress_v4_sysmap_pmp to run existing PMP/SysMap tests
+# after Phase 13 SVA bind is compiled. B-side may expand/replace this list with
+# pmp_twu_tests_v6 and additional sysmap tests for final Phase 13 closure.
+# Recommended external seed set:
+#   96101 96102 96103
+#
+# PMP deny / port family
+test_mmu_pmp_deny_access_fault
+test_mmu_pmp_deny_fetch_fault
+test_mmu_pmp_cross_port_deny
+test_mmu_pmp_8port_concurrent
+test_mmu_pmp_port_independence
+test_mmu_pmp_port_config_independence
+test_mmu_pmp_port_saturation
+test_mmu_pmp_pa_alignment
+test_mmu_pmp_pa_correctness
+test_mmu_pmp_pa_pipeline
+test_mmu_pmp_pde_cache_flow
+test_mmu_pmp_fetch_selective
+test_pmp_deny_walk_abort
+#
+# SysMap family
+test_mmu_sysmap_alignment
+test_mmu_sysmap_disabled
+test_mmu_sysmap_flag_r
+test_mmu_sysmap_flag_wxec
+test_mmu_sysmap_hit_boundary
+test_mmu_sysmap_hit_match
+test_mmu_sysmap_hit_unique
+test_mmu_sysmap_priority
+test_mmu_sysmap_priority_over_tlb
+test_mmu_sysmap_pte_walk_addr
+test_mmu_sysmap_region_config
+test_mmu_sysmap_region_default
+test_mmu_sysmap_tlb_fallback
+test_sysmap_hit_bypass_walk
+test_sysmap_multi_region_coverage
+test_sysmap_no_walk_required
+test_sysmap_vs_ptw_priority

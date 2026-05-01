@@ -294,6 +294,12 @@ PHASE13_SEEDS             ?= 96101 96102 96103
 PHASE13_SUMMARY           ?= $(REGRESS_DIR)/phase13_v4/summary.txt
 PHASE13_REGRESS_JOBS      ?= 1
 PHASE13_SKIP_COV          ?= 1
+PHASE13_EXIT_GATE         ?= $(PROJECT_DIR)/scripts/phase13_exit_gate.py
+PHASE13_SVA_MIN_HITS      ?= 20
+PHASE13_CG_THRESHOLD      ?= 50.0
+PHASE13_PMP_SVA           ?= $(TB_DIR)/top/mmu_pmp_twu_sva.sv
+PHASE13_SYSMAP_SVA        ?= $(TB_DIR)/top/mmu_sysmap_sva.sv
+PHASE13_DA003             ?= $(PROJECT_DIR)/../doc/DA-003_phase13_port_mapping.md
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -363,6 +369,12 @@ print-phase13:
 	@echo "PHASE13_SUMMARY        = $(PHASE13_SUMMARY)"
 	@echo "PHASE13_REGRESS_JOBS   = $(PHASE13_REGRESS_JOBS)"
 	@echo "PHASE13_SKIP_COV       = $(PHASE13_SKIP_COV)"
+	@echo "PHASE13_EXIT_GATE      = $(PHASE13_EXIT_GATE)"
+	@echo "PHASE13_SVA_MIN_HITS   = $(PHASE13_SVA_MIN_HITS)"
+	@echo "PHASE13_CG_THRESHOLD   = $(PHASE13_CG_THRESHOLD)"
+	@echo "PHASE13_PMP_SVA        = $(PHASE13_PMP_SVA)"
+	@echo "PHASE13_SYSMAP_SVA     = $(PHASE13_SYSMAP_SVA)"
+	@echo "PHASE13_DA003          = $(PHASE13_DA003)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -487,7 +499,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
         regress regress_smoke regress_nightly print-regress \
-        print-phase11 print-phase12 print-phase13 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp phase11_exit_check phase11_show_failures \
+        print-phase11 print-phase12 print-phase13 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp phase13_exit_check phase11_exit_check phase11_show_failures \
         phase12_exit_check phase12_pgflt_urg_probe
 
 all: comp run
@@ -658,6 +670,37 @@ regress_v4_sysmap_pmp: comp
 		echo "regress_v4_sysmap_pmp: scan_logs/check_sim_status returned $$scan_rc"; \
 	fi; \
 	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+phase13_exit_check:
+	@test -f "$(PHASE13_EXIT_GATE)" || (echo "ERROR: Phase13 exit gate missing: $(PHASE13_EXIT_GATE)"; exit 2)
+	@echo "=== phase13_exit_check: full Phase 13 exit criteria, forcing PHASE13_SKIP_COV=0 ==="
+	@set +e; \
+	$(MAKE) regress_v4_sysmap_pmp PHASE13_SKIP_COV=0; \
+	reg_rc=$$?; \
+	set +e; \
+	$(PYTHON) "$(PHASE13_EXIT_GATE)" \
+		--list "$(PHASE13_LIST)" \
+		--seeds "$(PHASE13_SEEDS)" \
+		--summary "$(PHASE13_SUMMARY)" \
+		--log-dir "$(LOG_DIR)" \
+		--urg-report-dir "$(URG_REPORT_DIR)" \
+		--pmp-sva "$(PHASE13_PMP_SVA)" \
+		--sysmap-sva "$(PHASE13_SYSMAP_SVA)" \
+		--da003 "$(PHASE13_DA003)" \
+		--regress-rc "$$reg_rc" \
+		--sva-min-hits "$(PHASE13_SVA_MIN_HITS)" \
+		--covergroup-threshold "$(PHASE13_CG_THRESHOLD)"; \
+	gate_rc=$$?; \
+	set -e; \
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "phase13_exit_check: regress_v4_sysmap_pmp returned $$reg_rc"; \
+	fi; \
+	if [ $$gate_rc -ne 0 ]; then \
+		echo "phase13_exit_check: exit gate returned $$gate_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$gate_rc -ne 0 ]; then \
 		exit 1; \
 	fi
 
@@ -906,6 +949,12 @@ help:
 	@echo "  make regress_v4_maee_ptw                              # 3-seed Phase12 regression + coverage merge"
 	@echo "  make phase12_exit_check                               # full Phase12 exit check, final PASS/FAIL"
 	@echo "  Optional: PHASE12_SKIP_COMPILE=1 PHASE12_SKIP_REGRESSION=1"
+	@echo ""
+	@echo "Phase 13 (MMU_UVM_TaskDivision.md Phase 13):"
+	@echo "  make print-phase13                                    # show Phase13 list/seed/gate defaults"
+	@echo "  make regress_v4_sysmap_pmp                            # Phase13 functional regression target"
+	@echo "  make phase13_exit_check                               # full Phase13 exit criteria + summary"
+	@echo "  Optional: PHASE13_SVA_MIN_HITS=20 PHASE13_CG_THRESHOLD=50.0"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md Â§5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"

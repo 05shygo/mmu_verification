@@ -27,6 +27,11 @@ module mmu_sysmap_sva (
   logic sysmap_cross_1g;
   logic sysmap_cross_2m;
 
+  int unsigned cp_csr_refill_flg_matches_sysmap_hits;
+  int unsigned cp_sysmap_cross_degrade_hits;
+  int unsigned cp_sysmap_no_cross_no_degrade_hits;
+  int unsigned cp_sysmap_pa_align_hits;
+
   assign csr_refill_from_sysmap = csr_refill_req && !cp0_mmu_maee;
   assign sysmap_cross_1g       = twu_crs2_1g && twu_csr_cross;
   assign sysmap_cross_2m       = twu_crs2_2m && twu_csr_cross;
@@ -39,7 +44,9 @@ module mmu_sysmap_sva (
 
   cp_csr_refill_flg_matches_sysmap: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    csr_refill_from_sysmap && (csr_refill_data[13:9] == sysmap_mmu_flg));
+    csr_refill_from_sysmap && (csr_refill_data[13:9] == sysmap_mmu_flg)) begin
+    cp_csr_refill_flg_matches_sysmap_hits++;
+  end
 
   // Verification intent: when a SysMap hit vector changes across a large-page
   // boundary probe, TWU must degrade page size before CSR refill.
@@ -54,7 +61,9 @@ module mmu_sysmap_sva (
   cp_sysmap_cross_degrade: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
     (sysmap_cross_1g ##1 (csr_refill_pgs == 3'b010))
-    or (sysmap_cross_2m ##1 (csr_refill_pgs == 3'b001)));
+    or (sysmap_cross_2m ##1 (csr_refill_pgs == 3'b001))) begin
+    cp_sysmap_cross_degrade_hits++;
+  end
 
   // Verification intent: without a SysMap boundary change, the CSR refill page
   // size must keep the original 1G/2M grant-derived size.
@@ -64,7 +73,9 @@ module mmu_sysmap_sva (
 
   cp_sysmap_no_cross_no_degrade: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (twu_crs2_chk && !twu_csr_cross) ##1 (csr_refill_pgs != 3'b001));
+    (twu_crs2_chk && !twu_csr_cross) ##1 (csr_refill_pgs != 3'b001)) begin
+    cp_sysmap_no_cross_no_degrade_hits++;
+  end
 
   // Verification intent: TWU sends SysMap a page-aligned PA/PPN view.
   sva_sysmap_pa_align: assert property (@(posedge twu_clk)
@@ -73,6 +84,15 @@ module mmu_sysmap_sva (
 
   cp_sysmap_pa_align: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (|sysmap_mmu_hit) && (mmu_sysmap_pa == twu_sysmap_adder[39:12]));
+    (|sysmap_mmu_hit) && (mmu_sysmap_pa == twu_sysmap_adder[39:12])) begin
+    cp_sysmap_pa_align_hits++;
+  end
+
+  final begin
+    $display("PHASE13_SVA_COVER module=mmu_sysmap_sva name=cp_csr_refill_flg_matches_sysmap hits=%0d", cp_csr_refill_flg_matches_sysmap_hits);
+    $display("PHASE13_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_cross_degrade hits=%0d", cp_sysmap_cross_degrade_hits);
+    $display("PHASE13_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_no_cross_no_degrade hits=%0d", cp_sysmap_no_cross_no_degrade_hits);
+    $display("PHASE13_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_pa_align hits=%0d", cp_sysmap_pa_align_hits);
+  end
 
 endmodule

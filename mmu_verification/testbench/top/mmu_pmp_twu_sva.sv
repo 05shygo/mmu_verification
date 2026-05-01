@@ -62,6 +62,20 @@ module mmu_pmp_twu_sva (
   logic pmp_selected_deny_expected;
   logic [1:0] pmp_effective_priv_mode;
 
+  int unsigned cp_pmp_check_before_lsu_req_hits;
+  int unsigned cp_pmp_wait_implies_mask_hits;
+  int unsigned cp_pmp_deny_no_refill_hits;
+  int unsigned cp_pmp_deny_acc_fault_hits;
+  int unsigned cp_pmp_grant_onehot_hits;
+  int unsigned cp_no_lsu_req_during_pmp_wait_hits;
+  int unsigned cp_pmp_fetch_matches_grant_stage_hits;
+  int unsigned cp_pmp_fetch_high_hits;
+  int unsigned cp_pmp_fetch_uses_x_perm_hits;
+  int unsigned cp_pmp_load_pref_uses_r_perm_hits;
+  int unsigned cp_pmp_store_uses_w_perm_hits;
+  int unsigned cp_pmp_mmode_l0_bypass_hits;
+  int unsigned cp_pmp_deny_no_lsu_req_hits;
+
   localparam logic [2:0] TWU_REQ_TYPE_LOAD  = 3'b010;
   localparam logic [2:0] TWU_REQ_TYPE_FETCH = 3'b011;
   localparam logic [2:0] TWU_REQ_TYPE_PREF  = 3'b100;
@@ -142,7 +156,9 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_check_before_lsu_req: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    twu_mbuf_req && pmp_allowed_grant);
+    twu_mbuf_req && pmp_allowed_grant) begin
+    cp_pmp_check_before_lsu_req_hits++;
+  end
 
   // Verification intent: any PMP-driven self-stall must contribute to twu_mask.
   sva_pmp_wait_implies_mask: assert property (@(posedge twu_clk)
@@ -151,7 +167,9 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_wait_implies_mask: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    pmp_wait_any && twu_mask);
+    pmp_wait_any && twu_mask) begin
+    cp_pmp_wait_implies_mask_hits++;
+  end
 
   // Verification intent: a PMP-denied transaction must not create a refill for
   // the same request id/type.
@@ -161,7 +179,9 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_deny_no_refill: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    pmp_deny_accept && !pmp_deny_refill_same_txn);
+    pmp_deny_accept && !pmp_deny_refill_same_txn) begin
+    cp_pmp_deny_no_refill_hits++;
+  end
 
   // Verification intent: accepted PMP denies are converted into TWU access-fault
   // indication on the following TWU clock.
@@ -171,7 +191,9 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_deny_acc_fault: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    pmp_deny_accept ##1 twu_l2tlb_ref_acc_err);
+    pmp_deny_accept ##1 twu_l2tlb_ref_acc_err) begin
+    cp_pmp_deny_acc_fault_hits++;
+  end
 
   // Verification intent: the three TWU PMP stages must serialize access to the
   // shared PMP port.
@@ -181,7 +203,9 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_grant_onehot: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    $onehot(pmp_grant));
+    $onehot(pmp_grant)) begin
+    cp_pmp_grant_onehot_hits++;
+  end
 
   // Verification intent: while a valid PMP stage is waiting for grant, no PTW
   // memory request may be launched from that same stage.
@@ -194,7 +218,9 @@ module mmu_pmp_twu_sva (
   cp_no_lsu_req_during_pmp_wait: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
     pmp_wait_for_grant
-    && !(fst_pmp_mbuf_req || scd_pmp_mbuf_req || thd_pmp_mbuf_req));
+    && !(fst_pmp_mbuf_req || scd_pmp_mbuf_req || thd_pmp_mbuf_req)) begin
+    cp_no_lsu_req_during_pmp_wait_hits++;
+  end
 
   // Verification intent: mmu_pmp_fecth is the original miss fetch sideband,
   // not the PTW PTE bus-read type. It must reflect the selected PMP stage.
@@ -204,11 +230,15 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_fetch_matches_grant_stage: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (pmp_grant != 3'b000) && (mmu_pmp_fecth == pmp_selected_fetch_type));
+    (pmp_grant != 3'b000) && (mmu_pmp_fecth == pmp_selected_fetch_type)) begin
+    cp_pmp_fetch_matches_grant_stage_hits++;
+  end
 
   cp_pmp_fetch_high: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (pmp_grant != 3'b000) && pmp_selected_fetch_type && mmu_pmp_fecth);
+    (pmp_grant != 3'b000) && pmp_selected_fetch_type && mmu_pmp_fecth) begin
+    cp_pmp_fetch_high_hits++;
+  end
 
   // Verification intent: PMP deny must use the original access type carried by
   // the walk: fetch->X, load/prefetch->R, store->W, with M-mode L=0 bypass.
@@ -219,23 +249,31 @@ module mmu_pmp_twu_sva (
   cp_pmp_fetch_uses_x_perm: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
     pmp_selected_stage_active && pmp_selected_fetch_type && !pmp_mmu_flg[2]
-    && pmp_selected_deny);
+    && pmp_selected_deny) begin
+    cp_pmp_fetch_uses_x_perm_hits++;
+  end
 
   cp_pmp_load_pref_uses_r_perm: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
     pmp_selected_stage_active
     && (pmp_selected_load_type || pmp_selected_pref_type) && !pmp_mmu_flg[0]
-    && pmp_selected_deny);
+    && pmp_selected_deny) begin
+    cp_pmp_load_pref_uses_r_perm_hits++;
+  end
 
   cp_pmp_store_uses_w_perm: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
     pmp_selected_stage_active && pmp_selected_store_type && !pmp_mmu_flg[1]
-    && pmp_selected_deny);
+    && pmp_selected_deny) begin
+    cp_pmp_store_uses_w_perm_hits++;
+  end
 
   cp_pmp_mmode_l0_bypass: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
     pmp_selected_stage_active && pmp_selected_perm_deny
-    && pmp_selected_mach_mode && !pmp_mmu_flg[3] && !pmp_selected_deny);
+    && pmp_selected_mach_mode && !pmp_mmu_flg[3] && !pmp_selected_deny) begin
+    cp_pmp_mmode_l0_bypass_hits++;
+  end
 
   // Verification intent: denied PMP stages must not request PTE memory access.
   sva_pmp_deny_no_lsu_req: assert property (@(posedge twu_clk)
@@ -244,6 +282,24 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_deny_no_lsu_req: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    pmp_deny_accept && !twu_mbuf_req);
+    pmp_deny_accept && !twu_mbuf_req) begin
+    cp_pmp_deny_no_lsu_req_hits++;
+  end
+
+  final begin
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_check_before_lsu_req hits=%0d", cp_pmp_check_before_lsu_req_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_wait_implies_mask hits=%0d", cp_pmp_wait_implies_mask_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_no_refill hits=%0d", cp_pmp_deny_no_refill_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_acc_fault hits=%0d", cp_pmp_deny_acc_fault_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_grant_onehot hits=%0d", cp_pmp_grant_onehot_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_no_lsu_req_during_pmp_wait hits=%0d", cp_no_lsu_req_during_pmp_wait_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_fetch_matches_grant_stage hits=%0d", cp_pmp_fetch_matches_grant_stage_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_fetch_high hits=%0d", cp_pmp_fetch_high_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_fetch_uses_x_perm hits=%0d", cp_pmp_fetch_uses_x_perm_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_load_pref_uses_r_perm hits=%0d", cp_pmp_load_pref_uses_r_perm_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_store_uses_w_perm hits=%0d", cp_pmp_store_uses_w_perm_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_mmode_l0_bypass hits=%0d", cp_pmp_mmode_l0_bypass_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_no_lsu_req hits=%0d", cp_pmp_deny_no_lsu_req_hits);
+  end
 
 endmodule

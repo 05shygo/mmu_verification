@@ -227,7 +227,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   covergroup cg_pmp_per_level_result with function sample(int unsigned level, int unsigned result);
     option.per_instance = 1;
     cp_level: coverpoint level { bins fst = {0}; bins scd = {1}; bins thd = {2}; }
-    cp_result: coverpoint result { bins pass = {1}; bins deny = {2}; bins wait = {3}; }
+    cp_result: coverpoint result { bins pass = {1}; bins deny = {2}; bins wait_seen = {3}; }
     cx_level_result: cross cp_level, cp_result;
   endgroup
 

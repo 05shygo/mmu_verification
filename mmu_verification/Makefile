@@ -303,6 +303,30 @@ PHASE13_SYSMAP_SVA        ?= $(TB_DIR)/top/mmu_sysmap_sva.sv
 PHASE13_DA003             ?= $(PROJECT_DIR)/../doc/DA-003_phase13_port_mapping.md
 
 #===============================================================================
+# Phase 14 - v4.0 full regression closure and signoff
+#===============================================================================
+PHASE14_OWNER             ?= Phase14 Closure Owner
+PHASE14_LIST              ?= $(SIMU_DIR)/mmu_v4_full_regression_list
+PHASE14_SEEDS             ?= 97101 97102 97103 97104 97105
+PHASE14_SUMMARY           ?= $(REGRESS_DIR)/phase14_v4_full/summary.txt
+PHASE14_REGRESS_JOBS      ?= 1
+PHASE14_COVERAGE_MERGE    ?= $(SIMU_DIR)/mmu_v4_coverage_merge.sh
+PHASE14_EXIT_GATE         ?= $(PROJECT_DIR)/scripts/phase14_exit_gate.py
+PHASE14_ISSUE_TRACKER     ?= $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md
+PHASE14_SIGNOFF_MATRIX    ?= $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md
+PHASE14_EXCLUDE_V4        ?= $(SIMU_DIR)/exclude_v4.do
+PHASE14_URG_REPORT_DIR    ?= $(COV_DIR)/phase14_urgReport
+PHASE14_URG_MERGED_DB     ?= $(COV_DIR)/phase14_merged.vdb
+PHASE14_URG_LOG           ?= $(COV_DIR)/phase14_urg.log
+PHASE14_COVERAGE_SUMMARY  ?= $(COV_DIR)/phase14_coverage_merge_summary.txt
+PHASE14_LINE_THRESHOLD    ?= 99.5
+PHASE14_BRANCH_THRESHOLD  ?= 99.0
+PHASE14_TOGGLE_THRESHOLD  ?= 98.0
+PHASE14_FSM_THRESHOLD     ?= 99.0
+PHASE14_FUNC_THRESHOLD    ?= 100.0
+PHASE14_ASSERT_THRESHOLD  ?= 100.0
+
+#===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
 #  phase7:  comp 后 3 个 TEST_NAME 各 run 一次，log 中 UVM_ERROR/FATAL=0
 #  phase7_cov: 同上以 run_cov 追加到 $(COV_DB_DIR)，再 urg → $(COV_DIR)/urgReport
@@ -376,6 +400,28 @@ print-phase13:
 	@echo "PHASE13_PMP_SVA        = $(PHASE13_PMP_SVA)"
 	@echo "PHASE13_SYSMAP_SVA     = $(PHASE13_SYSMAP_SVA)"
 	@echo "PHASE13_DA003          = $(PHASE13_DA003)"
+
+print-phase14:
+	@echo "PHASE14_OWNER          = $(PHASE14_OWNER)"
+	@echo "PHASE14_LIST           = $(PHASE14_LIST)"
+	@echo "PHASE14_SEEDS          = $(PHASE14_SEEDS)"
+	@echo "PHASE14_SUMMARY        = $(PHASE14_SUMMARY)"
+	@echo "PHASE14_REGRESS_JOBS   = $(PHASE14_REGRESS_JOBS)"
+	@echo "PHASE14_COVERAGE_MERGE = $(PHASE14_COVERAGE_MERGE)"
+	@echo "PHASE14_EXIT_GATE      = $(PHASE14_EXIT_GATE)"
+	@echo "PHASE14_ISSUE_TRACKER  = $(PHASE14_ISSUE_TRACKER)"
+	@echo "PHASE14_SIGNOFF_MATRIX = $(PHASE14_SIGNOFF_MATRIX)"
+	@echo "PHASE14_EXCLUDE_V4     = $(PHASE14_EXCLUDE_V4)"
+	@echo "PHASE14_URG_REPORT_DIR = $(PHASE14_URG_REPORT_DIR)"
+	@echo "PHASE14_URG_MERGED_DB  = $(PHASE14_URG_MERGED_DB)"
+	@echo "PHASE14_URG_LOG        = $(PHASE14_URG_LOG)"
+	@echo "PHASE14_COVERAGE_SUMMARY = $(PHASE14_COVERAGE_SUMMARY)"
+	@echo "PHASE14_LINE_THRESHOLD = $(PHASE14_LINE_THRESHOLD)"
+	@echo "PHASE14_BRANCH_THRESHOLD = $(PHASE14_BRANCH_THRESHOLD)"
+	@echo "PHASE14_TOGGLE_THRESHOLD = $(PHASE14_TOGGLE_THRESHOLD)"
+	@echo "PHASE14_FSM_THRESHOLD  = $(PHASE14_FSM_THRESHOLD)"
+	@echo "PHASE14_FUNC_THRESHOLD = $(PHASE14_FUNC_THRESHOLD)"
+	@echo "PHASE14_ASSERT_THRESHOLD = $(PHASE14_ASSERT_THRESHOLD)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -500,7 +546,8 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
         regress regress_smoke regress_nightly print-regress \
-        print-phase11 print-phase12 print-phase13 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp phase13_exit_check phase11_exit_check phase11_show_failures \
+        print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
+        phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         phase12_exit_check phase12_pgflt_urg_probe
 
 all: comp run
@@ -708,6 +755,96 @@ phase13_exit_check:
 	fi; \
 	if [ $$gate_rc -ne 0 ]; then \
 		echo "phase13_exit_check: exit gate returned $$gate_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$gate_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+regress_v4_full: comp
+	@test -f "$(PHASE14_LIST)" || (echo "ERROR: Phase14 list missing: $(PHASE14_LIST)"; exit 2)
+	@set +e; \
+	$(MAKE) regress \
+		LIST="$(PHASE14_LIST)" \
+		REGRESS_MODE=run_cov \
+		REGRESS_NAME=phase14_v4_full \
+		REGRESS_SUMMARY="$(PHASE14_SUMMARY)" \
+		REGRESS_SEEDS="$(PHASE14_SEEDS)" \
+		REGRESS_JOBS="$(PHASE14_REGRESS_JOBS)" \
+		REGRESS_MIN_PASS_RATE=1.0 \
+		VERBOSITY="$(VERBOSITY)" \
+		TIMEOUT="$(TIMEOUT)" \
+		UVM_ERR_ONLY="$(UVM_ERR_ONLY)"; \
+	reg_rc=$$?; \
+	set -e; \
+	set +e; \
+	bash $(PROJECT_DIR)/scripts/phase11_scan_regression_logs.sh "$(PHASE14_LIST)" "$(PHASE14_SEEDS)" "$(LOG_DIR)" cov; \
+	scan_rc=$$?; \
+	set -e; \
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "regress_v4_full: underlying regression returned $$reg_rc"; \
+	fi; \
+	if [ $$scan_rc -ne 0 ]; then \
+		echo "regress_v4_full: scan_logs/check_sim_status returned $$scan_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+phase14_coverage_merge:
+	@test -f "$(PHASE14_COVERAGE_MERGE)" || (echo "ERROR: Phase14 coverage merge missing: $(PHASE14_COVERAGE_MERGE)"; exit 2)
+	@PROJECT_DIR="$(PROJECT_DIR)" \
+	COV_DB_DIR="$(COV_DB_DIR)" \
+	COV_BASE_DB_DIR="$(COV_BASE_DB_DIR)" \
+	COV_DIR="$(COV_DIR)" \
+	LOG_DIR="$(LOG_DIR)" \
+	URG="$(URG)" \
+	URG_REPORT_DIR="$(PHASE14_URG_REPORT_DIR)" \
+	URG_MERGED_DB="$(PHASE14_URG_MERGED_DB)" \
+	URG_LOG="$(PHASE14_URG_LOG)" \
+	URG_ALLOW_CONTEXTLESS_MERGE="$(URG_ALLOW_CONTEXTLESS_MERGE)" \
+	PHASE14_COVERAGE_SUMMARY="$(PHASE14_COVERAGE_SUMMARY)" \
+	PHASE14_ISSUE_TRACKER="$(PHASE14_ISSUE_TRACKER)" \
+	PHASE14_EXCLUDE_V4="$(PHASE14_EXCLUDE_V4)" \
+	bash "$(PHASE14_COVERAGE_MERGE)"
+
+phase14_exit_check:
+	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)
+	@test -f "$(PHASE14_ISSUE_TRACKER)" || (echo "ERROR: Phase14 issue tracker missing: $(PHASE14_ISSUE_TRACKER)"; exit 2)
+	@test -f "$(PHASE14_SIGNOFF_MATRIX)" || (echo "ERROR: Phase14 signoff matrix missing: $(PHASE14_SIGNOFF_MATRIX)"; exit 2)
+	@test -f "$(PHASE14_EXCLUDE_V4)" || (echo "ERROR: Phase14 exclude_v4 missing: $(PHASE14_EXCLUDE_V4)"; exit 2)
+	@echo "=== phase14_exit_check: $(PHASE14_OWNER) full closure gate ==="
+	@set +e; \
+	$(MAKE) regress_v4_full; \
+	reg_rc=$$?; \
+	$(MAKE) phase14_coverage_merge; \
+	cov_rc=$$?; \
+	$(PYTHON) "$(PHASE14_EXIT_GATE)" \
+		--list "$(PHASE14_LIST)" \
+		--seeds "$(PHASE14_SEEDS)" \
+		--summary "$(PHASE14_SUMMARY)" \
+		--log-dir "$(LOG_DIR)" \
+		--urg-report-dir "$(PHASE14_URG_REPORT_DIR)" \
+		--issue-tracker "$(PHASE14_ISSUE_TRACKER)" \
+		--signoff-matrix "$(PHASE14_SIGNOFF_MATRIX)" \
+		--exclude-v4 "$(PHASE14_EXCLUDE_V4)" \
+		--regress-rc "$$reg_rc" \
+		--coverage-merge-rc "$$cov_rc" \
+		--line-threshold "$(PHASE14_LINE_THRESHOLD)" \
+		--branch-threshold "$(PHASE14_BRANCH_THRESHOLD)" \
+		--toggle-threshold "$(PHASE14_TOGGLE_THRESHOLD)" \
+		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
+		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
+		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"; \
+	gate_rc=$$?; \
+	set -e; \
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "phase14_exit_check: regress_v4_full returned $$reg_rc"; \
+	fi; \
+	if [ $$cov_rc -ne 0 ]; then \
+		echo "phase14_exit_check: phase14_coverage_merge returned $$cov_rc"; \
+	fi; \
+	if [ $$gate_rc -ne 0 ]; then \
+		echo "phase14_exit_check: exit gate returned $$gate_rc"; \
 	fi; \
 	if [ $$reg_rc -ne 0 ] || [ $$gate_rc -ne 0 ]; then \
 		exit 1; \
@@ -964,6 +1101,13 @@ help:
 	@echo "  make regress_v4_sysmap_pmp                            # Phase13 functional regression target"
 	@echo "  make phase13_exit_check                               # full Phase13 exit criteria + summary"
 	@echo "  Optional: PHASE13_SVA_MIN_HITS=20 PHASE13_CG_THRESHOLD=50.0"
+	@echo ""
+	@echo "Phase 14 (Closure Owner):"
+	@echo "  make print-phase14                                    # show Phase14 list/seed/signoff defaults"
+	@echo "  make regress_v4_full                                  # 5-seed full/quasi-full run_cov regression"
+	@echo "  make phase14_coverage_merge                           # generate Phase14 URG artifacts"
+	@echo "  make phase14_exit_check                               # full closure gate + signoff matrix checks"
+	@echo "  Optional: PHASE14_SEEDS='97101 97102 97103 97104 97105'"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md Â§5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"

@@ -24,7 +24,7 @@
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28） | ✅ `bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `phase11_b_stage_manifest.csv` / `phase11_bug_hunt_matrix.md` 已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
 | **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | ✅ 完成（2026-04-30） | ✅ `simu/mmu_v4_phase12_list` 22 个 runnable tests × seeds `95101 95102 95103` 纳入 `run_cov` 回归；MAEE SVA / PMP 骨架 / Phase12 白盒 CG / probe / `phase12_exit_check` 门禁完成；历史 URG `No context available` 与覆盖率报告缺失问题已按 debug 记录收口 |
 | **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | ✅ 完成（2026-05-02） | `make phase13_exit_check` PASS；Phase 13 list 55 tests × seeds `96101 96102 96103` 共 165/165 通过；SVA cover 与 13 个 covergroup threshold 均达标；URG `No context available` 记录为非阻塞 tooling issue |
-| **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | ⏳ 未开始（Phase 13 已解锁） | Phase 13 已完成，可进入全量回归收敛与签核准备                                                                                                                   |
+| **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | ⏳ 未开始（Phase 13 已解锁） | Phase 13 已完成，可进入全量回归收敛与签核准备；Phase 14 issue / waiver / tooling tracker 已建档：[MMU_Phase14_IssueTracker.md](MMU_Phase14_IssueTracker.md) |
 
 ---
 
@@ -691,6 +691,35 @@
 
 ---
 
+## Phase 14 Closure Owner Bootstrap (2026-05-02)
+
+Phase 14 execution role has changed from A/B handoff to **Phase14 Closure
+Owner**. Historical A-side / B-side ownership remains for traceability; new
+Phase 14 issues are classified by module / closure area instead of A/B
+assignment.
+
+Bootstrap artifacts:
+
+- `mmu_verification/simu/mmu_v4_full_regression_list`
+- `mmu_verification/simu/mmu_v4_coverage_merge.sh`
+- `mmu_verification/simu/exclude_v4.do`
+- `mmu_verification/scripts/phase14_exit_gate.py`
+- Makefile targets: `print-phase14`, `regress_v4_full`,
+  `phase14_coverage_merge`, `phase14_exit_check`
+- `doc/MMU_Phase14_ClosureOwner.md`
+- `doc/MMU_Phase14_IssueTracker.md`
+- `doc/MMU_Phase14_SignoffMatrix.md`
+
+Review policy:
+
+- Small code / testcase / covergroup / list / gate fixes can be closed directly
+  by the Closure Owner.
+- All Phase 14 waiver / signoff decisions require second review.
+- Any change to signoff criteria, coverage thresholds, waiver policy, or URG
+  fallback policy must be recorded in `doc/MMU_Phase14_IssueTracker.md`.
+
+---
+
 ## Phase 13 详细进度（✅ 已完成 — 2026-05-02 `make phase13_exit_check` PASS）
 
 **负责**：工程师 B（测试 / covergroup / Phase 13 list 主实现）/ 工程师 A（PMP/TWU SVA + SysMap SVA + 回归入口 + DA-003 书面记录）  
@@ -722,7 +751,7 @@ make print-phase13
 make phase13_exit_check
 ```
 
-归档结果：`PHASE13_EXIT_CHECK: PASS`。若后续必须交付 Synopsys URG HTML/text report，再单独处理 `output/coverage/urg_report.log` 中的 `No context available`；该项不阻塞 Phase 13 exit。
+归档结果：`PHASE13_EXIT_CHECK: PASS`。若后续必须交付 Synopsys URG HTML/text report，再单独处理 `output/coverage/urg_report.log` 中的 `No context available`；该项不阻塞 Phase 13 exit，已跟踪为 [MMU-P14-ISSUE-001](MMU_Phase14_IssueTracker.md)。
 
 ### Phase 13 Server Regression Note (2026-05-02)
 

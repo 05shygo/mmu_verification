@@ -1321,6 +1321,7 @@ wave: verdi
 cov:
 	@URG="$(URG)" \
 	COV_DB_DIR="$(COV_DB_DIR)" \
+	COV_BASE_DB_DIR="$(COV_BASE_DB_DIR)" \
 	COV_DIR="$(COV_DIR)" \
 	LOG_DIR="$(LOG_DIR)" \
 	URG_REPORT_DIR="$(URG_REPORT_DIR)" \

@@ -10,7 +10,11 @@ URG_REPORT_DIR="${URG_REPORT_DIR:?URG_REPORT_DIR is required}"
 URG_MERGED_DB="${URG_MERGED_DB:?URG_MERGED_DB is required}"
 URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
-RUN_URG_REPORT_VERSION="2026-04-30-aggregate-vdb-only-v9"
+COV_BASE_DB_DIR="${COV_BASE_DB_DIR:-}"
+if [[ -z "${COV_BASE_DB_DIR}" && "${COV_DB_DIR}" == *.vdb ]]; then
+  COV_BASE_DB_DIR="${COV_DB_DIR%.vdb}.compile.vdb"
+fi
+RUN_URG_REPORT_VERSION="2026-05-02-aggregate-vdb-context-fallback-v10"
 
 die() {
   echo "ERROR: $*" >&2
@@ -72,6 +76,12 @@ validate_aggregate_vdb() {
   fi
 }
 
+has_compile_context_vdb() {
+  [[ -n "${COV_BASE_DB_DIR}" ]] || return 1
+  [[ -d "${COV_BASE_DB_DIR}" ]] || return 1
+  find "${COV_BASE_DB_DIR}" -type f -print -quit | grep -q .
+}
+
 prepare_output() {
   mkdir -p "${COV_DIR}" "$(dirname "${URG_REPORT_DIR}")" "$(dirname "${URG_MERGED_DB}")" "$(dirname "${URG_LOG}")" || \
     die "could not create coverage output directories"
@@ -112,6 +122,38 @@ try_two_step_report() {
   report_is_ready
 }
 
+try_context_direct_report() {
+  has_compile_context_vdb || return 1
+
+  remove_artifact "${URG_REPORT_DIR}"
+  remove_artifact "${URG_MERGED_DB}"
+
+  run_urg "compile-context + aggregate VDB direct report" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" "${COV_DB_DIR}" \
+      -format both \
+      -report "${URG_REPORT_DIR}" || return 1
+
+  report_is_ready
+}
+
+try_context_two_step_report() {
+  has_compile_context_vdb || return 1
+
+  remove_artifact "${URG_REPORT_DIR}"
+  remove_artifact "${URG_MERGED_DB}"
+
+  run_urg "compile-context + aggregate VDB merge" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" "${COV_DB_DIR}" \
+      -dbname "${URG_MERGED_DB}" || return 1
+
+  run_urg "context merged VDB report" \
+    "${URG_BIN}" -full64 -dir "${URG_MERGED_DB}" \
+      -format both \
+      -report "${URG_REPORT_DIR}" || return 1
+
+  report_is_ready
+}
+
 main() {
   prepare_output
   validate_aggregate_vdb
@@ -119,6 +161,11 @@ main() {
   {
     echo "run_urg_report version: ${RUN_URG_REPORT_VERSION}"
     echo "Coverage aggregate DB: ${COV_DB_DIR}"
+    if has_compile_context_vdb; then
+      echo "Coverage compile context DB: ${COV_BASE_DB_DIR}"
+    else
+      echo "Coverage compile context DB: unavailable (${COV_BASE_DB_DIR:-unset})"
+    fi
     if [[ -n "${LOG_DIR}" ]]; then
       echo "Coverage log dir: ${LOG_DIR}"
     fi
@@ -132,6 +179,16 @@ main() {
 
   if try_direct_report; then
     echo "URG report generated from aggregate coverage VDB: ${URG_REPORT_DIR}"
+    return 0
+  fi
+
+  if try_context_direct_report; then
+    echo "URG report generated from aggregate coverage VDB with compile context: ${URG_REPORT_DIR}"
+    return 0
+  fi
+
+  if try_context_two_step_report; then
+    echo "URG report generated from context merged coverage VDB: ${URG_REPORT_DIR}"
     return 0
   fi
 

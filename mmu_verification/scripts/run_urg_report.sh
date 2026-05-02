@@ -10,11 +10,12 @@ URG_REPORT_DIR="${URG_REPORT_DIR:?URG_REPORT_DIR is required}"
 URG_MERGED_DB="${URG_MERGED_DB:?URG_MERGED_DB is required}"
 URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
+URG_ALLOW_CONTEXTLESS_MERGE="${URG_ALLOW_CONTEXTLESS_MERGE:-0}"
 COV_BASE_DB_DIR="${COV_BASE_DB_DIR:-}"
 if [[ -z "${COV_BASE_DB_DIR}" && "${COV_DB_DIR}" == *.vdb ]]; then
   COV_BASE_DB_DIR="${COV_DB_DIR%.vdb}.compile.vdb"
 fi
-RUN_URG_REPORT_VERSION="2026-05-02-aggregate-vdb-context-fallback-v10"
+RUN_URG_REPORT_VERSION="2026-05-02-aggregate-vdb-context-required-v11"
 
 die() {
   echo "ERROR: $*" >&2
@@ -129,7 +130,7 @@ try_context_direct_report() {
   remove_artifact "${URG_MERGED_DB}"
 
   run_urg "compile-context + aggregate VDB direct report" \
-    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" "${COV_DB_DIR}" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" -dir "${COV_DB_DIR}" \
       -format both \
       -report "${URG_REPORT_DIR}" || return 1
 
@@ -143,7 +144,7 @@ try_context_two_step_report() {
   remove_artifact "${URG_MERGED_DB}"
 
   run_urg "compile-context + aggregate VDB merge" \
-    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" "${COV_DB_DIR}" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" -dir "${COV_DB_DIR}" \
       -dbname "${URG_MERGED_DB}" || return 1
 
   run_urg "context merged VDB report" \
@@ -172,6 +173,7 @@ main() {
     if [[ -n "${URG_VDB_GLOB}" ]]; then
       echo "WARNING: URG_VDB_GLOB='${URG_VDB_GLOB}' is ignored by aggregate-VDB flow."
     fi
+    echo "Allow contextless URG merge fallback: ${URG_ALLOW_CONTEXTLESS_MERGE}"
     echo "URG report dir: ${URG_REPORT_DIR}"
     echo "URG merged DB: ${URG_MERGED_DB}"
     echo "URG log: ${URG_LOG}"
@@ -180,6 +182,15 @@ main() {
   if try_direct_report; then
     echo "URG report generated from aggregate coverage VDB: ${URG_REPORT_DIR}"
     return 0
+  fi
+
+  if ! has_compile_context_vdb; then
+    echo
+    echo "ERROR: aggregate VDB direct report failed and compile context VDB is unavailable."
+    echo "       Expected compile context VDB: ${COV_BASE_DB_DIR:-unset}"
+    echo "       Rebuild coverage context with: make clean && make comp"
+    echo "       Then rerun: make cov"
+    return 1
   fi
 
   if try_context_direct_report; then
@@ -192,9 +203,11 @@ main() {
     return 0
   fi
 
-  if try_two_step_report; then
-    echo "URG report generated from aggregate merged coverage VDB: ${URG_REPORT_DIR}"
-    return 0
+  if [[ "${URG_ALLOW_CONTEXTLESS_MERGE}" == "1" ]]; then
+    if try_two_step_report; then
+      echo "URG report generated from aggregate merged coverage VDB: ${URG_REPORT_DIR}"
+      return 0
+    fi
   fi
 
   echo

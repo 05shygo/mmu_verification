@@ -19,8 +19,10 @@ WAIVER_STATUS = {"Waived", "Accepted"}
 ISSUE_RE = re.compile(r"MMU-P14-ISSUE-\d{3}")
 FAIL_PATTERNS = re.compile(
     r"UVM_FATAL\s+@|UVM_ERROR\s+@|Segmentation fault|segmentation violation|SIGSEGV|"
-    r"core dumped|VCS internal error|Internal Error|License checkout failed|"
-    r"Unable to checkout|No such feature exists",
+    r"core dumped|VCS internal error|Internal Error|CovErrorException|"
+    r"unexpected termination|signal:\s+Aborted|During dumping of toggle coverage data|"
+    r"error while loading shared libraries|cannot open shared object file|"
+    r"License checkout failed|Unable to checkout|No such feature exists",
     re.IGNORECASE,
 )
 

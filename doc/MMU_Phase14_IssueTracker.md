@@ -72,6 +72,7 @@ Review policy:
 | MMU-P14-ISSUE-003 | Waiver/Signoff | Coverage report fallback / waiver policy for Phase 14 signoff | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
 | MMU-P14-ISSUE-004 | Makefile/Gate | Phase 14 Closure Owner regression and exit gate infrastructure | Phase 14 | Medium | Phase14 Closure Owner | Open | No |
 | MMU-P14-ISSUE-005 | Waiver/Signoff | Phase 14 signoff matrix and second-review workflow | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
+| MMU-P14-ISSUE-006 | URG/Tooling | VCS coverage dump abort corrupts/invalidates Phase14 run_cov VDB flow | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 
 ---
 
@@ -290,13 +291,82 @@ owned by the Phase14 Closure Owner.
 
 ---
 
+## MMU-P14-ISSUE-006 - VCS Coverage Dump Abort / VDB Cascade
+
+| Field | Value |
+| --- | --- |
+| Type | URG/Tooling |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Open |
+| Blocking | Yes |
+| First observed | 2026-05-03 |
+| Evidence | `test_twu_mask_pmp_wait_all4_97104_cov.log`; Phase14 run_cov console transcript |
+
+### Description
+
+The Phase14 run hit a VCS coverage infrastructure failure after the UVM test
+completed cleanly:
+
+```text
+UVM_ERROR : 0
+UVM_FATAL : 0
+terminate called after throwing an instance of 'CovErrorException*'
+During dumping of toggle coverage data
+An unexpected termination has occurred in ./simv due to a signal: Aborted
+```
+
+After that abort, later `run_cov` invocations failed with:
+
+```text
+ERROR: clean compile-time coverage baseline VDB is missing: output/simv.compile.vdb
+```
+
+This is currently classified as coverage/tooling failure, not a testcase or RTL
+functional failure. The original failing testcase was:
+
+```text
+test_twu_mask_pmp_wait_all4 seed=97104 mode=run_cov
+```
+
+### Impact
+
+The shared aggregate-VDB run is not usable as Phase14 signoff evidence. The
+coverage abort can also create cascading failures that obscure the first real
+root cause.
+
+### Closure Action
+
+The Phase14 Makefile flow now defaults `phase14_exit_check` to the high-parallel
+coverage path:
+
+```bash
+make phase14_exit_check
+```
+
+This invokes `regress_v4_full_parallel`, creates independent testcase/seed
+shards, writes isolated runtime VDBs and logs, enables serial fail-fast inside
+each shard, and then runs `phase14_coverage_merge_parallel`. The per-shard
+compile baseline is hard-linked when possible and copied only as a fallback.
+
+### Signoff Decision
+
+Open and blocking until one of the following is true:
+
+- High-parallel Phase14 closure run completes with 100% regression pass and usable
+  coverage artifacts.
+- A waiver/fallback decision is recorded in this tracker, linked from
+  `doc/MMU_Phase14_SignoffMatrix.md`, and second-reviewed.
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006
 ```
 
 Before final signoff, update this table:
@@ -308,3 +378,4 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-003 | TBD | TBD |
 | MMU-P14-ISSUE-004 | TBD | `make print-phase14`; `python -m py_compile scripts/phase14_exit_gate.py`; closure run evidence |
 | MMU-P14-ISSUE-005 | TBD | `doc/MMU_Phase14_SignoffMatrix.md` |
+| MMU-P14-ISSUE-006 | TBD | High-parallel closure rerun evidence or reviewed coverage waiver |

@@ -50,6 +50,31 @@ Phase 14 issues use closure-area labels:
 - `mmu_verification/simu/exclude_v4.do`
 - `mmu_verification/scripts/phase14_exit_gate.py`
 - Makefile targets: `print-phase14`, `regress_v4_full`,
-  `phase14_coverage_merge`, `phase14_exit_check`
+  `regress_v4_full_sharded`, `phase14_coverage_merge`,
+  `phase14_coverage_merge_sharded`, `phase14_exit_check`
 - `doc/MMU_Phase14_IssueTracker.md`
 - `doc/MMU_Phase14_SignoffMatrix.md`
+
+## Current Closure Run Policy
+
+After `MMU-P14-ISSUE-006`, the default closure entry is:
+
+```bash
+make phase14_exit_check
+```
+
+This target uses the high-parallel test/seed shard VDB flow by default. The
+runner creates one shard per testcase/seed by default, uses isolated runtime
+VDBs and logs, and copies the compile baseline with hard links when possible to
+avoid excessive NFS traffic.
+
+Recommended server command for a 152-CPU host:
+
+```bash
+make phase14_exit_check PHASE14_PARALLEL_JOBS=120
+```
+
+The legacy serial aggregate-VDB target `regress_v4_full` and the 5-way
+per-seed target `regress_v4_full_sharded` remain available for debug, but final
+Phase14 evidence should come from the high-parallel flow unless a
+second-reviewed waiver records a different signoff decision.

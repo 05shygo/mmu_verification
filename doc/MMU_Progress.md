@@ -718,6 +718,34 @@ Review policy:
 - Any change to signoff criteria, coverage thresholds, waiver policy, or URG
   fallback policy must be recorded in `doc/MMU_Phase14_IssueTracker.md`.
 
+## Phase 14 Coverage Abort Triage (2026-05-03)
+
+Server Phase14 `run_cov` hit a VCS coverage dump abort after clean UVM summary:
+
+- `UVM_ERROR=0`, `UVM_FATAL=0`
+- failing run: `test_twu_mask_pmp_wait_all4 seed=97104`
+- signature: `CovErrorException`, `signal: Aborted`, `During dumping of toggle coverage data`
+- cascade: later `run_cov` jobs reported missing `output/simv.compile.vdb`
+
+Closure action:
+
+- Tracked as blocking tooling issue `MMU-P14-ISSUE-006`.
+- `phase14_exit_check` now defaults to the high-parallel testcase/seed shard
+  VDB flow.
+- Each shard uses an isolated runtime VDB and log directory. The compile
+  baseline VDB is hard-linked per shard when possible and copied only as a
+  fallback to reduce NFS traffic.
+- On the 152-CPU server, use `PHASE14_PARALLEL_JOBS=96..144` depending on
+  license/NFS headroom. Default is `nproc - 8`.
+- `run_test.py` supports serial fail-fast so one coverage infrastructure abort
+  does not generate a long cascade of derived failures.
+- `run_cov`, `phase14_exit_gate.py`, and `check_sim_status.sh` now recognize the
+  VCS coverage abort patterns.
+
+Signoff impact: Phase14 remains open. Final evidence must come from a clean
+high-parallel rerun or from a second-reviewed waiver/fallback decision recorded
+in the IssueTracker and SignoffMatrix.
+
 ---
 
 ## Phase 13 详细进度（✅ 已完成 — 2026-05-02 `make phase13_exit_check` PASS）

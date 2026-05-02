@@ -246,6 +246,7 @@ REGRESS_SEEDS             ?= 1
 REGRESS_MIN_PASS_RATE     ?= 1.0
 REGRESS_SUMMARY           ?= $(REGRESS_DIR)/$(REGRESS_NAME)/summary.txt
 REGRESS_JOBS              ?= 1
+REGRESS_FAIL_FAST         ?= 0
 REGRESS_SMOKE_LIST        ?= $(SIMU_DIR)/mmu_smoke_list
 REGRESS_NIGHTLY_LIST      ?= $(SIMU_DIR)/mmu_nightly_list
 REGRESS_SMOKE_SEEDS       ?= 91001
@@ -310,9 +311,14 @@ PHASE14_LIST              ?= $(SIMU_DIR)/mmu_v4_full_regression_list
 PHASE14_SEEDS             ?= 97101 97102 97103 97104 97105
 PHASE14_SUMMARY           ?= $(REGRESS_DIR)/phase14_v4_full/summary.txt
 PHASE14_REGRESS_JOBS      ?= 1
+PHASE14_FAIL_FAST         ?= 1
 PHASE14_COVERAGE_MERGE    ?= $(SIMU_DIR)/mmu_v4_coverage_merge.sh
 PHASE14_EXIT_GATE         ?= $(PROJECT_DIR)/scripts/phase14_exit_gate.py
 PHASE14_MERGE_SHARD_SUMMARIES ?= $(PROJECT_DIR)/scripts/phase14_merge_shard_summaries.py
+PHASE14_MAKE_PARALLEL_SHARDS ?= $(PROJECT_DIR)/scripts/phase14_make_parallel_shards.py
+PHASE14_RUN_PARALLEL_SHARDS ?= $(PROJECT_DIR)/scripts/phase14_run_parallel_shards.py
+PHASE14_MERGE_PARALLEL_SUMMARIES ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_summaries.py
+PHASE14_MERGE_PARALLEL_COVERAGE ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_coverage.py
 PHASE14_ISSUE_TRACKER     ?= $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md
 PHASE14_SIGNOFF_MATRIX    ?= $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md
 PHASE14_EXCLUDE_V4        ?= $(SIMU_DIR)/exclude_v4.do
@@ -322,9 +328,18 @@ PHASE14_URG_LOG           ?= $(COV_DIR)/phase14_urg.log
 PHASE14_COVERAGE_SUMMARY  ?= $(COV_DIR)/phase14_coverage_merge_summary.txt
 PHASE14_SHARD_DIR         ?= $(REGRESS_DIR)/phase14_v4_full_shards
 PHASE14_SHARD_COV_PREFIX  ?= $(OUTPUT_DIR)/phase14_shard
-PHASE14_SHARD_LOG_DIR     ?= $(LOG_DIR)
+PHASE14_SHARD_LOG_DIR     ?= $(OUTPUT_DIR)/phase14_shard_logs
 PHASE14_SHARD_JOBS        ?= 5
 PHASE14_SHARD_URG_LOG     ?= $(COV_DIR)/phase14_sharded_urg.log
+PHASE14_PARALLEL_DIR      ?= $(REGRESS_DIR)/phase14_v4_full_parallel
+PHASE14_PARALLEL_MANIFEST ?= $(PHASE14_PARALLEL_DIR)/manifest.tsv
+PHASE14_PARALLEL_COV_PREFIX ?= $(OUTPUT_DIR)/phase14_parallel
+PHASE14_PARALLEL_LOG_DIR  ?= $(OUTPUT_DIR)/phase14_parallel_logs
+PHASE14_PARALLEL_RUNS_PER_SHARD ?= 1
+PHASE14_PARALLEL_RESERVED_CPUS ?= 8
+PHASE14_PARALLEL_JOBS     ?= $(shell n=$$(command -v nproc >/dev/null 2>&1 && nproc || echo 16); r=$(PHASE14_PARALLEL_RESERVED_CPUS); j=$$((n-r)); if [ $$j -lt 1 ]; then j=1; fi; echo $$j)
+PHASE14_PARALLEL_FAIL_FILE ?= $(PHASE14_PARALLEL_DIR)/.run_failed
+PHASE14_PARALLEL_URG_LOG  ?= $(COV_DIR)/phase14_parallel_urg.log
 PHASE14_REGRESS_RC        ?= 0
 PHASE14_COVERAGE_MERGE_RC ?= 0
 PHASE14_LINE_THRESHOLD    ?= 99.5
@@ -415,9 +430,14 @@ print-phase14:
 	@echo "PHASE14_SEEDS          = $(PHASE14_SEEDS)"
 	@echo "PHASE14_SUMMARY        = $(PHASE14_SUMMARY)"
 	@echo "PHASE14_REGRESS_JOBS   = $(PHASE14_REGRESS_JOBS)"
+	@echo "PHASE14_FAIL_FAST      = $(PHASE14_FAIL_FAST)"
 	@echo "PHASE14_COVERAGE_MERGE = $(PHASE14_COVERAGE_MERGE)"
 	@echo "PHASE14_EXIT_GATE      = $(PHASE14_EXIT_GATE)"
 	@echo "PHASE14_MERGE_SHARD_SUMMARIES = $(PHASE14_MERGE_SHARD_SUMMARIES)"
+	@echo "PHASE14_MAKE_PARALLEL_SHARDS = $(PHASE14_MAKE_PARALLEL_SHARDS)"
+	@echo "PHASE14_RUN_PARALLEL_SHARDS = $(PHASE14_RUN_PARALLEL_SHARDS)"
+	@echo "PHASE14_MERGE_PARALLEL_SUMMARIES = $(PHASE14_MERGE_PARALLEL_SUMMARIES)"
+	@echo "PHASE14_MERGE_PARALLEL_COVERAGE = $(PHASE14_MERGE_PARALLEL_COVERAGE)"
 	@echo "PHASE14_ISSUE_TRACKER  = $(PHASE14_ISSUE_TRACKER)"
 	@echo "PHASE14_SIGNOFF_MATRIX = $(PHASE14_SIGNOFF_MATRIX)"
 	@echo "PHASE14_EXCLUDE_V4     = $(PHASE14_EXCLUDE_V4)"
@@ -430,6 +450,15 @@ print-phase14:
 	@echo "PHASE14_SHARD_LOG_DIR  = $(PHASE14_SHARD_LOG_DIR)"
 	@echo "PHASE14_SHARD_JOBS     = $(PHASE14_SHARD_JOBS)"
 	@echo "PHASE14_SHARD_URG_LOG  = $(PHASE14_SHARD_URG_LOG)"
+	@echo "PHASE14_PARALLEL_DIR   = $(PHASE14_PARALLEL_DIR)"
+	@echo "PHASE14_PARALLEL_MANIFEST = $(PHASE14_PARALLEL_MANIFEST)"
+	@echo "PHASE14_PARALLEL_COV_PREFIX = $(PHASE14_PARALLEL_COV_PREFIX)"
+	@echo "PHASE14_PARALLEL_LOG_DIR = $(PHASE14_PARALLEL_LOG_DIR)"
+	@echo "PHASE14_PARALLEL_RUNS_PER_SHARD = $(PHASE14_PARALLEL_RUNS_PER_SHARD)"
+	@echo "PHASE14_PARALLEL_RESERVED_CPUS = $(PHASE14_PARALLEL_RESERVED_CPUS)"
+	@echo "PHASE14_PARALLEL_JOBS  = $(PHASE14_PARALLEL_JOBS)"
+	@echo "PHASE14_PARALLEL_FAIL_FILE = $(PHASE14_PARALLEL_FAIL_FILE)"
+	@echo "PHASE14_PARALLEL_URG_LOG = $(PHASE14_PARALLEL_URG_LOG)"
 	@echo "PHASE14_REGRESS_RC     = $(PHASE14_REGRESS_RC)"
 	@echo "PHASE14_COVERAGE_MERGE_RC = $(PHASE14_COVERAGE_MERGE_RC)"
 	@echo "PHASE14_LINE_THRESHOLD = $(PHASE14_LINE_THRESHOLD)"
@@ -564,6 +593,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         regress regress_smoke regress_nightly print-regress \
         print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
         regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
+        phase14_make_parallel_shards regress_v4_full_parallel phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         phase12_exit_check phase12_pgflt_urg_probe
 
@@ -581,6 +611,7 @@ print-regress:
 	@echo "REGRESS_MIN_PASS_RATE  = $(REGRESS_MIN_PASS_RATE)"
 	@echo "REGRESS_SUMMARY        = $(REGRESS_SUMMARY)"
 	@echo "REGRESS_JOBS           = $(REGRESS_JOBS)"
+	@echo "REGRESS_FAIL_FAST      = $(REGRESS_FAIL_FAST)"
 	@echo "REGRESS_SMOKE_LIST     = $(REGRESS_SMOKE_LIST)"
 	@echo "REGRESS_NIGHTLY_LIST   = $(REGRESS_NIGHTLY_LIST)"
 	@echo "REGRESS_V3_NAME        = $(REGRESS_V3_NAME)"
@@ -616,7 +647,8 @@ regress: setup
 		--summary "$(REGRESS_SUMMARY)" \
 		--log-dir "$(LOG_DIR)" \
 		--min-pass-rate "$(REGRESS_MIN_PASS_RATE)" \
-		--jobs "$(REGRESS_JOBS)"
+		--jobs "$(REGRESS_JOBS)" \
+		--fail-fast "$(REGRESS_FAIL_FAST)"
 
 regress_smoke: comp
 	@$(MAKE) regress \
@@ -796,6 +828,7 @@ regress_v4_full: comp
 		REGRESS_SUMMARY="$(PHASE14_SUMMARY)" \
 		REGRESS_SEEDS="$(PHASE14_SEEDS)" \
 		REGRESS_JOBS="$(PHASE14_REGRESS_JOBS)" \
+		REGRESS_FAIL_FAST="$(PHASE14_FAIL_FAST)" \
 		REGRESS_MIN_PASS_RATE=1.0 \
 		VERBOSITY="$(VERBOSITY)" \
 		TIMEOUT="$(TIMEOUT)" \
@@ -830,10 +863,25 @@ regress_v4_full_sharded: comp
 	if [ "$$jobs_limit" -lt 1 ] 2>/dev/null; then jobs_limit=1; fi; \
 	for seed in $(PHASE14_SEEDS); do \
 		shard_cov="$(PHASE14_SHARD_COV_PREFIX)_$${seed}.vdb"; \
+		shard_base="$(PHASE14_SHARD_COV_PREFIX)_$${seed}.compile.vdb"; \
+		shard_stamp="$(PHASE14_SHARD_COV_PREFIX)_$${seed}.compile.stamp"; \
 		shard_summary="$(PHASE14_SHARD_DIR)/seed_$${seed}/summary.txt"; \
 		shard_log="$(PHASE14_SHARD_DIR)/seed_$${seed}.driver.log"; \
 		mkdir -p "$(PHASE14_SHARD_DIR)/seed_$${seed}"; \
-		rm -rf "$${shard_cov}"; \
+		rm -rf "$${shard_cov}" "$${shard_base}"; \
+		rm -f "$${shard_stamp}"; \
+		if [ ! -d "$(COV_BASE_DB_DIR)" ] || ! find "$(COV_BASE_DB_DIR)" -type f -print -quit | grep -q .; then \
+			echo "ERROR: missing/empty compile baseline before shard launch: $(COV_BASE_DB_DIR)" | tee "$${shard_log}"; \
+			fail=1; \
+			continue; \
+		fi; \
+		cp -a "$(COV_BASE_DB_DIR)" "$${shard_base}" || { \
+			echo "ERROR: could not create shard compile baseline: $${shard_base}" | tee "$${shard_log}"; \
+			fail=1; \
+			continue; \
+		}; \
+		touch "$${shard_stamp}"; \
+		chmod -R u+w "$${shard_base}" 2>/dev/null || true; \
 		echo "=== launching Phase14 shard seed=$${seed} cov=$${shard_cov} ==="; \
 		( \
 			$(MAKE) regress \
@@ -843,12 +891,14 @@ regress_v4_full_sharded: comp
 				REGRESS_SUMMARY="$${shard_summary}" \
 				REGRESS_SEEDS="$${seed}" \
 				REGRESS_JOBS=1 \
+				REGRESS_FAIL_FAST="$(PHASE14_FAIL_FAST)" \
 				REGRESS_MIN_PASS_RATE=1.0 \
 				VERBOSITY="$(VERBOSITY)" \
 				TIMEOUT="$(TIMEOUT)" \
 				UVM_ERR_ONLY="$(UVM_ERR_ONLY)" \
 				COV_DB_DIR="$${shard_cov}" \
-				COV_BASE_DB_DIR="$(COV_BASE_DB_DIR)" \
+				COV_BASE_DB_DIR="$${shard_base}" \
+				COV_BASELINE_STAMP="$${shard_stamp}" \
 				LOG_DIR="$(PHASE14_SHARD_LOG_DIR)" \
 				> "$${shard_log}" 2>&1; \
 			rc=$$?; \
@@ -891,6 +941,54 @@ regress_v4_full_sharded: comp
 	merge_rc=$$?; \
 	set -e; \
 	if [ $$merge_rc -ne 0 ] || [ -f "$(PHASE14_SHARD_DIR)/.run_failed" ]; then \
+		exit 1; \
+	fi
+
+phase14_make_parallel_shards:
+	@test -f "$(PHASE14_LIST)" || (echo "ERROR: Phase14 list missing: $(PHASE14_LIST)"; exit 2)
+	@test -f "$(PHASE14_MAKE_PARALLEL_SHARDS)" || (echo "ERROR: Phase14 parallel shard maker missing: $(PHASE14_MAKE_PARALLEL_SHARDS)"; exit 2)
+	@$(PYTHON) "$(PHASE14_MAKE_PARALLEL_SHARDS)" \
+		--list "$(PHASE14_LIST)" \
+		--seeds "$(PHASE14_SEEDS)" \
+		--shard-dir "$(PHASE14_PARALLEL_DIR)" \
+		--cov-prefix "$(PHASE14_PARALLEL_COV_PREFIX)" \
+		--log-dir "$(PHASE14_PARALLEL_LOG_DIR)" \
+		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
+		--runs-per-shard "$(PHASE14_PARALLEL_RUNS_PER_SHARD)"
+
+regress_v4_full_parallel: comp phase14_make_parallel_shards
+	@test -f "$(PHASE14_RUN_PARALLEL_SHARDS)" || (echo "ERROR: Phase14 parallel shard runner missing: $(PHASE14_RUN_PARALLEL_SHARDS)"; exit 2)
+	@test -f "$(PHASE14_MERGE_PARALLEL_SUMMARIES)" || (echo "ERROR: Phase14 parallel summary merger missing: $(PHASE14_MERGE_PARALLEL_SUMMARIES)"; exit 2)
+	@echo "=== regress_v4_full_parallel: jobs=$(PHASE14_PARALLEL_JOBS), runs_per_shard=$(PHASE14_PARALLEL_RUNS_PER_SHARD) ==="
+	@set +e; \
+	$(PYTHON) "$(PHASE14_RUN_PARALLEL_SHARDS)" \
+		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
+		--project-dir "$(PROJECT_DIR)" \
+		--cov-base-db-dir "$(COV_BASE_DB_DIR)" \
+		--jobs "$(PHASE14_PARALLEL_JOBS)" \
+		--make "$(MAKE)" \
+		--verbosity "$(VERBOSITY)" \
+		--timeout "$(TIMEOUT)" \
+		--uvm-err-only "$(UVM_ERR_ONLY)" \
+		--fail-fast "$(PHASE14_FAIL_FAST)" \
+		--fail-file "$(PHASE14_PARALLEL_FAIL_FILE)"; \
+	run_rc=$$?; \
+	$(PYTHON) "$(PHASE14_MERGE_PARALLEL_SUMMARIES)" \
+		--list "$(PHASE14_LIST)" \
+		--seeds "$(PHASE14_SEEDS)" \
+		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
+		--summary "$(PHASE14_SUMMARY)" \
+		--mode run_cov \
+		--min-pass-rate 1.0; \
+	merge_rc=$$?; \
+	set -e; \
+	if [ $$run_rc -ne 0 ]; then \
+		echo "regress_v4_full_parallel: one or more parallel shards failed; see $(PHASE14_PARALLEL_FAIL_FILE) and $(PHASE14_PARALLEL_DIR)/shard_*/driver.log"; \
+	fi; \
+	if [ $$merge_rc -ne 0 ]; then \
+		echo "regress_v4_full_parallel: parallel summary merge returned $$merge_rc"; \
+	fi; \
+	if [ $$run_rc -ne 0 ] || [ $$merge_rc -ne 0 ]; then \
 		exit 1; \
 	fi
 
@@ -938,6 +1036,17 @@ phase14_coverage_merge_sharded:
 		exit 1; \
 	fi'
 
+phase14_coverage_merge_parallel:
+	@test -f "$(PHASE14_PARALLEL_MANIFEST)" || (echo "ERROR: Phase14 parallel manifest missing: $(PHASE14_PARALLEL_MANIFEST)"; exit 2)
+	@test -f "$(PHASE14_MERGE_PARALLEL_COVERAGE)" || (echo "ERROR: Phase14 parallel coverage merger missing: $(PHASE14_MERGE_PARALLEL_COVERAGE)"; exit 2)
+	@mkdir -p "$(COV_DIR)" "$(dir $(PHASE14_URG_REPORT_DIR))" "$(dir $(PHASE14_URG_MERGED_DB))"
+	@$(PYTHON) "$(PHASE14_MERGE_PARALLEL_COVERAGE)" \
+		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
+		--urg "$(URG)" \
+		--merged-db "$(PHASE14_URG_MERGED_DB)" \
+		--report-dir "$(PHASE14_URG_REPORT_DIR)" \
+		--log "$(PHASE14_PARALLEL_URG_LOG)"
+
 phase14_gate_sharded:
 	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)
 	@test -f "$(PHASE14_ISSUE_TRACKER)" || (echo "ERROR: Phase14 issue tracker missing: $(PHASE14_ISSUE_TRACKER)"; exit 2)
@@ -948,6 +1057,29 @@ phase14_gate_sharded:
 		--seeds "$(PHASE14_SEEDS)" \
 		--summary "$(PHASE14_SUMMARY)" \
 		--log-dir "$(PHASE14_SHARD_LOG_DIR)" \
+		--urg-report-dir "$(PHASE14_URG_REPORT_DIR)" \
+		--issue-tracker "$(PHASE14_ISSUE_TRACKER)" \
+		--signoff-matrix "$(PHASE14_SIGNOFF_MATRIX)" \
+		--exclude-v4 "$(PHASE14_EXCLUDE_V4)" \
+		--regress-rc "$(PHASE14_REGRESS_RC)" \
+		--coverage-merge-rc "$(PHASE14_COVERAGE_MERGE_RC)" \
+		--line-threshold "$(PHASE14_LINE_THRESHOLD)" \
+		--branch-threshold "$(PHASE14_BRANCH_THRESHOLD)" \
+		--toggle-threshold "$(PHASE14_TOGGLE_THRESHOLD)" \
+		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
+		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
+		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"
+
+phase14_gate_parallel:
+	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)
+	@test -f "$(PHASE14_ISSUE_TRACKER)" || (echo "ERROR: Phase14 issue tracker missing: $(PHASE14_ISSUE_TRACKER)"; exit 2)
+	@test -f "$(PHASE14_SIGNOFF_MATRIX)" || (echo "ERROR: Phase14 signoff matrix missing: $(PHASE14_SIGNOFF_MATRIX)"; exit 2)
+	@test -f "$(PHASE14_EXCLUDE_V4)" || (echo "ERROR: Phase14 exclude_v4 missing: $(PHASE14_EXCLUDE_V4)"; exit 2)
+	$(PYTHON) "$(PHASE14_EXIT_GATE)" \
+		--list "$(PHASE14_LIST)" \
+		--seeds "$(PHASE14_SEEDS)" \
+		--summary "$(PHASE14_SUMMARY)" \
+		--log-dir "$(PHASE14_PARALLEL_LOG_DIR)" \
 		--urg-report-dir "$(PHASE14_URG_REPORT_DIR)" \
 		--issue-tracker "$(PHASE14_ISSUE_TRACKER)" \
 		--signoff-matrix "$(PHASE14_SIGNOFF_MATRIX)" \
@@ -1004,22 +1136,22 @@ phase14_exit_check_sharded:
 		exit 1; \
 	fi
 
-phase14_exit_check:
+phase14_exit_check_parallel:
 	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)
 	@test -f "$(PHASE14_ISSUE_TRACKER)" || (echo "ERROR: Phase14 issue tracker missing: $(PHASE14_ISSUE_TRACKER)"; exit 2)
 	@test -f "$(PHASE14_SIGNOFF_MATRIX)" || (echo "ERROR: Phase14 signoff matrix missing: $(PHASE14_SIGNOFF_MATRIX)"; exit 2)
 	@test -f "$(PHASE14_EXCLUDE_V4)" || (echo "ERROR: Phase14 exclude_v4 missing: $(PHASE14_EXCLUDE_V4)"; exit 2)
-	@echo "=== phase14_exit_check: $(PHASE14_OWNER) full closure gate ==="
+	@echo "=== phase14_exit_check_parallel: $(PHASE14_OWNER) high-parallel closure gate ==="
 	@set +e; \
-	$(MAKE) regress_v4_full; \
+	$(MAKE) regress_v4_full_parallel; \
 	reg_rc=$$?; \
-	$(MAKE) phase14_coverage_merge; \
+	$(MAKE) phase14_coverage_merge_parallel; \
 	cov_rc=$$?; \
 	$(PYTHON) "$(PHASE14_EXIT_GATE)" \
 		--list "$(PHASE14_LIST)" \
 		--seeds "$(PHASE14_SEEDS)" \
 		--summary "$(PHASE14_SUMMARY)" \
-		--log-dir "$(LOG_DIR)" \
+		--log-dir "$(PHASE14_PARALLEL_LOG_DIR)" \
 		--urg-report-dir "$(PHASE14_URG_REPORT_DIR)" \
 		--issue-tracker "$(PHASE14_ISSUE_TRACKER)" \
 		--signoff-matrix "$(PHASE14_SIGNOFF_MATRIX)" \
@@ -1035,10 +1167,53 @@ phase14_exit_check:
 	gate_rc=$$?; \
 	set -e; \
 	if [ $$reg_rc -ne 0 ]; then \
-		echo "phase14_exit_check: regress_v4_full returned $$reg_rc"; \
+		echo "phase14_exit_check_parallel: regress_v4_full_parallel returned $$reg_rc"; \
 	fi; \
 	if [ $$cov_rc -ne 0 ]; then \
-		echo "phase14_exit_check: phase14_coverage_merge returned $$cov_rc"; \
+		echo "phase14_exit_check_parallel: phase14_coverage_merge_parallel returned $$cov_rc"; \
+	fi; \
+	if [ $$gate_rc -ne 0 ]; then \
+		echo "phase14_exit_check_parallel: exit gate returned $$gate_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$gate_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+phase14_exit_check:
+	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)
+	@test -f "$(PHASE14_ISSUE_TRACKER)" || (echo "ERROR: Phase14 issue tracker missing: $(PHASE14_ISSUE_TRACKER)"; exit 2)
+	@test -f "$(PHASE14_SIGNOFF_MATRIX)" || (echo "ERROR: Phase14 signoff matrix missing: $(PHASE14_SIGNOFF_MATRIX)"; exit 2)
+	@test -f "$(PHASE14_EXCLUDE_V4)" || (echo "ERROR: Phase14 exclude_v4 missing: $(PHASE14_EXCLUDE_V4)"; exit 2)
+	@echo "=== phase14_exit_check: $(PHASE14_OWNER) full closure gate (parallel default) ==="
+	@set +e; \
+	$(MAKE) regress_v4_full_parallel; \
+	reg_rc=$$?; \
+	$(MAKE) phase14_coverage_merge_parallel; \
+	cov_rc=$$?; \
+	$(PYTHON) "$(PHASE14_EXIT_GATE)" \
+		--list "$(PHASE14_LIST)" \
+		--seeds "$(PHASE14_SEEDS)" \
+		--summary "$(PHASE14_SUMMARY)" \
+		--log-dir "$(PHASE14_PARALLEL_LOG_DIR)" \
+		--urg-report-dir "$(PHASE14_URG_REPORT_DIR)" \
+		--issue-tracker "$(PHASE14_ISSUE_TRACKER)" \
+		--signoff-matrix "$(PHASE14_SIGNOFF_MATRIX)" \
+		--exclude-v4 "$(PHASE14_EXCLUDE_V4)" \
+		--regress-rc "$$reg_rc" \
+		--coverage-merge-rc "$$cov_rc" \
+		--line-threshold "$(PHASE14_LINE_THRESHOLD)" \
+		--branch-threshold "$(PHASE14_BRANCH_THRESHOLD)" \
+		--toggle-threshold "$(PHASE14_TOGGLE_THRESHOLD)" \
+		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
+		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
+		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"; \
+	gate_rc=$$?; \
+	set -e; \
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "phase14_exit_check: regress_v4_full_parallel returned $$reg_rc"; \
+	fi; \
+	if [ $$cov_rc -ne 0 ]; then \
+		echo "phase14_exit_check: phase14_coverage_merge_parallel returned $$cov_rc"; \
 	fi; \
 	if [ $$gate_rc -ne 0 ]; then \
 		echo "phase14_exit_check: exit gate returned $$gate_rc"; \
@@ -1301,14 +1476,18 @@ help:
 	@echo ""
 	@echo "Phase 14 (Closure Owner):"
 	@echo "  make print-phase14                                    # show Phase14 list/seed/signoff defaults"
-	@echo "  make regress_v4_full                                  # 5-seed full/quasi-full run_cov regression"
+	@echo "  make regress_v4_full                                  # legacy serial aggregate-VDB regression"
 	@echo "  make regress_v4_full_sharded PHASE14_SHARD_JOBS=5    # parallel per-seed run_cov shards"
+	@echo "  make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=144 # high-parallel test/seed shards"
 	@echo "  make phase14_coverage_merge_sharded                  # URG merge for shard VDBs"
+	@echo "  make phase14_coverage_merge_parallel                 # URG merge for high-parallel VDBs"
 	@echo "  make phase14_gate_sharded                            # gate-only check for sharded artifacts"
+	@echo "  make phase14_gate_parallel                           # gate-only check for high-parallel artifacts"
 	@echo "  make phase14_exit_check_sharded                      # sharded regression + merge + gate"
+	@echo "  make phase14_exit_check_parallel                     # high-parallel regression + merge + gate"
 	@echo "  make phase14_coverage_merge                           # generate Phase14 URG artifacts"
-	@echo "  make phase14_exit_check                               # full closure gate + signoff matrix checks"
-	@echo "  Optional: PHASE14_SEEDS='97101 97102 97103 97104 97105'"
+	@echo "  make phase14_exit_check                               # default Phase14 closure gate, uses high-parallel VDBs"
+	@echo "  Optional: PHASE14_PARALLEL_JOBS=96..144 PHASE14_PARALLEL_RUNS_PER_SHARD=1 PHASE14_FAIL_FAST=1"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md Â§5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"
@@ -1609,9 +1788,9 @@ run_cov: setup
 			echo "ERROR: run_cov did not produce a non-empty coverage log: $$cov_log"; \
 			exit 1; \
 		fi; \
-		if grep -Eiq 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log"; then \
+		if grep -Eiq 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|CovErrorException|unexpected termination|signal: Aborted|During dumping of toggle coverage data|error while loading shared libraries|cannot open shared object file|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log"; then \
 			echo "ERROR: coverage log contains fatal/crash/license pattern: $$cov_log"; \
-			grep -Ein -m 5 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log" | sed 's/^/  /'; \
+			grep -Ein -m 5 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|CovErrorException|unexpected termination|signal: Aborted|During dumping of toggle coverage data|error while loading shared libraries|cannot open shared object file|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log" | sed 's/^/  /'; \
 			exit 1; \
 		fi; \
 		if [ ! -d "$(COV_DB_DIR)" ]; then \

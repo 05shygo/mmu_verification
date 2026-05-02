@@ -41,9 +41,9 @@ must have a non-empty reviewer plus `Reviewed` or `Approved` review status.
 
 | ID | VerificationPlan Section 9 criterion | Status | Evidence | Issue / Waiver | Reviewer | Review status |
 | --- | --- | --- | --- | --- | --- | --- |
-| S1 | nightly_full / Phase14 full list 5 seeds 100% pass | Open | `output/regression/phase14_v4_full/summary.txt` | - | - | - |
-| S2 | weekly_coverage / latest coverage run has no regression | Open | `output/coverage/phase14_urgReport` or reviewed fallback | MMU-P14-ISSUE-001, MMU-P14-ISSUE-003 | TBD | TBD |
-| S3 | Code coverage: line >=99.5%, branch >=99%, toggle >=98%, FSM >=99% | Open | `output/coverage/phase14_urgReport` | MMU-P14-ISSUE-003 if waiver is needed | TBD | TBD |
+| S1 | nightly_full / Phase14 full list 5 seeds 100% pass | Open | `output/regression/phase14_v4_full/summary.txt` from high-parallel rerun | MMU-P14-ISSUE-006 until rerun passes | TBD | TBD |
+| S2 | weekly_coverage / latest coverage run has no regression | Open | `output/coverage/phase14_urgReport` or reviewed fallback from high-parallel rerun | MMU-P14-ISSUE-001, MMU-P14-ISSUE-003, MMU-P14-ISSUE-006 | TBD | TBD |
+| S3 | Code coverage: line >=99.5%, branch >=99%, toggle >=98%, FSM >=99% | Open | `output/coverage/phase14_urgReport` from high-parallel rerun | MMU-P14-ISSUE-003, MMU-P14-ISSUE-006 if waiver is needed | TBD | TBD |
 | S4 | Functional coverage 100% | Open | `output/coverage/phase14_urgReport` and/or reviewed log-summary fallback | MMU-P14-ISSUE-003 if fallback/waiver is used | TBD | TBD |
 | S5 | Assertion coverage 100% triggered, 0 fail | Open | `output/coverage/phase14_urgReport`; SVA cover summaries | MMU-P14-ISSUE-003 if fallback/waiver is used | TBD | TBD |
 | S6 | P0/P1 open bugs are 0 | Open | `doc/MMU_Phase14_IssueTracker.md`; R19/R20/DA-003 records | MMU-P14-ISSUE-002, MMU-P14-ISSUE-003 | TBD | TBD |
@@ -59,8 +59,8 @@ Before final signoff, update this section with concrete command results.
 
 | Artifact | Path / command | Final result |
 | --- | --- | --- |
-| Full regression | `make regress_v4_full` | TBD |
-| Coverage merge | `make phase14_coverage_merge` | TBD |
+| Full regression | `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=<N>` | TBD |
+| Coverage merge | `make phase14_coverage_merge_parallel` | TBD |
 | Exit gate | `make phase14_exit_check` | TBD |
 | Full regression summary | `output/regression/phase14_v4_full/summary.txt` | TBD |
 | Coverage report | `output/coverage/phase14_urgReport` | TBD |

@@ -115,6 +115,10 @@ def parse_seed_list(raw: str) -> List[str]:
     return seeds or ["1"]
 
 
+def parse_bool(raw: str) -> bool:
+    return raw.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
 def combine_plus_args(global_plus_args: str, local_plus_args: str) -> str:
     parts = [part.strip() for part in (global_plus_args, local_plus_args) if part and part.strip()]
     return " ".join(parts)
@@ -348,6 +352,7 @@ def run_regression(
     summary_path: Path,
     min_pass_rate: float,
     jobs: int = 1,
+    fail_fast: bool = False,
 ) -> int:
     entries = load_regression_list(list_path)
     runs: List[Tuple[int, RegressionEntry, str, str]] = []
@@ -381,7 +386,15 @@ def run_regression(
         for item in runs:
             index, result = run_indexed(item)
             results_by_index[index] = result
+            if fail_fast and not result.effective_pass:
+                print(
+                    "=== regression fail-fast: "
+                    f"{result.test_name} seed={result.seed} rc={result.return_code} ==="
+                )
+                break
     else:
+        if fail_fast:
+            print("WARNING: --fail-fast is ignored when --jobs is greater than 1")
         print(f"=== regression parallel jobs={jobs} total_runs={len(runs)} ===")
         with ThreadPoolExecutor(max_workers=jobs) as executor:
             future_to_index = {executor.submit(run_indexed, item): item[0] for item in runs}
@@ -427,6 +440,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--log-dir", default=str(LOG_DIR), help="Directory where make run targets write logs")
     parser.add_argument("--min-pass-rate", type=float, default=1.0, help="Minimum pass rate before returning failure")
     parser.add_argument("--jobs", type=int, default=1, help="Number of regression runs to execute in parallel")
+    parser.add_argument("--fail-fast", default="0", help="Stop a serial regression after the first ineffective run")
     parser.add_argument("--list", action="store_true", help="List registered tests and directory aliases")
     return parser
 
@@ -461,6 +475,7 @@ def main() -> int:
                 summary_path=summary,
                 min_pass_rate=args.min_pass_rate,
                 jobs=args.jobs,
+                fail_fast=parse_bool(args.fail_fast),
             )
         except (FileNotFoundError, RuntimeError, ValueError) as exc:
             print(f"ERROR: {exc}", file=sys.stderr)

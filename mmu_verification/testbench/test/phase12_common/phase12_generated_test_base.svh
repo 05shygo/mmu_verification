@@ -201,9 +201,9 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     #120ns;
     fork
       phase12_drive_ifu_rr(region_base,                  npage, n_txn);
-      phase12_drive_lsu_rr(region_base + 39'h4_0000,    npage, n_txn, LSU_PIPE0, 1'b0);
-      phase12_drive_lsu_rr(region_base + 39'h8_0000,    npage, n_txn, LSU_PIPE1, 1'b1);
-      phase12_drive_lsu_rr(region_base + 39'hC_0000,    npage, n_txn, LSU_PIPE2, 1'b0);
+      phase12_drive_lsu_rr(region_base + 39'h0200_0000, npage, n_txn, LSU_PIPE0, 1'b0);
+      phase12_drive_lsu_rr(region_base + 39'h0400_0000, npage, n_txn, LSU_PIPE1, 1'b1);
+      phase12_drive_lsu_rr(region_base + 39'h0600_0000, npage, n_txn, LSU_PIPE2, 1'b0);
     join
     phase12_set_pmp_allow_all();
     #280ns;

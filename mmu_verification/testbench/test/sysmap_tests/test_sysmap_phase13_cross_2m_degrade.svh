@@ -14,7 +14,7 @@ class test_sysmap_phase13_cross_2m_degrade extends phase12_generated_test_base;
     p12_seq_desc = "2M SysMap boundary cross degrades CSR refill to 4K";
     p12_checker = "sva_sysmap_cross_degrade_2m + cg_sysmap_cross_2m";
     p12_reviewer = "A+B";
-    num_txn = 96; m_post_drain = 1000ns;
+    num_txn = 192; m_post_drain = 1600ns;
   endfunction
 
   virtual task run_test_body();
@@ -24,10 +24,11 @@ class test_sysmap_phase13_cross_2m_degrade extends phase12_generated_test_base;
     start_cp0_seq_by_name("cp0_maee_disable_seq");
     phase12_set_pmp_allow_all();
     phase12_map_hugepage_fixture();
-    repeat (8) begin
+    repeat (16) begin
       phase12_cp0_tlb_allinv();
-      phase12_drive_lsu_rr(39'h0_1200_0000, 1, 32, LSU_PIPE0, 1'b0, 1'b1);
-      phase12_drive_lsu_rr(39'h0_1200_1000, 1, 32, LSU_PIPE1, 1'b1, 1'b1);
+      phase12_drive_ifu_rr(39'h0_1200_0000, 1, 24, 1'b1);
+      phase12_drive_lsu_rr(39'h0_1200_0000, 1, 48, LSU_PIPE0, 1'b0, 1'b1);
+      phase12_drive_lsu_rr(39'h0_1200_1000, 1, 48, LSU_PIPE1, 1'b1, 1'b1);
     end
     #(m_post_drain);
   endtask

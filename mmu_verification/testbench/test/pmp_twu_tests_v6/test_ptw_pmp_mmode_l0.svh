@@ -14,7 +14,7 @@ class test_ptw_pmp_mmode_l0 extends phase12_generated_test_base;
     p12_seq_desc = "PTW PMP X/W deny plus MPRV M-mode L=0 bypass";
     p12_checker = "cp_pmp_fetch_uses_x_perm + cp_pmp_store_uses_w_perm + cp_pmp_mmode_l0_bypass";
     p12_reviewer = "A+B";
-    num_txn = 320; m_post_drain = 1600ns;
+    num_txn = 640; m_post_drain = 2400ns;
   endfunction
 
   protected virtual task set_phase13_ptw_pmp_flg(input bit [3:0] ptw_flg);
@@ -51,31 +51,44 @@ class test_ptw_pmp_mmode_l0 extends phase12_generated_test_base;
 
     set_phase13_priv_s();
     set_phase13_mprv_m(1'b0);
-    phase12_map_4k_window(39'h0_E200_0000, 96, 40'h0_B000_0000);
-    phase12_map_4k_window(39'h0_E300_0000, 96, 40'h0_B100_0000);
-    phase12_map_4k_window(39'h0_E400_0000, 96, 40'h0_B200_0000);
+    phase12_map_4k_window(39'h0_E200_0000, 128, 40'h0_B000_0000);
+    phase12_map_4k_window(39'h0_E300_0000, 128, 40'h0_B100_0000);
+    phase12_map_4k_window(39'h0_E400_0000, 128, 40'h0_B200_0000);
+    phase12_map_4k_window(39'h0_E500_0000, 128, 40'h0_B300_0000);
+    phase12_map_4k_window(39'h0_E600_0000, 128, 40'h0_B400_0000);
 
     // X=0, R/W=1: fetch-originated PTW PMP denies.
     set_phase13_ptw_pmp_flg(4'h3);
     phase12_cp0_tlb_allinv();
-    phase12_drive_ifu_rr(39'h0_E200_0000, 96, 240, 1'b1);
+    phase12_drive_ifu_rr(39'h0_E200_0000, 128, 384, 1'b1);
 
     // W=0, R/X=1: store-originated PTW PMP denies.
     set_phase13_priv_s();
     set_phase13_mprv_m(1'b0);
     set_phase13_ptw_pmp_flg(4'h5);
-    phase12_cp0_tlb_allinv();
-    phase12_drive_lsu_rr(39'h0_E300_0000, 96, 320, LSU_PIPE1, 1'b1, 1'b1);
+    repeat (3) begin
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_E300_0000, 128, 256, LSU_PIPE1, 1'b1, 1'b1);
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_E500_0000, 128, 256, LSU_PIPE1, 1'b1, 1'b1);
+    end
 
     // R=0 with L=0 while effective privilege is M: deny condition is present,
     // but M-mode L0 bypass must suppress the deny.
     set_phase13_priv_s();
     set_phase13_mprv_m(1'b1);
     set_phase13_ptw_pmp_flg(4'h6);
-    phase12_cp0_tlb_allinv();
-    repeat (4) begin
+    repeat (5) begin
       phase12_cp0_tlb_allinv();
-      phase12_drive_lsu_rr(39'h0_E400_0000, 96, 240, LSU_PIPE0, 1'b0, 1'b1);
+      phase12_drive_lsu_rr(39'h0_E400_0000, 128, 256, LSU_PIPE0, 1'b0, 1'b1);
+    end
+
+    // W=0 with L=0 in effective M-mode exercises the store side of the same
+    // bypass rule and also stabilizes the store-permission coverpoint.
+    set_phase13_ptw_pmp_flg(4'h5);
+    repeat (5) begin
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_E600_0000, 128, 256, LSU_PIPE1, 1'b1, 1'b1);
     end
 
     set_phase13_mprv_m(1'b0);

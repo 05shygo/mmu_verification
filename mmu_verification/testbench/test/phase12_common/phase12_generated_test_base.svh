@@ -162,12 +162,18 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     m_env.m_pt_mem.m_builder.map_1g(
       .va(39'h0_8000_0000), .pa(40'h0_8000_0000),
       .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env.m_pt_mem.m_builder.map_1g(
+      .va(39'h0_C000_0000), .pa(40'h0_C000_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
 
     m_env.m_pt_mem.m_builder.map_2m(
       .va(39'h0_2200_0000), .pa(40'h0_0200_0000),
       .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
     m_env.m_pt_mem.m_builder.map_2m(
       .va(39'h0_2600_0000), .pa(40'h0_0600_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env.m_pt_mem.m_builder.map_2m(
+      .va(39'h0_1200_0000), .pa(40'h0_1200_0000),
       .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
 
     m_env.m_pt_mem.m_builder.map_4k(

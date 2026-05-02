@@ -26,6 +26,8 @@ module mmu_sysmap_sva (
   logic csr_refill_from_sysmap;
   logic sysmap_cross_1g;
   logic sysmap_cross_2m;
+  logic sysmap_cross_1g_d;
+  logic sysmap_cross_2m_d;
 
   int unsigned cp_csr_refill_flg_matches_sysmap_hits;
   int unsigned cp_sysmap_cross_degrade_hits;
@@ -35,6 +37,16 @@ module mmu_sysmap_sva (
   assign csr_refill_from_sysmap = csr_refill_req && !cp0_mmu_maee;
   assign sysmap_cross_1g       = twu_crs2_1g && twu_csr_cross;
   assign sysmap_cross_2m       = twu_crs2_2m && twu_csr_cross;
+
+  always_ff @(posedge twu_clk or negedge cpurst_b) begin
+    if (!cpurst_b || tlboper_ptw_abort) begin
+      sysmap_cross_1g_d <= 1'b0;
+      sysmap_cross_2m_d <= 1'b0;
+    end else begin
+      sysmap_cross_1g_d <= sysmap_cross_1g;
+      sysmap_cross_2m_d <= sysmap_cross_2m;
+    end
+  end
 
   // Verification intent: MAEE=0 CSR refill data must carry the current SysMap
   // attribute bits at the refill encoding point.
@@ -60,8 +72,8 @@ module mmu_sysmap_sva (
 
   cp_sysmap_cross_degrade: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (sysmap_cross_1g ##1 (csr_refill_pgs == 3'b010))
-    or (sysmap_cross_2m ##1 (csr_refill_pgs == 3'b001))) begin
+    (sysmap_cross_1g_d && (csr_refill_pgs == 3'b010))
+    || (sysmap_cross_2m_d && (csr_refill_pgs == 3'b001))) begin
     cp_sysmap_cross_degrade_hits++;
   end
 

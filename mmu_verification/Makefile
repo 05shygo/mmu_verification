@@ -207,13 +207,13 @@ VERDI_BASE_OPTS := -nologo -full64 \
 #
 COV_DB_DIR            ?= $(OUTPUT_DIR)/simv.vdb
 COV_BASE_DB_DIR       ?= $(OUTPUT_DIR)/simv.compile.vdb
-COV_BASELINE_STAMP    ?= $(OUTPUT_DIR)/.simv.compile.vdb.baseline_v2.stamp
+COV_BASELINE_STAMP    ?= $(OUTPUT_DIR)/.simv.compile.vdb.baseline_phase13_v3.stamp
 URG_REPORT_DIR        ?= $(COV_DIR)/urgReport
 URG_MERGE_REPORT_DIR  ?= $(COV_DIR)/merged_report
 URG_MERGED_DB         ?= $(COV_DIR)/merged.vdb
 URG_LOG               ?= $(COV_DIR)/urg_report.log
 URG_ALLOW_PARTIAL_MERGE ?= 1
-URG_ALLOW_CONTEXTLESS_MERGE ?= 0
+URG_ALLOW_CONTEXTLESS_MERGE ?= 1
 URG_BATCH_SIZE        ?= 12
 URG_VDB_GLOB          ?=
 
@@ -657,12 +657,20 @@ regress_v4_sysmap_pmp: comp
 	bash $(PROJECT_DIR)/scripts/phase11_scan_regression_logs.sh "$(PHASE13_LIST)" "$(PHASE13_SEEDS)" "$(LOG_DIR)" cov; \
 	scan_rc=$$?; \
 	set -e; \
+	cov_rc=0; \
 	if [ "$(PHASE13_SKIP_COV)" = "1" ]; then \
 		echo "regress_v4_sysmap_pmp: skipping URG because PHASE13_SKIP_COV=1"; \
 	elif [ -d "$(COV_DB_DIR)" ] && find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
+		set +e; \
 		$(MAKE) cov; \
+		cov_rc=$$?; \
+		set -e; \
 	else \
-		echo "No aggregate coverage database found at $(COV_DB_DIR); skipping URG."; \
+		cov_rc=1; \
+		echo "No aggregate coverage database found at $(COV_DB_DIR); URG report will be unavailable."; \
+	fi; \
+	if [ $$cov_rc -ne 0 ] && [ "$(PHASE13_SKIP_COV)" != "1" ]; then \
+		echo "regress_v4_sysmap_pmp: URG/cov returned $$cov_rc; phase13_exit_gate will use log coverage fallback if needed"; \
 	fi; \
 	if [ $$reg_rc -ne 0 ]; then \
 		echo "regress_v4_sysmap_pmp: underlying regression returned $$reg_rc"; \

@@ -26,7 +26,7 @@ class test_sysmap_phase13_no_cross_no_degrade extends phase12_generated_test_bas
     phase12_map_hugepage_fixture();
     repeat (5) begin
       phase12_cp0_tlb_allinv();
-      phase12_drive_lsu_rr(39'h0_2200_0000, 1, 16, LSU_PIPE0, 1'b0, 1'b1);
+      phase12_drive_lsu_rr(39'h0_2600_0000, 1, 16, LSU_PIPE0, 1'b0, 1'b1);
     end
     #(m_post_drain);
   endtask

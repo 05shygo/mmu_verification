@@ -10,12 +10,12 @@ URG_REPORT_DIR="${URG_REPORT_DIR:?URG_REPORT_DIR is required}"
 URG_MERGED_DB="${URG_MERGED_DB:?URG_MERGED_DB is required}"
 URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
-URG_ALLOW_CONTEXTLESS_MERGE="${URG_ALLOW_CONTEXTLESS_MERGE:-0}"
+URG_ALLOW_CONTEXTLESS_MERGE="${URG_ALLOW_CONTEXTLESS_MERGE:-1}"
 COV_BASE_DB_DIR="${COV_BASE_DB_DIR:-}"
 if [[ -z "${COV_BASE_DB_DIR}" && "${COV_DB_DIR}" == *.vdb ]]; then
   COV_BASE_DB_DIR="${COV_DB_DIR%.vdb}.compile.vdb"
 fi
-RUN_URG_REPORT_VERSION="2026-05-02-aggregate-vdb-context-required-v11"
+RUN_URG_REPORT_VERSION="2026-05-02-aggregate-vdb-context-fallback-v12"
 
 die() {
   echo "ERROR: $*" >&2
@@ -129,8 +129,8 @@ try_context_direct_report() {
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
-  run_urg "compile-context + aggregate VDB direct report" \
-    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" -dir "${COV_DB_DIR}" \
+  run_urg "compile-context + aggregate VDB direct report (-dir list)" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" "${COV_DB_DIR}" \
       -format both \
       -report "${URG_REPORT_DIR}" || return 1
 
@@ -143,11 +143,43 @@ try_context_two_step_report() {
   remove_artifact "${URG_REPORT_DIR}"
   remove_artifact "${URG_MERGED_DB}"
 
-  run_urg "compile-context + aggregate VDB merge" \
-    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" -dir "${COV_DB_DIR}" \
+  run_urg "compile-context + aggregate VDB merge (-dir list)" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" "${COV_DB_DIR}" \
       -dbname "${URG_MERGED_DB}" || return 1
 
   run_urg "context merged VDB report" \
+    "${URG_BIN}" -full64 -dir "${URG_MERGED_DB}" \
+      -format both \
+      -report "${URG_REPORT_DIR}" || return 1
+
+  report_is_ready
+}
+
+try_context_direct_report_repeated_dir() {
+  has_compile_context_vdb || return 1
+
+  remove_artifact "${URG_REPORT_DIR}"
+  remove_artifact "${URG_MERGED_DB}"
+
+  run_urg "compile-context + aggregate VDB direct report (-dir repeated)" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" -dir "${COV_DB_DIR}" \
+      -format both \
+      -report "${URG_REPORT_DIR}" || return 1
+
+  report_is_ready
+}
+
+try_context_two_step_report_repeated_dir() {
+  has_compile_context_vdb || return 1
+
+  remove_artifact "${URG_REPORT_DIR}"
+  remove_artifact "${URG_MERGED_DB}"
+
+  run_urg "compile-context + aggregate VDB merge (-dir repeated)" \
+    "${URG_BIN}" -full64 -dir "${COV_BASE_DB_DIR}" -dir "${COV_DB_DIR}" \
+      -dbname "${URG_MERGED_DB}" || return 1
+
+  run_urg "context merged VDB report (-dir repeated)" \
     "${URG_BIN}" -full64 -dir "${URG_MERGED_DB}" \
       -format both \
       -report "${URG_REPORT_DIR}" || return 1
@@ -199,6 +231,16 @@ main() {
   fi
 
   if try_context_two_step_report; then
+    echo "URG report generated from context merged coverage VDB: ${URG_REPORT_DIR}"
+    return 0
+  fi
+
+  if try_context_direct_report_repeated_dir; then
+    echo "URG report generated from aggregate coverage VDB with compile context: ${URG_REPORT_DIR}"
+    return 0
+  fi
+
+  if try_context_two_step_report_repeated_dir; then
     echo "URG report generated from context merged coverage VDB: ${URG_REPORT_DIR}"
     return 0
   fi

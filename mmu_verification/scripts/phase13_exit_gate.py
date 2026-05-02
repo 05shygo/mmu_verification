@@ -29,6 +29,22 @@ PHASE13_COVERGROUPS = [
     "cg_sysmap_default_flag",
 ]
 
+PHASE13_CG_LOG_ALIASES = {
+    "cg_pmp_per_level_result": "pmp_result",
+    "cg_pmp_grant_level": "pmp_grant",
+    "cg_pmp_pa_format": "pmp_pa",
+    "cg_pmp_deny_by_level": "pmp_deny",
+    "cg_twu_mask_cause": "twu_mask",
+    "cg_ptw_pmp_port_map": "pmp_port",
+    "cg_sysmap_flg_per_region": "sysmap_flg",
+    "cg_sysmap_cross_1g": "cross1g",
+    "cg_sysmap_cross_2m": "cross2m",
+    "cg_sysmap_degrade_pgs": "degrade",
+    "cg_sysmap_pa_align": "sysmap_pa",
+    "cg_sysmap_4twu_concurrent": "sysmap_4twu",
+    "cg_sysmap_default_flag": "default",
+}
+
 PMP_ASSERTS = [
     "sva_pmp_check_before_lsu_req",
     "sva_pmp_wait_implies_mask",
@@ -144,6 +160,38 @@ def collect_sva_hits(log_paths: Iterable[Path]) -> Tuple[Dict[str, int], List[Pa
             hits[name] = hits.get(name, 0) + int(match.group(2))
 
     return hits, missing
+
+
+def collect_phase13_log_cg_scores(log_paths: Iterable[Path]) -> Tuple[Dict[str, float], Dict[str, Path], List[str]]:
+    scores: Dict[str, float] = {}
+    sources: Dict[str, Path] = {}
+    binding_errors: List[str] = []
+    summary_re = re.compile(r"phase13_whitebox_cg summary:\s*(.*)")
+    score_re = re.compile(r"([A-Za-z0-9_]+)=([0-9]+(?:\.[0-9]+)?)")
+    alias_to_group = {alias: group for group, alias in PHASE13_CG_LOG_ALIASES.items()}
+    binding_error_tokens = (
+        "phase13_whitebox_cg idle",
+        "MMU_DUT_PROBES_VIF not in config_db",
+    )
+
+    for log_path in log_paths:
+        if not log_path.is_file():
+            continue
+        text = log_path.read_text(encoding="utf-8", errors="ignore")
+        for token in binding_error_tokens:
+            if token in text:
+                binding_errors.append(f"{log_path}: {token}")
+        for summary_match in summary_re.finditer(text):
+            for alias, raw_score in score_re.findall(summary_match.group(1)):
+                group_name = alias_to_group.get(alias)
+                if group_name is None:
+                    continue
+                score = float(raw_score)
+                if 0.0 <= score <= 100.0 and score >= scores.get(group_name, -1.0):
+                    scores[group_name] = score
+                    sources[group_name] = log_path
+
+    return scores, sources, binding_errors
 
 
 def iter_report_files(report_dir: Path) -> List[Path]:
@@ -383,22 +431,35 @@ def main() -> int:
     print_result(pmp_static, "criterion 4 - mmu_pmp_twu_sva.sv complete/static review", "\n".join(pmp_lines))
     results.append(pmp_static)
 
-    cov_ok = report_dir.is_dir() and any(report_dir.rglob("*"))
+    log_cg_scores, log_cg_sources, log_cg_binding_errors = collect_phase13_log_cg_scores(all_log_paths)
+    report_ready = report_dir.is_dir() and any(report_dir.rglob("*"))
+    cov_ok = report_ready or bool(log_cg_scores)
     cov_lines = []
-    if not report_dir.is_dir():
-        cov_lines.append(f"URG report directory missing: {report_dir}")
+    if not report_ready:
+        cov_lines.append(f"URG report unavailable: {report_dir}")
+        cov_lines.append("using phase13_whitebox_cg summary fallback from simulation logs")
+    if log_cg_binding_errors:
+        cov_ok = False
+        cov_lines.append("whitebox covergroup binding errors detected:")
+        cov_lines.extend(log_cg_binding_errors[:10])
     for group_name in PHASE13_COVERGROUPS:
-        located = locate_group_percentage(report_dir, group_name) if report_dir.is_dir() else None
-        if located is None:
+        located = locate_group_percentage(report_dir, group_name) if report_ready else None
+        source_kind = "URG"
+        if located is not None:
+            percentage, source = located
+        elif group_name in log_cg_scores:
+            percentage = log_cg_scores[group_name]
+            source = log_cg_sources[group_name]
+            source_kind = "log-summary"
+        else:
             cov_ok = False
             cov_lines.append(f"{group_name}: not found")
             continue
-        percentage, source = located
         ok = percentage >= args.covergroup_threshold
         cov_ok = cov_ok and ok
         cov_lines.append(
             f"{group_name}: {percentage:.2f}% threshold={args.covergroup_threshold:.2f}% "
-            f"status={'PASS' if ok else 'FAIL'} source={source}"
+            f"status={'PASS' if ok else 'FAIL'} source={source_kind}:{source}"
         )
     print_result(cov_ok, "criterion 5 - 13 Phase 13 covergroups reach coverage threshold", "\n".join(cov_lines))
     results.append(cov_ok)

@@ -29,10 +29,14 @@
 `define SYSMAP_FLG7   5'b10011
 
 // ---- SysMap region base addresses (ADDR_WIDTH=28, PA[39:12]) ----
+// Phase13 keeps the map monotonic but places directed boundaries inside legal
+// huge-page windows so TWU SysMap cross/degrade is reachable:
+//   28'h0012100 -> PA 0x0_1210_0000, inside the 2M page at PA 0x0_1200_0000
+//   28'h00E0000 -> PA 0x0_E000_0000, inside the 1G page at PA 0x0_C000_0000
 // sysmap_comp_hitN = (pa < BASE_ADDR_N) — monotonically increasing required
-`define SYSMAP_BASE_ADDR0   28'h0040000
+`define SYSMAP_BASE_ADDR0   28'h0012100
 `define SYSMAP_BASE_ADDR1   28'h0080000
-`define SYSMAP_BASE_ADDR2   28'h0100000
+`define SYSMAP_BASE_ADDR2   28'h00E0000
 `define SYSMAP_BASE_ADDR3   28'h0200000
 `define SYSMAP_BASE_ADDR4   28'h0400000
 `define SYSMAP_BASE_ADDR5   28'h0800000

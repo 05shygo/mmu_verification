@@ -280,7 +280,9 @@ class mmu_env_cg_whitebox extends uvm_component;
     cp_flg: coverpoint flg {
       bins normal = {5'b01111};
       bins device = {5'b10011};
-      ignore_bins other = default;
+      ignore_bins other_low = {[0:14]};
+      ignore_bins other_mid = {[16:18]};
+      ignore_bins other_high = {[20:31]};
     }
     cp_refill_match: coverpoint refill_match { bins no = {0}; bins yes = {1}; }
   endgroup
@@ -320,7 +322,11 @@ class mmu_env_cg_whitebox extends uvm_component;
   covergroup cg_sysmap_default_flag with function sample(bit no_hit, logic [4:0] flg, bit propagated);
     option.per_instance = 1;
     cp_no_hit: coverpoint no_hit { bins hit = {0}; bins no_hit = {1}; }
-    cp_default_flg: coverpoint flg { bins default_10011 = {5'b10011}; ignore_bins other = default; }
+    cp_default_flg: coverpoint flg {
+      bins default_10011 = {5'b10011};
+      ignore_bins other_low = {[0:18]};
+      ignore_bins other_high = {[20:31]};
+    }
     cp_propagated: coverpoint propagated { bins no = {0}; bins yes = {1}; }
   endgroup
 

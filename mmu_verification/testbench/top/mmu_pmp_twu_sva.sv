@@ -47,7 +47,6 @@ module mmu_pmp_twu_sva (
   logic pmp_wait_any;
   logic pmp_deny_accept;
   logic pmp_wait_for_grant;
-  logic pmp_wait_blocks_same_stage_mbuf;
   logic pmp_allowed_grant;
   logic pmp_stage_mbuf_req;
   logic pmp_deny_refill_same_txn;
@@ -93,11 +92,6 @@ module mmu_pmp_twu_sva (
       (fst_pmp_vld && !fst_pmp_grant)
    || (scd_pmp_vld && !scd_pmp_grant)
    || (thd_pmp_vld && !thd_pmp_grant);
-
-  assign pmp_wait_blocks_same_stage_mbuf =
-      (!(fst_pmp_vld && !fst_pmp_grant) || !fst_pmp_mbuf_req)
-   && (!(scd_pmp_vld && !scd_pmp_grant) || !scd_pmp_mbuf_req)
-   && (!(thd_pmp_vld && !thd_pmp_grant) || !thd_pmp_mbuf_req);
 
   assign pmp_allowed_grant =
       (fst_pmp_vld && fst_pmp_grant && !fst_pmp_deny)
@@ -223,7 +217,7 @@ module mmu_pmp_twu_sva (
 
   cp_no_lsu_req_during_pmp_wait: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    pmp_wait_any && twu_mask && pmp_wait_blocks_same_stage_mbuf) begin
+    pmp_wait_any && twu_mask && !twu_mbuf_req) begin
     cp_no_lsu_req_during_pmp_wait_hits++;
   end
 

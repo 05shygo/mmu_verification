@@ -14,7 +14,7 @@ class test_ptw_pmp_mmode_l0 extends phase12_generated_test_base;
     p12_seq_desc = "PTW PMP X/W deny plus MPRV M-mode L=0 bypass";
     p12_checker = "cp_pmp_fetch_uses_x_perm + cp_pmp_store_uses_w_perm + cp_pmp_mmode_l0_bypass";
     p12_reviewer = "A+B";
-    num_txn = 192; m_post_drain = 1200ns;
+    num_txn = 320; m_post_drain = 1600ns;
   endfunction
 
   protected virtual task set_phase13_ptw_pmp_flg(input bit [3:0] ptw_flg);
@@ -58,14 +58,14 @@ class test_ptw_pmp_mmode_l0 extends phase12_generated_test_base;
     // X=0, R/W=1: fetch-originated PTW PMP denies.
     set_phase13_ptw_pmp_flg(4'h3);
     phase12_cp0_tlb_allinv();
-    phase12_drive_ifu_rr(39'h0_E200_0000, 96, 160, 1'b1);
+    phase12_drive_ifu_rr(39'h0_E200_0000, 96, 240, 1'b1);
 
     // W=0, R/X=1: store-originated PTW PMP denies.
     set_phase13_priv_s();
     set_phase13_mprv_m(1'b0);
     set_phase13_ptw_pmp_flg(4'h5);
     phase12_cp0_tlb_allinv();
-    phase12_drive_lsu_rr(39'h0_E300_0000, 96, 160, LSU_PIPE1, 1'b1, 1'b1);
+    phase12_drive_lsu_rr(39'h0_E300_0000, 96, 320, LSU_PIPE1, 1'b1, 1'b1);
 
     // R=0 with L=0 while effective privilege is M: deny condition is present,
     // but M-mode L0 bypass must suppress the deny.
@@ -73,7 +73,10 @@ class test_ptw_pmp_mmode_l0 extends phase12_generated_test_base;
     set_phase13_mprv_m(1'b1);
     set_phase13_ptw_pmp_flg(4'h6);
     phase12_cp0_tlb_allinv();
-    phase12_drive_lsu_rr(39'h0_E400_0000, 96, 192, LSU_PIPE0, 1'b0, 1'b1);
+    repeat (4) begin
+      phase12_cp0_tlb_allinv();
+      phase12_drive_lsu_rr(39'h0_E400_0000, 96, 240, LSU_PIPE0, 1'b0, 1'b1);
+    end
 
     set_phase13_mprv_m(1'b0);
     phase12_set_pmp_allow_all();

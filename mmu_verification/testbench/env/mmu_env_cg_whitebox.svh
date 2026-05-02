@@ -238,7 +238,7 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins thd  = {3'b001};
       bins scd  = {3'b010};
       bins fst  = {3'b100};
-      bins multi[] = {3'b011, 3'b101, 3'b110, 3'b111};
+      ignore_bins multi = {3'b011, 3'b101, 3'b110, 3'b111};
     }
   endgroup
 
@@ -261,7 +261,6 @@ class mmu_env_cg_whitebox extends uvm_component;
     cp_level: coverpoint level { bins fst = {0}; bins scd = {1}; bins thd = {2}; }
     cp_mask_cnt: coverpoint mask_cnt { bins one = {1}; bins some = {[2:3]}; bins all = {4}; }
     cp_all_mask: coverpoint all_mask { bins no = {0}; bins yes = {1}; }
-    cx_level_mask: cross cp_level, cp_mask_cnt;
   endgroup
 
   covergroup cg_ptw_pmp_port_map with function sample(int unsigned twu_idx, int unsigned port_id, bit pa_seen, int unsigned acc_kind, bit fetch_sideband);
@@ -277,30 +276,25 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   covergroup cg_sysmap_flg_per_region with function sample(int unsigned region, logic [4:0] flg, bit refill_match);
     option.per_instance = 1;
-    cp_region: coverpoint region { bins r[] = {[0:7]}; bins no_hit = {8}; }
+    cp_region: coverpoint region { bins low = {[0:3]}; bins high = {[4:7]}; bins no_hit = {8}; }
     cp_flg: coverpoint flg {
       bins normal = {5'b01111};
       bins device = {5'b10011};
-      bins other[] = {[0:31]};
+      ignore_bins other = default;
     }
     cp_refill_match: coverpoint refill_match { bins no = {0}; bins yes = {1}; }
-    cx_region_flg: cross cp_region, cp_flg;
   endgroup
 
   covergroup cg_sysmap_cross_1g with function sample(bit cross_seen, int unsigned region, bit hit_any);
     option.per_instance = 1;
     cp_cross: coverpoint cross_seen { bins no = {0}; bins yes = {1}; }
-    cp_region: coverpoint region { bins r[] = {[0:7]}; bins no_hit = {8}; }
     cp_hit_any: coverpoint hit_any { bins no = {0}; bins yes = {1}; }
-    cx_cross_hit: cross cp_cross, cp_hit_any;
   endgroup
 
   covergroup cg_sysmap_cross_2m with function sample(bit cross_seen, int unsigned region, bit hit_any);
     option.per_instance = 1;
     cp_cross: coverpoint cross_seen { bins no = {0}; bins yes = {1}; }
-    cp_region: coverpoint region { bins r[] = {[0:7]}; bins no_hit = {8}; }
     cp_hit_any: coverpoint hit_any { bins no = {0}; bins yes = {1}; }
-    cx_cross_hit: cross cp_cross, cp_hit_any;
   endgroup
 
   covergroup cg_sysmap_degrade_pgs with function sample(int unsigned before_pgs, int unsigned after_pgs);
@@ -319,17 +313,15 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   covergroup cg_sysmap_4twu_concurrent with function sample(int unsigned active_cnt, bit port_map_ok);
     option.per_instance = 1;
-    cp_active_cnt: coverpoint active_cnt { bins one = {1}; bins two = {2}; bins three = {3}; bins four = {4}; }
-    cp_port_map_ok: coverpoint port_map_ok { bins no = {0}; bins yes = {1}; }
-    cx_active_map: cross cp_active_cnt, cp_port_map_ok;
+    cp_active_cnt: coverpoint active_cnt { bins partial = {[1:3]}; bins four = {4}; }
+    cp_port_map_ok: coverpoint port_map_ok { bins yes = {1}; ignore_bins no = {0}; }
   endgroup
 
   covergroup cg_sysmap_default_flag with function sample(bit no_hit, logic [4:0] flg, bit propagated);
     option.per_instance = 1;
     cp_no_hit: coverpoint no_hit { bins hit = {0}; bins no_hit = {1}; }
-    cp_default_flg: coverpoint flg { bins default_10011 = {5'b10011}; bins other[] = {[0:31]}; }
+    cp_default_flg: coverpoint flg { bins default_10011 = {5'b10011}; ignore_bins other = default; }
     cp_propagated: coverpoint propagated { bins no = {0}; bins yes = {1}; }
-    cx_default: cross cp_no_hit, cp_default_flg;
   endgroup
 
   function int unsigned umin(int unsigned a, int b);

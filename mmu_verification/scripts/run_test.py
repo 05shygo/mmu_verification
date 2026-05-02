@@ -424,6 +424,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--seeds", default="1", help="Whitespace or comma separated seed list for regression mode")
     parser.add_argument("--summary", help="Summary file path for regression mode")
+    parser.add_argument("--log-dir", default=str(LOG_DIR), help="Directory where make run targets write logs")
     parser.add_argument("--min-pass-rate", type=float, default=1.0, help="Minimum pass rate before returning failure")
     parser.add_argument("--jobs", type=int, default=1, help="Number of regression runs to execute in parallel")
     parser.add_argument("--list", action="store_true", help="List registered tests and directory aliases")
@@ -431,8 +432,10 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> int:
+    global LOG_DIR
     parser = build_parser()
     args = parser.parse_args()
+    LOG_DIR = resolve_user_path(args.log_dir)
 
     if args.list:
         print("Registered UVM tests:")

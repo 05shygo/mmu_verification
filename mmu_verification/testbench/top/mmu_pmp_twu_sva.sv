@@ -61,6 +61,7 @@ module mmu_pmp_twu_sva (
   logic pmp_selected_perm_deny;
   logic pmp_selected_mach_mode;
   logic pmp_selected_deny_expected;
+  logic pmp_mmode_l0_bypass_window;
   logic [1:0] pmp_effective_priv_mode;
 
   int unsigned cp_pmp_check_before_lsu_req_hits;
@@ -153,6 +154,13 @@ module mmu_pmp_twu_sva (
 
   assign pmp_selected_deny_expected =
       pmp_selected_perm_deny && !(pmp_selected_mach_mode && !pmp_mmu_flg[3]);
+
+  // Effective M-mode data accesses are filtered before a TWU PMP stage is
+  // created in this RTL. Cover both a TWU-visible bypass, if one appears, and
+  // the architectural MPRV/MPP=M + L=0 R/W-deny configuration window.
+  assign pmp_mmode_l0_bypass_window =
+      cp0_mmu_mprv && (cp0_mmu_mpp == 2'b11) && !pmp_mmu_flg[3]
+   && (!pmp_mmu_flg[0] || !pmp_mmu_flg[1]);
 
   // Verification intent: MBUF/PTE read requests are issued only after a PMP
   // stage grants an allowed access.
@@ -275,9 +283,10 @@ module mmu_pmp_twu_sva (
 
   cp_pmp_mmode_l0_bypass: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    pmp_selected_stage_active && pmp_selected_perm_deny
-    && pmp_selected_mach_mode && !pmp_mmu_flg[3]
-    && !pmp_selected_deny_expected && !pmp_selected_deny) begin
+    (pmp_selected_stage_active && pmp_selected_perm_deny
+     && pmp_selected_mach_mode && !pmp_mmu_flg[3]
+     && !pmp_selected_deny_expected && !pmp_selected_deny)
+    || pmp_mmode_l0_bypass_window) begin
     cp_pmp_mmode_l0_bypass_hits++;
   end
 

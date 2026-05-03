@@ -327,6 +327,7 @@ PHASE14_MAKE_PARALLEL_SHARDS ?= $(PROJECT_DIR)/scripts/phase14_make_parallel_sha
 PHASE14_RUN_PARALLEL_SHARDS ?= $(PROJECT_DIR)/scripts/phase14_run_parallel_shards.py
 PHASE14_MERGE_PARALLEL_SUMMARIES ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_summaries.py
 PHASE14_MERGE_PARALLEL_COVERAGE ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_coverage.py
+PHASE14_SHOW_PARALLEL_FAILURES ?= $(PROJECT_DIR)/scripts/phase14_show_parallel_failures.py
 PHASE14_ISSUE_TRACKER     ?= $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md
 PHASE14_SIGNOFF_MATRIX    ?= $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md
 PHASE14_EXCLUDE_V4        ?= $(SIMU_DIR)/exclude_v4.do
@@ -345,10 +346,13 @@ PHASE14_PARALLEL_VDB_DIR  ?= $(OUTPUT_DIR)/phase14_parallel_vdb
 PHASE14_PARALLEL_COV_PREFIX ?= $(PHASE14_PARALLEL_VDB_DIR)/phase14_parallel
 PHASE14_PARALLEL_LOG_DIR  ?= $(OUTPUT_DIR)/phase14_parallel_logs
 PHASE14_PARALLEL_RUNS_PER_SHARD ?= 1
+PHASE14_PARALLEL_SCHEDULE ?= longest_first
+PHASE14_PARALLEL_SCHEDULE_PROFILE ?= $(PHASE14_SUMMARY)
 PHASE14_PARALLEL_UVM_ERR_ONLY ?= 1
 PHASE14_PARALLEL_RESERVED_CPUS ?= 8
 PHASE14_PARALLEL_JOBS     ?= $(shell n=$$(command -v nproc >/dev/null 2>&1 && nproc || echo 16); r=$(PHASE14_PARALLEL_RESERVED_CPUS); j=$$((n-r)); if [ $$j -lt 1 ]; then j=1; fi; echo $$j)
 PHASE14_PARALLEL_FAIL_FILE ?= $(PHASE14_PARALLEL_DIR)/.run_failed
+PHASE14_PARALLEL_FAILURE_LIMIT ?= 0
 PHASE14_PARALLEL_URG_LOG  ?= $(COV_DIR)/phase14_parallel_urg.log
 PHASE14_REGRESS_RC        ?= 0
 PHASE14_COVERAGE_MERGE_RC ?= 0
@@ -448,6 +452,7 @@ print-phase14:
 	@echo "PHASE14_RUN_PARALLEL_SHARDS = $(PHASE14_RUN_PARALLEL_SHARDS)"
 	@echo "PHASE14_MERGE_PARALLEL_SUMMARIES = $(PHASE14_MERGE_PARALLEL_SUMMARIES)"
 	@echo "PHASE14_MERGE_PARALLEL_COVERAGE = $(PHASE14_MERGE_PARALLEL_COVERAGE)"
+	@echo "PHASE14_SHOW_PARALLEL_FAILURES = $(PHASE14_SHOW_PARALLEL_FAILURES)"
 	@echo "PHASE14_ISSUE_TRACKER  = $(PHASE14_ISSUE_TRACKER)"
 	@echo "PHASE14_SIGNOFF_MATRIX = $(PHASE14_SIGNOFF_MATRIX)"
 	@echo "PHASE14_EXCLUDE_V4     = $(PHASE14_EXCLUDE_V4)"
@@ -466,10 +471,13 @@ print-phase14:
 	@echo "PHASE14_PARALLEL_COV_PREFIX = $(PHASE14_PARALLEL_COV_PREFIX)"
 	@echo "PHASE14_PARALLEL_LOG_DIR = $(PHASE14_PARALLEL_LOG_DIR)"
 	@echo "PHASE14_PARALLEL_RUNS_PER_SHARD = $(PHASE14_PARALLEL_RUNS_PER_SHARD)"
+	@echo "PHASE14_PARALLEL_SCHEDULE = $(PHASE14_PARALLEL_SCHEDULE)"
+	@echo "PHASE14_PARALLEL_SCHEDULE_PROFILE = $(PHASE14_PARALLEL_SCHEDULE_PROFILE)"
 	@echo "PHASE14_PARALLEL_UVM_ERR_ONLY = $(PHASE14_PARALLEL_UVM_ERR_ONLY)"
 	@echo "PHASE14_PARALLEL_RESERVED_CPUS = $(PHASE14_PARALLEL_RESERVED_CPUS)"
 	@echo "PHASE14_PARALLEL_JOBS  = $(PHASE14_PARALLEL_JOBS)"
 	@echo "PHASE14_PARALLEL_FAIL_FILE = $(PHASE14_PARALLEL_FAIL_FILE)"
+	@echo "PHASE14_PARALLEL_FAILURE_LIMIT = $(PHASE14_PARALLEL_FAILURE_LIMIT)"
 	@echo "PHASE14_PARALLEL_URG_LOG = $(PHASE14_PARALLEL_URG_LOG)"
 	@echo "PHASE14_REGRESS_RC     = $(PHASE14_REGRESS_RC)"
 	@echo "PHASE14_COVERAGE_MERGE_RC = $(PHASE14_COVERAGE_MERGE_RC)"
@@ -605,7 +613,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         regress regress_smoke regress_nightly print-regress \
         print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
         regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
-        phase14_make_parallel_shards regress_v4_full_parallel phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
+        phase14_make_parallel_shards regress_v4_full_parallel phase14_show_parallel_failures phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         phase12_exit_check phase12_pgflt_urg_probe
 
@@ -969,7 +977,9 @@ phase14_make_parallel_shards:
 		--cov-prefix "$(PHASE14_PARALLEL_COV_PREFIX)" \
 		--log-dir "$(PHASE14_PARALLEL_LOG_DIR)" \
 		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
-		--runs-per-shard "$(PHASE14_PARALLEL_RUNS_PER_SHARD)"
+		--runs-per-shard "$(PHASE14_PARALLEL_RUNS_PER_SHARD)" \
+		--schedule "$(PHASE14_PARALLEL_SCHEDULE)" \
+		--schedule-profile "$(PHASE14_PARALLEL_SCHEDULE_PROFILE)"
 
 regress_v4_full_parallel: comp phase14_make_parallel_shards
 	@test -f "$(PHASE14_RUN_PARALLEL_SHARDS)" || (echo "ERROR: Phase14 parallel shard runner missing: $(PHASE14_RUN_PARALLEL_SHARDS)"; exit 2)
@@ -1006,6 +1016,14 @@ regress_v4_full_parallel: comp phase14_make_parallel_shards
 	if [ $$run_rc -ne 0 ] || [ $$merge_rc -ne 0 ]; then \
 		exit 1; \
 	fi
+
+phase14_show_parallel_failures:
+	@test -f "$(PHASE14_SHOW_PARALLEL_FAILURES)" || (echo "ERROR: Phase14 parallel failure reporter missing: $(PHASE14_SHOW_PARALLEL_FAILURES)"; exit 2)
+	@test -f "$(PHASE14_PARALLEL_MANIFEST)" || (echo "ERROR: Phase14 parallel manifest missing: $(PHASE14_PARALLEL_MANIFEST)"; exit 2)
+	@$(PYTHON) "$(PHASE14_SHOW_PARALLEL_FAILURES)" \
+		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
+		--fail-file "$(PHASE14_PARALLEL_FAIL_FILE)" \
+		--limit "$(PHASE14_PARALLEL_FAILURE_LIMIT)"
 
 phase14_coverage_merge:
 	@test -f "$(PHASE14_COVERAGE_MERGE)" || (echo "ERROR: Phase14 coverage merge missing: $(PHASE14_COVERAGE_MERGE)"; exit 2)

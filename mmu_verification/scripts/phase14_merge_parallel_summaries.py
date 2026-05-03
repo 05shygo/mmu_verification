@@ -105,6 +105,19 @@ def load_summary(row: Dict[str, str], mode: str) -> Tuple[Dict[str, int], List[s
     return counts, detail_lines(path), errors
 
 
+def failed_details(details: List[str], limit: int = 30) -> List[str]:
+    failures: List[str] = []
+    for line in details:
+        stripped = line.strip()
+        if stripped.startswith(("FAIL ", "XPASS ")):
+            failures.append(stripped)
+        elif failures and stripped.startswith(("rc=", "cmd=")):
+            failures.append(f"  {stripped}")
+        if len(failures) >= limit:
+            break
+    return failures
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Merge Phase14 parallel summaries")
     parser.add_argument("--list", required=True, help="Phase14 full regression list")
@@ -160,8 +173,22 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         print(f"Merged summary written with errors: {summary_path}", file=sys.stderr)
         return 1
+    if pass_rate < args.min_pass_rate:
+        print(
+            f"ERROR: merged pass_rate={pass_rate:.4f} below min_pass_rate={args.min_pass_rate:.4f}",
+            file=sys.stderr,
+        )
+        failures = failed_details(all_details)
+        if failures:
+            print("Failing Phase14 parallel details:", file=sys.stderr)
+            for line in failures:
+                print(f"  {line}", file=sys.stderr)
+            if len(failures) >= 30:
+                print("  ... truncated; see merged summary for full details", file=sys.stderr)
+        print(f"Merged summary written with failures: {summary_path}", file=sys.stderr)
+        return 1
     print(f"Merged Phase14 parallel summary: {summary_path}")
-    return 0 if pass_rate >= args.min_pass_rate else 1
+    return 0
 
 
 if __name__ == "__main__":

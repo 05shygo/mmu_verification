@@ -2,13 +2,16 @@
 """Run Phase14 high-parallel shards with isolated VDBs and logs."""
 
 import argparse
+from collections import deque
 import os
+import re
 import shutil
+import shlex
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
-from typing import Dict, Iterable, List, Tuple
+from typing import Deque, Dict, Iterable, List, Tuple
 
 
 FIELDS = (
@@ -23,6 +26,18 @@ FIELDS = (
     "driver_log",
     "run_dir",
 )
+
+ERROR_RE = re.compile(
+    r"UVM_ERROR|UVM_FATAL|Error-|Error:|Fatal:|ASSERT|SVA|TEST FAILED|FAILED:|"
+    r"CovErrorException|unexpected termination|signal:\s*Aborted|During dumping of toggle coverage data|"
+    r"segmentation|SIGSEGV|core dumped|VCS internal error|Internal Error|"
+    r"License checkout failed|Unable to checkout|No such feature exists|"
+    r"run_cov simulation failed|coverage log contains fatal/crash/license pattern|"
+    r"missing/empty compile baseline|No such file|Permission denied",
+    re.IGNORECASE,
+)
+
+BENIGN_SUMMARY_RE = re.compile(r"^\s*UVM_(?:ERROR|FATAL)\s*:\s*0\b")
 
 
 def parse_manifest(path: Path) -> List[Dict[str, str]]:
@@ -51,6 +66,123 @@ def clean_path(path: Path) -> None:
 def write_marker(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def strip_inline_comment(line: str) -> str:
+    out: List[str] = []
+    in_single = False
+    in_double = False
+    for char in line:
+        if char == "'" and not in_double:
+            in_single = not in_single
+        elif char == '"' and not in_single:
+            in_double = not in_double
+        elif char == "#" and not in_single and not in_double:
+            break
+        out.append(char)
+    return "".join(out).strip()
+
+
+def shard_tests(list_path: Path) -> List[str]:
+    tests: List[str] = []
+    try:
+        lines = list_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError as exc:
+        return [f"<could not read {list_path}: {exc}>"]
+
+    for raw in lines:
+        line = strip_inline_comment(raw)
+        if not line:
+            continue
+        try:
+            tokens = shlex.split(line)
+        except ValueError:
+            tokens = line.split()
+        if tokens:
+            tests.append(tokens[0])
+    return tests
+
+
+def summary_failure_lines(summary_path: Path, limit: int = 16) -> List[str]:
+    if not summary_path.is_file():
+        return [f"summary missing: {summary_path}"]
+
+    wanted: List[str] = []
+    try:
+        lines = summary_path.read_text(encoding="utf-8", errors="ignore").splitlines()
+    except OSError as exc:
+        return [f"could not read summary {summary_path}: {exc}"]
+
+    for line in lines:
+        stripped = line.strip()
+        if (
+            stripped.startswith("total_runs:")
+            or stripped.startswith("passed_runs:")
+            or stripped.startswith("failed_runs:")
+            or stripped.startswith("effective_passed_runs:")
+            or stripped.startswith("pass_rate:")
+            or stripped.startswith("FAIL ")
+            or stripped.startswith("XPASS ")
+            or stripped.startswith("XFAIL ")
+            or stripped.startswith("rc=")
+            or stripped.startswith("cmd=")
+        ):
+            wanted.append(stripped)
+        if len(wanted) >= limit:
+            break
+    return wanted
+
+
+def collect_log_snippets(path: Path, match_limit: int = 12, tail_limit: int = 8) -> List[str]:
+    if not path.is_file():
+        return [f"missing log: {path}"]
+
+    matches: List[str] = []
+    tail: Deque[Tuple[int, str]] = deque(maxlen=tail_limit)
+    try:
+        with path.open("r", encoding="utf-8", errors="ignore") as handle:
+            for lineno, raw in enumerate(handle, 1):
+                line = raw.rstrip("\n")
+                tail.append((lineno, line))
+                if BENIGN_SUMMARY_RE.search(line):
+                    continue
+                if ERROR_RE.search(line) and len(matches) < match_limit:
+                    matches.append(f"{lineno}:{line}")
+    except OSError as exc:
+        return [f"could not read log {path}: {exc}"]
+
+    if matches:
+        return matches
+    return [f"{lineno}:{line}" for lineno, line in tail]
+
+
+def sim_logs_for_row(row: Dict[str, str]) -> List[Path]:
+    seed = row["seed"]
+    log_dir = Path(row["log_dir"])
+    return [log_dir / f"{test}_{seed}_cov.log" for test in shard_tests(Path(row["list"]))]
+
+
+def format_failure(row: Dict[str, str], rc: int, max_logs: int = 2) -> str:
+    tests = shard_tests(Path(row["list"]))
+    tests_text = ",".join(tests) if tests else "<empty shard list>"
+    lines = [
+        f"{row['shard_id']}\trc={rc}\tseed={row['seed']}\ttests={tests_text}",
+        f"  summary={row['summary']}",
+        f"  driver_log={row['driver_log']}",
+    ]
+
+    for item in summary_failure_lines(Path(row["summary"])):
+        lines.append(f"  summary: {item}")
+
+    lines.append("  driver snippets:")
+    for item in collect_log_snippets(Path(row["driver_log"]), match_limit=8, tail_limit=6):
+        lines.append(f"    {item}")
+
+    for sim_log in sim_logs_for_row(row)[:max_logs]:
+        lines.append(f"  sim log snippets: {sim_log}")
+        for item in collect_log_snippets(sim_log, match_limit=10, tail_limit=6):
+            lines.append(f"    {item}")
+    return "\n".join(lines)
 
 
 def copy_baseline(src: Path, dst: Path, stamp: Path) -> None:
@@ -146,11 +278,20 @@ def run_one(row: Dict[str, str], args: argparse.Namespace) -> Tuple[str, int]:
     return shard_id, rc
 
 
-def write_fail_file(path: Path, failures: Iterable[Tuple[str, int]]) -> None:
+def write_fail_file(
+    path: Path,
+    failures: Iterable[Tuple[str, int]],
+    rows_by_shard: Dict[str, Dict[str, str]],
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as handle:
         for shard_id, rc in failures:
-            handle.write(f"{shard_id}\trc={rc}\n")
+            row = rows_by_shard.get(shard_id)
+            if row is None:
+                handle.write(f"{shard_id}\trc={rc}\n")
+            else:
+                handle.write(format_failure(row, rc))
+                handle.write("\n\n")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -171,6 +312,7 @@ def build_parser() -> argparse.ArgumentParser:
 def main() -> int:
     args = build_parser().parse_args()
     rows = parse_manifest(Path(args.manifest))
+    rows_by_shard = {row["shard_id"]: row for row in rows}
     jobs = max(1, args.jobs)
     fail_file = Path(args.fail_file)
     clean_path(fail_file)
@@ -194,8 +336,14 @@ def main() -> int:
                 failures.append((done_id, rc))
 
     if failures:
-        write_fail_file(fail_file, failures)
+        write_fail_file(fail_file, failures, rows_by_shard)
         print(f"Phase14 parallel failures: {len(failures)}; see {fail_file}", file=sys.stderr)
+        for shard_id, rc in failures[:10]:
+            row = rows_by_shard.get(shard_id)
+            if row is not None:
+                print(format_failure(row, rc, max_logs=1), file=sys.stderr)
+        if len(failures) > 10:
+            print(f"... truncated, remaining failures={len(failures) - 10}", file=sys.stderr)
         return 1
     print("Phase14 parallel shards completed cleanly")
     return 0

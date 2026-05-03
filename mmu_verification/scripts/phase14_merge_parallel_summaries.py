@@ -45,13 +45,16 @@ def parse_manifest(path: Path) -> List[Dict[str, str]]:
         "stamp",
         "log_dir",
         "driver_log",
+        "run_dir",
     )
     rows: List[Dict[str, str]] = []
     for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
         if not raw.strip() or raw.startswith("#"):
             continue
         parts = raw.rstrip("\n").split("\t")
-        if len(parts) != len(fields):
+        if len(parts) == len(fields) - 1:
+            parts.append(str(Path(parts[-1]).parent / "run"))
+        elif len(parts) != len(fields):
             raise ValueError(f"bad manifest row with {len(parts)} fields: {raw}")
         rows.append(dict(zip(fields, parts)))
     if not rows:

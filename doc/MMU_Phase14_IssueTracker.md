@@ -349,6 +349,20 @@ shards, writes isolated runtime VDBs and logs, enables serial fail-fast inside
 each shard, and then runs `phase14_coverage_merge_parallel`. The per-shard
 compile baseline is hard-linked when possible and copied only as a fallback.
 
+Follow-up from the first 152-CPU server trial (`PHASE14_PARALLEL_JOBS=120`):
+
+- The expected shard count is 465 for `93 tests x 5 seeds`.
+- Parallel logs are under `output/phase14_parallel_logs`; `output/logs` may only
+  contain `comp_all.log` in this flow.
+- Parallel VDBs now default to `output/phase14_parallel_vdb` instead of the
+  `output/` root.
+- Each shard now uses a private `run/` directory to avoid VCS/Verdi temporary
+  file contention.
+- Shared CFGDB trace is disabled in the high-parallel path and
+  `PHASE14_PARALLEL_UVM_ERR_ONLY=1` is the default to reduce I/O.
+- `make phase14_clean_parallel` removes high-parallel shard/log/VDB artifacts,
+  including legacy root `output/phase14_parallel_*` artifacts.
+
 ### Signoff Decision
 
 Open and blocking until one of the following is true:

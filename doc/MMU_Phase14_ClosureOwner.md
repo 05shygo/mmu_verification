@@ -66,12 +66,26 @@ make phase14_exit_check
 This target uses the high-parallel test/seed shard VDB flow by default. The
 runner creates one shard per testcase/seed by default, uses isolated runtime
 VDBs and logs, and copies the compile baseline with hard links when possible to
-avoid excessive NFS traffic.
+avoid excessive NFS traffic. Runtime VDBs are written under
+`output/phase14_parallel_vdb`, logs are written under
+`output/phase14_parallel_logs`, and each shard runs in its own `run/` directory
+under `output/regression/phase14_v4_full_parallel`.
+
+The high-parallel path disables shared `+UVM_CONFIG_DB_TRACE` and defaults to
+`PHASE14_PARALLEL_UVM_ERR_ONLY=1` to reduce log and filesystem I/O at high
+process counts.
 
 Recommended server command for a 152-CPU host:
 
 ```bash
 make phase14_exit_check PHASE14_PARALLEL_JOBS=120
+```
+
+After preserving any needed evidence, stale high-parallel artifacts can be
+removed with:
+
+```bash
+make phase14_clean_parallel
 ```
 
 The legacy serial aggregate-VDB target `regress_v4_full` and the 5-way

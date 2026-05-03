@@ -735,6 +735,17 @@ Closure action:
 - Each shard uses an isolated runtime VDB and log directory. The compile
   baseline VDB is hard-linked per shard when possible and copied only as a
   fallback to reduce NFS traffic.
+- First 152-CPU server trial with `PHASE14_PARALLEL_JOBS=120` produced 465
+  testcase/seed shards (`93 tests x 5 seeds`) under
+  `output/regression/phase14_v4_full_parallel`. High-parallel logs are in
+  `output/phase14_parallel_logs`, so `output/logs` containing only
+  `comp_all.log` is expected for this flow.
+- After that trial, Phase14 parallel VDBs were moved out of the `output/` root
+  into `output/phase14_parallel_vdb`, and each shard now uses a private
+  `run/` directory to avoid VCS/Verdi temporary-file contention. The cleanup
+  entry is `make phase14_clean_parallel`.
+- High-parallel runs disable shared `+UVM_CONFIG_DB_TRACE` and default to
+  `PHASE14_PARALLEL_UVM_ERR_ONLY=1` to reduce log and filesystem I/O.
 - On the 152-CPU server, use `PHASE14_PARALLEL_JOBS=96..144` depending on
   license/NFS headroom. Default is `nproc - 8`.
 - `run_test.py` supports serial fail-fast so one coverage infrastructure abort

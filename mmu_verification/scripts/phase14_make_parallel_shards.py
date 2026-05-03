@@ -69,6 +69,7 @@ def main() -> int:
     shard_dir.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
     manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    cov_prefix.parent.mkdir(parents=True, exist_ok=True)
 
     rows: List[List[str]] = []
     shard_index = 0
@@ -82,6 +83,7 @@ def main() -> int:
             shard_list = one_dir / "list.txt"
             shard_summary = one_dir / "summary.txt"
             driver_log = one_dir / "driver.log"
+            run_dir = one_dir / "run"
             shard_cov = Path(f"{cov_prefix}_{shard_index:04d}.vdb")
             shard_base = Path(f"{cov_prefix}_{shard_index:04d}.compile.vdb")
             shard_stamp = Path(f"{cov_prefix}_{shard_index:04d}.compile.stamp")
@@ -98,12 +100,13 @@ def main() -> int:
                     str(shard_stamp),
                     str(log_dir),
                     str(driver_log),
+                    str(run_dir),
                 ]
             )
             shard_index += 1
 
     with manifest_path.open("w", encoding="utf-8") as handle:
-        handle.write("# shard_id\tseed\tlist\tsummary\tcov_vdb\tbase_vdb\tstamp\tlog_dir\tdriver_log\n")
+        handle.write("# shard_id\tseed\tlist\tsummary\tcov_vdb\tbase_vdb\tstamp\tlog_dir\tdriver_log\trun_dir\n")
         for row in rows:
             handle.write("\t".join(row) + "\n")
 

@@ -213,6 +213,8 @@ def make_cmd(
     verbosity: str,
     timeout: str,
     uvm_err_only: str,
+    uvm_config_db_trace: str,
+    run_dir: str,
     plus_args: str,
 ) -> List[str]:
     cmd = [
@@ -223,6 +225,8 @@ def make_cmd(
         f"VERBOSITY={verbosity}",
         f"TIMEOUT={timeout}",
         f"UVM_ERR_ONLY={uvm_err_only}",
+        f"UVM_CONFIG_DB_TRACE={uvm_config_db_trace}",
+        f"RUN_DIR={run_dir}",
     ]
     if plus_args:
         cmd.append(f"PLUS_ARGS={plus_args}")
@@ -252,11 +256,23 @@ def run_single(
     verbosity: str,
     timeout: str,
     uvm_err_only: str,
+    uvm_config_db_trace: str,
+    run_dir: str,
     plus_args: str,
     expected_fail: bool = False,
     xfail_reason: str = "",
 ) -> RegressionResult:
-    cmd = make_cmd(mode, test_name, seed, verbosity, timeout, uvm_err_only, plus_args)
+    cmd = make_cmd(
+        mode,
+        test_name,
+        seed,
+        verbosity,
+        timeout,
+        uvm_err_only,
+        uvm_config_db_trace,
+        run_dir,
+        plus_args,
+    )
     start = time.monotonic()
     rc = run_command(cmd)
     log_paths = resolve_log_paths(test_name, seed, mode)
@@ -348,6 +364,8 @@ def run_regression(
     verbosity: str,
     timeout: str,
     uvm_err_only: str,
+    uvm_config_db_trace: str,
+    run_dir: str,
     global_plus_args: str,
     summary_path: Path,
     min_pass_rate: float,
@@ -376,6 +394,8 @@ def run_regression(
             verbosity=verbosity,
             timeout=timeout,
             uvm_err_only=uvm_err_only,
+            uvm_config_db_trace=uvm_config_db_trace,
+            run_dir=run_dir,
             plus_args=plus_args,
             expected_fail=entry.expected_fail,
             xfail_reason=entry.xfail_reason,
@@ -430,6 +450,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--verbosity", default="UVM_MEDIUM", help="UVM verbosity passed through to Makefile")
     parser.add_argument("--timeout", default="10000000", help="Simulation timeout passed through to Makefile")
     parser.add_argument("--uvm-err-only", default="0", help="Pass 1 to add +UVM_ERR_ONLY")
+    parser.add_argument("--uvm-config-db-trace", default="1", help="Pass 1 to add +UVM_CONFIG_DB_TRACE")
+    parser.add_argument("--run-dir", default=str(PROJECT_DIR / "output"), help="Directory where simv executes")
     parser.add_argument("--mode", default=DEFAULT_MODE, choices=sorted(VALID_MODES), help="Make target to execute")
     parser.add_argument(
         "--reg-list",
@@ -471,6 +493,8 @@ def main() -> int:
                 verbosity=args.verbosity,
                 timeout=args.timeout,
                 uvm_err_only=args.uvm_err_only,
+                uvm_config_db_trace=args.uvm_config_db_trace,
+                run_dir=str(resolve_user_path(args.run_dir)),
                 global_plus_args=args.plus_args,
                 summary_path=summary,
                 min_pass_rate=args.min_pass_rate,
@@ -489,6 +513,8 @@ def main() -> int:
             verbosity=args.verbosity,
             timeout=args.timeout,
             uvm_err_only=args.uvm_err_only,
+            uvm_config_db_trace=args.uvm_config_db_trace,
+            run_dir=str(resolve_user_path(args.run_dir)),
             plus_args=args.plus_args,
         )
         return 0 if result.passed else result.return_code

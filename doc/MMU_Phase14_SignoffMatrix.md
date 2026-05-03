@@ -59,9 +59,10 @@ Before final signoff, update this section with concrete command results.
 
 | Artifact | Path / command | Final result |
 | --- | --- | --- |
-| Full regression | `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=<N>` | TBD |
-| Coverage merge | `make phase14_coverage_merge_parallel` | TBD |
+| Full regression | `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=<N>` | TBD; shard summaries under `output/regression/phase14_v4_full_parallel`, logs under `output/phase14_parallel_logs` |
+| Coverage merge | `make phase14_coverage_merge_parallel` | TBD; merges VDBs from `output/phase14_parallel_vdb` |
 | Exit gate | `make phase14_exit_check` | TBD |
+| Parallel cleanup | `make phase14_clean_parallel` | Use only after preserving needed evidence |
 | Full regression summary | `output/regression/phase14_v4_full/summary.txt` | TBD |
 | Coverage report | `output/coverage/phase14_urgReport` | TBD |
 | Coverage fallback / waiver | `doc/MMU_Phase14_IssueTracker.md` | TBD |

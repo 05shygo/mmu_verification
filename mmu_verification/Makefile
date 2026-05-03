@@ -21,6 +21,7 @@ CV_DV_UTILS_DIR := $(CORE_V_VERIF)/lib/cv_dv_utils
 OUTPUT_DIR      ?= $(PROJECT_DIR)/output
 LOG_DIR         ?= $(OUTPUT_DIR)/logs
 WAVE_DIR        ?= $(OUTPUT_DIR)/waves
+RUN_DIR         ?= $(OUTPUT_DIR)
 COV_DIR         ?= $(OUTPUT_DIR)/coverage
 REGRESS_DIR     ?= $(OUTPUT_DIR)/regression
 
@@ -59,6 +60,7 @@ VERBOSITY       ?= UVM_MEDIUM
 TIMEOUT         ?= 10000000
 # 1 = quiet console: only UVM_ERROR / UVM_FATAL (+UVM_ERR_ONLY, see test_base.svh)
 UVM_ERR_ONLY    ?= 0
+UVM_CONFIG_DB_TRACE ?= 1
 PLUS_ARGS       ?=
 LOG_STATUS_MAX_HITS ?= 20
 LOG_CHECKER     ?= bash $(PROJECT_DIR)/scripts/check_sim_status.sh
@@ -67,6 +69,12 @@ ifeq ($(UVM_ERR_ONLY),1)
   ERR_ONLY_OPTS := +UVM_ERR_ONLY
 else
   ERR_ONLY_OPTS :=
+endif
+
+ifeq ($(UVM_CONFIG_DB_TRACE),1)
+  CFGDB_TRACE_OPTS := +UVM_CONFIG_DB_TRACE
+else
+  CFGDB_TRACE_OPTS :=
 endif
 
 #===============================================================================
@@ -173,7 +181,7 @@ VCS_FAST_OPTS   := -full64 \
 RUN_OPTS        := +UVM_TESTNAME=$(TEST_NAME) \
                    +UVM_VERBOSITY=$(VERBOSITY) \
                    +TIMEOUT=$(TIMEOUT) \
-                   +UVM_CONFIG_DB_TRACE \
+                   $(CFGDB_TRACE_OPTS) \
                    $(ERR_ONLY_OPTS) \
                    $(PLUS_ARGS)
 
@@ -333,9 +341,11 @@ PHASE14_SHARD_JOBS        ?= 5
 PHASE14_SHARD_URG_LOG     ?= $(COV_DIR)/phase14_sharded_urg.log
 PHASE14_PARALLEL_DIR      ?= $(REGRESS_DIR)/phase14_v4_full_parallel
 PHASE14_PARALLEL_MANIFEST ?= $(PHASE14_PARALLEL_DIR)/manifest.tsv
-PHASE14_PARALLEL_COV_PREFIX ?= $(OUTPUT_DIR)/phase14_parallel
+PHASE14_PARALLEL_VDB_DIR  ?= $(OUTPUT_DIR)/phase14_parallel_vdb
+PHASE14_PARALLEL_COV_PREFIX ?= $(PHASE14_PARALLEL_VDB_DIR)/phase14_parallel
 PHASE14_PARALLEL_LOG_DIR  ?= $(OUTPUT_DIR)/phase14_parallel_logs
 PHASE14_PARALLEL_RUNS_PER_SHARD ?= 1
+PHASE14_PARALLEL_UVM_ERR_ONLY ?= 1
 PHASE14_PARALLEL_RESERVED_CPUS ?= 8
 PHASE14_PARALLEL_JOBS     ?= $(shell n=$$(command -v nproc >/dev/null 2>&1 && nproc || echo 16); r=$(PHASE14_PARALLEL_RESERVED_CPUS); j=$$((n-r)); if [ $$j -lt 1 ]; then j=1; fi; echo $$j)
 PHASE14_PARALLEL_FAIL_FILE ?= $(PHASE14_PARALLEL_DIR)/.run_failed
@@ -452,9 +462,11 @@ print-phase14:
 	@echo "PHASE14_SHARD_URG_LOG  = $(PHASE14_SHARD_URG_LOG)"
 	@echo "PHASE14_PARALLEL_DIR   = $(PHASE14_PARALLEL_DIR)"
 	@echo "PHASE14_PARALLEL_MANIFEST = $(PHASE14_PARALLEL_MANIFEST)"
+	@echo "PHASE14_PARALLEL_VDB_DIR = $(PHASE14_PARALLEL_VDB_DIR)"
 	@echo "PHASE14_PARALLEL_COV_PREFIX = $(PHASE14_PARALLEL_COV_PREFIX)"
 	@echo "PHASE14_PARALLEL_LOG_DIR = $(PHASE14_PARALLEL_LOG_DIR)"
 	@echo "PHASE14_PARALLEL_RUNS_PER_SHARD = $(PHASE14_PARALLEL_RUNS_PER_SHARD)"
+	@echo "PHASE14_PARALLEL_UVM_ERR_ONLY = $(PHASE14_PARALLEL_UVM_ERR_ONLY)"
 	@echo "PHASE14_PARALLEL_RESERVED_CPUS = $(PHASE14_PARALLEL_RESERVED_CPUS)"
 	@echo "PHASE14_PARALLEL_JOBS  = $(PHASE14_PARALLEL_JOBS)"
 	@echo "PHASE14_PARALLEL_FAIL_FILE = $(PHASE14_PARALLEL_FAIL_FILE)"
@@ -593,7 +605,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         regress regress_smoke regress_nightly print-regress \
         print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
         regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
-        phase14_make_parallel_shards regress_v4_full_parallel phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel \
+        phase14_make_parallel_shards regress_v4_full_parallel phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         phase12_exit_check phase12_pgflt_urg_probe
 
@@ -643,7 +655,9 @@ regress: setup
 		--verbosity "$(VERBOSITY)" \
 		--timeout "$(TIMEOUT)" \
 		--uvm-err-only "$(UVM_ERR_ONLY)" \
+		--uvm-config-db-trace "$(UVM_CONFIG_DB_TRACE)" \
 		--plus-args "$(PLUS_ARGS)" \
+		--run-dir "$(RUN_DIR)" \
 		--summary "$(REGRESS_SUMMARY)" \
 		--log-dir "$(LOG_DIR)" \
 		--min-pass-rate "$(REGRESS_MIN_PASS_RATE)" \
@@ -947,6 +961,7 @@ regress_v4_full_sharded: comp
 phase14_make_parallel_shards:
 	@test -f "$(PHASE14_LIST)" || (echo "ERROR: Phase14 list missing: $(PHASE14_LIST)"; exit 2)
 	@test -f "$(PHASE14_MAKE_PARALLEL_SHARDS)" || (echo "ERROR: Phase14 parallel shard maker missing: $(PHASE14_MAKE_PARALLEL_SHARDS)"; exit 2)
+	@mkdir -p "$(PHASE14_PARALLEL_VDB_DIR)" "$(PHASE14_PARALLEL_LOG_DIR)" "$(PHASE14_PARALLEL_DIR)"
 	@$(PYTHON) "$(PHASE14_MAKE_PARALLEL_SHARDS)" \
 		--list "$(PHASE14_LIST)" \
 		--seeds "$(PHASE14_SEEDS)" \
@@ -969,7 +984,7 @@ regress_v4_full_parallel: comp phase14_make_parallel_shards
 		--make "$(MAKE)" \
 		--verbosity "$(VERBOSITY)" \
 		--timeout "$(TIMEOUT)" \
-		--uvm-err-only "$(UVM_ERR_ONLY)" \
+		--uvm-err-only "$(PHASE14_PARALLEL_UVM_ERR_ONLY)" \
 		--fail-fast "$(PHASE14_FAIL_FAST)" \
 		--fail-file "$(PHASE14_PARALLEL_FAIL_FILE)"; \
 	run_rc=$$?; \
@@ -1092,6 +1107,19 @@ phase14_gate_parallel:
 		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
 		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
 		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"
+
+phase14_clean_parallel:
+	@echo "Cleaning Phase14 parallel artifacts:"
+	@echo "  $(PHASE14_PARALLEL_DIR)"
+	@echo "  $(PHASE14_PARALLEL_LOG_DIR)"
+	@echo "  $(PHASE14_PARALLEL_VDB_DIR)"
+	@echo "  legacy root output/phase14_parallel_* artifacts"
+	rm -rf "$(PHASE14_PARALLEL_DIR)" \
+	       "$(PHASE14_PARALLEL_LOG_DIR)" \
+	       "$(PHASE14_PARALLEL_VDB_DIR)" \
+	       "$(OUTPUT_DIR)"/phase14_parallel_*.vdb \
+	       "$(OUTPUT_DIR)"/phase14_parallel_*.compile.vdb \
+	       "$(OUTPUT_DIR)"/phase14_parallel_*.compile.stamp
 
 phase14_exit_check_sharded:
 	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)
@@ -1485,9 +1513,11 @@ help:
 	@echo "  make phase14_gate_parallel                           # gate-only check for high-parallel artifacts"
 	@echo "  make phase14_exit_check_sharded                      # sharded regression + merge + gate"
 	@echo "  make phase14_exit_check_parallel                     # high-parallel regression + merge + gate"
+	@echo "  make phase14_clean_parallel                          # remove high-parallel shard/log/VDB artifacts"
 	@echo "  make phase14_coverage_merge                           # generate Phase14 URG artifacts"
 	@echo "  make phase14_exit_check                               # default Phase14 closure gate, uses high-parallel VDBs"
-	@echo "  Optional: PHASE14_PARALLEL_JOBS=96..144 PHASE14_PARALLEL_RUNS_PER_SHARD=1 PHASE14_FAIL_FAST=1"
+	@echo "  Optional: PHASE14_PARALLEL_JOBS=96..144 PHASE14_PARALLEL_RUNS_PER_SHARD=1 PHASE14_FAIL_FAST=1 PHASE14_PARALLEL_UVM_ERR_ONLY=1"
+	@echo "  High-parallel default: isolated VDBs under $(PHASE14_PARALLEL_VDB_DIR), per-shard RUN_DIRs, shared CFGDB trace disabled"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md Â§5):"
 	@echo "  make print-phase5              # show PHASE5_TEST / default seeds / log path pattern"
@@ -1535,6 +1565,7 @@ env:
 	@echo "OUTPUT_DIR       = $(OUTPUT_DIR)"
 	@echo "TOP_MODULE       = $(TOP_MODULE)"
 	@echo "TEST_NAME        = $(TEST_NAME)"
+	@echo "UVM_CONFIG_DB_TRACE = $(UVM_CONFIG_DB_TRACE)"
 
 # VCS (Synopsys) must be on PATH or passed as a full path: make comp VCS=/.../bin/vcs
 # Without this, comp fails with: /bin/sh: vcs: command not found (exit 127) — an environment issue, not RTL.
@@ -1650,7 +1681,12 @@ run: setup
 		echo "Completed test group $(TEST_NAME), seed=$(SEED)"; \
 	else \
 		echo "Running $(TEST_NAME), seed=$(SEED)"; \
-		cd $(OUTPUT_DIR) && ./simv \
+		mkdir -p "$(RUN_DIR)"; \
+		if [ "$(RUN_DIR)" != "$(OUTPUT_DIR)" ]; then \
+			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
+			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
+		fi; \
+		cd "$(RUN_DIR)" && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(FSDB_OPTS) \
@@ -1724,7 +1760,12 @@ run_batch: setup
 		done; \
 		echo "Completed batch test group $(TEST_NAME), seed=$(SEED)"; \
 	else \
-		cd $(OUTPUT_DIR) && ./simv \
+		mkdir -p "$(RUN_DIR)"; \
+		if [ "$(RUN_DIR)" != "$(OUTPUT_DIR)" ]; then \
+			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
+			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
+		fi; \
+		cd "$(RUN_DIR)" && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			-l $(LOG_DIR)/$(TEST_NAME)_batch.log; \
@@ -1771,7 +1812,12 @@ run_cov: setup
 			}; \
 		fi; \
 		chmod -R u+w "$(COV_DB_DIR)" 2>/dev/null || true; \
-		cd $(OUTPUT_DIR) && ./simv \
+		mkdir -p "$(RUN_DIR)"; \
+		if [ "$(RUN_DIR)" != "$(OUTPUT_DIR)" ]; then \
+			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
+			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
+		fi; \
+		cd "$(RUN_DIR)" && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(COV_RUN_COMMON_OPTS) \
@@ -1824,7 +1870,12 @@ debug: setup
 		done; \
 		echo "Completed debug test group $(TEST_NAME), seed=$(SEED)"; \
 	else \
-		cd $(OUTPUT_DIR) && ./simv \
+		mkdir -p "$(RUN_DIR)"; \
+		if [ "$(RUN_DIR)" != "$(OUTPUT_DIR)" ]; then \
+			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
+			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
+		fi; \
+		cd "$(RUN_DIR)" && ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(FSDB_OPTS) \

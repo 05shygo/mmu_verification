@@ -19,6 +19,7 @@ FIELDS = (
     "stamp",
     "log_dir",
     "driver_log",
+    "run_dir",
 )
 
 
@@ -28,7 +29,9 @@ def parse_manifest(path: Path) -> List[Dict[str, str]]:
         if not raw.strip() or raw.startswith("#"):
             continue
         parts = raw.rstrip("\n").split("\t")
-        if len(parts) != len(FIELDS):
+        if len(parts) == len(FIELDS) - 1:
+            parts.append(str(Path(parts[-1]).parent / "run"))
+        elif len(parts) != len(FIELDS):
             raise ValueError(f"bad manifest row with {len(parts)} fields: {raw}")
         rows.append(dict(zip(FIELDS, parts)))
     if not rows:

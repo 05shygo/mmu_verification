@@ -21,6 +21,7 @@ FIELDS = (
     "stamp",
     "log_dir",
     "driver_log",
+    "run_dir",
 )
 
 
@@ -30,7 +31,9 @@ def parse_manifest(path: Path) -> List[Dict[str, str]]:
         if not raw.strip() or raw.startswith("#"):
             continue
         parts = raw.rstrip("\n").split("\t")
-        if len(parts) != len(FIELDS):
+        if len(parts) == len(FIELDS) - 1:
+            parts.append(str(Path(parts[-1]).parent / "run"))
+        elif len(parts) != len(FIELDS):
             raise ValueError(f"bad manifest row with {len(parts)} fields: {raw}")
         rows.append(dict(zip(FIELDS, parts)))
     if not rows:
@@ -45,9 +48,16 @@ def clean_path(path: Path) -> None:
         path.unlink()
 
 
+def write_marker(path: Path, text: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+
+
 def copy_baseline(src: Path, dst: Path, stamp: Path) -> None:
     if not src.is_dir() or not any(src.rglob("*")):
         raise RuntimeError(f"missing/empty compile baseline: {src}")
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    stamp.parent.mkdir(parents=True, exist_ok=True)
     clean_path(dst)
     clean_path(stamp)
     try:
@@ -55,7 +65,6 @@ def copy_baseline(src: Path, dst: Path, stamp: Path) -> None:
     except OSError:
         clean_path(dst)
         shutil.copytree(src, dst)
-    stamp.parent.mkdir(parents=True, exist_ok=True)
     stamp.write_text("phase14 parallel shard baseline\n", encoding="utf-8")
 
 
@@ -69,45 +78,72 @@ def run_one(row: Dict[str, str], args: argparse.Namespace) -> Tuple[str, int]:
     stamp = Path(row["stamp"])
     log_dir = Path(row["log_dir"])
     driver_log = Path(row["driver_log"])
+    run_dir = Path(row["run_dir"])
+    running_marker = driver_log.parent / ".running"
+    done_marker = driver_log.parent / ".done"
+    passed_marker = driver_log.parent / ".passed"
+    failed_marker = driver_log.parent / ".failed"
 
     driver_log.parent.mkdir(parents=True, exist_ok=True)
     summary.parent.mkdir(parents=True, exist_ok=True)
     log_dir.mkdir(parents=True, exist_ok=True)
-    clean_path(cov_vdb)
-    copy_baseline(Path(args.cov_base_db_dir), base_vdb, stamp)
+    for marker in (running_marker, done_marker, passed_marker, failed_marker):
+        clean_path(marker)
+    write_marker(running_marker, f"shard={shard_id}\nseed={seed}\n")
+    cov_vdb.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        clean_path(run_dir)
+        run_dir.mkdir(parents=True, exist_ok=True)
+        clean_path(cov_vdb)
+        copy_baseline(Path(args.cov_base_db_dir), base_vdb, stamp)
 
-    cmd = [
-        args.make,
-        "regress",
-        f"LIST={shard_list}",
-        "REGRESS_MODE=run_cov",
-        f"REGRESS_NAME=phase14_parallel_{shard_id}",
-        f"REGRESS_SUMMARY={summary}",
-        f"REGRESS_SEEDS={seed}",
-        "REGRESS_JOBS=1",
-        f"REGRESS_FAIL_FAST={args.fail_fast}",
-        "REGRESS_MIN_PASS_RATE=1.0",
-        f"VERBOSITY={args.verbosity}",
-        f"TIMEOUT={args.timeout}",
-        f"UVM_ERR_ONLY={args.uvm_err_only}",
-        f"COV_DB_DIR={cov_vdb}",
-        f"COV_BASE_DB_DIR={base_vdb}",
-        f"COV_BASELINE_STAMP={stamp}",
-        f"LOG_DIR={log_dir}",
-    ]
+        cmd = [
+            args.make,
+            "regress",
+            f"LIST={shard_list}",
+            "REGRESS_MODE=run_cov",
+            f"REGRESS_NAME=phase14_parallel_{shard_id}",
+            f"REGRESS_SUMMARY={summary}",
+            f"REGRESS_SEEDS={seed}",
+            "REGRESS_JOBS=1",
+            f"REGRESS_FAIL_FAST={args.fail_fast}",
+            "REGRESS_MIN_PASS_RATE=1.0",
+            f"VERBOSITY={args.verbosity}",
+            f"TIMEOUT={args.timeout}",
+            f"UVM_ERR_ONLY={args.uvm_err_only}",
+            "UVM_CONFIG_DB_TRACE=0",
+            f"COV_DB_DIR={cov_vdb}",
+            f"COV_BASE_DB_DIR={base_vdb}",
+            f"COV_BASELINE_STAMP={stamp}",
+            f"LOG_DIR={log_dir}",
+            f"RUN_DIR={run_dir}",
+        ]
 
-    with driver_log.open("w", encoding="utf-8", errors="ignore") as handle:
-        handle.write(f"=== Phase14 parallel shard {shard_id} seed={seed} ===\n")
-        handle.write(" ".join(cmd) + "\n")
-        handle.flush()
-        completed = subprocess.run(
-            cmd,
-            cwd=args.project_dir,
-            stdout=handle,
-            stderr=subprocess.STDOUT,
-            env=os.environ.copy(),
-        )
-    return shard_id, completed.returncode
+        with driver_log.open("w", encoding="utf-8", errors="ignore") as handle:
+            handle.write(f"=== Phase14 parallel shard {shard_id} seed={seed} ===\n")
+            handle.write(" ".join(cmd) + "\n")
+            handle.flush()
+            completed = subprocess.run(
+                cmd,
+                cwd=args.project_dir,
+                stdout=handle,
+                stderr=subprocess.STDOUT,
+                env=os.environ.copy(),
+            )
+        rc = completed.returncode
+    except Exception as exc:
+        clean_path(running_marker)
+        write_marker(done_marker, f"shard={shard_id}\nseed={seed}\nrc=2\nexception={exc}\n")
+        write_marker(failed_marker, f"shard={shard_id}\nseed={seed}\nexception={exc}\n")
+        raise
+
+    clean_path(running_marker)
+    write_marker(done_marker, f"shard={shard_id}\nseed={seed}\nrc={rc}\n")
+    if rc == 0:
+        write_marker(passed_marker, f"shard={shard_id}\nseed={seed}\n")
+    else:
+        write_marker(failed_marker, f"shard={shard_id}\nseed={seed}\nrc={rc}\n")
+    return shard_id, rc
 
 
 def write_fail_file(path: Path, failures: Iterable[Tuple[str, int]]) -> None:

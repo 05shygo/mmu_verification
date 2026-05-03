@@ -73,6 +73,7 @@ Review policy:
 | MMU-P14-ISSUE-004 | Makefile/Gate | Phase 14 Closure Owner regression and exit gate infrastructure | Phase 14 | Medium | Phase14 Closure Owner | Open | No |
 | MMU-P14-ISSUE-005 | Waiver/Signoff | Phase 14 signoff matrix and second-review workflow | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
 | MMU-P14-ISSUE-006 | URG/Tooling | VCS coverage dump abort corrupts/invalidates Phase14 run_cov VDB flow | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-007 | Testbench/Protocol | Phase14 PTW mbuf abort/late-response accounting and SVA failures | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 
 ---
 
@@ -374,13 +375,214 @@ Open and blocking until one of the following is true:
 
 ---
 
+## MMU-P14-ISSUE-007 - PTW mbuf Abort / Late-Response Protocol Triage
+
+| Field | Value |
+| --- | --- |
+| Type | Testbench/Protocol |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Open |
+| Blocking | Yes |
+| First observed | 2026-05-03 |
+| Evidence | `make phase14_show_parallel_failures PHASE14_PARALLEL_FAILURE_LIMIT=7`; logs under `output/phase14_parallel_logs` |
+
+### Failure Signature
+
+The first high-parallel Phase14 functional rerun reported 7 failing shards:
+
+```text
+test_pmbuf_addr_stable_001 seeds=97101,97103,97104,97105
+test_pmbuf_serial_outstanding_001 seeds=97103,97105
+test_mmu_arb_grant_onehot_check seed=97101
+```
+
+The pmbuf tests fail at end of simulation with:
+
+```text
+UVM_ERROR testbench/env/mmu_credit_sb.svh(498)
+[CreditSB] ptw_mbuf_cnt != 0 at end-of-sim (1):
+PTW serialized external request not drained
+```
+
+The arb/grant testcase fails repeatedly in:
+
+```text
+testbench/top/mmu_ptw_lsu_protocol_sva.sv:52
+a_response_inorder
+```
+
+around the first observed response-order failure at `1799500ps`.
+
+### Current Triage
+
+This is not currently classified as a Phase14 parallel-runner issue. The
+failures converge on the PTW-to-LSU external memory channel and its abort /
+late-response modeling.
+
+The credit scoreboard increments `m_ptw_mbuf_cnt` on PTW memory request monitor
+events and decrements on response/drop events. A residual count of 1 after the
+scoreboard drain window indicates one monitored PTW request did not receive a
+matching response or drop according to the testbench model.
+
+The `a_response_inorder` checker currently requires every PTW LSU response
+event:
+
+```systemverilog
+lsu_mmu_data_vld || lsu_mmu_bus_error
+```
+
+to coincide with:
+
+```systemverilog
+|(mbuf_entry_vld & mbuf_ptr)
+```
+
+This assumption is suspicious around `tlboper_ptw_abort`. In the RTL, mbuf entry
+valid can be cleared by abort while `mbuf_entry_on` / PTW abort cleanup state may
+still be waiting for a later `lsu_mmu_data_vld` or `lsu_mmu_bus_error` to retire
+the outstanding external transaction. A late response after abort can therefore
+be legal for cleanup but fail the checker if the checker keys off
+`mbuf_entry_vld` instead of the in-flight/on state.
+
+The PTW memory responder is also suspicious: it cancels a pending response when
+`mmu_lsu_data_req` drops or the request address/size changes. The responder and
+monitor do not observe `tlboper_ptw_abort`, so they cannot distinguish normal
+request cancellation/replacement from an abort boundary where the DUT may still
+need a late response or bus error to clear internal abort state.
+
+Additional RTL item to review: `ptw.sv` sets `abort_flop` with a condition that
+contains:
+
+```systemverilog
+(!lsu_mmu_bus_error | !lsu_mmu_data_vld)
+```
+
+This expression is true unless both response indicators are asserted in the same
+cycle. If the intended condition is "abort and no response this cycle", the
+expression should be reviewed with the design owner before any RTL change is
+made.
+
+### Possible Contributing Testcase Issue
+
+The Phase11 pmbuf wrappers used by the failing pmbuf tests run generic direct
+LSU sequences such as `lsu_pipe0_only_seq` and `lsu_back2back_seq`. Those
+sequences are not constrained to the mapped SV39 window prepared by the base
+test. This makes the pmbuf tests less directed than their names imply and can
+increase seed sensitivity by generating many unmapped/page-fault/abort cases.
+
+This does not by itself prove the root cause, but it should be reviewed after
+the abort/late-response protocol question is confirmed.
+
+### Minimal Failure Capture Procedure
+
+Do not start with the full 465-shard run. Reproduce one failing shard with a
+single testcase/seed first:
+
+```bash
+make run_cov TEST_NAME=test_mmu_arb_grant_onehot_check SEED=97101 \
+  VERBOSITY=UVM_MEDIUM TIMEOUT=30000000 UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=0 \
+  RUN_DIR=output/debug_phase14_min/arb_97101 \
+  LOG_DIR=output/debug_phase14_min/logs \
+  COV_DB_DIR=output/debug_phase14_min/arb_97101.vdb \
+  COV_TAG=test_mmu_arb_grant_onehot_check_97101_min
+```
+
+Then check whether the same SVA failure appears near the first known failure
+time:
+
+```bash
+make check_log \
+  LOG=output/debug_phase14_min/logs/test_mmu_arb_grant_onehot_check_97101_min_cov.log
+
+grep -nE 'a_response_inorder|PTW_REQ_CANCEL|PTW_REQ_REPLACE|PTW LSU REQ|PTW RSP|ptw_mbuf_cnt|end-drain' \
+  output/debug_phase14_min/logs/test_mmu_arb_grant_onehot_check_97101_min_cov.log
+```
+
+For the credit leak signature, use one of the shortest pmbuf failures:
+
+```bash
+make run_cov TEST_NAME=test_pmbuf_addr_stable_001 SEED=97105 \
+  VERBOSITY=UVM_MEDIUM TIMEOUT=30000000 UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=0 \
+  RUN_DIR=output/debug_phase14_min/pmbuf_addr_97105 \
+  LOG_DIR=output/debug_phase14_min/logs \
+  COV_DB_DIR=output/debug_phase14_min/pmbuf_addr_97105.vdb \
+  COV_TAG=test_pmbuf_addr_stable_001_97105_min
+```
+
+Then scan the pmbuf log:
+
+```bash
+make check_log \
+  LOG=output/debug_phase14_min/logs/test_pmbuf_addr_stable_001_97105_min_cov.log
+
+grep -nE 'PTW_REQ_CANCEL|PTW_REQ_REPLACE|PTW LSU REQ|PTW RSP|ptw_mbuf_cnt|end-drain|UVM_ERROR' \
+  output/debug_phase14_min/logs/test_pmbuf_addr_stable_001_97105_min_cov.log
+```
+
+If log reproduction confirms the same failure, rerun the arb/grant seed with
+wave dumping enabled by using the non-coverage `run` target:
+
+```bash
+make run TEST_NAME=test_mmu_arb_grant_onehot_check SEED=97101 \
+  VERBOSITY=UVM_MEDIUM TIMEOUT=30000000 UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=0 \
+  RUN_DIR=output/debug_phase14_min/arb_97101_wave \
+  LOG_DIR=output/debug_phase14_min/logs \
+  WAVE_DIR=output/debug_phase14_min/waves
+
+make check_log \
+  LOG=output/debug_phase14_min/logs/test_mmu_arb_grant_onehot_check_97101.log
+```
+
+The expected FSDB is:
+
+```text
+output/debug_phase14_min/waves/test_mmu_arb_grant_onehot_check.fsdb
+```
+
+The key waveform/debug window is the first `a_response_inorder` failure around
+`1799500ps`. Capture at least +/-200ns around that point and inspect:
+
+```text
+tlboper_ptw_abort
+abort_flop
+mmu_lsu_data_req
+mmu_lsu_data_req_addr
+lsu_mmu_data_vld
+lsu_mmu_bus_error
+mbuf_entry_vld
+mbuf_entry_on
+mbuf_entry_get
+mbuf_ptr
+mbuf_ptr_nxt
+```
+
+The hypothesis is confirmed if a response arrives after or during PTW abort while
+`mbuf_entry_vld & mbuf_ptr` is zero but an in-flight/on or abort-cleanup state is
+still active.
+
+### Closure Requirement
+
+Blocking until all are true:
+
+- Minimal single-test reproduction is captured and archived.
+- Abort/late-response behavior is classified as either DUT protocol bug,
+  testbench responder/monitor modeling bug, or SVA assumption bug.
+- The selected fix is reviewed against the RTL PTW abort semantics.
+- The failing Phase14 shards rerun cleanly before final signoff.
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007
 ```
 
 Before final signoff, update this table:
@@ -393,3 +595,4 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-004 | TBD | `make print-phase14`; `python -m py_compile scripts/phase14_exit_gate.py`; closure run evidence |
 | MMU-P14-ISSUE-005 | TBD | `doc/MMU_Phase14_SignoffMatrix.md` |
 | MMU-P14-ISSUE-006 | TBD | High-parallel closure rerun evidence or reviewed coverage waiver |
+| MMU-P14-ISSUE-007 | TBD | Minimal PTW mbuf abort/late-response reproduction and Phase14 shard rerun evidence |

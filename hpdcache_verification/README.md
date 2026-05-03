@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # HPDcache Subsystem Verification
 
 ## NOTE 

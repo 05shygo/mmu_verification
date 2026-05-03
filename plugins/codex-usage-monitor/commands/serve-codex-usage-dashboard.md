@@ -1,3 +1,7 @@
+---
+description: Start the local Codex usage dashboard server and return the live URL.
+---
+
 # /serve-codex-usage-dashboard
 
 Start the local Codex usage dashboard server.

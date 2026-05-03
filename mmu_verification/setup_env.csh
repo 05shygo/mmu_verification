@@ -1,12 +1,14 @@
 #!/bin/csh
 # MMU UVM Verification Environment Setup (csh/tcsh)
-# Usage: source setup_env.csh  (must be sourced from mmu_verification/ root)
+# Usage: source setup_env.csh
 #
 # For server-specific tool paths, create setup.local.csh from the template:
 #   cp setup.local.csh.example setup.local.csh   # then edit with your VCS_HOME
 # setup.local.csh is listed in .gitignore and is never committed.
 
-setenv PROJECT_DIR     ${PWD}
+set _mmu_setup_dir = `dirname $_`
+setenv PROJECT_DIR     `cd ${_mmu_setup_dir} && pwd`
+unset _mmu_setup_dir
 setenv MMU_RTL_DIR     ${PROJECT_DIR}/../mmu/rtl
 setenv CORE_V_VERIF    ${PROJECT_DIR}/modules/dv_utils
 setenv CV_DV_UTILS_DIR ${CORE_V_VERIF}/lib/cv_dv_utils

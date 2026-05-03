@@ -223,6 +223,113 @@ class mmu_env_cg_whitebox extends uvm_component;
     cx_path_mode: cross cp_path, cp_maee_mode;
   endgroup
 
+  // --- Phase 13: PMP/TWU and SysMap/TWU covergroups -------------------------
+  covergroup cg_pmp_per_level_result with function sample(int unsigned level, int unsigned result);
+    option.per_instance = 1;
+    cp_level: coverpoint level { bins fst = {0}; bins scd = {1}; bins thd = {2}; }
+    cp_result: coverpoint result { bins pass = {1}; bins deny = {2}; bins wait_seen = {3}; }
+    cx_level_result: cross cp_level, cp_result;
+  endgroup
+
+  covergroup cg_pmp_grant_level with function sample(logic [2:0] grant);
+    option.per_instance = 1;
+    cp_grant: coverpoint grant {
+      bins none = {3'b000};
+      bins thd  = {3'b001};
+      bins scd  = {3'b010};
+      bins fst  = {3'b100};
+      ignore_bins multi = {3'b011, 3'b101, 3'b110, 3'b111};
+    }
+  endgroup
+
+  covergroup cg_pmp_pa_format with function sample(int unsigned pgs_class, int unsigned align_class);
+    option.per_instance = 1;
+    cp_pgs: coverpoint pgs_class { bins pgs_4k = {1}; bins pgs_2m = {2}; bins pgs_1g = {4}; }
+    cp_align: coverpoint align_class { bins bad = {1}; bins ok_4k = {2}; bins ok_2m = {3}; bins ok_1g = {4}; }
+    cx_pgs_align: cross cp_pgs, cp_align;
+  endgroup
+
+  covergroup cg_pmp_deny_by_level with function sample(int unsigned level, int unsigned acc_kind);
+    option.per_instance = 1;
+    cp_level: coverpoint level { bins fst = {0}; bins scd = {1}; bins thd = {2}; }
+    cp_acc: coverpoint acc_kind { bins load = {1}; bins store = {2}; bins fetch = {3}; bins pref = {4}; bins other = {7}; }
+    cx_level_acc: cross cp_level, cp_acc;
+  endgroup
+
+  covergroup cg_twu_mask_cause with function sample(int unsigned level, int unsigned mask_cnt, bit all_mask);
+    option.per_instance = 1;
+    cp_level: coverpoint level { bins fst = {0}; bins scd = {1}; bins thd = {2}; }
+    cp_mask_cnt: coverpoint mask_cnt { bins one = {1}; bins some = {[2:3]}; bins all = {4}; }
+    cp_all_mask: coverpoint all_mask { bins no = {0}; bins yes = {1}; }
+  endgroup
+
+  covergroup cg_ptw_pmp_port_map with function sample(int unsigned twu_idx, int unsigned port_id, bit pa_seen, int unsigned acc_kind, bit fetch_sideband);
+    option.per_instance = 1;
+    cp_twu: coverpoint twu_idx { bins one = {0}; bins two = {1}; bins three = {2}; bins four = {3}; }
+    cp_port: coverpoint port_id { bins p3 = {3}; bins p5 = {5}; bins p6 = {6}; bins p7 = {7}; }
+    cp_pa_seen: coverpoint pa_seen { bins idle = {0}; bins active = {1}; }
+    cp_acc: coverpoint acc_kind { bins load = {1}; bins store = {2}; bins fetch = {3}; bins pref = {4}; bins other = {7}; }
+    cp_fetch_sideband: coverpoint fetch_sideband { bins data_origin = {0}; bins fetch_origin = {1}; }
+    cx_twu_port: cross cp_twu, cp_port;
+    cx_acc_fetch: cross cp_acc, cp_fetch_sideband;
+  endgroup
+
+  covergroup cg_sysmap_flg_per_region with function sample(int unsigned region, logic [4:0] flg, bit refill_match);
+    option.per_instance = 1;
+    cp_region: coverpoint region { bins low = {[0:3]}; bins high = {[4:7]}; bins no_hit = {8}; }
+    cp_flg: coverpoint flg {
+      bins normal = {5'b01111};
+      bins device = {5'b10011};
+      ignore_bins other_low = {[0:14]};
+      ignore_bins other_mid = {[16:18]};
+      ignore_bins other_high = {[20:31]};
+    }
+    cp_refill_match: coverpoint refill_match { bins no = {0}; bins yes = {1}; }
+  endgroup
+
+  covergroup cg_sysmap_cross_1g with function sample(bit cross_seen, int unsigned region, bit hit_any);
+    option.per_instance = 1;
+    cp_cross: coverpoint cross_seen { bins no = {0}; bins yes = {1}; }
+    cp_hit_any: coverpoint hit_any { bins no = {0}; bins yes = {1}; }
+  endgroup
+
+  covergroup cg_sysmap_cross_2m with function sample(bit cross_seen, int unsigned region, bit hit_any);
+    option.per_instance = 1;
+    cp_cross: coverpoint cross_seen { bins no = {0}; bins yes = {1}; }
+    cp_hit_any: coverpoint hit_any { bins no = {0}; bins yes = {1}; }
+  endgroup
+
+  covergroup cg_sysmap_degrade_pgs with function sample(int unsigned before_pgs, int unsigned after_pgs);
+    option.per_instance = 1;
+    cp_before: coverpoint before_pgs { bins pgs_4k = {1}; bins pgs_2m = {2}; bins pgs_1g = {4}; }
+    cp_after: coverpoint after_pgs { bins pgs_4k = {1}; bins pgs_2m = {2}; bins pgs_1g = {4}; }
+    cx_degrade: cross cp_before, cp_after;
+  endgroup
+
+  covergroup cg_sysmap_pa_align with function sample(int unsigned pgs_class, int unsigned align_class);
+    option.per_instance = 1;
+    cp_pgs: coverpoint pgs_class { bins pgs_4k = {1}; bins pgs_2m = {2}; bins pgs_1g = {4}; }
+    cp_align: coverpoint align_class { bins mismatch = {1}; bins ok_4k = {2}; bins ok_2m = {3}; bins ok_1g = {4}; }
+    cx_pgs_align: cross cp_pgs, cp_align;
+  endgroup
+
+  covergroup cg_sysmap_4twu_concurrent with function sample(int unsigned active_cnt, bit port_map_ok);
+    option.per_instance = 1;
+    cp_active_cnt: coverpoint active_cnt { bins partial = {[1:3]}; bins four = {4}; }
+    cp_port_map_ok: coverpoint port_map_ok { bins yes = {1}; ignore_bins no = {0}; }
+  endgroup
+
+  covergroup cg_sysmap_default_flag with function sample(bit no_hit, logic [4:0] flg, bit propagated);
+    option.per_instance = 1;
+    cp_no_hit: coverpoint no_hit { bins hit = {0}; bins no_hit = {1}; }
+    cp_default_flg: coverpoint flg {
+      bins default_10011 = {5'b10011};
+      ignore_bins other_low = {[0:18]};
+      ignore_bins other_high = {[20:31]};
+    }
+    cp_propagated: coverpoint propagated { bins no = {0}; bins yes = {1}; }
+  endgroup
+
   function int unsigned umin(int unsigned a, int b);
     return (a < b) ? a : b;
   endfunction
@@ -269,6 +376,91 @@ class mmu_env_cg_whitebox extends uvm_component;
     endcase
   endfunction
 
+  function int unsigned f_p13_stage_bit(input int unsigned level);
+    case (level)
+      0: return 2; // FST
+      1: return 1; // SCD
+      default: return 0; // THD
+    endcase
+  endfunction
+
+  function int unsigned f_p13_stage_pgs(input int unsigned level);
+    case (level)
+      0: return 4; // 1G
+      1: return 2; // 2M
+      default: return 1; // 4K
+    endcase
+  endfunction
+
+  function int unsigned f_p13_pgs_class(input logic [2:0] pgs);
+    case (pgs)
+      3'b001: return 1;
+      3'b010: return 2;
+      3'b100: return 4;
+      default: return 0;
+    endcase
+  endfunction
+
+  function int unsigned f_p13_acc_kind(input logic [2:0] typ);
+    case (typ)
+      3'b010: return 1; // load
+      3'b110: return 2; // store
+      3'b011: return 3; // fetch
+      3'b100: return 4; // prefetch
+      default: return 7;
+    endcase
+  endfunction
+
+  function int unsigned f_p13_selected_pmp_acc_kind(
+    input logic [2:0] grant,
+    input logic [2:0][2:0] typ_vec
+  );
+    if (grant[2]) return f_p13_acc_kind(typ_vec[2]);
+    if (grant[1]) return f_p13_acc_kind(typ_vec[1]);
+    if (grant[0]) return f_p13_acc_kind(typ_vec[0]);
+    return 7;
+  endfunction
+
+  function int unsigned f_p13_pmp_align_class(input int unsigned level, input logic [27:0] pa);
+    if (pa == 28'h0) return 0;
+    case (level)
+      0: return (pa[17:0] == 18'h0) ? 4 : 1;
+      1: return (pa[8:0] == 9'h0) ? 3 : 1;
+      default: return 2;
+    endcase
+  endfunction
+
+  function int unsigned f_p13_sysmap_align_class(
+    input logic [2:0] pgs,
+    input logic [27:0] sysmap_pa,
+    input logic [39:0] adder
+  );
+    int unsigned pgs_class;
+    pgs_class = f_p13_pgs_class(pgs);
+    if (sysmap_pa != adder[39:12]) return 1;
+    case (pgs_class)
+      4: return (sysmap_pa[17:0] == 18'h0) ? 4 : 1;
+      2: return (sysmap_pa[8:0] == 9'h0) ? 3 : 1;
+      1: return 2;
+      default: return 0;
+    endcase
+  endfunction
+
+  function int unsigned f_p13_region_idx(input logic [7:0] hit);
+    for (int unsigned i = 0; i < 8; i++)
+      if (hit[i]) return i;
+    return 8;
+  endfunction
+
+  function int unsigned f_p13_port_id(input int unsigned twu_idx);
+    case (twu_idx)
+      0: return 3;
+      1: return 5;
+      2: return 6;
+      default: return 7;
+    endcase
+  endfunction
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
     wb_sample_cycles               = 0;
@@ -287,6 +479,19 @@ class mmu_env_cg_whitebox extends uvm_component;
     cg_ptw_arb_pgs_type          = new();
     cg_maee_leaf_level           = new();
     cg_maee_path                 = new();
+    cg_pmp_per_level_result      = new();
+    cg_pmp_grant_level           = new();
+    cg_pmp_pa_format             = new();
+    cg_pmp_deny_by_level         = new();
+    cg_twu_mask_cause            = new();
+    cg_ptw_pmp_port_map          = new();
+    cg_sysmap_flg_per_region     = new();
+    cg_sysmap_cross_1g           = new();
+    cg_sysmap_cross_2m           = new();
+    cg_sysmap_degrade_pgs        = new();
+    cg_sysmap_pa_align           = new();
+    cg_sysmap_4twu_concurrent    = new();
+    cg_sysmap_default_flag       = new();
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -320,6 +525,7 @@ class mmu_env_cg_whitebox extends uvm_component;
       cg_ptw_arb_pgs_type.sample();
       cg_maee_leaf_level.sample();
       cg_maee_path.sample();
+      sample_phase13_covergroups();
       wb_sample_cycles++;
     end
   endtask
@@ -339,6 +545,148 @@ class mmu_env_cg_whitebox extends uvm_component;
         cg_maee_leaf_level.get_inst_coverage(),
         cg_maee_path.get_inst_coverage()),
       UVM_LOW)
+    `uvm_info(get_type_name(),
+      $sformatf("phase13_whitebox_cg summary: pmp_result=%0.2f pmp_grant=%0.2f pmp_pa=%0.2f pmp_deny=%0.2f twu_mask=%0.2f pmp_port=%0.2f sysmap_flg=%0.2f cross1g=%0.2f cross2m=%0.2f degrade=%0.2f sysmap_pa=%0.2f sysmap_4twu=%0.2f default=%0.2f",
+        cg_pmp_per_level_result.get_inst_coverage(),
+        cg_pmp_grant_level.get_inst_coverage(),
+        cg_pmp_pa_format.get_inst_coverage(),
+        cg_pmp_deny_by_level.get_inst_coverage(),
+        cg_twu_mask_cause.get_inst_coverage(),
+        cg_ptw_pmp_port_map.get_inst_coverage(),
+        cg_sysmap_flg_per_region.get_inst_coverage(),
+        cg_sysmap_cross_1g.get_inst_coverage(),
+        cg_sysmap_cross_2m.get_inst_coverage(),
+        cg_sysmap_degrade_pgs.get_inst_coverage(),
+        cg_sysmap_pa_align.get_inst_coverage(),
+        cg_sysmap_4twu_concurrent.get_inst_coverage(),
+        cg_sysmap_default_flag.get_inst_coverage()),
+      UVM_LOW)
+  endfunction
+
+  virtual function void sample_phase13_covergroups();
+    int unsigned active_sysmap_cnt;
+    bit          sysmap_port_map_ok;
+
+    active_sysmap_cnt = 0;
+    sysmap_port_map_ok = 1'b1;
+
+    for (int unsigned t = 0; t < 4; t++) begin
+      logic [2:0] vld;
+      logic [2:0] grant;
+      logic [2:0] deny;
+      logic [2:0] wait_v;
+      logic [2:0] mbuf_req;
+      int unsigned region;
+      bit hit_any;
+      bit refill_match;
+      int unsigned before_pgs;
+      int unsigned after_pgs;
+
+      vld      = v_probe.p13_pmp_vld_vec[t];
+      grant    = v_probe.p13_pmp_grant_vec[t];
+      deny     = v_probe.p13_pmp_deny_vec[t];
+      wait_v   = v_probe.p13_pmp_wait_vec[t];
+      mbuf_req = v_probe.p13_pmp_mbuf_req_vec[t];
+
+      if ((vld != 3'b000) || (grant != 3'b000))
+        cg_pmp_grant_level.sample(grant);
+
+      if ((vld != 3'b000) || (grant != 3'b000) || (v_probe.p13_pmp_pa_vec[t] != 28'h0))
+        cg_ptw_pmp_port_map.sample(
+          t, f_p13_port_id(t),
+          (v_probe.p13_pmp_pa_vec[t] != 28'h0),
+          f_p13_selected_pmp_acc_kind(grant, v_probe.p13_pmp_type_vec[t]),
+          v_probe.p13_pmp_fetch_vec[t]);
+
+      for (int unsigned level = 0; level < 3; level++) begin
+        int unsigned bit_idx;
+        int unsigned result;
+        int unsigned acc_kind;
+
+        bit_idx = f_p13_stage_bit(level);
+        result = 0;
+        if (wait_v[bit_idx])
+          result = 3;
+        else if (grant[bit_idx] && deny[bit_idx])
+          result = 2;
+        else if ((grant[bit_idx] && !deny[bit_idx]) || mbuf_req[bit_idx])
+          result = 1;
+
+        if ((vld[bit_idx] || grant[bit_idx] || wait_v[bit_idx] || mbuf_req[bit_idx]) && (result != 0)) begin
+          cg_pmp_per_level_result.sample(level, result);
+          cg_pmp_pa_format.sample(
+            f_p13_stage_pgs(level),
+            f_p13_pmp_align_class(level, v_probe.p13_pmp_pa_vec[t]));
+        end
+
+        if (deny[bit_idx]) begin
+          acc_kind = f_p13_acc_kind(v_probe.p13_pmp_type_vec[t][bit_idx]);
+          cg_pmp_deny_by_level.sample(level, acc_kind);
+        end
+
+        if (wait_v[bit_idx])
+          cg_twu_mask_cause.sample(level, cnt4(v_probe.ptw_twu_mask), (&v_probe.ptw_twu_mask));
+      end
+
+      region = f_p13_region_idx(v_probe.p13_sysmap_hit_vec[t]);
+      hit_any = (v_probe.p13_sysmap_hit_vec[t] != 8'h00);
+      refill_match = v_probe.p13_csr_refill_req_vec[t]
+                   && (v_probe.p13_csr_refill_data_vec[t][13:9] == v_probe.p13_sysmap_flg_vec[t]);
+
+      if (hit_any || v_probe.p13_csr_refill_req_vec[t])
+        cg_sysmap_flg_per_region.sample(region, v_probe.p13_sysmap_flg_vec[t], refill_match);
+
+      if (v_probe.p13_twu_crs2_1g_vec[t])
+        cg_sysmap_cross_1g.sample(
+          v_probe.p13_twu_csr_cross_vec[t],
+          region,
+          hit_any);
+
+      if (v_probe.p13_twu_crs2_2m_vec[t])
+        cg_sysmap_cross_2m.sample(
+          v_probe.p13_twu_csr_cross_vec[t],
+          region,
+          hit_any);
+
+      before_pgs = 0;
+      if (v_probe.p13_twu_crs2_1g_vec[t])
+        before_pgs = 4;
+      else if (v_probe.p13_twu_crs2_2m_vec[t])
+        before_pgs = 2;
+      else
+        before_pgs = f_p13_pgs_class(v_probe.p13_csr_refill_pgs_vec[t]);
+      after_pgs = f_p13_pgs_class(v_probe.p13_csr_refill_pgs_vec[t]);
+      if ((before_pgs != 0) && (after_pgs != 0))
+        cg_sysmap_degrade_pgs.sample(before_pgs, after_pgs);
+
+      if (hit_any || v_probe.p13_csr_refill_req_vec[t]) begin
+        cg_sysmap_pa_align.sample(
+          (after_pgs != 0) ? after_pgs : 1,
+          f_p13_sysmap_align_class(
+            (after_pgs == 4) ? 3'b100 : ((after_pgs == 2) ? 3'b010 : 3'b001),
+            v_probe.p13_sysmap_pa_vec[t],
+            v_probe.p13_twu_sysmap_adder_vec[t]));
+      end
+
+      if (hit_any || v_probe.p13_csr_refill_req_vec[t] || v_probe.p13_twu_crs2_chk_vec[t]) begin
+        if (!hit_any)
+          cg_sysmap_default_flag.sample(
+            1'b1,
+            v_probe.p13_sysmap_flg_vec[t],
+            v_probe.p13_csr_refill_req_vec[t]
+              && (v_probe.p13_csr_refill_data_vec[t][13:9] == 5'b10011));
+        else
+          cg_sysmap_default_flag.sample(1'b0, v_probe.p13_sysmap_flg_vec[t], 1'b0);
+      end
+
+      if (hit_any || v_probe.p13_csr_refill_req_vec[t] || v_probe.p13_twu_crs2_chk_vec[t])
+        active_sysmap_cnt++;
+      if (hit_any && (v_probe.p13_sysmap_pa_vec[t] != v_probe.p13_twu_sysmap_adder_vec[t][39:12]))
+        sysmap_port_map_ok = 1'b0;
+    end
+
+    if (active_sysmap_cnt != 0)
+      cg_sysmap_4twu_concurrent.sample(active_sysmap_cnt, sysmap_port_map_ok);
   endfunction
 
   virtual function void sample_dut;

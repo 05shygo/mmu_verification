@@ -1,0 +1,124 @@
+# Phase 14 v4 full/quasi-full regression list
+# Owner: Phase14 Closure Owner
+# Source union:
+#   - simu/mmu_v3_regression_list
+#   - simu/mmu_v4_phase12_list
+#   - simu/mmu_v4_phase13_list
+# Default external seed set:
+#   97101 97102 97103 97104 97105
+#
+# Policy:
+#   - No active xfail entries are allowed in this signoff list.
+#   - Blocked/doc-only items stay commented until the issue tracker records
+#     closure and standalone PASS evidence.
+#   - Historical A-side/B-side ownership is retained in source lists and docs;
+#     Phase 14 execution is owned by the Phase14 Closure Owner.
+
+# Phase 11 v3 gap-driven guards
+test_bug_001_twu_fst_fetch_type
+test_bug_002_thd_chk_4k_a_bit
+test_bug_003_thd_chk_leaf_refill
+test_bug_004_mmu_arb_bank_mask
+test_bug_005_l2_raw_vld_and_gate
+test_bug_006_l2_is_dtlb_store
+test_bug_007_rrpv_post_inv
+test_bug_008_pplru_entry0_first_hit
+test_bug_012_csr_grant_onehot
+test_bug_013_ptw_write_pipe_reset
+test_bug_014_xbar_cold_start
+test_pmbuf_serial_outstanding_001
+test_pmbuf_addr_stable_001
+test_pmbuf_no_tag_001
+test_pmbuf_inorder_resp_001
+test_pmbuf_ptr_hold_001
+
+# Blocked/doc-only Phase 11 items, intentionally not runnable in Phase 14:
+# test_bug_011_twu_2m_csr_cross  # MMU-P14-ISSUE-003/R19: blocked until RTL fix or waiver
+# tc_bug_015_invva_legacy_fsm_doc # doc-review only, no UVM wrapper
+
+# Phase 12 MAEE / PTW-ready / TWU bypass
+test_mmu_twu_maee0_csr_path
+test_mmu_twu_maee0_csr_symmetric
+test_mmu_twu_maee1_direct_refill
+test_mmu_twu_maee_dynamic_switch
+test_mmu_ptw_ready_all_mask_low
+test_mmu_ptw_ready_one_unblock
+test_mmu_ptw_ready_l2tlb_stall
+test_mmu_twu_idle_implies_no_mask
+test_mmu_pde_cache_hit_l3_skip_thd
+test_mmu_pde_cache_hit_l2_skip_scd
+test_mmu_pde_cache_full_miss_full_ptw
+test_mmu_twu_pgflt_bypass_arb
+test_mmu_twu_accerr_bypass_arb
+test_mmu_twu_except_conflict_pgflt_accflt
+test_mmu_mbuf_ready_gate_no_early_vld
+test_mmu_mbuf_have_no_resend
+test_mmu_mbuf_multi_twu_independent_ready
+test_mmu_arb_grant_onehot_check
+test_mmu_arb_refill_except_priority
+test_mmu_arb_multi_twu_fairness
+test_mmu_arb_vpn_match_tag_din
+test_mmu_arb_pgs_bank_select
+
+# Phase 13 PMP/TWU
+test_twu_pmp_serial
+test_twu_pmp_wait_stall
+test_ptw_pmp_before_lsu
+test_ptw_pmp_deny_stop
+test_twu_pmp_grant_onehot
+test_ptw_pmp_pa_1g
+test_ptw_pmp_pa_2m
+test_ptw_pmp_pa_4k
+test_ptw_pmp_wait_no_lsu
+test_ptw_pmp_pa_zero
+test_ptw_pmp_deny_accflt
+test_ptw_pmp_deny_no_refill
+test_ptw_pmp_mmode_l0
+test_twu_mask_pmp_wait_all4
+test_ptw_pmp_fetch_zero
+test_ptw_pmp_port_map_concurrent
+
+# Existing PMP deny / port baseline
+test_mmu_pmp_deny_access_fault
+test_mmu_pmp_deny_fetch_fault
+test_mmu_pmp_cross_port_deny
+test_mmu_pmp_8port_concurrent
+test_mmu_pmp_port_independence
+test_mmu_pmp_port_config_independence
+test_mmu_pmp_port_saturation
+test_mmu_pmp_pa_alignment
+test_mmu_pmp_pa_correctness
+test_mmu_pmp_pa_pipeline
+test_mmu_pmp_pde_cache_flow
+test_mmu_pmp_fetch_selective
+test_pmp_deny_walk_abort
+
+# Phase 13 SysMap
+test_sysmap_phase13_flg_refill_region0
+test_sysmap_phase13_flg_refill_region7
+test_sysmap_phase13_cross_1g_degrade
+test_sysmap_phase13_cross_2m_degrade
+test_sysmap_phase13_no_cross_no_degrade
+test_sysmap_phase13_pa_align_1g
+test_sysmap_phase13_pa_align_2m_4k
+test_sysmap_phase13_4twu_concurrent
+test_sysmap_phase13_default_flag
+
+# Existing SysMap baseline
+test_mmu_sysmap_alignment
+test_mmu_sysmap_disabled
+test_mmu_sysmap_flag_r
+test_mmu_sysmap_flag_wxec
+test_mmu_sysmap_hit_boundary
+test_mmu_sysmap_hit_match
+test_mmu_sysmap_hit_unique
+test_mmu_sysmap_priority
+test_mmu_sysmap_priority_over_tlb
+test_mmu_sysmap_pte_walk_addr
+test_mmu_sysmap_region_config
+test_mmu_sysmap_region_default
+test_mmu_sysmap_tlb_fallback
+test_sysmap_hit_bypass_walk
+test_sysmap_multi_region_coverage
+test_sysmap_no_walk_required
+test_sysmap_vs_ptw_priority

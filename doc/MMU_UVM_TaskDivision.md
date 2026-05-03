@@ -324,7 +324,7 @@
 | 2 | 每条 SVA property 至少触发**20 次**（`cover property` 统计 > 0 证明路径可达）    | 仿真 log 中 cover 统计 |
 | 3 | `mmu_sysmap_sva.sv` 3 条 SVA **各有对应 `cover property`**                     | code review            |
 | 4 | `mmu_pmp_twu_sva.sv` **完整实现**，所有 property 语法正确，编译 0 errors         | 编译 log               |
-| 5 | 13 个 covergroup 在 Phase 13 测试中**每个至少 50% bin 命中**                       | 覆盖率 HTML 报告       |
+| 5 | 13 个 covergroup 在 Phase 13 测试中**每个至少 50% bin 命中**                       | 优先使用 URG 覆盖率报告；若 URG 因 `No context available` 无法生成，则使用 `phase13_whitebox_cg summary` 仿真 log fallback |
 | 6 | DA-003 须有**书面记录**（关闭凭证 / 正式 waiver 文档），**不允许仅口头确认** | 文档存档 / JIRA 截图   |
 
 ---

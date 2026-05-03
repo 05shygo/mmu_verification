@@ -1,12 +1,12 @@
 #!/bin/bash
 # MMU UVM Verification Environment Setup (bash/sh)
-# Usage: source setup_env.sh  (must be sourced from mmu_verification/ root)
+# Usage: source setup_env.sh
 #
 # For server-specific tool paths, create setup.local.sh from the template:
 #   cp setup.local.sh.example setup.local.sh   # then edit with your VCS_HOME
 # setup.local.sh is listed in .gitignore and is never committed.
 
-export PROJECT_DIR=${PWD}
+export PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 export MMU_RTL_DIR=${PROJECT_DIR}/../mmu/rtl
 export CORE_V_VERIF=${PROJECT_DIR}/modules/dv_utils
 export CV_DV_UTILS_DIR=${CORE_V_VERIF}/lib/cv_dv_utils

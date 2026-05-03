@@ -85,7 +85,7 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int m_lsu_ext_outstanding; // LSU externally-visible uncompleted (approx, includes sleeping)
   protected int m_ptw_mbuf_cnt;        // PTW serialized external outstanding proxy
   protected bit m_end_drain_active;    // run-phase end settle window in progress
-  protected bit m_end_drain_attempted; // prevent repeated ready_to_end loops
+  protected int unsigned m_end_drain_attempts; // bounded ready_to_end retries
 
   // ── Peak observations (for debug) ─────────────────────────────────────────
   protected int m_peak_l1i;
@@ -100,7 +100,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_lsu_ext_outstanding = 0;
     m_ptw_mbuf_cnt        = 0;
     m_end_drain_active    = 1'b0;
-    m_end_drain_attempted = 1'b0;
+    m_end_drain_attempts  = 0;
     m_peak_l1i            = 0;
     m_peak_l1d            = 0;
     m_peak_lsu_ext        = 0;
@@ -369,15 +369,15 @@ class mmu_credit_sb extends uvm_scoreboard;
     if (m_end_drain_active)
       return;
 
-    if (m_end_drain_attempted)
+    if (m_end_drain_attempts >= 4)
       return;
 
     if (m_ptw_mbuf_cnt != 0) begin
       m_end_drain_active = 1'b1;
-      m_end_drain_attempted = 1'b1;
+      m_end_drain_attempts++;
       phase.raise_objection(this,
-        $sformatf("Settling PTW counter before end: ptw_mbuf_cnt=%0d",
-          m_ptw_mbuf_cnt));
+        $sformatf("Settling PTW counter before end: attempt=%0d ptw_mbuf_cnt=%0d",
+          m_end_drain_attempts, m_ptw_mbuf_cnt));
       fork
         begin
           _drain_ptw_before_end(phase);
@@ -389,32 +389,43 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected task _drain_ptw_before_end(uvm_phase phase);
     int unsigned wait_cycles;
     int unsigned max_wait_cycles;
+    int unsigned stable_zero_cycles;
+    int unsigned min_stable_zero_cycles;
 
-    wait_cycles     = 0;
-    max_wait_cycles = 2048;
+    wait_cycles            = 0;
+    max_wait_cycles        = 4096;
+    stable_zero_cycles     = 0;
+    min_stable_zero_cycles = 32;
 
-    while ((m_ptw_mbuf_cnt != 0) &&
+    while ((stable_zero_cycles < min_stable_zero_cycles) &&
            (wait_cycles < max_wait_cycles)) begin
       if (v_probe != null)
         @(v_probe.mon_cb);
       else
         #1ns;
       wait_cycles++;
+
+      if (m_ptw_mbuf_cnt == 0)
+        stable_zero_cycles++;
+      else
+        stable_zero_cycles = 0;
     end
 
     if (m_ptw_mbuf_cnt != 0) begin
       `uvm_warning(get_type_name(),
         $sformatf(
-          "PTW end-drain timeout after %0d cycles: ptw_mbuf_cnt=%0d",
-          wait_cycles, m_ptw_mbuf_cnt))
+          "PTW end-drain timeout after %0d cycles: ptw_mbuf_cnt=%0d stable_zero_cycles=%0d/%0d",
+          wait_cycles, m_ptw_mbuf_cnt, stable_zero_cycles, min_stable_zero_cycles))
     end else begin
       `uvm_info(get_type_name(),
-        $sformatf("PTW end-drain settled after %0d cycles", wait_cycles),
+        $sformatf(
+          "PTW end-drain stable after %0d cycles (stable_zero_cycles=%0d)",
+          wait_cycles, stable_zero_cycles),
         UVM_MEDIUM)
     end
 
     m_end_drain_active = 1'b0;
-    phase.drop_objection(this, "PTW counters settled (or timeout reached)");
+    phase.drop_objection(this, "PTW counters stable (or timeout reached)");
   endtask
 
   // ── Inline bound checks ───────────────────────────────────────────────────

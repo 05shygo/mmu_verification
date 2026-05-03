@@ -43,7 +43,8 @@ interface pmp_if (
 
   // =========================================================================
   // Fetch Enable Outputs — MMU → PMP
-  // (PTW PTE reads are Data-Load type → fetch_en always 0 per F7.NEW.7)
+  // PTW ports carry the original miss type that triggered the walk.
+  // This is not the PTW PTE bus-read command type.
   // =========================================================================
   logic        mmu_pmp_fetch3;
   logic        mmu_pmp_fetch5;
@@ -52,7 +53,7 @@ interface pmp_if (
 
   // =========================================================================
   // Flag Inputs — PMP → MMU (8 × 4-bit, driven by pmp_driver)
-  // flg[3:0]: {execute, write, read, valid} (or similar encoding per PMP spec)
+  // flg[3:0]: {L, X, W, R}; PTW checks select X/R/W from original miss type.
   // =========================================================================
   logic [3:0]  pmp_mmu_flg0;
   logic [3:0]  pmp_mmu_flg1;

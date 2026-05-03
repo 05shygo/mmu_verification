@@ -52,6 +52,7 @@ package test_pkg;
   `include "phase11_common/phase11_generated_test_base.svh"
   `include "phase12_common/phase12_generated_test_base.svh"
   `include "maee_twu_tests/maee_twu_tests_suite.svh"
+  `include "pmp_twu_tests_v6/pmp_twu_tests_v6_suite.svh"
   `include "l1itlb_tests/l1itlb_tests_suite.svh"
   `include "l1dtlb_tests/l1dtlb_tests_suite.svh"
   `include "l2tlb_tests/l2tlb_tests_suite.svh"

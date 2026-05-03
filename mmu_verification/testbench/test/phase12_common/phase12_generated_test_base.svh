@@ -162,12 +162,18 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     m_env.m_pt_mem.m_builder.map_1g(
       .va(39'h0_8000_0000), .pa(40'h0_8000_0000),
       .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env.m_pt_mem.m_builder.map_1g(
+      .va(39'h0_C000_0000), .pa(40'h0_C000_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
 
     m_env.m_pt_mem.m_builder.map_2m(
       .va(39'h0_2200_0000), .pa(40'h0_0200_0000),
       .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
     m_env.m_pt_mem.m_builder.map_2m(
       .va(39'h0_2600_0000), .pa(40'h0_0600_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env.m_pt_mem.m_builder.map_2m(
+      .va(39'h0_1200_0000), .pa(40'h0_1200_0000),
       .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
 
     m_env.m_pt_mem.m_builder.map_4k(
@@ -195,9 +201,9 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     #120ns;
     fork
       phase12_drive_ifu_rr(region_base,                  npage, n_txn);
-      phase12_drive_lsu_rr(region_base + 39'h4_0000,    npage, n_txn, LSU_PIPE0, 1'b0);
-      phase12_drive_lsu_rr(region_base + 39'h8_0000,    npage, n_txn, LSU_PIPE1, 1'b1);
-      phase12_drive_lsu_rr(region_base + 39'hC_0000,    npage, n_txn, LSU_PIPE2, 1'b0);
+      phase12_drive_lsu_rr(region_base + 39'h0200_0000, npage, n_txn, LSU_PIPE0, 1'b0);
+      phase12_drive_lsu_rr(region_base + 39'h0400_0000, npage, n_txn, LSU_PIPE1, 1'b1);
+      phase12_drive_lsu_rr(region_base + 39'h0600_0000, npage, n_txn, LSU_PIPE2, 1'b0);
     join
     phase12_set_pmp_allow_all();
     #280ns;

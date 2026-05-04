@@ -850,69 +850,144 @@ always_comb begin
 	endcase
 end
 
+//logic [2:0] ptw_l2tlb_ref_type;
+//logic [ID_WIDTH-1:0] ptw_l2tlb_ref_id;
+//logic                  ptw_rsp_cmplt_q;
+//logic                  ptw_rsp_data_vld_q;
+//logic                  ptw_rsp_pgflt_q;
+//logic                  ptw_rsp_acc_err_q;
+//logic [2:0]            ptw_rsp_type_q;
+//logic [ID_WIDTH-1:0]   ptw_rsp_id_q;
+//logic [41:0]           ptw_rsp_data_q;
+//logic [47:0]           ptw_rsp_tag_q;
+//logic [2:0]            ptw_rsp_pgs_q;
+//logic                  ptw_lsu_req_dbg_q;
+//logic [39:0]           ptw_lsu_addr_dbg_q;
+//
+//assign ptw_l2tlb_ref_type[2:0] = ptw_arb_ref_type[2:0];
+//assign ptw_l2tlb_ref_id[ID_WIDTH-1:0] = ptw_arb_ref_id[ID_WIDTH-1:0];
+//
+//// Publish a registered PTW response bundle so type/id/tag/data stay aligned
+//// when the refill source changes under arb pressure.
+//always_ff @(posedge ptw_clk or negedge cpurst_b) begin
+//	if(!cpurst_b) begin
+//		ptw_rsp_cmplt_q    <= 1'b0;
+//		ptw_rsp_data_vld_q <= 1'b0;
+//		ptw_rsp_pgflt_q    <= 1'b0;
+//		ptw_rsp_acc_err_q  <= 1'b0;
+//		ptw_rsp_type_q     <= 3'b0;
+//		ptw_rsp_id_q       <= {ID_WIDTH{1'b0}};
+//		ptw_rsp_data_q     <= 42'b0;
+//		ptw_rsp_tag_q      <= 48'b0;
+//		ptw_rsp_pgs_q      <= 3'b0;
+//	end else begin
+//		ptw_rsp_cmplt_q    <= 1'b0;
+//		ptw_rsp_data_vld_q <= 1'b0;
+//		ptw_rsp_pgflt_q    <= 1'b0;
+//		ptw_rsp_acc_err_q  <= 1'b0;
+//
+//		if(acc_err_grant) begin
+//			ptw_rsp_cmplt_q   <= 1'b1;
+//			ptw_rsp_acc_err_q <= 1'b1;
+//			ptw_rsp_type_q    <= ptw_l2tlb_acc_err_type[2:0];
+//			ptw_rsp_id_q      <= ptw_l2tlb_acc_err_id[ID_WIDTH-1:0];
+//			ptw_rsp_data_q    <= 42'b0;
+//			ptw_rsp_tag_q     <= 48'b0;
+//			ptw_rsp_pgs_q     <= 3'b0;
+//		end else if(pgflt_grant) begin
+//			ptw_rsp_cmplt_q <= 1'b1;
+//			ptw_rsp_pgflt_q <= 1'b1;
+//			ptw_rsp_type_q  <= ptw_l2tlb_pgflt_type[2:0];
+//			ptw_rsp_id_q    <= ptw_l2tlb_pgflt_id[ID_WIDTH-1:0];
+//			ptw_rsp_data_q  <= 42'b0;
+//			ptw_rsp_tag_q   <= 48'b0;
+//			ptw_rsp_pgs_q   <= 3'b0;
+//		end else if(arb_ptw_grant & (|refill_arb_grant[3:0]) & ref_grant) begin
+//			ptw_rsp_cmplt_q    <= 1'b1;
+//			ptw_rsp_data_vld_q <= 1'b1;
+//			ptw_rsp_type_q     <= ptw_l2tlb_ref_type[2:0];
+//			ptw_rsp_id_q       <= ptw_l2tlb_ref_id[ID_WIDTH-1:0];
+//			ptw_rsp_data_q     <= ptw_arb_ref_data_din[DATA_WIDTH-1:0];
+//			ptw_rsp_tag_q      <= ptw_arb_ref_tag_din[TAG_WIDTH-1:0];
+//			ptw_rsp_pgs_q      <= ptw_arb_ref_pgs[2:0];
+//		end
+//	end
+//end
+//
+
 logic [2:0] ptw_l2tlb_ref_type;
 logic [ID_WIDTH-1:0] ptw_l2tlb_ref_id;
-logic                  ptw_rsp_cmplt_q;
-logic                  ptw_rsp_data_vld_q;
-logic                  ptw_rsp_pgflt_q;
-logic                  ptw_rsp_acc_err_q;
-logic [2:0]            ptw_rsp_type_q;
-logic [ID_WIDTH-1:0]   ptw_rsp_id_q;
-logic [41:0]           ptw_rsp_data_q;
-logic [47:0]           ptw_rsp_tag_q;
-logic [2:0]            ptw_rsp_pgs_q;
-logic                  ptw_lsu_req_dbg_q;
-logic [39:0]           ptw_lsu_addr_dbg_q;
 
 assign ptw_l2tlb_ref_type[2:0] = ptw_arb_ref_type[2:0];
 assign ptw_l2tlb_ref_id[ID_WIDTH-1:0] = ptw_arb_ref_id[ID_WIDTH-1:0];
-
-// Publish a registered PTW response bundle so type/id/tag/data stay aligned
-// when the refill source changes under arb pressure.
-always_ff @(posedge ptw_clk or negedge cpurst_b) begin
-	if(!cpurst_b) begin
-		ptw_rsp_cmplt_q    <= 1'b0;
-		ptw_rsp_data_vld_q <= 1'b0;
-		ptw_rsp_pgflt_q    <= 1'b0;
-		ptw_rsp_acc_err_q  <= 1'b0;
-		ptw_rsp_type_q     <= 3'b0;
-		ptw_rsp_id_q       <= {ID_WIDTH{1'b0}};
-		ptw_rsp_data_q     <= 42'b0;
-		ptw_rsp_tag_q      <= 48'b0;
-		ptw_rsp_pgs_q      <= 3'b0;
-	end else begin
-		ptw_rsp_cmplt_q    <= 1'b0;
-		ptw_rsp_data_vld_q <= 1'b0;
-		ptw_rsp_pgflt_q    <= 1'b0;
-		ptw_rsp_acc_err_q  <= 1'b0;
-
-		if(acc_err_grant) begin
-			ptw_rsp_cmplt_q   <= 1'b1;
-			ptw_rsp_acc_err_q <= 1'b1;
-			ptw_rsp_type_q    <= ptw_l2tlb_acc_err_type[2:0];
-			ptw_rsp_id_q      <= ptw_l2tlb_acc_err_id[ID_WIDTH-1:0];
-			ptw_rsp_data_q    <= 42'b0;
-			ptw_rsp_tag_q     <= 48'b0;
-			ptw_rsp_pgs_q     <= 3'b0;
-		end else if(pgflt_grant) begin
-			ptw_rsp_cmplt_q <= 1'b1;
-			ptw_rsp_pgflt_q <= 1'b1;
-			ptw_rsp_type_q  <= ptw_l2tlb_pgflt_type[2:0];
-			ptw_rsp_id_q    <= ptw_l2tlb_pgflt_id[ID_WIDTH-1:0];
-			ptw_rsp_data_q  <= 42'b0;
-			ptw_rsp_tag_q   <= 48'b0;
-			ptw_rsp_pgs_q   <= 3'b0;
-		end else if(arb_ptw_grant & (|refill_arb_grant[3:0]) & ref_grant) begin
-			ptw_rsp_cmplt_q    <= 1'b1;
-			ptw_rsp_data_vld_q <= 1'b1;
-			ptw_rsp_type_q     <= ptw_l2tlb_ref_type[2:0];
-			ptw_rsp_id_q       <= ptw_l2tlb_ref_id[ID_WIDTH-1:0];
-			ptw_rsp_data_q     <= ptw_arb_ref_data_din[DATA_WIDTH-1:0];
-			ptw_rsp_tag_q      <= ptw_arb_ref_tag_din[TAG_WIDTH-1:0];
-			ptw_rsp_pgs_q      <= ptw_arb_ref_pgs[2:0];
-		end
-	end
+		
+always_comb begin
+	case({pgflt_grant,acc_err_grant,ref_grant})
+		3'b100 :begin
+				ptw_l2tlb_id[ID_WIDTH-1:0] = ptw_l2tlb_pgflt_id[ID_WIDTH-1:0];
+				ptw_l2tlb_type[2:0] = ptw_l2tlb_pgflt_type[2:0];
+				end
+		3'b010 :begin
+				ptw_l2tlb_id[ID_WIDTH-1:0] = ptw_l2tlb_acc_err_id[ID_WIDTH-1:0];
+				ptw_l2tlb_type[2:0] = ptw_l2tlb_acc_err_type[2:0];
+				end
+		3'b001 :begin
+				ptw_l2tlb_id[ID_WIDTH-1:0] = ptw_l2tlb_ref_id[ID_WIDTH-1:0];
+				ptw_l2tlb_type[2:0] = ptw_l2tlb_ref_type[2:0];
+				end
+		default:begin
+				ptw_l2tlb_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
+				ptw_l2tlb_type[2:0] = 3'b0;
+				end
+	endcase
 end
+
+assign ptw_l2tlb_flg = ptw_arb_ref_data_din[13:0];
+assign ptw_l1tlb_id = ptw_l2tlb_id;
+
+assign ptw_l2tlb_ref_data_vld = arb_ptw_grant;
+assign ptw_l2tlb_ref_pgflt = pgflt_grant;
+assign ptw_l2tlb_ref_acc_err = acc_err_grant;
+
+assign ptw_l2tlb_cmplt = ptw_l2tlb_ref_data_vld | ptw_l2tlb_ref_pgflt | ptw_l2tlb_ref_acc_err;
+
+//to l1tlb
+assign ptw_l1dtlb_ref_pa_vld = arb_ptw_grant & (ptw_arb_ref_type[2:0] == 3'b010 | ptw_arb_ref_type[2:0] == 3'b110);
+assign ptw_l1dtlb_cmplt = ptw_l2tlb_cmplt & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110);
+assign ptw_l1dtlb_ref_vpn = ptw_arb_ref_tag_din[46:20];
+assign ptw_l1dtlb_ref_pgs = ptw_arb_ref_pgs[2:0];
+assign ptw_l1dtlb_ref_ppn = ptw_arb_ref_data_din[41:14];
+assign ptw_l1dtlb_ref_flg = ptw_arb_ref_data_din[13:0];
+assign ptw_l1dtlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110);
+assign ptw_l1dtlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110);
+
+assign ptw_l1itlb_ref_pa_vld = arb_ptw_grant & (ptw_l2tlb_type[2:0] == 3'b011);
+assign ptw_l1itlb_cmplt = ptw_l2tlb_cmplt & (ptw_l2tlb_type[2:0] == 3'b011);
+assign ptw_l1itlb_ref_vpn = ptw_arb_ref_tag_din[46:20];
+assign ptw_l1itlb_ref_pgs = ptw_arb_ref_pgs[2:0];
+assign ptw_l1itlb_ref_ppn = ptw_arb_ref_data_din[41:14];
+assign ptw_l1itlb_ref_flg = ptw_arb_ref_data_din[13:0];
+assign ptw_l1itlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[2:0] == 3'b011);
+assign ptw_l1itlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[2:0] == 3'b011);
+;
+
+assign ptw_arb_vpn[VPN_WIDTH-1:0] = ptw_arb_ref_tag_din[46:20];
+
+assign l2tlb_miss_cnt = ptw_l2tlb_ref_data_vld & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110 | ptw_l2tlb_type[2:0] == 3'b011 ) & hpcp_mmu_cnt_en;
+
+always_ff@(posedge ptw_clk or negedge cpurst_b) begin
+	if(!cpurst_b)
+        l2tlb_miss <= 1'b0;
+    else if(l2tlb_miss_cnt)
+        l2tlb_miss <= 1'b1;
+    else if(l2tlb_miss & (!l2tlb_miss_cnt))
+        l2tlb_miss <= 1'b0;
+end
+        
+assign mmu_hpcp_jtlb_miss = l2tlb_miss;
+
+
+
 
 // PTW->LSU request trace for run_check log parsing.
 // Emit once per new request (req rising edge or address change while req high).
@@ -932,65 +1007,65 @@ always_ff @(posedge ptw_clk or negedge cpurst_b) begin
 	end
 end
 
-assign ptw_l2tlb_id = ptw_rsp_id_q;
-assign ptw_l2tlb_type[2:0] = ptw_rsp_type_q[2:0];
-assign ptw_l2tlb_flg = ptw_rsp_data_q[13:0];
-assign ptw_l1tlb_id = ptw_rsp_id_q;
+//assign ptw_l2tlb_id = ptw_rsp_id_q;
+//assign ptw_l2tlb_type[2:0] = ptw_rsp_type_q[2:0];
+//assign ptw_l2tlb_flg = ptw_rsp_data_q[13:0];
+//assign ptw_l1tlb_id = ptw_rsp_id_q;
 
-assign ptw_l2tlb_ref_data_vld = ptw_rsp_data_vld_q;
-assign ptw_l2tlb_ref_pgflt = ptw_rsp_pgflt_q;
-assign ptw_l2tlb_ref_acc_err = ptw_rsp_acc_err_q;
-
-assign ptw_l2tlb_cmplt = ptw_rsp_cmplt_q;
-
-//to l1tlb
-assign ptw_l1dtlb_ref_pa_vld = ptw_rsp_data_vld_q
-                            & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
-assign ptw_l1dtlb_cmplt = ptw_rsp_cmplt_q
-                       & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
-assign ptw_l1dtlb_ref_vpn = ptw_rsp_tag_q[46:20];
-assign ptw_l1dtlb_ref_pgs = ptw_rsp_pgs_q[2:0];
-assign ptw_l1dtlb_ref_ppn = ptw_rsp_data_q[41:14];
-assign ptw_l1dtlb_ref_flg = ptw_rsp_data_q[13:0];
-assign ptw_l1dtlb_ref_acc_err = ptw_rsp_acc_err_q
-                             & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
-assign ptw_l1dtlb_pgflt  = ptw_rsp_pgflt_q
-                        & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
-
-assign ptw_l1itlb_ref_pa_vld = ptw_rsp_data_vld_q & (ptw_rsp_type_q[2:0] == 3'b011);
-assign ptw_l1itlb_cmplt = ptw_rsp_cmplt_q & (ptw_rsp_type_q[2:0] == 3'b011);
-assign ptw_l1itlb_ref_vpn = ptw_rsp_tag_q[46:20];
-assign ptw_l1itlb_ref_pgs = ptw_rsp_pgs_q[2:0];
-assign ptw_l1itlb_ref_ppn = ptw_rsp_data_q[41:14];
-assign ptw_l1itlb_ref_flg = ptw_rsp_data_q[13:0];
-assign ptw_l1itlb_ref_acc_err = ptw_rsp_acc_err_q & (ptw_rsp_type_q[2:0] == 3'b011);
-assign ptw_l1itlb_pgflt  = ptw_rsp_pgflt_q & (ptw_rsp_type_q[2:0] == 3'b011);
-;
-
-assign ptw_arb_vpn[VPN_WIDTH-1:0] = ptw_arb_ref_tag_din[46:20];
-
-assign l2tlb_miss_cnt = ptw_l2tlb_ref_data_vld & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110 | ptw_l2tlb_type[2:0] == 3'b011 ) & hpcp_mmu_cnt_en;
-
-always_ff@(posedge ptw_clk or negedge cpurst_b) begin
-	if(!cpurst_b)
-        l2tlb_miss <= 1'b0;
-    else if(l2tlb_miss_cnt)
-        l2tlb_miss <= 1'b1;
-    else if(l2tlb_miss & (!l2tlb_miss_cnt))
-        l2tlb_miss <= 1'b0;
-end
-        
-assign mmu_hpcp_jtlb_miss = l2tlb_miss;
-
+//assign ptw_l2tlb_ref_data_vld = ptw_rsp_data_vld_q;
+//assign ptw_l2tlb_ref_pgflt = ptw_rsp_pgflt_q;
+//assign ptw_l2tlb_ref_acc_err = ptw_rsp_acc_err_q;
+//
+//assign ptw_l2tlb_cmplt = ptw_rsp_cmplt_q;
+//
+////to l1tlb
+//assign ptw_l1dtlb_ref_pa_vld = ptw_rsp_data_vld_q
+//                            & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//assign ptw_l1dtlb_cmplt = ptw_rsp_cmplt_q
+//                       & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//assign ptw_l1dtlb_ref_vpn = ptw_rsp_tag_q[46:20];
+//assign ptw_l1dtlb_ref_pgs = ptw_rsp_pgs_q[2:0];
+//assign ptw_l1dtlb_ref_ppn = ptw_rsp_data_q[41:14];
+//assign ptw_l1dtlb_ref_flg = ptw_rsp_data_q[13:0];
+//assign ptw_l1dtlb_ref_acc_err = ptw_rsp_acc_err_q
+//                             & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//assign ptw_l1dtlb_pgflt  = ptw_rsp_pgflt_q
+//                        & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//
+//assign ptw_l1itlb_ref_pa_vld = ptw_rsp_data_vld_q & (ptw_rsp_type_q[2:0] == 3'b011);
+//assign ptw_l1itlb_cmplt = ptw_rsp_cmplt_q & (ptw_rsp_type_q[2:0] == 3'b011);
+//assign ptw_l1itlb_ref_vpn = ptw_rsp_tag_q[46:20];
+//assign ptw_l1itlb_ref_pgs = ptw_rsp_pgs_q[2:0];
+//assign ptw_l1itlb_ref_ppn = ptw_rsp_data_q[41:14];
+//assign ptw_l1itlb_ref_flg = ptw_rsp_data_q[13:0];
+//assign ptw_l1itlb_ref_acc_err = ptw_rsp_acc_err_q & (ptw_rsp_type_q[2:0] == 3'b011);
+//assign ptw_l1itlb_pgflt  = ptw_rsp_pgflt_q & (ptw_rsp_type_q[2:0] == 3'b011);
+//;
+//
+//assign ptw_arb_vpn[VPN_WIDTH-1:0] = ptw_arb_ref_tag_din[46:20];
+//
+//assign l2tlb_miss_cnt = ptw_l2tlb_ref_data_vld & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110 | ptw_l2tlb_type[2:0] == 3'b011 ) & hpcp_mmu_cnt_en;
+//
 //always_ff@(posedge ptw_clk or negedge cpurst_b) begin
 //	if(!cpurst_b)
-//       ptw_top_imiss <= 1'b0;
-//   else if(l2tlb_ptw_req & (l2tlb_ptw_type == 3'b011))
-//        ptw_top_imiss <= 1'b1
-//    else if(ptw_l1itlb_cmplt)
-//        ptw_top_imiss <= 1'b0;
+//        l2tlb_miss <= 1'b0;
+//    else if(l2tlb_miss_cnt)
+//        l2tlb_miss <= 1'b1;
+//    else if(l2tlb_miss & (!l2tlb_miss_cnt))
+//        l2tlb_miss <= 1'b0;
 //end
-
+//        
+//assign mmu_hpcp_jtlb_miss = l2tlb_miss;
+//
+////always_ff@(posedge ptw_clk or negedge cpurst_b) begin
+////	if(!cpurst_b)
+////       ptw_top_imiss <= 1'b0;
+////   else if(l2tlb_ptw_req & (l2tlb_ptw_type == 3'b011))
+////        ptw_top_imiss <= 1'b1
+////    else if(ptw_l1itlb_cmplt)
+////        ptw_top_imiss <= 1'b0;
+////end
+//
 
 endmodule
 

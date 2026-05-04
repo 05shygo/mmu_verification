@@ -1207,14 +1207,15 @@ end
 //==============================================================================
 //                  refill Arbiter
 //==============================================================================
-assign twu_arb_ref_req = |refill_grant[3:0];
+//assign twu_arb_ref_req = |refill_grant[3:0];
+assign twu_arb_ref_req = twu_refill_vld;
 
 assign fst_chk_itlb_sel = fst_chk_refill_req & fst_chk_fetch_type;
 assign scd_chk_itlb_sel = scd_chk_refill_req & scd_chk_fetch_type;
 assign thd_chk_itlb_sel = thd_chk_refill_req & thd_chk_fetch_type;
 assign csr_ref_itlb_sel = csr_refill_req & csr_fetch_type;
 
-assign refill_itlb_sel = fst_chk_itlb_sel | scd_chk_itlb_sel | thd_chk_itlb_sel | csr_itlb_sel;
+assign refill_itlb_sel = fst_chk_itlb_sel | scd_chk_itlb_sel | thd_chk_itlb_sel | csr_ref_itlb_sel;
 
 assign fst_ref_sel = (!refill_itlb_sel) & (!csr_refill_req) & (!thd_chk_refill_req) & (!scd_chk_refill_req) & fst_chk_refill_req;
 assign scd_ref_sel = (!refill_itlb_sel) & (!csr_refill_req) & (!thd_chk_refill_req) & scd_chk_refill_req;
@@ -1223,7 +1224,7 @@ assign csr_ref_sel = (!refill_itlb_sel) & csr_refill_req;
 
 always_comb begin
     case({refill_itlb_sel,csr_ref_sel,fst_ref_sel,scd_ref_sel,thd_ref_sel})
-        5'b10000    : refill_grant[3:0] = {csr_itlb_sel,fst_chk_itlb_sel,scd_chk_itlb_sel,thd_chk_itlb_sel};
+        5'b10000    : refill_grant[3:0] = {csr_ref_itlb_sel,fst_chk_itlb_sel,scd_chk_itlb_sel,thd_chk_itlb_sel};
         5'b01000    : refill_grant[3:0] = 4'b1000;
         5'b00100    : refill_grant[3:0] = 4'b0100;
         5'b00010    : refill_grant[3:0] = 4'b0010;
@@ -1232,51 +1233,99 @@ always_comb begin
     endcase
 end
 
-assign refill_csr_grant = refill_grant[3] & refill_arb_twu_grant;
-assign refill_fst_chk_grant = refill_grant[2] & refill_arb_twu_grant;
-assign refill_scd_chk_grant = refill_grant[1] & refill_arb_twu_grant;
-assign refill_thd_chk_grant = refill_grant[0] & refill_arb_twu_grant;
+assign twu_refill_idle = ~twu_refill_vld | refill_arb_twu_grant;
 
-always_comb begin
-	case(refill_grant[3:0])
-		4'b0001	: begin
-			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = thd_chk_refill_data[RDATA_WIDTH-1:0];
-			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = thd_chk_refill_tag[TAG_WIDTH-1:0];
-			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b001;
-			twu_arb_ref_type[2:0] = thd_chk_refill_type[2:0];
-			twu_arb_ref_id[ID_WIDTH-1:0] = thd_chk_refill_id[ID_WIDTH-1:0];
-		end
-		4'b0010	: begin
-			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = scd_chk_refill_data[RDATA_WIDTH-1:0];
-			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = scd_chk_refill_tag[TAG_WIDTH-1:0];
-			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b010;
-			twu_arb_ref_type[2:0] = scd_chk_refill_type[2:0];
-			twu_arb_ref_id[ID_WIDTH-1:0] = scd_chk_refill_id[ID_WIDTH-1:0];
-		end
-		4'b0100	: begin
-			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = fst_chk_refill_data[RDATA_WIDTH-1:0];
-			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = fst_chk_refill_tag[TAG_WIDTH-1:0];
-			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b100;
-			twu_arb_ref_type[2:0] = fst_chk_refill_type[2:0];
-			twu_arb_ref_id[ID_WIDTH-1:0] = fst_chk_refill_id[ID_WIDTH-1:0];
-		end
-		4'b1000	: begin
-			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = csr_refill_data[RDATA_WIDTH-1:0];
-			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = csr_refill_tag[TAG_WIDTH-1:0];
-			twu_arb_ref_pgs[PGS_WIDTH-1:0] = csr_refill_pgs[2:0];
-			twu_arb_ref_type[2:0] = csr_refill_type[2:0];
-			twu_arb_ref_id[ID_WIDTH-1:0] = csr_refill_id[ID_WIDTH-1:0];
-		end
-		default : begin
-			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = {RDATA_WIDTH{1'b0}};
-			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = {TAG_WIDTH{1'b0}};
-			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b0;
-			twu_arb_ref_type[2:0] = 3'b0;
-			twu_arb_ref_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};			
-		end
-	endcase
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+    if(!cpurst_b)
+        twu_refill_vld <= 1'b0;
+    else if(abort)
+        twu_refill_vld <= 1'b0;
+    else if(|refill_grant[3:0] & twu_refill_idle)
+        twu_refill_vld <= 1'b1;
+    else if(refill_arb_twu_grant)
+        twu_refill_vld <= 1'b0;
 end
 
+always_ff@(posedge twu_clk or negedge cpurst_b) begin
+	if(!cpurst_b)begin
+		twu_arb_ref_data_din[RDATA_WIDTH-1:0] <= {RDATA_WIDTH{1'b0}};
+		twu_arb_ref_tag_din[TAG_WIDTH-1:0] <= {TAG_WIDTH{1'b0}};
+		twu_arb_ref_pgs[PGS_WIDTH-1:0] <= 3'b0;
+		twu_arb_ref_type[2:0] <= 3'b0;
+		twu_arb_ref_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
+	end else if(refill_grant[0] & twu_refill_idle)begin
+		twu_arb_ref_data_din[RDATA_WIDTH-1:0] <= thd_chk_refill_data[RDATA_WIDTH-1:0];
+		twu_arb_ref_tag_din[TAG_WIDTH-1:0] = thd_chk_refill_tag[TAG_WIDTH-1:0];
+		twu_arb_ref_pgs[PGS_WIDTH-1:0] <= 3'b001;
+		twu_arb_ref_type[2:0] <= thd_chk_refill_type[2:0];
+		twu_arb_ref_id[ID_WIDTH-1:0] <= thd_chk_refill_id[ID_WIDTH-1:0];
+	end else if(refill_grant[1] & twu_refill_idle)begin
+		twu_arb_ref_data_din[RDATA_WIDTH-1:0] <= scd_chk_refill_data[RDATA_WIDTH-1:0];
+		twu_arb_ref_tag_din[TAG_WIDTH-1:0] = scd_chk_refill_tag[TAG_WIDTH-1:0];
+		twu_arb_ref_pgs[PGS_WIDTH-1:0] <= 3'b010;
+		twu_arb_ref_type[2:0] <= scd_chk_refill_type[2:0];
+		twu_arb_ref_id[ID_WIDTH-1:0] <= scd_chk_refill_id[ID_WIDTH-1:0];
+	end else if(refill_grant[2] & twu_refill_idle)begin
+		twu_arb_ref_data_din[RDATA_WIDTH-1:0] <= fst_chk_refill_data[RDATA_WIDTH-1:0];
+		twu_arb_ref_tag_din[TAG_WIDTH-1:0] <= fst_chk_refill_tag[TAG_WIDTH-1:0];
+		twu_arb_ref_pgs[PGS_WIDTH-1:0] <= 3'b100;
+		twu_arb_ref_type[2:0] <= fst_chk_refill_type[2:0];
+		twu_arb_ref_id[ID_WIDTH-1:0] <= fst_chk_refill_id[ID_WIDTH-1:0];
+	end else if(refill_grant[3] & twu_refill_idle)begin
+		twu_arb_ref_data_din[RDATA_WIDTH-1:0] <= csr_refill_data[RDATA_WIDTH-1:0];
+		twu_arb_ref_tag_din[TAG_WIDTH-1:0] <= csr_refill_tag[TAG_WIDTH-1:0];
+		twu_arb_ref_pgs[PGS_WIDTH-1:0] <= csr_refill_pgs[2:0];
+		twu_arb_ref_type[2:0] <= csr_refill_type[2:0];
+		twu_arb_ref_id[ID_WIDTH-1:0] <= csr_refill_id[ID_WIDTH-1:0];
+	end
+end
+
+
+assign refill_csr_grant = refill_grant[3] & twu_refill_idle; 
+assign refill_fst_chk_grant = refill_grant[2] & twu_refill_idle;
+assign refill_scd_chk_grant = refill_grant[1] & twu_refill_idle;
+assign refill_thd_chk_grant = refill_grant[0] & twu_refill_idle;
+
+//always_comb begin
+//	case(refill_grant[3:0])
+//		4'b0001	: begin
+//			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = thd_chk_refill_data[RDATA_WIDTH-1:0];
+//			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = thd_chk_refill_tag[TAG_WIDTH-1:0];
+//			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b001;
+//			twu_arb_ref_type[2:0] = thd_chk_refill_type[2:0];
+//			twu_arb_ref_id[ID_WIDTH-1:0] = thd_chk_refill_id[ID_WIDTH-1:0];
+//		end
+//		4'b0010	: begin
+//			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = scd_chk_refill_data[RDATA_WIDTH-1:0];
+//			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = scd_chk_refill_tag[TAG_WIDTH-1:0];
+//			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b010;
+//			twu_arb_ref_type[2:0] = scd_chk_refill_type[2:0];
+//			twu_arb_ref_id[ID_WIDTH-1:0] = scd_chk_refill_id[ID_WIDTH-1:0];
+//		end
+//		4'b0100	: begin
+//			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = fst_chk_refill_data[RDATA_WIDTH-1:0];
+//			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = fst_chk_refill_tag[TAG_WIDTH-1:0];
+//			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b100;
+//			twu_arb_ref_type[2:0] = fst_chk_refill_type[2:0];
+//			twu_arb_ref_id[ID_WIDTH-1:0] = fst_chk_refill_id[ID_WIDTH-1:0];
+//		end
+//		4'b1000	: begin
+//			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = csr_refill_data[RDATA_WIDTH-1:0];
+//			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = csr_refill_tag[TAG_WIDTH-1:0];
+//			twu_arb_ref_pgs[PGS_WIDTH-1:0] = csr_refill_pgs[2:0];
+//			twu_arb_ref_type[2:0] = csr_refill_type[2:0];
+//			twu_arb_ref_id[ID_WIDTH-1:0] = csr_refill_id[ID_WIDTH-1:0];
+//		end
+//		default : begin
+//			twu_arb_ref_data_din[RDATA_WIDTH-1:0] = {RDATA_WIDTH{1'b0}};
+//			twu_arb_ref_tag_din[TAG_WIDTH-1:0] = {TAG_WIDTH{1'b0}};
+//			twu_arb_ref_pgs[PGS_WIDTH-1:0] = 3'b0;
+//			twu_arb_ref_type[2:0] = 3'b0;
+//			twu_arb_ref_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};			
+//		end
+//	endcase
+//end
+//
 
 
 

@@ -60,6 +60,15 @@ input  logic                acc_err_mbuf_grant
 
 );
 
+logic				mbuf_all_clr                        ;
+logic				fst_twu_sel                         ;
+logic				scd_twu_sel                         ;
+logic				thd_twu_sel                         ;
+logic				fth_twu_sel                         ;
+logic				create_en                           ;
+logic	[7:0]		create_ptr                          ;
+logic	[8:0]		req_on_ptr                          ;
+logic	[7:0]		req_ptr                             ;
 
 logic	[3:0]			mbuf_twu_idx			;
 logic				fst_twu_itlb_sel					;
@@ -77,19 +86,20 @@ logic	[8:0]		mbuf_entry_upd                      ;
 logic				mbuf_entry_empty                    ;
 logic				mbuf_entry_empty_reg                ;
 logic				lsu_mmu_data_vld_reg                ;
-//logic	[8:0]		mask                                ;
-logic	[8:0]		point                               ;
-logic	[8:0]		mbuf_scan_high_table_mask           ;
-logic	[8:0]		mbuf_scan_bit_vec                   ;
-logic	[8:0]		mbuf_scan_high_table                ;
-logic	[8:0]		mbuf_priority_enc_high_table_lvl1   ;
-logic	[8:0]		mbuf_priority_enc_low_table_lvl1    ;
-logic	[8:0]		mbuf_priority_enc_high_table_lvl2   ;
-logic	[8:0]		mbuf_priority_enc_low_table_lvl2    ;
-logic		    	mbuf_in_high_table                  ;
-logic	      		mbuf_in_low_table                   ;
-logic	[8:0]		mbuf_ptr_nxt                        ;
+// mbuf_ptr: alias for bind mmu_ptw_lsu_protocol_sva (.*); state flops live in req_* / mbuf_ptr_one path
 logic	[8:0]		mbuf_ptr                            ;
+//logic	[8:0]		mask                                ;
+//logic	[8:0]		point                               ;
+//logic	[8:0]		mbuf_scan_high_table_mask           ;
+//logic	[8:0]		mbuf_scan_bit_vec                   ;
+//logic	[8:0]		mbuf_scan_high_table                ;
+//logic	[8:0]		mbuf_priority_enc_high_table_lvl1   ;
+//logic	[8:0]		mbuf_priority_enc_low_table_lvl1    ;
+//logic	[8:0]		mbuf_priority_enc_high_table_lvl2   ;
+//logic	[8:0]		mbuf_priority_enc_low_table_lvl2    ;
+//logic		    	mbuf_in_high_table                  ;
+//logic	      		mbuf_in_low_table                   ;
+//logic	[8:0]		mbuf_ptr_nxt                        ;
 logic	[8:0]		mmu_lsu_data_req_grant              ;
 logic	[8:0][39:0]	mbuf_entry_padder                   ;
 logic	[8:0]		mbuf_entry_vld                      ;
@@ -265,24 +275,37 @@ always_comb begin
 end
 
 
-always_comb begin
-	mbuf_entry_upd[8:0] = 9'b0000_0000;
-	if(twu_itlb_sel)begin
-		mbuf_entry_upd[8:0] = 9'b1_0000_0000;
-	end else if(|twu_mbuf_req[3:0])begin
-		casez(mbuf_entry_vld[7:0])
-			8'b???????0	:	mbuf_entry_upd[8:0] = 9'b0_0000_0001;
-			8'b??????01	:	mbuf_entry_upd[8:0] = 9'b0_0000_0010;
-			8'b?????011	:	mbuf_entry_upd[8:0] = 9'b0_0000_0100;
-			8'b????0111	:	mbuf_entry_upd[8:0] = 9'b0_0000_1000;
-			8'b???01111	:	mbuf_entry_upd[8:0] = 9'b0_0001_0000;
-			8'b??011111	:	mbuf_entry_upd[8:0] = 9'b0_0010_0000;
-			8'b?0111111	:	mbuf_entry_upd[8:0] = 9'b0_0100_0000;
-			8'b01111111	:	mbuf_entry_upd[8:0] = 9'b0_1000_0000;
-			default		:	mbuf_entry_upd[8:0] = 9'b0_0000_0000;
-		endcase 
-	end
+//always_comb begin
+//	mbuf_entry_upd[8:0] = 9'b0000_0000;
+//	if(twu_itlb_sel)begin
+//		mbuf_entry_upd[8:0] = 9'b1_0000_0000;
+//	end else if(|twu_mbuf_req[3:0])begin
+//		casez(mbuf_entry_vld[7:0])
+//			8'b???????0	:	mbuf_entry_upd[8:0] = 9'b0_0000_0001;
+//			8'b??????01	:	mbuf_entry_upd[8:0] = 9'b0_0000_0010;
+//			8'b?????011	:	mbuf_entry_upd[8:0] = 9'b0_0000_0100;
+//			8'b????0111	:	mbuf_entry_upd[8:0] = 9'b0_0000_1000;
+//			8'b???01111	:	mbuf_entry_upd[8:0] = 9'b0_0001_0000;
+//			8'b??011111	:	mbuf_entry_upd[8:0] = 9'b0_0010_0000;
+//			8'b?0111111	:	mbuf_entry_upd[8:0] = 9'b0_0100_0000;
+//			8'b01111111	:	mbuf_entry_upd[8:0] = 9'b0_1000_0000;
+//			default		:	mbuf_entry_upd[8:0] = 9'b0_0000_0000;
+//		endcase 
+//	end
+//end
+
+assign create_en = |twu_mbuf_req[3:0] & (!twu_itlb_sel);
+
+always@(posedge mbuf_clk or negedge cpurst_b)
+begin
+  if (!cpurst_b)
+    create_ptr[7:0] <= 8'b1;
+  else if (create_en)
+    create_ptr[7:0] <= {create_ptr[6:0],create_ptr[7]};
 end
+assign mbuf_entry_upd[7:0] = {8{create_en}} & create_ptr[7:0];
+
+assign mbuf_entry_upd[8] = twu_itlb_sel;
 
 
 //==============================================================================
@@ -290,6 +313,36 @@ end
 //==============================================================================
 
 assign mmu_lsu_data_req = |(mbuf_entry_vld[8:0] & (~mbuf_entry_get[8:0]) & (~mbuf_entry_bus_err_flop[8:0])) & (!tlboper_ptw_abort);
+assign req_on_ptr[8] = mbuf_entry_vld[8] & (~mbuf_entry_get[8]) & (~mbuf_entry_bus_err_flop[8]);
+
+always@(posedge mbuf_clk or negedge cpurst_b)
+begin
+  if (!cpurst_b)
+    req_ptr[7:0] <= 8'b1;
+  else if (lsu_mmu_data_vld & (~req_on_ptr[8]))
+    req_ptr[7:0] <= {req_ptr[6:0], req_ptr[7]};
+end
+
+assign req_on_ptr[7:0] = {8{~req_on_ptr[8]}} & req_ptr[7:0];
+
+assign mbuf_ptr = req_on_ptr;
+
+always_comb begin
+	case(req_on_ptr[8:0])
+		9'b0_0000_0001	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[0][PADDR_WIDTH-1:0];
+		9'b0_0000_0010	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[1][PADDR_WIDTH-1:0];
+		9'b0_0000_0100	:   mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[2][PADDR_WIDTH-1:0];
+		9'b0_0000_1000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[3][PADDR_WIDTH-1:0];
+		9'b0_0001_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[4][PADDR_WIDTH-1:0];
+		9'b0_0010_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[5][PADDR_WIDTH-1:0];
+		9'b0_0100_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[6][PADDR_WIDTH-1:0];
+		9'b0_1000_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[7][PADDR_WIDTH-1:0];
+		9'b1_0000_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[8][PADDR_WIDTH-1:0];
+		default			:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
+	endcase 
+end
+
+
 assign mbuf_entry_empty = ~mmu_lsu_data_req;
 
 always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
@@ -305,119 +358,128 @@ always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
 	else
 		lsu_mmu_data_vld_reg <= lsu_mmu_data_vld;
 end
-
-
-//generate
-//	genvar i;
-//	for(genvar i=0; i <= 8; i=i+1)begin:mask0_8
-//		assign mask[i] = (|(twu_mbuf_mask[3:0] & mbuf_entry_twu_idx[i][3:0])) & mbuf_entry_vld[i];
-//	end
-//endgenerate
-
-
-
-always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
-	if(!cpurst_b)
-		point[7:0] <= 8'b0000_0001;
-	else if(lsu_mmu_data_vld & (!mbuf_entry_on[8]))
-		point[7:0] <= {mbuf_ptr[6:0],mbuf_ptr[7]};
-end
-
-assign mbuf_scan_bit_vec[7:0] = mbuf_entry_vld[7:0] & (~mbuf_entry_get[8:0]) & (~mbuf_entry_bus_err_flop[8:0]);
-
-generate
-    genvar i;
-    assign mbuf_scan_high_table_mask[0] = ~point[0];
-    for (i=1; i < 8; i=i+1) begin
-        assign mbuf_scan_high_table_mask[i] = mbuf_scan_high_table_mask[i-1] & ~point[i];  
-    end
-
-    for (i=0; i < 8; i=i+1) begin 
-        assign mbuf_scan_high_table[i] =  ~mbuf_scan_bit_vec[i] | mbuf_scan_high_table_mask[i];  
-    end
-
-    assign mbuf_priority_enc_high_table_lvl1[0] = mbuf_scan_high_table[0];
-    assign mbuf_priority_enc_low_table_lvl1[0] = ~mbuf_scan_bit_vec[0];
-    for (i=1; i < 8; i=i+1) begin : priority_enc_tables_lvl1
-        //! Thermometer encode
-        assign mbuf_priority_enc_high_table_lvl1[i] =   mbuf_priority_enc_high_table_lvl1[i-1] 
-                                                            & mbuf_scan_high_table[i];
-        //! Thermometer encode
-        assign mbuf_priority_enc_low_table_lvl1[i] =   mbuf_priority_enc_low_table_lvl1[i-1] 
-                                                           & mbuf_scan_bit_vec[i];
-    end
-
-    assign mbuf_priority_enc_high_table_lvl2[0] = ~mbuf_priority_enc_high_table_lvl1[0];
-    assign mbuf_priority_enc_low_table_lvl2[0]  = ~mbuf_priority_enc_low_table_lvl1[0]; 
-
-    for (i=1; i < 8; i=i+1) begin : priority_enc_tables_lvl2
-        assign mbuf_priority_enc_high_table_lvl2[i] =   ~mbuf_priority_enc_high_table_lvl1[i] 
-                                                            & mbuf_priority_enc_high_table_lvl1[i-1];
-        assign mbuf_priority_enc_low_table_lvl2[i] =   ~mbuf_priority_enc_low_table_lvl1[i] 
-                                                           & mbuf_priority_enc_low_table_lvl1[i-1];
-    end
-endgenerate
-
-assign mbuf_in_high_table = ~(&mbuf_scan_high_table[7:0]);
-assign mbuf_in_low_table  = ~mbuf_in_high_table & (~(&mbuf_priority_enc_low_table_lvl1[7:0]));
-
-
-assign mbuf_entry_itlb_sel_vld = mbuf_entry_vld[8];
-
-//assign mbuf_entry_itlb_sel_vld = |mbuf_entry0_itlb_sel[7:0];
-
 always_comb begin
     if((lsu_mmu_data_vld_reg & mmu_lsu_data_req) |
        (mbuf_entry_empty_reg & mmu_lsu_data_req)) begin
-		if(mbuf_entry_itlb_sel_vld)begin
-			mbuf_ptr_nxt[8:0] = 9'b1_0000_0000;
-		end else begin
-			case({mbuf_in_high_table, mbuf_in_low_table})
-				2'b00: mbuf_ptr_nxt[8:0] = {1'b0,point[7:0]};
-				2'b01: mbuf_ptr_nxt[8:0] = {1'b0,mbuf_priority_enc_low_table_lvl2[7:0]};
-				2'b1?: mbuf_ptr_nxt[8:0] = {1'b0,mbuf_priority_enc_high_table_lvl2[7:0]};
-				default: mbuf_ptr_nxt[8:0] = {1'b0,point[7:0]};    
-			endcase
-		end
-    end else begin
-        mbuf_ptr_nxt[8:0] = mbuf_ptr[8:0];
-    end
-end
-
-always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
-    if(!cpurst_b)
-        mbuf_ptr[8:0] <= 9'b0;
-    else
-        mbuf_ptr[8:0] <= mbuf_ptr_nxt[8:0];
-end
-
-always_comb begin
-    if((lsu_mmu_data_vld_reg & mmu_lsu_data_req) |
-       (mbuf_entry_empty_reg & mmu_lsu_data_req)) begin
-        mbuf_ptr_one[8:0] = mbuf_ptr_nxt[8:0];
+        mbuf_ptr_one[8:0] = req_on_ptr[8:0];
     end else begin
         mbuf_ptr_one[8:0] = 9'b0_0000_0000;
     end
 end
 
-always_comb begin
-	case(mbuf_ptr_nxt[8:0])
-		9'b0_0000_0001	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[0][PADDR_WIDTH-1:0];
-		9'b0_0000_0010	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[1][PADDR_WIDTH-1:0];
-		9'b0_0000_0100	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[2][PADDR_WIDTH-1:0];
-		9'b0_0000_1000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[3][PADDR_WIDTH-1:0];
-		9'b0_0001_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[4][PADDR_WIDTH-1:0];
-		9'b0_0010_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[5][PADDR_WIDTH-1:0];
-		9'b0_0100_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[6][PADDR_WIDTH-1:0];
-		9'b0_1000_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[7][PADDR_WIDTH-1:0];
-		9'b1_0000_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[8][PADDR_WIDTH-1:0];
-		default			:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
-	endcase 
-end
-
-
-
 assign mmu_lsu_data_req_grant[8:0] = {9{mmu_lsu_data_req}} & mbuf_ptr_one[8:0];
+
+////generate
+////	genvar i;
+////	for(genvar i=0; i <= 8; i=i+1)begin:mask0_8
+////		assign mask[i] = (|(twu_mbuf_mask[3:0] & mbuf_entry_twu_idx[i][3:0])) & mbuf_entry_vld[i];
+////	end
+////endgenerate
+//
+//
+//
+//always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
+//	if(!cpurst_b)
+//		point[7:0] <= 8'b0000_0001;
+//	else if(lsu_mmu_data_vld & (!mbuf_entry_on[8]))
+//		point[7:0] <= {mbuf_ptr[6:0],mbuf_ptr[7]};
+//end
+//
+//assign mbuf_scan_bit_vec[7:0] = mbuf_entry_vld[7:0] & (~mbuf_entry_get[8:0]) & (~mbuf_entry_bus_err_flop[8:0]);
+//
+//generate
+//    genvar i;
+//    assign mbuf_scan_high_table_mask[0] = ~point[0];
+//    for (i=1; i < 8; i=i+1) begin
+//        assign mbuf_scan_high_table_mask[i] = mbuf_scan_high_table_mask[i-1] & ~point[i];  
+//    end
+//
+//    for (i=0; i < 8; i=i+1) begin 
+//        assign mbuf_scan_high_table[i] =  ~mbuf_scan_bit_vec[i] | mbuf_scan_high_table_mask[i];  
+//    end
+//
+//    assign mbuf_priority_enc_high_table_lvl1[0] = mbuf_scan_high_table[0];
+//    assign mbuf_priority_enc_low_table_lvl1[0] = ~mbuf_scan_bit_vec[0];
+//    for (i=1; i < 8; i=i+1) begin : priority_enc_tables_lvl1
+//        //! Thermometer encode
+//        assign mbuf_priority_enc_high_table_lvl1[i] =   mbuf_priority_enc_high_table_lvl1[i-1] 
+//                                                            & mbuf_scan_high_table[i];
+//        //! Thermometer encode
+//        assign mbuf_priority_enc_low_table_lvl1[i] =   mbuf_priority_enc_low_table_lvl1[i-1] 
+//                                                           & mbuf_scan_bit_vec[i];
+//    end
+//
+//    assign mbuf_priority_enc_high_table_lvl2[0] = ~mbuf_priority_enc_high_table_lvl1[0];
+//    assign mbuf_priority_enc_low_table_lvl2[0]  = ~mbuf_priority_enc_low_table_lvl1[0]; 
+//
+//    for (i=1; i < 8; i=i+1) begin : priority_enc_tables_lvl2
+//        assign mbuf_priority_enc_high_table_lvl2[i] =   ~mbuf_priority_enc_high_table_lvl1[i] 
+//                                                            & mbuf_priority_enc_high_table_lvl1[i-1];
+//        assign mbuf_priority_enc_low_table_lvl2[i] =   ~mbuf_priority_enc_low_table_lvl1[i] 
+//                                                           & mbuf_priority_enc_low_table_lvl1[i-1];
+//    end
+//endgenerate
+//
+//assign mbuf_in_high_table = ~(&mbuf_scan_high_table[7:0]);
+//assign mbuf_in_low_table  = ~mbuf_in_high_table & (~(&mbuf_priority_enc_low_table_lvl1[7:0]));
+//
+//
+//assign mbuf_entry_itlb_sel_vld = mbuf_entry_vld[8];
+//
+////assign mbuf_entry_itlb_sel_vld = |mbuf_entry0_itlb_sel[7:0];
+//
+//always_comb begin
+//    if((lsu_mmu_data_vld_reg & mmu_lsu_data_req) |
+//       (mbuf_entry_empty_reg & mmu_lsu_data_req)) begin
+//		if(mbuf_entry_itlb_sel_vld)begin
+//			mbuf_ptr_nxt[8:0] = 9'b1_0000_0000;
+//		end else begin
+//			case({mbuf_in_high_table, mbuf_in_low_table})
+//				2'b00: mbuf_ptr_nxt[8:0] = {1'b0,point[7:0]};
+//				2'b01: mbuf_ptr_nxt[8:0] = {1'b0,mbuf_priority_enc_low_table_lvl2[7:0]};
+//				2'b1?: mbuf_ptr_nxt[8:0] = {1'b0,mbuf_priority_enc_high_table_lvl2[7:0]};
+//				default: mbuf_ptr_nxt[8:0] = {1'b0,point[7:0]};    
+//			endcase
+//		end
+//    end else begin
+//        mbuf_ptr_nxt[8:0] = mbuf_ptr[8:0];
+//    end
+//end
+//
+//always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
+//    if(!cpurst_b)
+//        mbuf_ptr[8:0] <= 9'b0;
+//    else
+//        mbuf_ptr[8:0] <= mbuf_ptr_nxt[8:0];
+//end
+//
+//always_comb begin
+//    if((lsu_mmu_data_vld_reg & mmu_lsu_data_req) |
+//       (mbuf_entry_empty_reg & mmu_lsu_data_req)) begin
+//        mbuf_ptr_one[8:0] = mbuf_ptr_nxt[8:0];
+//    end else begin
+//        mbuf_ptr_one[8:0] = 9'b0_0000_0000;
+//    end
+//end
+//
+//always_comb begin
+//	case(mbuf_ptr_nxt[8:0])
+//		9'b0_0000_0001	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[0][PADDR_WIDTH-1:0];
+//		9'b0_0000_0010	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[1][PADDR_WIDTH-1:0];
+//		9'b0_0000_0100	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[2][PADDR_WIDTH-1:0];
+//		9'b0_0000_1000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[3][PADDR_WIDTH-1:0];
+//		9'b0_0001_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[4][PADDR_WIDTH-1:0];
+//		9'b0_0010_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[5][PADDR_WIDTH-1:0];
+//		9'b0_0100_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[6][PADDR_WIDTH-1:0];
+//		9'b0_1000_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[7][PADDR_WIDTH-1:0];
+//		9'b1_0000_0000	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[8][PADDR_WIDTH-1:0];
+//		default			:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
+//	endcase 
+//end
+
+
+
+//assign mmu_lsu_data_req_grant[8:0] = {9{mmu_lsu_data_req}} & mbuf_ptr_one[8:0];
 
 
 //==============================================================================

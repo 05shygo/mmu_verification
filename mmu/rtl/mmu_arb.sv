@@ -91,6 +91,8 @@ module mmu_arb#(
     //-------------------------------------------------------------------------
     // 4. Interface with Prefetch (Lowest Priority)
     //-------------------------------------------------------------------------
+    input  logic                    mmu_lsu_pa2_err,
+    input  logic                    mmu_lsu_pa2_vld,
     input  logic                    lsu_mmu_va2_vld,  // PFU valid
     input  logic [VPN_WIDTH-1:0]    l2tlb_arb_pfu_vpn,
     input  logic                    dutlb_xx_mmu_off, // MMU enable status
@@ -138,6 +140,7 @@ module mmu_arb#(
     logic       arb_clk;
     logic       arb_clk_en;
     logic       tlboper_on;
+    logic       prefetch_mask;
 
     // Selected Request Signals
     logic [VPN_WIDTH-1:0] sel_vpn;
@@ -265,6 +268,16 @@ module mmu_arb#(
 	end
     end
 
+    always_ff@(posedge arb_clk or negedge cpurst_b) begin
+        if (!cpurst_b) begin
+            prefetch_mask <= 1'b0;
+        end else if(arb_tlboper_grant) begin
+            prefetch_mask <= 1'b1;
+        end else if(mmu_lsu_pa2_err | mmu_lsu_pa2_vld) begin
+            prefetch_mask <= 1'b0;
+        end
+    end
+
     // Grant Logic
     assign arb_ptw_write_grant   = ptw_write_req2 & !tlboper_on & ptw_on;
 
@@ -273,13 +286,13 @@ module mmu_arb#(
     assign arb_tlboper_grant = tlboper_arb_req 
                              && !ptw_arb_req 
                              //&& !tlboper_on
-			     && !ptw_on;
+			                 && !ptw_on;
 
     assign arb_reqq_grant    = issue_valid
                              && !ptw_arb_req
                              && !tlboper_arb_req
                              && !tlboper_on
-			     && !ptw_on;
+			                 && !ptw_on;
 
     assign arb_pfu_grant     = lsu_mmu_va2_vld
                              && !dutlb_xx_mmu_off
@@ -287,7 +300,8 @@ module mmu_arb#(
                              && !tlboper_arb_req
                              && !issue_valid
                              && !tlboper_on
-			     && !ptw_on;
+			                 && !ptw_on
+                             && !prefetch_mask;
 
     // Global Request Valid
     assign arb_l2tlb_req =arb_ptw_write_grant | arb_ptw_grant | arb_tlboper_grant | arb_reqq_grant | arb_pfu_grant;

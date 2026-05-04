@@ -46,7 +46,7 @@ class test_mmu_twu_accerr_bypass_arb extends phase12_generated_test_base;
       end
       begin
         #400ns;
-        phase12_set_pmp_deny_ptw_reads(4'b1111);
+        phase12_set_pmp_deny_ptw_reads(4'b1111, 1'b1);
       end
       begin
         #450ns;

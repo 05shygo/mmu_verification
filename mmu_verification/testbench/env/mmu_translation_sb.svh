@@ -100,6 +100,10 @@ class mmu_translation_sb extends uvm_scoreboard;
   bit [2:0]    m_last_l1_refill_pgs;
   bit [15:0]   m_last_l1_entry_upd;
   time         m_last_l1_refill_time;
+  bit          m_last_ptw_l2_ref_valid;
+  bit          m_last_ptw_l2_ref_pgflt;
+  bit          m_last_ptw_l2_ref_acc_err;
+  time         m_last_ptw_l2_ref_time;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -132,6 +136,10 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_last_l1_refill_pgs = '0;
     m_last_l1_entry_upd = '0;
     m_last_l1_refill_time = 0;
+    m_last_ptw_l2_ref_valid = 1'b0;
+    m_last_ptw_l2_ref_pgflt = 1'b0;
+    m_last_ptw_l2_ref_acc_err = 1'b0;
+    m_last_ptw_l2_ref_time = 0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -179,6 +187,12 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_last_l1_refill_pgs   = v_probe.mon_cb.l1d_refill_pgs;
         m_last_l1_entry_upd    = v_probe.mon_cb.l1d_entry_upd;
         m_last_l1_refill_time  = $time;
+      end
+      if (v_probe.mon_cb.ptw_l2tlb_ref_pgflt || v_probe.mon_cb.ptw_l2tlb_ref_acc_err) begin
+        m_last_ptw_l2_ref_valid   = 1'b1;
+        m_last_ptw_l2_ref_pgflt   = v_probe.mon_cb.ptw_l2tlb_ref_pgflt;
+        m_last_ptw_l2_ref_acc_err = v_probe.mon_cb.ptw_l2tlb_ref_acc_err;
+        m_last_ptw_l2_ref_time    = $time;
       end
     end
   endtask
@@ -322,6 +336,17 @@ class mmu_translation_sb extends uvm_scoreboard;
       `uvm_error(get_type_name(),
         $sformatf("[LSU_P2] VA=0x%010h: fault mismatch - ref.exc=%s ref.deny=%0b exp_fault=%0b dut.access_fault=%0b dut.pa=0x%07h",
           {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault, tr.pa))
+      if (v_probe != null) begin
+        `uvm_error(get_type_name(),
+          $sformatf("[LSU_P2][WB] pmp_flg4=0x%0h ref_pmp_flg4=0x%0h sysmap_flg4=0x%02h pfu_deny=%0b pfu_acc_fault=%0b pfu_flag_fault=%0b last_ptw_l2_ref={valid:%0b pgflt:%0b acc_err:%0b age:%0t}",
+            v_probe.mon_cb.pfu_pmp_flg4, m_ref.m_pmp_flg[4],
+            v_probe.mon_cb.pfu_sysmap_flg4,
+            v_probe.mon_cb.pfu_l2tlb_deny,
+            v_probe.mon_cb.pfu_l2tlb_acc_fault,
+            v_probe.mon_cb.pfu_l2tlb_flag_fault,
+            m_last_ptw_l2_ref_valid, m_last_ptw_l2_ref_pgflt,
+            m_last_ptw_l2_ref_acc_err, $time - m_last_ptw_l2_ref_time))
+      end
       m_mismatch++;
       return;
     end

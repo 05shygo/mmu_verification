@@ -58,7 +58,7 @@ class test_mmu_arb_refill_except_priority extends phase12_generated_test_base;
       end
     join
 
-    phase12_set_pmp_deny_ptw_reads(4'b1111);
+    phase12_set_pmp_deny_ptw_reads(4'b1111, 1'b1);
     repeat (6) begin
       phase12_cp0_tlb_allinv();
       phase12_drive_lsu_rr(39'h10_1000, 1, 2, LSU_PIPE0, 1'b0);

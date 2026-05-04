@@ -121,6 +121,11 @@ interface mmu_dut_probes_if (
   wire [3:0][3:0] p13_pmp_flg_vec;
   wire [3:0][27:0] p13_pmp_pa_vec;
   wire [3:0] p13_pmp_fetch_vec;
+  wire [3:0] pfu_pmp_flg4;
+  wire [4:0] pfu_sysmap_flg4;
+  wire       pfu_l2tlb_deny;
+  wire       pfu_l2tlb_acc_fault;
+  wire       pfu_l2tlb_flag_fault;
   wire [3:0][4:0] p13_sysmap_flg_vec;
   wire [3:0][7:0] p13_sysmap_hit_vec;
   wire [3:0][27:0] p13_sysmap_pa_vec;
@@ -166,6 +171,8 @@ interface mmu_dut_probes_if (
     input p13_pmp_vld_vec, p13_pmp_grant_vec, p13_pmp_deny_vec;
     input p13_pmp_wait_vec, p13_pmp_mbuf_req_vec, p13_pmp_type_vec;
     input p13_pmp_flg_vec, p13_pmp_pa_vec, p13_pmp_fetch_vec;
+    input pfu_pmp_flg4, pfu_sysmap_flg4, pfu_l2tlb_deny;
+    input pfu_l2tlb_acc_fault, pfu_l2tlb_flag_fault;
     input p13_sysmap_flg_vec, p13_sysmap_hit_vec, p13_sysmap_pa_vec;
     input p13_twu_sysmap_adder_vec, p13_twu_csr_cross_vec;
     input p13_twu_crs2_1g_vec, p13_twu_crs2_2m_vec, p13_twu_crs2_chk_vec;

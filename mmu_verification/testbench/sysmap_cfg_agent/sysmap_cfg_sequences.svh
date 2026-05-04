@@ -67,9 +67,16 @@ class sysmap_hit_cross_tlb_seq extends sysmap_cfg_base_seq;
   rand bit [4:0]  hit_flg;
   rand bit [2:0]  region_idx;
   constraint c_valid_region { region_idx <= 3'd7; }
+  constraint c_translation_safe_default {
+    hit_flg == 5'b01111;
+  }
 
   function new(string name = "sysmap_hit_cross_tlb_seq");
     super.new(name);
+    hit_base  = 28'h0200_0000;
+    hit_mask  = 28'hFFFF_FFFF;
+    hit_flg   = 5'b01111;
+    region_idx = 3'd0;
   endfunction
 
   virtual task body();
@@ -108,9 +115,11 @@ class sysmap_perm_flag_seq extends sysmap_cfg_base_seq;
   `uvm_object_utils(sysmap_perm_flag_seq)
 
   rand bit [4:0] perm_flg;
+  constraint c_translation_safe_perm { perm_flg == 5'b01111; }
 
   function new(string name = "sysmap_perm_flag_seq");
     super.new(name);
+    perm_flg = 5'b01111;
   endfunction
 
   virtual task body();

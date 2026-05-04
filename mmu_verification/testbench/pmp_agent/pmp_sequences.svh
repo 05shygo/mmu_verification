@@ -65,7 +65,7 @@ class pmp_flg_deny_fetch_seq extends pmp_base_seq;
 
 endclass : pmp_flg_deny_fetch_seq
 
-// ── Deny read/write on data ports (ports 0/1/4) ─────────────────────────────
+// ── Deny read/write on LSU data ports (ports 0/1) ───────────────────────────
 class pmp_flg_deny_rw_seq extends pmp_base_seq;
   `uvm_object_utils(pmp_flg_deny_rw_seq)
 
@@ -88,12 +88,30 @@ class pmp_flg_deny_rw_seq extends pmp_base_seq;
     tr.flg[0] = data_flg;      // LSU Pipe0
     tr.flg[1] = data_flg;      // LSU Pipe1
     tr.flg[2] = 4'h7;          // IFU port untouched
-    tr.flg[3] = 4'h7; tr.flg[4] = data_flg; // PTW0 allow, LSU Pipe2/PFU data
+    tr.flg[3] = 4'h7;          // PTW0 allow
+    tr.flg[4] = 4'h7;          // PFU is not a generic LSU data-deny target
     tr.flg[5] = 4'h7; tr.flg[6] = 4'h7; tr.flg[7] = 4'h7;
     `uvm_send(tr)
   endtask
 
 endclass : pmp_flg_deny_rw_seq
+
+// ── Explicit PFU/LSU pipe2 read deny (port 4) ───────────────────────────────
+class pmp_flg_deny_pfu_seq extends pmp_base_seq;
+  `uvm_object_utils(pmp_flg_deny_pfu_seq)
+
+  function new(string name = "pmp_flg_deny_pfu_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    pmp_txn tr;
+    `uvm_create(tr)
+    foreach (tr.flg[i]) tr.flg[i] = 4'h7;
+    tr.flg[4] = 4'h6;  // deny R on LSU Pipe2/PFU only
+    `uvm_send(tr)
+  endtask
+endclass : pmp_flg_deny_pfu_seq
 
 class pmp_flg_raw_seq extends pmp_base_seq;
   `uvm_object_utils(pmp_flg_raw_seq)
@@ -159,6 +177,7 @@ class pmp_flg_cross_8port_seq extends pmp_base_seq;
           foreach (tr.flg[k]) tr.flg[k] inside {4'h7, 4'h6, 4'h5, 4'h3, 4'h0};
         })
         `uvm_warning(get_type_name(), "Randomisation failed — using defaults")
+      tr.flg[4] = 4'h7;  // keep PFU comparable unless a PFU-specific deny seq is used
       `uvm_send(tr)
     end
   endtask

@@ -21,7 +21,7 @@ class test_twu_mask_pmp_wait_all4 extends phase12_generated_test_base;
     setup_plan();
     if (m_run_misc_init) start_misc_seq_by_name("misc_init_seq");
     if (m_enable_sv39_4k_bringup) do_sv39_4k_bringup();
-    phase12_map_four_twu_pressure_window(39'h0_B800_0000, 128, 40'h0_B800_0000);
+    phase12_map_four_twu_pressure_window(39'h0_B800_0000, 128, 40'h0_0100_0000);
     phase12_concurrent_four_twus_under_full_pmp_deny(39'h0_B800_0000, 128, 224);
     #(m_post_drain);
   endtask

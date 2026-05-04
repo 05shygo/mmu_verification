@@ -86,13 +86,23 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     repeat (drain_cycles / 2) @(m_env.m_ptw_mem.vif.monitor_cb);
   endtask
 
-  protected virtual task phase12_set_pmp_deny_ptw_reads(input bit [3:0] deny_twu_mask = 4'b1111);
+  protected virtual task phase12_set_pmp_deny_ptw_reads(
+    input bit [3:0] deny_twu_mask = 4'b1111,
+    input bit       deny_read_perm = 1'b0
+  );
     bit [3:0] raw_flg[8];
+    bit [3:0] deny_flg;
     foreach (raw_flg[i]) raw_flg[i] = 4'h7;
-    raw_flg[3] = deny_twu_mask[0] ? 4'h6 : 4'h7;
-    raw_flg[5] = deny_twu_mask[1] ? 4'h6 : 4'h7;
-    raw_flg[6] = deny_twu_mask[2] ? 4'h6 : 4'h7;
-    raw_flg[7] = deny_twu_mask[3] ? 4'h6 : 4'h7;
+    // TWU PMP checks select permission from the original miss type, not from
+    // the PTW memory-read operation: fetch->X, load/PFU->R, store->W.
+    // Ready/mask pressure tests must not accidentally turn PFU/load walkers
+    // into access faults, so the default keeps R allowed and denies W/X only.
+    // Tests whose intent is PTW access-error injection pass deny_read_perm.
+    deny_flg = deny_read_perm ? 4'h6 : 4'h1;
+    raw_flg[3] = deny_twu_mask[0] ? deny_flg : 4'h7;
+    raw_flg[5] = deny_twu_mask[1] ? deny_flg : 4'h7;
+    raw_flg[6] = deny_twu_mask[2] ? deny_flg : 4'h7;
+    raw_flg[7] = deny_twu_mask[3] ? deny_flg : 4'h7;
     phase12_set_pmp_raw(raw_flg);
   endtask
 
@@ -242,7 +252,7 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     input int unsigned npage = 128,
     input int unsigned n_txn = 256,
     input int unsigned bursts = 4,
-    input pa_t region_pa_base = 40'h0_2200_0000
+    input pa_t region_pa_base = 40'h0_0100_0000
   );
     for (int unsigned b = 0; b < bursts; b++) begin
       va_t burst_base;
@@ -291,7 +301,7 @@ class phase12_generated_test_base extends phase9_generated_test_base;
       pa_base  = 40'h0_3000_0000 + pa_t'(r << 24);
 
       phase12_concurrent_four_twus_slow_miss_pressure(
-        four_base, 128, 256, 2, 40'h0_2200_0000 + (pa_t'(r) << 29));
+        four_base, 128, 256, 2, 40'h0_0100_0000 + (pa_t'(r) << 29));
 
       // Recovery / partial-mask phase to create ready rise and additional
       // non-all-mask samples after the low window.

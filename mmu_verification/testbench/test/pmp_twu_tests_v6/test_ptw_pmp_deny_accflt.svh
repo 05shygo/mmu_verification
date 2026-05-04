@@ -23,7 +23,7 @@ class test_ptw_pmp_deny_accflt extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup) do_sv39_4k_bringup();
     phase12_map_four_twu_pressure_window(39'h0_A400_0000, 64, 40'h0_A000_0000);
     phase12_cp0_tlb_allinv();
-    phase12_set_pmp_deny_ptw_reads(4'b1111);
+    phase12_set_pmp_deny_ptw_reads(4'b1111, 1'b1);
     phase12_drive_lsu_rr(39'h0_A600_0000, 64, 128, LSU_PIPE0, 1'b0, 1'b1);
     phase12_set_pmp_allow_all();
     #(m_post_drain);

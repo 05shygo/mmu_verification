@@ -451,6 +451,10 @@ class phase9_generated_test_base extends test_base;
         void'(seq.randomize());
         seq.start(m_env.m_pmp.m_sequencer);
       end
+      "pmp_flg_deny_pfu_seq": begin
+        pmp_flg_deny_pfu_seq seq = pmp_flg_deny_pfu_seq::type_id::create(seq_name);
+        seq.start(m_env.m_pmp.m_sequencer);
+      end
       "pmp_flg_cross_8port_seq": begin
         pmp_flg_cross_8port_seq seq = pmp_flg_cross_8port_seq::type_id::create(seq_name);
         void'(seq.randomize());

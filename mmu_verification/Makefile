@@ -216,6 +216,8 @@ VERDI_BASE_OPTS := -nologo -full64 \
 COV_DB_DIR            ?= $(OUTPUT_DIR)/simv.vdb
 COV_BASE_DB_DIR       ?= $(OUTPUT_DIR)/simv.compile.vdb
 COV_BASELINE_STAMP    ?= $(OUTPUT_DIR)/.simv.compile.vdb.baseline_phase13_v3.stamp
+COV_FORCE_REBUILD     ?= 0
+COV_HARDLINK_GUARD    ?= 0
 URG_REPORT_DIR        ?= $(COV_DIR)/urgReport
 URG_MERGE_REPORT_DIR  ?= $(COV_DIR)/merged_report
 URG_MERGED_DB         ?= $(COV_DIR)/merged.vdb
@@ -349,8 +351,15 @@ PHASE14_PARALLEL_RUNS_PER_SHARD ?= 1
 PHASE14_PARALLEL_SCHEDULE ?= longest_first
 PHASE14_PARALLEL_SCHEDULE_PROFILE ?= $(PHASE14_SUMMARY)
 PHASE14_PARALLEL_UVM_ERR_ONLY ?= 1
+PHASE14_PARALLEL_FORCE_COV_REBUILD ?= 1
 PHASE14_PARALLEL_RESERVED_CPUS ?= 8
 PHASE14_PARALLEL_JOBS     ?= $(shell n=$$(command -v nproc >/dev/null 2>&1 && nproc || echo 16); r=$(PHASE14_PARALLEL_RESERVED_CPUS); j=$$((n-r)); if [ $$j -lt 1 ]; then j=1; fi; echo $$j)
+PHASE14_PARALLEL_LAUNCH_STAGGER ?= 0.05
+PHASE14_PARALLEL_STARTUP_RETRIES ?= 2
+PHASE14_PARALLEL_STARTUP_RETRY_DELAY ?= 10
+PHASE14_PARALLEL_STARTUP_RETRY_MAX_DELAY ?= 120
+PHASE14_PARALLEL_STARTUP_RETRY_JITTER ?= 5
+PHASE14_PARALLEL_STARTUP_RETRY_MAX_RUNTIME ?= 20
 PHASE14_PARALLEL_FAIL_FILE ?= $(PHASE14_PARALLEL_DIR)/.run_failed
 PHASE14_PARALLEL_FAILURE_LIMIT ?= 0
 PHASE14_PARALLEL_URG_LOG  ?= $(COV_DIR)/phase14_parallel_urg.log
@@ -474,8 +483,15 @@ print-phase14:
 	@echo "PHASE14_PARALLEL_SCHEDULE = $(PHASE14_PARALLEL_SCHEDULE)"
 	@echo "PHASE14_PARALLEL_SCHEDULE_PROFILE = $(PHASE14_PARALLEL_SCHEDULE_PROFILE)"
 	@echo "PHASE14_PARALLEL_UVM_ERR_ONLY = $(PHASE14_PARALLEL_UVM_ERR_ONLY)"
+	@echo "PHASE14_PARALLEL_FORCE_COV_REBUILD = $(PHASE14_PARALLEL_FORCE_COV_REBUILD)"
 	@echo "PHASE14_PARALLEL_RESERVED_CPUS = $(PHASE14_PARALLEL_RESERVED_CPUS)"
 	@echo "PHASE14_PARALLEL_JOBS  = $(PHASE14_PARALLEL_JOBS)"
+	@echo "PHASE14_PARALLEL_LAUNCH_STAGGER = $(PHASE14_PARALLEL_LAUNCH_STAGGER)"
+	@echo "PHASE14_PARALLEL_STARTUP_RETRIES = $(PHASE14_PARALLEL_STARTUP_RETRIES)"
+	@echo "PHASE14_PARALLEL_STARTUP_RETRY_DELAY = $(PHASE14_PARALLEL_STARTUP_RETRY_DELAY)"
+	@echo "PHASE14_PARALLEL_STARTUP_RETRY_MAX_DELAY = $(PHASE14_PARALLEL_STARTUP_RETRY_MAX_DELAY)"
+	@echo "PHASE14_PARALLEL_STARTUP_RETRY_JITTER = $(PHASE14_PARALLEL_STARTUP_RETRY_JITTER)"
+	@echo "PHASE14_PARALLEL_STARTUP_RETRY_MAX_RUNTIME = $(PHASE14_PARALLEL_STARTUP_RETRY_MAX_RUNTIME)"
 	@echo "PHASE14_PARALLEL_FAIL_FILE = $(PHASE14_PARALLEL_FAIL_FILE)"
 	@echo "PHASE14_PARALLEL_FAILURE_LIMIT = $(PHASE14_PARALLEL_FAILURE_LIMIT)"
 	@echo "PHASE14_PARALLEL_URG_LOG = $(PHASE14_PARALLEL_URG_LOG)"
@@ -656,6 +672,7 @@ regress: setup
 	COV_DB_DIR="$(COV_DB_DIR)" \
 	COV_BASE_DB_DIR="$(COV_BASE_DB_DIR)" \
 	COV_BASELINE_STAMP="$(COV_BASELINE_STAMP)" \
+	COV_HARDLINK_GUARD="$(COV_HARDLINK_GUARD)" \
 	$(PYTHON) "$(REGRESS_SCRIPT)" \
 		--reg-list "$(LIST)" \
 		--mode "$(REGRESS_MODE)" \
@@ -981,6 +998,7 @@ phase14_make_parallel_shards:
 		--schedule "$(PHASE14_PARALLEL_SCHEDULE)" \
 		--schedule-profile "$(PHASE14_PARALLEL_SCHEDULE_PROFILE)"
 
+regress_v4_full_parallel: COV_FORCE_REBUILD = $(PHASE14_PARALLEL_FORCE_COV_REBUILD)
 regress_v4_full_parallel: comp phase14_make_parallel_shards
 	@test -f "$(PHASE14_RUN_PARALLEL_SHARDS)" || (echo "ERROR: Phase14 parallel shard runner missing: $(PHASE14_RUN_PARALLEL_SHARDS)"; exit 2)
 	@test -f "$(PHASE14_MERGE_PARALLEL_SUMMARIES)" || (echo "ERROR: Phase14 parallel summary merger missing: $(PHASE14_MERGE_PARALLEL_SUMMARIES)"; exit 2)
@@ -990,12 +1008,19 @@ regress_v4_full_parallel: comp phase14_make_parallel_shards
 		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
 		--project-dir "$(PROJECT_DIR)" \
 		--cov-base-db-dir "$(COV_BASE_DB_DIR)" \
+		--cov-baseline-stamp "$(COV_BASELINE_STAMP)" \
 		--jobs "$(PHASE14_PARALLEL_JOBS)" \
 		--make "$(MAKE)" \
 		--verbosity "$(VERBOSITY)" \
 		--timeout "$(TIMEOUT)" \
 		--uvm-err-only "$(PHASE14_PARALLEL_UVM_ERR_ONLY)" \
 		--fail-fast "$(PHASE14_FAIL_FAST)" \
+		--launch-stagger "$(PHASE14_PARALLEL_LAUNCH_STAGGER)" \
+		--startup-retries "$(PHASE14_PARALLEL_STARTUP_RETRIES)" \
+		--startup-retry-delay "$(PHASE14_PARALLEL_STARTUP_RETRY_DELAY)" \
+		--startup-retry-max-delay "$(PHASE14_PARALLEL_STARTUP_RETRY_MAX_DELAY)" \
+		--startup-retry-jitter "$(PHASE14_PARALLEL_STARTUP_RETRY_JITTER)" \
+		--startup-retry-max-runtime "$(PHASE14_PARALLEL_STARTUP_RETRY_MAX_RUNTIME)" \
 		--fail-file "$(PHASE14_PARALLEL_FAIL_FILE)"; \
 	run_rc=$$?; \
 	$(PYTHON) "$(PHASE14_MERGE_PARALLEL_SUMMARIES)" \
@@ -1534,7 +1559,7 @@ help:
 	@echo "  make phase14_clean_parallel                          # remove high-parallel shard/log/VDB artifacts"
 	@echo "  make phase14_coverage_merge                           # generate Phase14 URG artifacts"
 	@echo "  make phase14_exit_check                               # default Phase14 closure gate, uses high-parallel VDBs"
-	@echo "  Optional: PHASE14_PARALLEL_JOBS=96..144 PHASE14_PARALLEL_RUNS_PER_SHARD=1 PHASE14_FAIL_FAST=1 PHASE14_PARALLEL_UVM_ERR_ONLY=1"
+	@echo "  Optional: PHASE14_PARALLEL_JOBS=96..144 PHASE14_PARALLEL_RUNS_PER_SHARD=1 PHASE14_FAIL_FAST=1 PHASE14_PARALLEL_UVM_ERR_ONLY=1 PHASE14_PARALLEL_STARTUP_RETRIES=2"
 	@echo "  High-parallel default: isolated VDBs under $(PHASE14_PARALLEL_VDB_DIR), per-shard RUN_DIRs, shared CFGDB trace disabled"
 	@echo ""
 	@echo "Phase 5 (MMU_UVM_TaskDivision.md Â§5):"
@@ -1618,7 +1643,7 @@ comp_all: setup check_env
 	@echo "MMU_RTL_DIR=$(MMU_RTL_DIR)"
 	@echo "RELATE_RTL_DIR=$(RELATE_RTL_DIR)"
 	@echo "==============================================================================="
-	@if [ -f "$(COV_BASELINE_STAMP)" ] && [ -d "$(COV_BASE_DB_DIR)" ] && find "$(COV_BASE_DB_DIR)" -type f -print -quit | grep -q .; then \
+	@if [ "$(COV_FORCE_REBUILD)" != "1" ] && [ -f "$(COV_BASELINE_STAMP)" ] && [ -d "$(COV_BASE_DB_DIR)" ] && find "$(COV_BASE_DB_DIR)" -type f -print -quit | grep -q .; then \
 		rm -rf "$(COV_DB_DIR)"; \
 		cp -a "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" || { \
 			echo "ERROR: could not restore coverage design VDB from baseline"; \
@@ -1628,7 +1653,7 @@ comp_all: setup check_env
 		}; \
 		chmod -R u+w "$(COV_DB_DIR)" 2>/dev/null || true; \
 	else \
-		echo "Coverage baseline VDB missing/empty/stale; forcing VCS rebuild of $(COV_DB_DIR)"; \
+		echo "Coverage baseline VDB missing/empty/stale or COV_FORCE_REBUILD=$(COV_FORCE_REBUILD); forcing VCS rebuild of $(COV_DB_DIR)"; \
 		rm -rf "$(COV_DB_DIR)"; \
 		rm -rf "$(COV_BASE_DB_DIR)"; \
 		rm -f "$(OUTPUT_DIR)/simv.daidir/.vcs.timestamp"; \
@@ -1818,6 +1843,22 @@ run_cov: setup
 			echo "ERROR: clean compile-time coverage baseline VDB is empty: $(COV_BASE_DB_DIR)"; \
 			echo "       Re-run 'make comp' before 'make run_cov'."; \
 			exit 1; \
+		fi; \
+		if [ "$(COV_HARDLINK_GUARD)" = "1" ] && [ -d "$(COV_DB_DIR)" ]; then \
+			shared_file=$$(find "$(COV_DB_DIR)" -type f -print 2>/dev/null | while IFS= read -r cov_file; do \
+				rel="$${cov_file#$(COV_DB_DIR)/}"; \
+				base_file="$(COV_BASE_DB_DIR)/$$rel"; \
+				if [ -f "$$base_file" ] && [ "$$cov_file" -ef "$$base_file" ]; then \
+					printf '%s\n' "$$cov_file"; \
+					break; \
+				fi; \
+			done | head -n 1); \
+			if [ -n "$$shared_file" ]; then \
+				echo "ERROR: aggregate coverage VDB shares hard-linked files with compile baseline"; \
+				echo "       Example: $$shared_file"; \
+				echo "       Remove the shard VDB and rebuild from the clean baseline before run_cov."; \
+				exit 1; \
+			fi; \
 		fi; \
 		if [ ! -d "$(COV_DB_DIR)" ] || ! find "$(COV_DB_DIR)" -type f -print -quit | grep -q .; then \
 			echo "Aggregate coverage VDB missing/empty; restoring compile-time baseline to $(COV_DB_DIR)"; \

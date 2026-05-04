@@ -731,8 +731,8 @@ Closure action:
 - `phase14_exit_check` now defaults to the high-parallel testcase/seed shard
   VDB flow.
 - Each shard uses an isolated runtime VDB and log directory. The compile
-  baseline VDB is hard-linked per shard when possible and copied only as a
-  fallback to reduce NFS traffic.
+  baseline VDB is kept as a shared clean source; each shard restores its own
+  runtime VDB through `run_cov`.
 - First 152-CPU server trial with `PHASE14_PARALLEL_JOBS=120` produced 465
   testcase/seed shards (`93 tests x 5 seeds`) under
   `output/regression/phase14_v4_full_parallel`. High-parallel logs are in
@@ -744,6 +744,14 @@ Closure action:
   entry is `make phase14_clean_parallel`.
 - High-parallel runs disable shared `+UVM_CONFIG_DB_TRACE` and default to
   `PHASE14_PARALLEL_UVM_ERR_ONLY=1` to reduce log and filesystem I/O.
+- The follow-up `PHASE14_PARALLEL_JOBS=120` rerun showed 364 startup/resource
+  failures: `rc=255`, logs with only the VCS `Command:` line, and no UVM/VCS
+  completion marker. This was not treated as 364 independent functional fails.
+- The parallel runner no longer hard-links compile-baseline VDB files into shard
+  VDBs. `regress_v4_full_parallel` now defaults
+  `PHASE14_PARALLEL_FORCE_COV_REBUILD=1` and
+  `PHASE14_PARALLEL_STARTUP_RETRIES=2`, with
+  `PHASE14_PARALLEL_LAUNCH_STAGGER=0.05` to soften initial VCS startup bursts.
 - On the 152-CPU server, use `PHASE14_PARALLEL_JOBS=96..144` depending on
   license/NFS headroom. Default is `nproc - 8`.
 - `run_test.py` supports serial fail-fast so one coverage infrastructure abort

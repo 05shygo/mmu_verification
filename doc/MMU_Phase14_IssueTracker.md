@@ -348,7 +348,8 @@ make phase14_exit_check
 This invokes `regress_v4_full_parallel`, creates independent testcase/seed
 shards, writes isolated runtime VDBs and logs, enables serial fail-fast inside
 each shard, and then runs `phase14_coverage_merge_parallel`. The per-shard
-compile baseline is hard-linked when possible and copied only as a fallback.
+runtime VDB is restored from a shared clean compile baseline by `run_cov`; shard
+VDB files must not hard-link back to the compile baseline.
 
 Follow-up from the first 152-CPU server trial (`PHASE14_PARALLEL_JOBS=120`):
 
@@ -363,6 +364,27 @@ Follow-up from the first 152-CPU server trial (`PHASE14_PARALLEL_JOBS=120`):
   `PHASE14_PARALLEL_UVM_ERR_ONLY=1` is the default to reduce I/O.
 - `make phase14_clean_parallel` removes high-parallel shard/log/VDB artifacts,
   including legacy root `output/phase14_parallel_*` artifacts.
+
+Follow-up from the `PHASE14_PARALLEL_JOBS=120` rerun that reported 364 failing
+shards:
+
+- The common signature was `run_cov simulation failed ... rc=255` with per-test
+  simulation logs containing only the VCS `Command:` line and no UVM/VCS
+  completion marker.
+- This is classified as simulator startup/resource pressure, not 364 independent
+  testcase failures.
+- The high-parallel runner now leaves the compile baseline VDB as a shared,
+  read-only source and lets each shard restore its own runtime VDB through
+  `run_cov`; it no longer hard-links baseline VDB files into shard VDBs.
+- `regress_v4_full_parallel` defaults `PHASE14_PARALLEL_FORCE_COV_REBUILD=1` so
+  the Phase14 parallel run starts from a fresh compile coverage baseline after
+  any previous high-parallel artifact corruption.
+- Startup-only `rc=255` attempts with missing/command-only logs are retried by
+  default via `PHASE14_PARALLEL_STARTUP_RETRIES=2`. Real UVM/SVA/coverage-abort
+  failures are not retried by this filter.
+- Initial shard launch is lightly staggered by default
+  (`PHASE14_PARALLEL_LAUNCH_STAGGER=0.05`) to avoid a single burst of VCS
+  startup and license/NFS traffic.
 
 ### Signoff Decision
 

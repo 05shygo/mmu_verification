@@ -16,14 +16,14 @@ class test_lsu_access_fault_pmp_deny extends phase9_generated_test_base;
   virtual function void setup_plan();
     super.setup_plan();
     p9_tc_id = "EXC-006";
-    p9_seq_desc = "pmp_flg_deny_fetch_seq + lsu_pipe0_only_seq";
+    p9_seq_desc = "pmp_flg_deny_rw_seq + lsu_pipe0_only_seq";
     p9_checker = "access_fault_sb";
     p9_reviewer = "B";
     num_txn = 32;
     m_enable_sv39_4k_bringup = 1'b1;
     m_run_misc_init = 1'b1;
     m_post_drain = 500ns;
-    m_pmp_seq_names.push_back("pmp_flg_deny_fetch_seq");
+    m_pmp_seq_names.push_back("pmp_flg_deny_rw_seq");
     m_lsu_seq_names.push_back("lsu_pipe0_only_seq");
   endfunction
 

@@ -297,6 +297,8 @@ class mmu_translation_sb extends uvm_scoreboard;
   virtual function void write_lsu_p2(lsu_txn tr);
     xlation_rsp_t ref_rsp;
     va_t          va;
+    bit           exp_fault;
+    bit           dut_fault;
 
     m_total_checked++;
 
@@ -311,13 +313,24 @@ class mmu_translation_sb extends uvm_scoreboard;
     // append 12-bit zero page offset.
     va      = va_t'({tr.va2[26:0], 12'b0});
     ref_rsp = m_ref.translate(va, ACC_PFU, 4);
+    exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
+    dut_fault = tr.access_fault;
 
-    // Pipe2 top-level reports a combined translation/PMP error bit.  Restrict
-    // PA comparison to no-fault reference cases.
-    if (ref_rsp.exc != EXC_NONE) begin
+    // Pipe2 top-level reports a combined translation/PMP error bit.  Check the
+    // fault bit first so an unexpected PMP deny is not misdiagnosed as PA=0.
+    if (exp_fault !== dut_fault) begin
+      `uvm_error(get_type_name(),
+        $sformatf("[LSU_P2] VA=0x%010h: fault mismatch - ref.exc=%s ref.deny=%0b exp_fault=%0b dut.access_fault=%0b dut.pa=0x%07h",
+          {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault, tr.pa))
+      m_mismatch++;
+      return;
+    end
+
+    // Restrict PA comparison to no-fault cases on both reference and DUT.
+    if (exp_fault) begin
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P2] VA=0x%010h ref.exc=%s — skip PA compare on fault case",
-          {1'b0, va}, ref_rsp.exc.name()),
+        $sformatf("[LSU_P2] VA=0x%010h ref.exc=%s ref.deny=%0b dut.access_fault=%0b - skip PA compare on fault case",
+          {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, dut_fault),
         UVM_MEDIUM)
       return;
     end

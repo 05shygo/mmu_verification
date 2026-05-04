@@ -1,7 +1,7 @@
 // =============================================================================
 // MMU UVM Verification — testbench/pmp_agent/pmp_covergroups.svh
-// Phase 7: §10.1 — cg_pmp：8 端口 flg[0] 为「有效/命中」代理 + acc + violation
-// flg[3:0] 见 pmp_if 注释 {execute, write, read, valid} 系编码；此处按 valid 为 bit0。
+// Phase 7: §10.1 — cg_pmp: 8-port PMP flag coverage.
+// flg[3:0] matches pmp_if: {L, X, W, R}; bit0 is R-allow, not valid.
 // =============================================================================
 `ifndef PMP_COVERGROUPS_SVH
 `define PMP_COVERGROUPS_SVH
@@ -12,10 +12,10 @@ class pmp_cg_wrapper extends uvm_component;
   virtual pmp_if vif;
 
   // 聚合到单周期样本（run_phase 写 shadow 后 .sample()）
-  bit          h0, h1, h2, h3, h4, h5, h6, h7;  // entry「有效」= flg[0]
-  bit [2:0]    acc0;  // 对 port0 的 R/W/X 编码代理
-  bit          viol0; // port0: !valid
-  int unsigned ent8;  // 0-7 哪一路参与 cross（以首个 valid 的端口）
+  bit          h0, h1, h2, h3, h4, h5, h6, h7;  // per-port R-allow bit
+  bit [2:0]    acc0;  // port0 {L,X,W} tuple proxy
+  bit          viol0; // port0 read-deny proxy
+  int unsigned ent8;  // 0-7, first port with R-allow set
 
   covergroup cg_pmp;
     option.per_instance = 1;
@@ -36,7 +36,7 @@ class pmp_cg_wrapper extends uvm_component;
     vif = v;
   endfunction
 
-  // flg: bit0=valid；acc 用 [3:1]
+  // flg: bit0=R allow; acc uses [3:1] = {L,X,W}
   function void shadow_from_vif;
     h0 = vif.pmp_mmu_flg0[0];
     h1 = vif.pmp_mmu_flg1[0];
@@ -48,10 +48,10 @@ class pmp_cg_wrapper extends uvm_component;
     h7 = vif.pmp_mmu_flg7[0];
     acc0   = vif.pmp_mmu_flg0[3:1];
     viol0  = !vif.pmp_mmu_flg0[0];
-    ent8 = first_valid_port();
+    ent8 = first_r_allow_port();
   endfunction
 
-  function int unsigned first_valid_port();
+  function int unsigned first_r_allow_port();
     if (h0) return 0;
     if (h1) return 1;
     if (h2) return 2;

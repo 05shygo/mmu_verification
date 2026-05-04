@@ -327,8 +327,24 @@ assign req_on_ptr[7:0] = {8{~req_on_ptr[8]}} & req_ptr[7:0];
 
 assign mbuf_ptr = req_on_ptr;
 
+logic [8:0] mmu_lsu_data_req_ptr;
+logic [8:0] mbuf_ptr_one_reg;
+logic mmu_lsu_data_req_fst_time;
+
+assign mmu_lsu_data_req_fst_time = (lsu_mmu_data_vld_reg & mmu_lsu_data_req) | (mbuf_entry_empty_reg & mmu_lsu_data_req);
+
+always@(posedge mbuf_clk or negedge cpurst_b)
+begin
+  if (!cpurst_b)
+    mbuf_ptr_one_reg[8:0] <= 9'b0;
+  else if (mmu_lsu_data_req_fst_time)
+    mbuf_ptr_one_reg[8:0] <= req_on_ptr[8:0];
+end
+
+assign mmu_lsu_data_req_ptr[8:0] = mmu_lsu_data_req_fst_time ? req_on_ptr[8:0] : mbuf_ptr_one_reg[8:0];
+
 always_comb begin
-	case(req_on_ptr[8:0])
+	case(mmu_lsu_data_req_ptr[8:0])
 		9'b0_0000_0001	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[0][PADDR_WIDTH-1:0];
 		9'b0_0000_0010	:	mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[1][PADDR_WIDTH-1:0];
 		9'b0_0000_0100	:   mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[2][PADDR_WIDTH-1:0];
@@ -359,8 +375,7 @@ always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
 		lsu_mmu_data_vld_reg <= lsu_mmu_data_vld;
 end
 always_comb begin
-    if((lsu_mmu_data_vld_reg & mmu_lsu_data_req) |
-       (mbuf_entry_empty_reg & mmu_lsu_data_req)) begin
+    if(mmu_lsu_data_req_fst_time) begin
         mbuf_ptr_one[8:0] = req_on_ptr[8:0];
     end else begin
         mbuf_ptr_one[8:0] = 9'b0_0000_0000;

@@ -198,6 +198,7 @@ module mmu_l2tlb#(
     input  logic [15 :0]            tlboper_l2tlb_inv_asid,
     input  logic                    tlboper_l2tlb_tlbwr_on,
     input  logic [2  :0]            tlboper_xx_pgs,
+    input  logic                    tlboper_ptw_abort,
     //input  logic                    tlboper_xx_pgs_en,
 
     output logic                    l2tlb_regs_hit,
@@ -903,6 +904,8 @@ module mmu_l2tlb#(
         .cpurst_b           (cpurst_b),
         .reqq_clk           (forever_cpuclk),
         .pad_yy_icg_scan_en (pad_yy_icg_scan_en),
+
+        .tlboper_ptw_abort          (tlboper_ptw_abort),
 
         // 1. Interface from L2TLB Pipeline (Allocation)
         .req_valid          (mb_alloc_en),     // Valid Miss

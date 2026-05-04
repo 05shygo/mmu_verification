@@ -726,6 +726,7 @@ module ct_mmu_top(
         .tlboper_l2tlb_inv_asid     (tlboper_l2tlb_inv_asid),
         .tlboper_l2tlb_tlbwr_on     (tlboper_l2tlb_tlbwr_on),
         .tlboper_xx_pgs             (tlboper_xx_pgs),
+        .tlboper_ptw_abort          (tlboper_ptw_abort),
         
         .l2tlb_regs_hit             (l2tlb_regs_hit),
         .l2tlb_regs_hit_mult        (l2tlb_regs_hit_mult),

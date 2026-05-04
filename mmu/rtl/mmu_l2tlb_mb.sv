@@ -20,6 +20,8 @@ module mmu_l2tlb_mb #(
     input  logic                      reqq_clk,
     input  logic                      pad_yy_icg_scan_en,
 
+    input  logic                      tlboper_ptw_abort,
+
     //-------------------------------------------------------------------------
     // 1. L2TLB Interface (Input)
     //-------------------------------------------------------------------------
@@ -168,6 +170,8 @@ module mmu_l2tlb_mb #(
                 .cpurst_b           (cpurst_b),
                 .reqq_clk           (reqq_clk),
                 .pad_yy_icg_scan_en (pad_yy_icg_scan_en),
+
+                .tlboper_ptw_abort          (tlboper_ptw_abort),
 
                 // Alloc
                 .entry_alloc_en     (alloc_en_vec[i]),

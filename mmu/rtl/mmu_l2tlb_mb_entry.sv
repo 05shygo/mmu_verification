@@ -19,6 +19,7 @@ module mmu_l2tlb_mb_entry#(
     input  logic                cpurst_b,               // Active Low Async Reset
     input  logic                reqq_clk,               // Global Clock
     input  logic                pad_yy_icg_scan_en,     // Scan Test Enable
+    input  logic                tlboper_ptw_abort,       // PTW Abort
 
     // Allocation Interface (Write)
     input  logic                entry_alloc_en,         // Write Enable (Allocate)
@@ -125,7 +126,7 @@ module mmu_l2tlb_mb_entry#(
     
     // Clear ONLY when Retry Feedback occurs. 
     // [CHANGE]: Removed 'entry_alloc_en' from here, handled in priority logic below.
-    assign sent_clr = entry_dealloc | fb_match_id;//(fb_match_id && fb_miss_retry);
+    assign sent_clr = entry_dealloc | fb_match_id | tlboper_ptw_abort;//(fb_match_id && fb_miss_retry);
 
     always @(posedge entry_clk or negedge cpurst_b) begin
         if (!cpurst_b)

@@ -7,10 +7,12 @@ import os
 import re
 import shutil
 import shlex
+import signal
 import subprocess
 import sys
+import threading
 import time
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from pathlib import Path
 from typing import Deque, Dict, Iterable, List, Optional, Tuple
 
@@ -26,6 +28,15 @@ FIELDS = (
     "log_dir",
     "driver_log",
     "run_dir",
+)
+
+INT_KEYS = (
+    "total_runs",
+    "passed_runs",
+    "failed_runs",
+    "xfail_expected_runs",
+    "xpass_unexpected_runs",
+    "effective_passed_runs",
 )
 
 ERROR_RE = re.compile(
@@ -71,6 +82,10 @@ NON_RETRYABLE_STARTUP_RE = re.compile(
     re.IGNORECASE,
 )
 
+CANCELLED_RC = 130
+PROCESS_POLL_INTERVAL_S = 1.0
+PROCESS_CANCEL_GRACE_S = 10.0
+
 
 def parse_manifest(path: Path) -> List[Dict[str, str]]:
     rows: List[Dict[str, str]] = []
@@ -98,6 +113,10 @@ def clean_path(path: Path) -> None:
 def write_marker(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
+
+
+def truthy(value: object) -> bool:
+    return str(value).strip().lower() not in ("", "0", "false", "no", "off")
 
 
 def read_text(path: Path, max_bytes: int = 262144) -> str:
@@ -281,6 +300,114 @@ def launch_delay_s(args: argparse.Namespace, shard_id: str) -> float:
     return (shard_num % max(1, int(args.jobs))) * stagger
 
 
+def sleep_or_cancel(delay_s: float, stop_event: Optional[threading.Event]) -> bool:
+    deadline = time.monotonic() + max(0.0, delay_s)
+    while True:
+        if stop_event is not None and stop_event.is_set():
+            return True
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return False
+        time.sleep(min(PROCESS_POLL_INTERVAL_S, remaining))
+
+
+def popen_kwargs() -> Dict[str, object]:
+    if os.name == "nt":
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+    return {"start_new_session": True}
+
+
+def terminate_process_tree(proc: subprocess.Popen, handle) -> None:
+    if proc.poll() is not None:
+        return
+    handle.write("PHASE14_GLOBAL_FAIL_FAST: terminating shard subprocess\n")
+    handle.flush()
+    try:
+        if os.name == "nt":
+            proc.send_signal(signal.CTRL_BREAK_EVENT)
+        else:
+            os.killpg(proc.pid, signal.SIGTERM)
+    except Exception as exc:
+        handle.write(f"PHASE14_GLOBAL_FAIL_FAST: graceful terminate failed: {exc}\n")
+        handle.flush()
+        try:
+            proc.terminate()
+        except OSError:
+            pass
+
+    deadline = time.monotonic() + PROCESS_CANCEL_GRACE_S
+    while proc.poll() is None and time.monotonic() < deadline:
+        time.sleep(PROCESS_POLL_INTERVAL_S)
+
+    if proc.poll() is None:
+        handle.write("PHASE14_GLOBAL_FAIL_FAST: killing shard subprocess after grace timeout\n")
+        handle.flush()
+        try:
+            if os.name == "nt":
+                proc.kill()
+            else:
+                os.killpg(proc.pid, signal.SIGKILL)
+        except Exception as exc:
+            handle.write(f"PHASE14_GLOBAL_FAIL_FAST: force kill failed: {exc}\n")
+            handle.flush()
+            try:
+                proc.kill()
+            except OSError:
+                pass
+        try:
+            proc.wait(timeout=PROCESS_CANCEL_GRACE_S)
+        except subprocess.TimeoutExpired:
+            handle.write("PHASE14_GLOBAL_FAIL_FAST: subprocess did not exit after force kill\n")
+            handle.flush()
+
+
+def run_cmd_with_cancel(
+    cmd: List[str],
+    cwd: str,
+    handle,
+    stop_event: Optional[threading.Event],
+) -> Tuple[int, bool]:
+    proc = subprocess.Popen(
+        cmd,
+        cwd=cwd,
+        stdout=handle,
+        stderr=subprocess.STDOUT,
+        env=os.environ.copy(),
+        **popen_kwargs(),
+    )
+    while True:
+        rc = proc.poll()
+        if rc is not None:
+            return rc, False
+        if stop_event is not None and stop_event.is_set():
+            terminate_process_tree(proc, handle)
+            return CANCELLED_RC, True
+        time.sleep(PROCESS_POLL_INTERVAL_S)
+
+
+def write_cancelled_summary(row: Dict[str, str], reason: str) -> None:
+    shard_id = row["shard_id"]
+    seed = row["seed"]
+    summary = Path(row["summary"])
+    tests = shard_tests(Path(row["list"]))
+    tests_text = ",".join(tests) if tests else "<empty shard list>"
+
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    clean_path(summary)
+    with summary.open("w", encoding="utf-8") as handle:
+        handle.write("MMU regression summary\n")
+        handle.write(f"list: {row['list']}\n")
+        handle.write("mode: run_cov\n")
+        handle.write(f"seeds: {seed}\n")
+        for key in INT_KEYS:
+            handle.write(f"{key}: 0\n")
+        handle.write("pass_rate: 0.0000\n")
+        handle.write("min_pass_rate: 1.0000\n")
+        handle.write("\n")
+        handle.write(f"SKIP shard={shard_id} seed={seed} tests={tests_text} reason={reason}\n")
+        handle.write(f"rc={CANCELLED_RC}\n")
+
+
 def format_failure(row: Dict[str, str], rc: int, max_logs: int = 2) -> str:
     tests = shard_tests(Path(row["list"]))
     tests_text = ",".join(tests) if tests else "<empty shard list>"
@@ -289,6 +416,8 @@ def format_failure(row: Dict[str, str], rc: int, max_logs: int = 2) -> str:
         f"  summary={row['summary']}",
         f"  driver_log={row['driver_log']}",
     ]
+    if rc == CANCELLED_RC:
+        lines.append("  diagnosis: cancelled/skipped by Phase14 global fail-fast after another shard failed")
     reason = startup_failure_reason(row)
     if reason:
         lines.append(f"  diagnosis: {reason}")
@@ -307,7 +436,11 @@ def format_failure(row: Dict[str, str], rc: int, max_logs: int = 2) -> str:
     return "\n".join(lines)
 
 
-def run_one(row: Dict[str, str], args: argparse.Namespace) -> Tuple[str, int]:
+def run_one(
+    row: Dict[str, str],
+    args: argparse.Namespace,
+    stop_event: Optional[threading.Event] = None,
+) -> Tuple[str, int]:
     shard_id = row["shard_id"]
     seed = row["seed"]
     shard_list = Path(row["list"])
@@ -335,15 +468,35 @@ def run_one(row: Dict[str, str], args: argparse.Namespace) -> Tuple[str, int]:
 
     max_attempts = 1 + max(0, int(args.startup_retries))
     rc = 2
+    cancelled_by_runner = False
     try:
         clean_path(run_dir)
         run_dir.mkdir(parents=True, exist_ok=True)
 
         for attempt in range(1, max_attempts + 1):
+            if stop_event is not None and stop_event.is_set():
+                rc = CANCELLED_RC
+                cancelled_by_runner = True
+                write_cancelled_summary(row, "global fail-fast before launch")
+                with driver_log.open("a", encoding="utf-8", errors="ignore") as handle:
+                    handle.write(
+                        f"PHASE14_GLOBAL_FAIL_FAST shard={shard_id} seed={seed} "
+                        "cancelled before launch\n"
+                    )
+                break
+
             if attempt == 1:
                 delay = launch_delay_s(args, shard_id)
-                if delay:
-                    time.sleep(delay)
+                if delay and sleep_or_cancel(delay, stop_event):
+                    rc = CANCELLED_RC
+                    cancelled_by_runner = True
+                    write_cancelled_summary(row, "global fail-fast during launch stagger")
+                    with driver_log.open("a", encoding="utf-8", errors="ignore") as handle:
+                        handle.write(
+                            f"PHASE14_GLOBAL_FAIL_FAST shard={shard_id} seed={seed} "
+                            "cancelled during launch stagger\n"
+                        )
+                    break
             clean_path(run_dir)
             run_dir.mkdir(parents=True, exist_ok=True)
             clean_path(cov_vdb)
@@ -384,16 +537,17 @@ def run_one(row: Dict[str, str], args: argparse.Namespace) -> Tuple[str, int]:
                 )
                 handle.write(" ".join(cmd) + "\n")
                 handle.flush()
-                completed = subprocess.run(
+                rc, cancelled_by_runner = run_cmd_with_cancel(
                     cmd,
                     cwd=args.project_dir,
-                    stdout=handle,
-                    stderr=subprocess.STDOUT,
-                    env=os.environ.copy(),
+                    handle=handle,
+                    stop_event=stop_event,
                 )
-            rc = completed.returncode
             elapsed = time.monotonic() - started
             if rc == 0:
+                break
+            if cancelled_by_runner:
+                write_cancelled_summary(row, "global fail-fast during shard subprocess")
                 break
 
             reason = startup_failure_reason(row)
@@ -409,7 +563,16 @@ def run_one(row: Dict[str, str], args: argparse.Namespace) -> Tuple[str, int]:
                     f"elapsed_s={elapsed:.2f} delay_s={delay:.2f} reason={reason}\n"
                 )
                 handle.flush()
-            time.sleep(delay)
+            if sleep_or_cancel(delay, stop_event):
+                rc = CANCELLED_RC
+                cancelled_by_runner = True
+                write_cancelled_summary(row, "global fail-fast during startup retry delay")
+                with driver_log.open("a", encoding="utf-8", errors="ignore") as handle:
+                    handle.write(
+                        f"PHASE14_GLOBAL_FAIL_FAST shard={shard_id} seed={seed} "
+                        "cancelled during startup retry delay\n"
+                    )
+                break
     except Exception as exc:
         clean_path(running_marker)
         write_marker(done_marker, f"shard={shard_id}\nseed={seed}\nrc=2\nexception={exc}\n")
@@ -423,6 +586,53 @@ def run_one(row: Dict[str, str], args: argparse.Namespace) -> Tuple[str, int]:
     else:
         write_marker(failed_marker, f"shard={shard_id}\nseed={seed}\nrc={rc}\n")
     return shard_id, rc
+
+
+def mark_skipped(row: Dict[str, str], reason: str) -> None:
+    shard_id = row["shard_id"]
+    seed = row["seed"]
+    summary = Path(row["summary"])
+    cov_vdb = Path(row["cov_vdb"])
+    base_vdb = Path(row["base_vdb"])
+    stamp = Path(row["stamp"])
+    driver_log = Path(row["driver_log"])
+    run_dir = Path(row["run_dir"])
+    running_marker = driver_log.parent / ".running"
+    done_marker = driver_log.parent / ".done"
+    passed_marker = driver_log.parent / ".passed"
+    failed_marker = driver_log.parent / ".failed"
+
+    driver_log.parent.mkdir(parents=True, exist_ok=True)
+    summary.parent.mkdir(parents=True, exist_ok=True)
+    for path in (summary, driver_log, cov_vdb, base_vdb, stamp, run_dir):
+        clean_path(path)
+    for sim_log in sim_logs_for_row(row):
+        clean_path(sim_log)
+    for marker in (running_marker, done_marker, passed_marker, failed_marker):
+        clean_path(marker)
+
+    tests = shard_tests(Path(row["list"]))
+    tests_text = ",".join(tests) if tests else "<empty shard list>"
+    write_cancelled_summary(row, reason)
+
+    with driver_log.open("w", encoding="utf-8") as handle:
+        handle.write(f"=== Phase14 parallel shard {shard_id} seed={seed} skipped ===\n")
+        handle.write(f"PHASE14_GLOBAL_FAIL_FAST reason={reason}\n")
+        handle.write(f"tests={tests_text}\n")
+        handle.write(f"rc={CANCELLED_RC}\n")
+
+    write_marker(done_marker, f"shard={shard_id}\nseed={seed}\nrc={CANCELLED_RC}\nskipped=1\n")
+    write_marker(failed_marker, f"shard={shard_id}\nseed={seed}\nrc={CANCELLED_RC}\nskipped=1\n")
+
+
+def try_mark_skipped(row: Dict[str, str], reason: str) -> None:
+    try:
+        mark_skipped(row, reason)
+    except Exception as exc:
+        print(
+            f"WARNING: could not mark skipped {row['shard_id']}: {exc}",
+            file=sys.stderr,
+        )
 
 
 def write_fail_file(
@@ -453,6 +663,11 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--timeout", default="10000000")
     parser.add_argument("--uvm-err-only", default="0")
     parser.add_argument("--fail-fast", default="1")
+    parser.add_argument(
+        "--global-fail-fast",
+        default="1",
+        help="Stop launching shards and terminate running shards after the first shard failure",
+    )
     parser.add_argument("--launch-stagger", type=float, default=0.0, help="Seconds to stagger each initial shard launch")
     parser.add_argument("--startup-retries", type=int, default=0, help="Retries for rc=255 startup/resource failures")
     parser.add_argument("--startup-retry-delay", type=float, default=10.0, help="Initial retry delay in seconds")
@@ -486,21 +701,51 @@ def main() -> int:
 
     print(f"=== Phase14 parallel run: shards={len(rows)} jobs={jobs} ===")
     failures: List[Tuple[str, int]] = []
+    skipped_failures: List[Tuple[str, int]] = []
+    stop_event = threading.Event()
+    global_fail_fast = truthy(args.global_fail_fast)
     with ThreadPoolExecutor(max_workers=jobs) as executor:
-        future_to_shard = {executor.submit(run_one, row, args): row["shard_id"] for row in rows}
-        for future in as_completed(future_to_shard):
-            shard_id = future_to_shard[future]
-            try:
-                done_id, rc = future.result()
-            except Exception as exc:
-                done_id = shard_id
-                rc = 2
-                print(f"[FAIL] {done_id}: {exc}", file=sys.stderr)
-            else:
-                status = "PASS" if rc == 0 else "FAIL"
-                print(f"[{status}] {done_id} rc={rc}")
-            if rc != 0:
-                failures.append((done_id, rc))
+        pending_rows: Deque[Dict[str, str]] = deque(rows)
+        future_to_shard = {}
+
+        def submit_until_full() -> None:
+            while pending_rows and len(future_to_shard) < jobs and not stop_event.is_set():
+                row = pending_rows.popleft()
+                future_to_shard[executor.submit(run_one, row, args, stop_event)] = row["shard_id"]
+
+        submit_until_full()
+        while future_to_shard:
+            done_futures, _ = wait(future_to_shard, return_when=FIRST_COMPLETED)
+            for future in done_futures:
+                shard_id = future_to_shard.pop(future)
+                try:
+                    done_id, rc = future.result()
+                except Exception as exc:
+                    done_id = shard_id
+                    rc = 2
+                    print(f"[FAIL] {done_id}: {exc}", file=sys.stderr)
+                else:
+                    status = "PASS" if rc == 0 else ("CANCEL" if rc == CANCELLED_RC else "FAIL")
+                    print(f"[{status}] {done_id} rc={rc}")
+                if rc != 0:
+                    failures.append((done_id, rc))
+                    if global_fail_fast and not stop_event.is_set():
+                        stop_event.set()
+                        skipped = len(pending_rows)
+                        reason = f"first failing shard {done_id} rc={rc}"
+                        for row in pending_rows:
+                            try_mark_skipped(row, reason)
+                            skipped_failures.append((row["shard_id"], CANCELLED_RC))
+                        pending_rows.clear()
+                        print(
+                            "Phase14 global fail-fast: "
+                            f"{done_id} rc={rc}; cancelling running shards"
+                            + (f" and skipping {skipped} queued shards" if skipped else ""),
+                            file=sys.stderr,
+                        )
+            submit_until_full()
+
+    failures.extend(skipped_failures)
 
     if failures:
         write_fail_file(fail_file, failures, rows_by_shard)

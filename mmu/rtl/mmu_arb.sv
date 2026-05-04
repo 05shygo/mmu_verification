@@ -271,10 +271,11 @@ module mmu_arb#(
     always_ff@(posedge arb_clk or negedge cpurst_b) begin
         if (!cpurst_b) begin
             prefetch_mask <= 1'b0;
-        end else if(arb_tlboper_grant) begin
-            prefetch_mask <= 1'b1;
         end else if(mmu_lsu_pa2_err | mmu_lsu_pa2_vld) begin
             prefetch_mask <= 1'b0;
+        end else if(arb_tlboper_grant) begin
+            prefetch_mask <= 1'b1;
+
         end
     end
 

@@ -796,6 +796,8 @@ module ct_mmu_top(
         .arb_tlboper_grant          (arb_tlboper_grant),
         
         // PFU
+        .mmu_lsu_pa2_err            (mmu_lsu_pa2_err),
+        .mmu_lsu_pa2_vld            (mmu_lsu_pa2_vld),
         .lsu_mmu_va2_vld            (lsu_mmu_va2_vld),
         .l2tlb_arb_pfu_vpn          (l2tlb_arb_pfu_vpn),
         .dutlb_xx_mmu_off           (dutlb_xx_mmu_off),

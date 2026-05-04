@@ -473,6 +473,14 @@ monitor do not observe `tlboper_ptw_abort`, so they cannot distinguish normal
 request cancellation/replacement from an abort boundary where the DUT may still
 need a late response or bus error to clear internal abort state.
 
+Design intent clarification from triage: if a PTW request has already been sent
+to LSU and `tlboper_ptw_abort` arrives before LSU returns data, PTW cancels all
+current walk requests but still waits for the LSU response of the in-flight
+external transaction before it can accept new L2TLB requests. The TB responder,
+monitor, and SVA must therefore model a legal abort / late-response cleanup
+window instead of treating every req-low or addr-change window as a fully
+retired external transaction.
+
 Additional RTL item to review: `ptw.sv` sets `abort_flop` with a condition that
 contains:
 
@@ -496,18 +504,80 @@ increase seed sensitivity by generating many unmapped/page-fault/abort cases.
 This does not by itself prove the root cause, but it should be reviewed after
 the abort/late-response protocol question is confirmed.
 
+### Minimal Reproduction Update - 2026-05-03
+
+Single-test reproduction:
+
+```bash
+make run_cov TEST_NAME=test_mmu_arb_grant_onehot_check SEED=97101 \
+  VERBOSITY=UVM_MEDIUM TIMEOUT=30000000 UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=0 \
+  RUN_DIR="${DBG_DIR}/arb_97101" \
+  LOG_DIR="${DBG_DIR}/logs" \
+  COV_DB_DIR="${DBG_DIR}/arb_97101.vdb" \
+  COV_TAG=test_mmu_arb_grant_onehot_check_97101_min
+```
+
+Result:
+
+```text
+UVM_ERROR : 3
+Translation SB FAILED: 1 mismatch(es) detected
+```
+
+Key observations from the reproduced log:
+
+```text
+1771000ps PTW LSU REQ addr=0x0000012010
+1799000ps PTW RSP     addr=0x0000012010 pte_ppn=0x0003002
+1799500ps a_response_inorder fails
+1826000ps PTW RSP     addr=0x0000012010 pte_ppn=0x0003002
+1826500ps a_response_inorder fails
+... repeated PTW RSP addr=0x0000012010 with repeated SVA failures ...
+2394000ps PTW LSU REQ addr=0x0000012008
+2394000ps PTW_REQ_REPLACE old_addr=0x0000012010 new_addr=0x0000012008
+2400000ps LSU_P0 VA=0x0030001000 mismatch ref.ppn=0x0003001 dut.pa=0x0003002
+```
+
+The translation whitebox line confirms the incorrect PPN came from a PTW refill:
+
+```text
+LAST_L1_REFILL: t=2396000 src=PTW vpn=0x0030001 ppn=0x0003002
+LAST_PTW:       t=2396000 mb_vpn=0x0030001 ppn=0x0003002
+```
+
+Expected reference PPN for `VA=0x0030001000` is `0x0003001`, but the refill used
+the PTE for `addr=0x0000012010`, whose PPN is `0x0003002`.
+
+This strengthens the current diagnosis:
+
+- `a_response_inorder` is not only a checker nuisance; it marks a window where
+  the TB and DUT no longer agree on which PTW memory transaction is live.
+- The responder can repeatedly generate responses for the same level-held
+  `mmu_lsu_data_req` address because it treats any req-high sample after a
+  response as a new external transaction, even when the DUT is still in an
+  abort/cleanup or not-yet-advanced state.
+- The monitor can classify an address change as `PTW_REQ_REPLACE` and credit it
+  as a drop even though the design intent requires the in-flight LSU response to
+  be consumed before new L2TLB work is accepted.
+- The SVA uses `mbuf_entry_vld & mbuf_ptr` on the response cycle, which is too
+  strong for the legal abort/late-response cleanup window.
+
 ### Minimal Failure Capture Procedure
 
 Do not start with the full 465-shard run. Reproduce one failing shard with a
 single testcase/seed first:
 
 ```bash
+DBG_DIR="$(pwd)/output/debug_phase14_min"
+mkdir -p "${DBG_DIR}/logs"
+
 make run_cov TEST_NAME=test_mmu_arb_grant_onehot_check SEED=97101 \
   VERBOSITY=UVM_MEDIUM TIMEOUT=30000000 UVM_CONFIG_DB_TRACE=0 \
   UVM_ERR_ONLY=0 \
-  RUN_DIR=output/debug_phase14_min/arb_97101 \
-  LOG_DIR=output/debug_phase14_min/logs \
-  COV_DB_DIR=output/debug_phase14_min/arb_97101.vdb \
+  RUN_DIR="${DBG_DIR}/arb_97101" \
+  LOG_DIR="${DBG_DIR}/logs" \
+  COV_DB_DIR="${DBG_DIR}/arb_97101.vdb" \
   COV_TAG=test_mmu_arb_grant_onehot_check_97101_min
 ```
 
@@ -516,10 +586,10 @@ time:
 
 ```bash
 make check_log \
-  LOG=output/debug_phase14_min/logs/test_mmu_arb_grant_onehot_check_97101_min_cov.log
+  LOG="${DBG_DIR}/logs/test_mmu_arb_grant_onehot_check_97101_min_cov.log"
 
 grep -nE 'a_response_inorder|PTW_REQ_CANCEL|PTW_REQ_REPLACE|PTW LSU REQ|PTW RSP|ptw_mbuf_cnt|end-drain' \
-  output/debug_phase14_min/logs/test_mmu_arb_grant_onehot_check_97101_min_cov.log
+  "${DBG_DIR}/logs/test_mmu_arb_grant_onehot_check_97101_min_cov.log"
 ```
 
 For the credit leak signature, use one of the shortest pmbuf failures:
@@ -528,9 +598,9 @@ For the credit leak signature, use one of the shortest pmbuf failures:
 make run_cov TEST_NAME=test_pmbuf_addr_stable_001 SEED=97105 \
   VERBOSITY=UVM_MEDIUM TIMEOUT=30000000 UVM_CONFIG_DB_TRACE=0 \
   UVM_ERR_ONLY=0 \
-  RUN_DIR=output/debug_phase14_min/pmbuf_addr_97105 \
-  LOG_DIR=output/debug_phase14_min/logs \
-  COV_DB_DIR=output/debug_phase14_min/pmbuf_addr_97105.vdb \
+  RUN_DIR="${DBG_DIR}/pmbuf_addr_97105" \
+  LOG_DIR="${DBG_DIR}/logs" \
+  COV_DB_DIR="${DBG_DIR}/pmbuf_addr_97105.vdb" \
   COV_TAG=test_pmbuf_addr_stable_001_97105_min
 ```
 
@@ -538,10 +608,10 @@ Then scan the pmbuf log:
 
 ```bash
 make check_log \
-  LOG=output/debug_phase14_min/logs/test_pmbuf_addr_stable_001_97105_min_cov.log
+  LOG="${DBG_DIR}/logs/test_pmbuf_addr_stable_001_97105_min_cov.log"
 
 grep -nE 'PTW_REQ_CANCEL|PTW_REQ_REPLACE|PTW LSU REQ|PTW RSP|ptw_mbuf_cnt|end-drain|UVM_ERROR' \
-  output/debug_phase14_min/logs/test_pmbuf_addr_stable_001_97105_min_cov.log
+  "${DBG_DIR}/logs/test_pmbuf_addr_stable_001_97105_min_cov.log"
 ```
 
 If log reproduction confirms the same failure, rerun the arb/grant seed with
@@ -551,18 +621,18 @@ wave dumping enabled by using the non-coverage `run` target:
 make run TEST_NAME=test_mmu_arb_grant_onehot_check SEED=97101 \
   VERBOSITY=UVM_MEDIUM TIMEOUT=30000000 UVM_CONFIG_DB_TRACE=0 \
   UVM_ERR_ONLY=0 \
-  RUN_DIR=output/debug_phase14_min/arb_97101_wave \
-  LOG_DIR=output/debug_phase14_min/logs \
-  WAVE_DIR=output/debug_phase14_min/waves
+  RUN_DIR="${DBG_DIR}/arb_97101_wave" \
+  LOG_DIR="${DBG_DIR}/logs" \
+  WAVE_DIR="${DBG_DIR}/waves"
 
 make check_log \
-  LOG=output/debug_phase14_min/logs/test_mmu_arb_grant_onehot_check_97101.log
+  LOG="${DBG_DIR}/logs/test_mmu_arb_grant_onehot_check_97101.log"
 ```
 
 The expected FSDB is:
 
 ```text
-output/debug_phase14_min/waves/test_mmu_arb_grant_onehot_check.fsdb
+${DBG_DIR}/waves/test_mmu_arb_grant_onehot_check.fsdb
 ```
 
 The key waveform/debug window is the first `a_response_inorder` failure around

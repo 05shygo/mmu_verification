@@ -317,6 +317,7 @@ logic               thd_chk_ready;
 //logic   [2:0]       twu_data_ready;
 logic               twu_clk_en;
 logic               twu_clk;
+logic 				twu_refill_vld;
 
 
 

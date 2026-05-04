@@ -987,7 +987,8 @@ end
 assign mmu_hpcp_jtlb_miss = l2tlb_miss;
 
 
-
+logic ptw_lsu_req_dbg_q;
+logic [39:0] ptw_lsu_addr_dbg_q;
 
 // PTW->LSU request trace for run_check log parsing.
 // Emit once per new request (req rising edge or address change while req high).

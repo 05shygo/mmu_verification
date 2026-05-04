@@ -210,6 +210,20 @@ class phase9_generated_test_base extends test_base;
         seq.num_txn = n_txn;
         seq.start(m_env.m_lsu.m_sequencer);
       end
+      "lsu_mapped_pipe0_rr_seq": begin
+        mmu_vseq_lsu_rr_seq seq = mmu_vseq_lsu_rr_seq::type_id::create(seq_name);
+        int unsigned npage;
+        npage = (m_nmap > 0) ? m_nmap : 1;
+        seq.m_va_table   = new[npage];
+        seq.m_table_size = npage;
+        seq.m_kind       = LSU_PIPE0;
+        seq.m_st_inst    = 1'b0;
+        for (int unsigned i = 0; i < npage; i++)
+          seq.m_va_table[i] = va_t'(m_va_base) + va_t'(i << 12);
+        seq.num_txn     = n_txn;
+        seq.m_zero_idle = 1'b0;
+        seq.start(m_env.m_lsu.m_sequencer);
+      end
       "lsu_pipe1_only_seq": begin
         lsu_pipe1_only_seq seq = lsu_pipe1_only_seq::type_id::create(seq_name);
         seq.num_txn = n_txn;

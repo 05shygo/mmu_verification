@@ -20,13 +20,13 @@ class test_pmbuf_addr_stable_001 extends phase11_generated_test_base;
     p11_fid      = "F4.42a";
     p11_priority = "P0";
     p11_status   = "Planned";
-    p11_seq_desc = "ptw_mem_slow_rsp_seq + lsu_pipe0_only_seq";
+    p11_seq_desc = "ptw_mem_slow_rsp_seq + lsu_mapped_pipe0_rr_seq";
     p11_checker  = "sva_lsu_addr_stable_until_vld + cg_lsu_req_outstanding";
     p11_reviewer = "A+B";
     num_txn      = 48;
     m_post_drain = 800ns;
     m_ptw_seq_names.push_back("ptw_mem_slow_rsp_seq");
-    m_lsu_seq_names.push_back("lsu_pipe0_only_seq");
+    m_lsu_seq_names.push_back("lsu_mapped_pipe0_rr_seq");
   endfunction
 
 endclass : test_pmbuf_addr_stable_001

@@ -108,6 +108,8 @@ end
 always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
     if(!cpurst_b)
         mbuf_get <= 1'b0;
+    else if(mbuf_all_clr | mbuf_entry_upd)
+        mbuf_get <= 1'b0;
     else if(mbuf_on & lsu_mmu_data_vld & (!lsu_mmu_bus_error) & (!write_back_grant))
         mbuf_get <= 1'b1;
     else if(write_back_grant)
@@ -116,6 +118,8 @@ end
 
 always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
     if(!cpurst_b)
+        mbuf_bus_err_flop <= 1'b0;
+    else if(mbuf_all_clr | mbuf_entry_upd)
         mbuf_bus_err_flop <= 1'b0;
     else if(mbuf_on & lsu_mmu_bus_error & (!mbuf_bus_error_grant))
         mbuf_bus_err_flop <= 1'b1;

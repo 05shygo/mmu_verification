@@ -4,7 +4,8 @@
 //
 // Protocol summary (BuildPlan §2.4 Group 7):
 //   · DUT asserts mmu_lsu_data_req=1 and normally holds addr stable until TB
-//     responds; invalidate/abort may cancel the request before the response
+//     responds; invalidate/abort may drop the visible request after the memory
+//     read was accepted, but the response still returns to retire PTW cleanup
 //   · TB drives lsu_mmu_data_vld=1 (with PTE data) for exactly one cycle,
 //     then deasserts.  OR drives lsu_mmu_bus_error=1 for one cycle.
 //   · At most 1 outstanding request at any time (no tag/ID)
@@ -96,6 +97,8 @@ class ptw_mem_responder extends uvm_component;
     bit [27:0] pte_ppn;
     int        delay;
     bit        inject_err;
+    bit        logged_req_drop;
+    bit        logged_req_replace;
 
     // Look up PTE from the shadow page table
     if (m_pt != null) begin
@@ -114,6 +117,8 @@ class ptw_mem_responder extends uvm_component;
 
     // Random response delay
     delay = $urandom_range(m_rsp_delay_min, m_rsp_delay_max);
+    logged_req_drop = 1'b0;
+    logged_req_replace = 1'b0;
     repeat (delay) begin
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
@@ -121,23 +126,25 @@ class ptw_mem_responder extends uvm_component;
         return;
       end
       if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
-        `uvm_info(get_type_name(),
-          $sformatf(
-            "[PTW_REQ_CANCEL] req dropped before rsp, cancel response: addr=0x%010h size=%0b",
-            addr, req_size),
-          UVM_MEDIUM)
-        _drive_idle_outputs();
-        return;
+        if (!logged_req_drop) begin
+          `uvm_info(get_type_name(),
+            $sformatf(
+              "[PTW_REQ_ABORT_LATE_RSP] req dropped before rsp; keep accepted response pending: addr=0x%010h size=%0b",
+              addr, req_size),
+            UVM_MEDIUM)
+          logged_req_drop = 1'b1;
+        end
       end else if ((vif.driver_cb.mmu_lsu_data_req_addr !== addr) ||
                    (vif.driver_cb.mmu_lsu_data_req_size !== req_size)) begin
-        `uvm_info(get_type_name(),
-          $sformatf(
-            "[PTW_REQ_REPLACE] req changed before rsp, cancel response: exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b",
-            addr, vif.driver_cb.mmu_lsu_data_req_addr, req_size,
-            vif.driver_cb.mmu_lsu_data_req_size),
-          UVM_MEDIUM)
-        _drive_idle_outputs();
-        return;
+        if (!logged_req_replace) begin
+          `uvm_info(get_type_name(),
+            $sformatf(
+              "[PTW_REQ_REPLACE_LATE_RSP] req changed before rsp; keep accepted response pending: exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b",
+              addr, vif.driver_cb.mmu_lsu_data_req_addr, req_size,
+              vif.driver_cb.mmu_lsu_data_req_size),
+            UVM_MEDIUM)
+          logged_req_replace = 1'b1;
+        end
       end
     end
 

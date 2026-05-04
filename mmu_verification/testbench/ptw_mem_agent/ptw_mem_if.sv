@@ -9,7 +9,9 @@
 //   have been moved to lsu_if (L1DTLB→LSU broadcast subgroup).
 //   This interface covers ONLY the strict serial single-outstanding
 //   PTE data channel. Protocol constraints (BuildPlan §2.4 Group 7):
-//     · mmu_lsu_data_req stable until lsu_mmu_data_vld or bus_error
+//     · mmu_lsu_data_req stable until lsu_mmu_data_vld or bus_error, except
+//       abort may withdraw req after the read was accepted; the late response
+//       still returns to retire PTW abort cleanup
 //     · At most 1 outstanding request at any cycle
 //     · No tag/ID field; responses in-order
 // =============================================================================

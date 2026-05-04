@@ -246,7 +246,7 @@ assign ptw_jtlb_ready = pde_cache_ready & (!abort_flop);
 always_ff @(posedge ptw_clk or negedge cpurst_b)begin
     if(!cpurst_b)
 		abort_flop <= 1'b0;
-    else if(mbuf_entry_on_vld & tlboper_ptw_abort & (!lsu_mmu_bus_error | !lsu_mmu_data_vld))
+    else if(mbuf_entry_on_vld & tlboper_ptw_abort & !(lsu_mmu_bus_error | lsu_mmu_data_vld))
 		abort_flop <= 1'b1;
     else if(abort_flop & (lsu_mmu_bus_error | lsu_mmu_data_vld))
 		abort_flop <= 1'b0;

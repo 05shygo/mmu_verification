@@ -76,6 +76,16 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     phase12_set_pmp_raw(raw_flg);
   endtask
 
+  protected virtual task phase12_recover_after_pmp_deny(
+    input int unsigned drain_cycles = 1600
+  );
+    phase12_set_pmp_allow_all();
+    phase12_config_ptw_responder(1, 4, 0);
+    repeat (drain_cycles) @(m_env.m_ptw_mem.vif.monitor_cb);
+    phase12_cp0_tlb_allinv();
+    repeat (drain_cycles / 2) @(m_env.m_ptw_mem.vif.monitor_cb);
+  endtask
+
   protected virtual task phase12_set_pmp_deny_ptw_reads(input bit [3:0] deny_twu_mask = 4'b1111);
     bit [3:0] raw_flg[8];
     foreach (raw_flg[i]) raw_flg[i] = 4'h7;
@@ -205,8 +215,7 @@ class phase12_generated_test_base extends phase9_generated_test_base;
       phase12_drive_lsu_rr(region_base + 39'h0400_0000, npage, n_txn, LSU_PIPE1, 1'b1);
       phase12_drive_lsu_rr(region_base + 39'h0600_0000, npage, n_txn, LSU_PIPE2, 1'b0);
     join
-    phase12_set_pmp_allow_all();
-    #280ns;
+    phase12_recover_after_pmp_deny(1600);
   endtask
 
   protected virtual task phase12_map_four_twu_pressure_window(

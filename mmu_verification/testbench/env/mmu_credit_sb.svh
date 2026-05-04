@@ -33,10 +33,12 @@
 //   m_ptw_mbuf_cnt — PTW->LSU serialized external request outstanding proxy
 //     ptw_mem ap_req  → +1 (new PTW memory read issued)
 //     ptw_mem ap_rsp  → -1 (PTW memory read completed)
-//     ptw_mem ap_drop → -1 (request cancelled before any response)
+//     ptw_mem ap_drop → -1 (request cancelled by reset before response)
 //     PTW external LSU request channel is single-outstanding by protocol.
-//     A pending request may still be cancelled by invalidate/abort, so the
-//     externally-visible lifetime is req → rsp OR req → drop.
+//     Invalidate/abort may drop the visible req signal, but the accepted memory
+//     read still returns a late response to retire RTL abort cleanup.
+//     Therefore the externally-visible lifetime is normally req → rsp; reset
+//     is the only modeled req → drop path.
 //     Therefore this counter must stay within {0,1}; it is NOT the DUT's
 //     internal 9-entry PTW mbuf occupancy.
 //
@@ -340,7 +342,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endtask
 
-  // ── PTW request cancelled before response: ptw_mbuf_cnt -1 ────────────────
+  // ── PTW request cancelled by reset before response: ptw_mbuf_cnt -1 ───────
   protected task _consume_ptw_drop();
     ptw_mem_txn tr;
     forever begin

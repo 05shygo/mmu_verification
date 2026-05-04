@@ -969,7 +969,7 @@ assign ptw_l1itlb_ref_ppn = ptw_arb_ref_data_din[41:14];
 assign ptw_l1itlb_ref_flg = ptw_arb_ref_data_din[13:0];
 assign ptw_l1itlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[2:0] == 3'b011);
 assign ptw_l1itlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[2:0] == 3'b011);
-;
+
 
 assign ptw_arb_vpn[VPN_WIDTH-1:0] = ptw_arb_ref_tag_din[46:20];
 

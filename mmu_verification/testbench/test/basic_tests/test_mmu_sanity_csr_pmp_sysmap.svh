@@ -5,7 +5,7 @@
 //
 // Execution order:
 //   1. cp0_reg_rw_seq  : ICG_EN=1 → SATP(MODE=8/Sv39) → PTW_EN=1 → PRIV=M
-//   2. pmp_flg_normal_seq      : all 8 PMP flag entries = 0 (allow all)
+//   2. pmp_flg_normal_seq      : all 8 PMP flag entries = 4'h7 (allow all)
 //   3. sysmap_region_setup_seq : all 8 regions disabled (pure page-table mode)
 //
 // Pass criteria (Phase 3):
@@ -64,9 +64,9 @@ class test_mmu_sanity_csr_pmp_sysmap extends test_base;
     cp0_seq.start(m_env.m_cp0.m_sequencer);
     `uvm_info(get_type_name(), "Step 1: cp0_reg_rw_seq DONE", UVM_HIGH)
 
-    // ── Step 2: PMP — set all 8 entries flag=0 (permit all accesses) ────────
+    // ── Step 2: PMP — set all 8 entries flag=4'h7 (permit all accesses) ────
     pmp_seq = pmp_flg_normal_seq::type_id::create("pmp_seq");
-    `uvm_info(get_type_name(), "Step 2: pmp_flg_normal_seq — all flags=0 (allow-all)", UVM_MEDIUM)
+    `uvm_info(get_type_name(), "Step 2: pmp_flg_normal_seq - all flags=4'h7 (allow-all)", UVM_MEDIUM)
     pmp_seq.start(m_env.m_pmp.m_sequencer);
     `uvm_info(get_type_name(), "Step 2: pmp_flg_normal_seq DONE", UVM_HIGH)
 

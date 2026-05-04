@@ -38,23 +38,23 @@ class pmp_flg_normal_seq extends pmp_base_seq;
 
 endclass : pmp_flg_normal_seq
 
-// ── Deny fetch on IFU port (port 0) ──────────────────────────────────────────
+// ── Deny fetch on IFU port (port 2) ──────────────────────────────────────────
 class pmp_flg_deny_fetch_seq extends pmp_base_seq;
   `uvm_object_utils(pmp_flg_deny_fetch_seq)
 
-  rand bit [2:0] deny_ports;  // bitmask: which ports get fetch-deny flag
-  constraint c_nonzero_ports { deny_ports != 3'b000; }
+  rand bit [2:0] deny_ports;  // ports 0/1/2; IFU is port 2
+  constraint c_ifu_port_only { deny_ports == 3'b100; }
 
   function new(string name = "pmp_flg_deny_fetch_seq");
     super.new(name);
-    deny_ports = 3'b001;
+    deny_ports = 3'b100;
   endfunction
 
   virtual task body();
     pmp_txn tr;
     `uvm_create(tr)
-    // flg[2:0] are R/W/X allow bits in the current RTL.
-    // 4'h7 = allow all, 4'h3 = deny fetch only.
+    // flg[3:0] is {L,X,W,R}. 4'h7 = allow all, 4'h3 = deny X only.
+    // Ports 0/1 are LSU pipe0/1; port 2 is IFU.
     tr.flg[0] = deny_ports[0] ? 4'h3 : 4'h7;
     tr.flg[1] = deny_ports[1] ? 4'h3 : 4'h7;
     tr.flg[2] = deny_ports[2] ? 4'h3 : 4'h7;
@@ -65,16 +65,18 @@ class pmp_flg_deny_fetch_seq extends pmp_base_seq;
 
 endclass : pmp_flg_deny_fetch_seq
 
-// ── Deny read/write on data ports (ports 1–2) ────────────────────────────────
+// ── Deny read/write on data ports (ports 0/1/4) ─────────────────────────────
 class pmp_flg_deny_rw_seq extends pmp_base_seq;
   `uvm_object_utils(pmp_flg_deny_rw_seq)
 
   rand bit deny_rd;
   rand bit deny_wr;
-  constraint c_some_deny { deny_rd || deny_wr; }
+  constraint c_deny_rw { deny_rd && deny_wr; }
 
   function new(string name = "pmp_flg_deny_rw_seq");
     super.new(name);
+    deny_rd = 1'b1;
+    deny_wr = 1'b1;
   endfunction
 
   virtual task body();
@@ -83,10 +85,10 @@ class pmp_flg_deny_rw_seq extends pmp_base_seq;
     // Keep execute allow high; drop only the requested R/W allow bits.
     data_flg = {1'b0, 1'b1, !deny_wr, !deny_rd};
     `uvm_create(tr)
-    tr.flg[0] = 4'h7;          // IFU port untouched
-    tr.flg[1] = data_flg;      // LSU Pipe0
-    tr.flg[2] = data_flg;      // LSU Pipe1
-    tr.flg[3] = 4'h7; tr.flg[4] = 4'h7;
+    tr.flg[0] = data_flg;      // LSU Pipe0
+    tr.flg[1] = data_flg;      // LSU Pipe1
+    tr.flg[2] = 4'h7;          // IFU port untouched
+    tr.flg[3] = 4'h7; tr.flg[4] = data_flg; // PTW0 allow, LSU Pipe2/PFU data
     tr.flg[5] = 4'h7; tr.flg[6] = 4'h7; tr.flg[7] = 4'h7;
     `uvm_send(tr)
   endtask
@@ -143,6 +145,7 @@ class pmp_flg_cross_8port_seq extends pmp_base_seq;
 
   function new(string name = "pmp_flg_cross_8port_seq");
     super.new(name);
+    n_iters = 8;
   endfunction
 
   virtual task body();

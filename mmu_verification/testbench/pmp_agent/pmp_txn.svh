@@ -16,16 +16,17 @@ class pmp_txn extends uvm_sequence_item;
   `uvm_object_utils_end
 
   // ── Stimulus fields (driven by pmp_driver) ───────────────────────────────
-  // flg[3:0] per port: {execute_deny, write_deny, read_deny, valid}
-  // (exact encoding TBD per PMP implementation; drive all-allow by default)
+  // flg[3:0] per port: {L, X, W, R}; bits [2:0] are allow bits.
+  //   4'h7 = allow R/W/X in S/U-mode, 4'h0 = deny all non-M accesses.
   rand bit [3:0] flg [8];   // 8 ports × 4-bit flag
 
   // ── Response / observe fields (sampled by pmp_monitor) ───────────────────
   bit [27:0] pa       [8];  // mmu_pmp_pa{0..7}
   bit        fetch_en [4];  // mmu_pmp_fetch{3,5,6,7} → index 0..3
 
-  // Default: all-allow (flag=0 = no deny)
-  constraint c_all_allow { foreach (flg[i]) flg[i] == 4'h0; }
+  // Default all-allow.  This must match pmp_if/ref_model/DUT PMP semantics:
+  // bit0=R allow, bit1=W allow, bit2=X allow, bit3=L/M-mode guard.
+  constraint c_all_allow { foreach (flg[i]) flg[i] == 4'h7; }
 
   function new(string name = "pmp_txn");
     super.new(name);

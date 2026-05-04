@@ -9,7 +9,7 @@
 //   af_ifu_rsp    ← m_ifu.m_monitor.ap_rsp      (ifu_txn with VA+PA)
 //   af_lsu_p0_rsp ← m_lsu.m_monitor.ap_pipe0_rsp (lsu_txn with VA+PA)
 //   af_lsu_p1_rsp ← m_lsu.m_monitor.ap_pipe1_rsp (lsu_txn with VA+PA)
-//   af_lsu_p2_rsp ← m_lsu.m_monitor.ap_pipe2_rsp (lsu_txn; VA limited until Ph6)
+//   af_lsu_p2_rsp ← m_lsu.m_monitor.ap_pipe2_rsp (lsu_txn with correlated VA2+PA)
 //
 // Comparison logic (per channel):
 //   1. If tr.abort==1 (IFU/LSU): skip — aborted transaction has no valid PA.
@@ -40,8 +40,8 @@
 //   Only waive IFU compare when monitor observes the exact matching whitebox
 //   bit on the response cycle, under a narrow completion signature.
 //
-// Pipe2 note: monitor does not yet merge VA into pipe2 rsp txn (Phase 6).
-//   If va2==0, the transaction is counted but PA comparison is skipped.
+// Pipe2 note: monitor merges the single-outstanding PFU VA into rsp txn.
+//   If va2_valid is low for an orphan/legacy rsp, count only and skip compare.
 // =============================================================================
 `ifndef MMU_TRANSLATION_SB_SVH
 `define MMU_TRANSLATION_SB_SVH
@@ -291,9 +291,8 @@ class mmu_translation_sb extends uvm_scoreboard;
   //   Access type: ACC_PFU (always prefetch)
   //   VA source: tr.va2[26:0] reconstructed as VA[38:12] (27-bit VPN << 12).
   //
-  //   Limitation: pipe2 monitor does not yet correlate req VA into rsp txn
-  //   (m_pending_p2 queue not yet added — Phase 6 enhancement).
-  //   If tr.va2==0, transaction is counted but comparison is skipped.
+  //   Pipe2 monitor correlates the single-outstanding PFU req VA into rsp txn.
+  //   If va2_valid is low due to an orphan/legacy rsp, count only and skip compare.
   // =========================================================================
   virtual function void write_lsu_p2(lsu_txn tr);
     xlation_rsp_t ref_rsp;
@@ -301,9 +300,9 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     m_total_checked++;
 
-    if (tr.va2 == '0) begin
+    if (!tr.va2_valid) begin
       `uvm_info(get_type_name(),
-        "write_lsu_p2: va2==0 (no req/rsp VA correlation yet) — count only",
+        "write_lsu_p2: va2 invalid (orphan/legacy pipe2 rsp) — count only",
         UVM_DEBUG)
       return;
     end
@@ -313,11 +312,11 @@ class mmu_translation_sb extends uvm_scoreboard;
     va      = va_t'({tr.va2[26:0], 12'b0});
     ref_rsp = m_ref.translate(va, ACC_PFU, 4);
 
-    // Pipe2 rsp txn currently carries pa and sec only; no fault signals.
-    // Restrict comparison to PA only when ref predicts no fault.
+    // Pipe2 top-level reports a combined translation/PMP error bit.  Restrict
+    // PA comparison to no-fault reference cases.
     if (ref_rsp.exc != EXC_NONE) begin
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P2] VA=0x%010h ref.exc=%s — fault check deferred (Phase 6)",
+        $sformatf("[LSU_P2] VA=0x%010h ref.exc=%s — skip PA compare on fault case",
           {1'b0, va}, ref_rsp.exc.name()),
         UVM_MEDIUM)
       return;

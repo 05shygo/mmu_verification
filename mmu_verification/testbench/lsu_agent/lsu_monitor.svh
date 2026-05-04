@@ -45,10 +45,12 @@ class lsu_monitor extends uvm_monitor;
   // STAMO PA check
   uvm_analysis_port #(lsu_txn) ap_stamo;
 
-  // Phase 5: Outstanding request queues for pipe0/pipe1 req/rsp correlation.
-  // Each pipe is 1-outstanding (stall until pa_vld), FIFO pop is safe.
+  // Outstanding request queues for req/rsp correlation.
+  // Pipe0/1 stall until pa_vld; pipe2 follows PFU single-outstanding protocol.
   protected lsu_txn m_pending_p0[$];
   protected lsu_txn m_pending_p1[$];
+  protected lsu_txn m_pending_p2[$];
+  protected bit     m_p2_rsp_seen;
 
   // Timeout-resilience flags: set by _collect_pipeN_rsp when pa_vld arrives,
   // checked by _collect_pipeN_req when va_vld deasserts.  If the flag is still
@@ -117,8 +119,7 @@ class lsu_monitor extends uvm_monitor;
     fork
       _collect_pipe0_sm();
       _collect_pipe1_sm();
-      _collect_pipe2_req();
-      _collect_pipe2_rsp();
+      _collect_pipe2_sm();
       _collect_inv();
       _collect_stamo();
     join_none
@@ -607,28 +608,63 @@ class lsu_monitor extends uvm_monitor;
     end
   endtask
 
-  // ── Pipe 2 (prefetch) request ─────────────────────────────────────────────
-  protected task _collect_pipe2_req();
-    lsu_txn tr;
-    forever begin
-      @(vif.monitor_cb iff vif.monitor_cb.lsu_mmu_va2_vld);
-      tr      = lsu_txn::type_id::create("lsu_p2_req");
-      tr.kind = LSU_PIPE2;
-      tr.va2  = vif.monitor_cb.lsu_mmu_va2;
-      ap_pipe2_req.write(tr);
-    end
-  endtask
+  // ── Pipe 2 (prefetch) single-state monitor ───────────────────────────────
+  protected task _collect_pipe2_sm();
+    lsu_txn tr, req_tr;
+    bit     prev_req_seen;
+    bit     prev_rsp_seen;
 
-  // ── Pipe 2 (prefetch) response ────────────────────────────────────────────
-  protected task _collect_pipe2_rsp();
-    lsu_txn tr;
+    prev_req_seen = 1'b0;
+    prev_rsp_seen = 1'b0;
     forever begin
-      @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa2_vld);
-      tr      = lsu_txn::type_id::create("lsu_p2_rsp");
-      tr.kind = LSU_PIPE2;
-      tr.pa   = vif.monitor_cb.mmu_lsu_pa2;
-      tr.sec  = vif.monitor_cb.mmu_lsu_sec2;
-      ap_pipe2_rsp.write(tr);
+      @(vif.monitor_cb);
+      if (vif.rst_ni !== 1'b1) begin
+        prev_req_seen = 1'b0;
+        prev_rsp_seen = 1'b0;
+        m_p2_rsp_seen = 1'b0;
+        m_pending_p2.delete();
+        continue;
+      end
+
+      if (vif.monitor_cb.lsu_mmu_va2_vld && !prev_req_seen) begin
+        tr      = lsu_txn::type_id::create("lsu_p2_req");
+        tr.kind = LSU_PIPE2;
+        tr.va2  = vif.monitor_cb.lsu_mmu_va2;
+        tr.va2_valid = 1'b1;
+        m_p2_rsp_seen = 1'b0;
+        m_pending_p2.push_back(_clone_txn(tr, "lsu_p2_req_pending"));
+        ap_pipe2_req.write(tr);
+      end
+
+      if (vif.monitor_cb.mmu_lsu_pa2_vld && !prev_rsp_seen) begin
+        tr              = lsu_txn::type_id::create("lsu_p2_rsp");
+        tr.kind         = LSU_PIPE2;
+        tr.pa           = vif.monitor_cb.mmu_lsu_pa2;
+        tr.sec          = vif.monitor_cb.mmu_lsu_sec2;
+        tr.access_fault = vif.monitor_cb.mmu_lsu_pa2_err;
+        if (m_pending_p2.size() > 0) begin
+          req_tr = m_pending_p2.pop_front();
+          tr.va2 = req_tr.va2;
+          tr.va2_valid = 1'b1;
+          m_p2_rsp_seen = 1'b1;
+        end else begin
+          `uvm_warning(get_type_name(),
+            $sformatf("[LSU_P2_ORPHAN_RSP] rsp observed without pending req: pa=0x%07h err=%0b",
+              tr.pa, tr.access_fault))
+        end
+        ap_pipe2_rsp.write(tr);
+      end
+
+      if (!vif.monitor_cb.lsu_mmu_va2_vld && prev_req_seen && !m_p2_rsp_seen) begin
+        if (m_pending_p2.size() > 0) begin
+          tr = m_pending_p2.pop_front();
+          `uvm_warning(get_type_name(),
+            $sformatf("[LSU_P2_DROP] req dropped before rsp: va2=0x%07h", tr.va2))
+        end
+      end
+
+      prev_req_seen = vif.monitor_cb.lsu_mmu_va2_vld;
+      prev_rsp_seen = vif.monitor_cb.mmu_lsu_pa2_vld;
     end
   endtask
 

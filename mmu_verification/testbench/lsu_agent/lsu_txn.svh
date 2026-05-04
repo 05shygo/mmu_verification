@@ -33,6 +33,7 @@ class lsu_txn extends uvm_sequence_item;
     `uvm_field_int(abort,            UVM_ALL_ON)
     `uvm_field_int(vabuf,            UVM_ALL_ON)
     `uvm_field_int(va2,              UVM_ALL_ON)
+    `uvm_field_int(va2_valid,        UVM_ALL_ON)
     `uvm_field_int(stamo_pa,         UVM_ALL_ON)
     `uvm_field_enum(lsu_inv_kind_e, inv_kind,   UVM_ALL_ON)
     `uvm_field_int(inv_va,           UVM_ALL_ON)
@@ -64,6 +65,7 @@ class lsu_txn extends uvm_sequence_item;
 
   // ── Pipe 2 (Prefetch) stimulus ───────────────────────────────────────────
   rand bit [27:0] va2;      // Prefetch VA (28-bit, bits[39:12] of full VA)
+  bit             va2_valid;// Pipe2 rsp carries a correlated request VA2
 
   // ── STAMO stimulus ────────────────────────────────────────────────────────
   rand bit [27:0] stamo_pa; // Physical address to check (PPN, 28-bit)
@@ -115,7 +117,7 @@ class lsu_txn extends uvm_sequence_item;
           kind.name(), va, id, st_inst, abort, pa, pgflt, access_fault,
           stall, tlb_busy, tlb_wakeup);
       LSU_PIPE2:
-        return $sformatf("kind=PIPE2 va2=0x%07h", va2);
+        return $sformatf("kind=PIPE2 va2=0x%07h va2_valid=%0b", va2, va2_valid);
       LSU_STAMO:
         return $sformatf("kind=STAMO stamo_pa=0x%07h", stamo_pa);
       LSU_INV:

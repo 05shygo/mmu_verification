@@ -18,7 +18,7 @@
 //   5. IFU fetch sequence: 100 fetches → mapped VAs  (ifu_mapped_va_seq)
 //   6. LSU pipe0 load sequence: 100 loads → mapped VAs  (lsu_mapped_va_seq)
 //   7. LSU pipe1 store sequence: 20 stores → mapped VAs  (lsu_mapped_va_seq)
-//   8. LSU pipe2 prefetch sequence: 20 txns (random VA2; count-only in SB)
+//   8. LSU pipe2 prefetch sequence: 20 txns (random VA2; PA checked on no-fault rsp)
 //   9. LSU STAMO PA-check sequence: 20 txns (not checked by translation_sb)
 //  10. Wait 5000 ns for PTW miss paths to settle
 //
@@ -33,8 +33,8 @@
 //   · All mapped VAs have bit38=0 → satisfy Sv39 canonical constraint automatically.
 //   · c_kind_default (LSU_PIPE0) is disabled inline for pipe1/pipe2/stamo to avoid
 //     over-constraint (LRM §18.7.2: with-clause appends, not overrides, class constraints).
-//   · Pipe2 rsp txn carries no merged VA yet (Phase 6 enhancement), so
-//     write_lsu_p2() counts but does not compare — no scoreboard mismatch expected.
+//   · Pipe2 rsp txn carries the correlated PFU VA2; write_lsu_p2() compares PA
+//     when the reference model predicts no fault.
 // =============================================================================
 `ifndef TEST_MMU_TRANSLATION_SANITY_SVH
 `define TEST_MMU_TRANSLATION_SANITY_SVH
@@ -126,8 +126,8 @@ endclass : lsu_mapped_va_seq
 // ── Helper: LSU pipe2 prefetch sequence ──────────────────────────────────────
 // Sends `num_txn` LSU_PIPE2 prefetch requests with random VA2 (28-bit VPN).
 // c_kind_default (LSU_PIPE0) must be disabled to avoid over-constraint.
-// Pipe2 rsp txn carries no merged VA (Phase 6 enhancement), so the scoreboard
-// write_lsu_p2() counts but does not compare PA — no mismatch expected.
+// Pipe2 rsp txn carries the correlated PFU VA2; scoreboard compares PA for
+// no-fault prefetch responses.
 // =============================================================================
 class lsu_p2_sanity_seq extends lsu_base_seq;
   `uvm_object_utils(lsu_p2_sanity_seq)
@@ -420,10 +420,10 @@ class test_mmu_translation_sanity extends test_base;
       $sformatf("Step 6 done: %0d LSU pipe1 transactions issued", NUM_LSU_P1), UVM_LOW)
 
     // ── Step 7: LSU pipe2 prefetch sequence (20 txns) ───────────────────────
-    // Pipe2 rsp txn does not yet carry a merged VA (Phase 6 enhancement).
-    // write_lsu_p2() in the SB checks va2==0 and counts-only — no mismatch.
+    // Pipe2 rsp txn now carries the correlated PFU VA2; translation SB can
+    // compare no-fault prefetch responses instead of count-only bookkeeping.
     `uvm_info(get_type_name(),
-      $sformatf("Step 7: LSU pipe2 prefetch (%0d txns, count-only in SB)", NUM_LSU_P2), UVM_LOW)
+      $sformatf("Step 7: LSU pipe2 prefetch (%0d txns)", NUM_LSU_P2), UVM_LOW)
     lsu_p2_seq = lsu_p2_sanity_seq::type_id::create("lsu_p2_seq");
     lsu_p2_seq.num_txn = NUM_LSU_P2;
     lsu_p2_seq.start(m_env.m_lsu.m_sequencer);

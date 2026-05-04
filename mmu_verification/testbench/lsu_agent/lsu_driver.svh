@@ -10,7 +10,10 @@
 //            issue one-cycle pulse first, if no response then wait for
 //            wakeup-or-busy-clear, leave one reopen-gap cycle for monitor
 //            drop/reopen barrier, then retry the same txn with one-cycle pulses.
-//   pipe2:   single-cycle prefetch pulse (no response wait)
+//   pipe2:   PFU-style prefetch request.  Hold va2_vld/va2 stable while the
+//            MMU request is outstanding, then release after pa2_vld.  The DUT
+//            PFU side has no ready input; changing va2 before pa2_vld creates
+//            non-architectural PTW pressure and can corrupt live PTW mbuf state.
 //   stamo:   single-cycle PA check assertion (no response wait)
 //   inv:     Phase 6 implement
 // =============================================================================
@@ -308,14 +311,45 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected task _drive_pipe2();
     lsu_txn tr;
     forever begin
+      bit got_rsp;
+      bit timeout_hit;
+
       _get_kind(LSU_PIPE2, tr);
       `uvm_info(get_type_name(), {"Pipe2: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
-      @(vif.driver_cb);
+
+      vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
+      do begin
+        @(vif.driver_cb);
+      end while (vif.driver_cb.mmu_lsu_pa2_vld === 1'b1);
       vif.driver_cb.lsu_mmu_va2_vld <= 1'b1;
       vif.driver_cb.lsu_mmu_va2     <= tr.va2;
+
+      got_rsp     = 1'b0;
+      timeout_hit = 1'b0;
+      fork
+        begin : wait_rsp_p2
+          if (vif.driver_cb.mmu_lsu_pa2_vld !== 1'b1)
+            @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa2_vld === 1'b1);
+          got_rsp         = 1'b1;
+          tr.pa           = vif.driver_cb.mmu_lsu_pa2;
+          tr.access_fault = vif.driver_cb.mmu_lsu_pa2_err;
+          tr.sec          = vif.driver_cb.mmu_lsu_sec2;
+        end
+        begin : wait_timeout_p2
+          repeat (200000) @(vif.driver_cb);
+          timeout_hit = 1'b1;
+          `uvm_warning(get_type_name(),
+            $sformatf("Pipe2 response timeout: va2=0x%07h pa2_vld=%0b",
+              tr.va2, vif.driver_cb.mmu_lsu_pa2_vld))
+        end
+      join_any
+      disable fork;
+
+      if (got_rsp || timeout_hit)
+        vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
+
       @(vif.driver_cb);
-      vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
     end
   endtask
 

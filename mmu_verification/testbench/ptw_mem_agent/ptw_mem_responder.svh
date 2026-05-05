@@ -6,6 +6,8 @@
 //   · DUT asserts mmu_lsu_data_req=1 and normally holds addr stable until TB
 //     responds; invalidate/abort may drop the visible request after the memory
 //     read was accepted, but the response still returns to retire PTW cleanup
+//   · mmu_lsu_data_req_accept is the TB whitebox view of the RTL grant pulse;
+//     the responder services exactly one accepted read per pulse.
 //   · TB drives lsu_mmu_data_vld=1 (with PTE data) for exactly one cycle,
 //     then deasserts.  OR drives lsu_mmu_bus_error=1 for one cycle.
 //   · At most 1 outstanding request at any time (no tag/ID)
@@ -33,6 +35,9 @@ class ptw_mem_responder extends uvm_component;
   int unsigned m_rsp_delay_min          = 1;
   int unsigned m_rsp_delay_max          = 8;
   int unsigned m_bus_error_rate_permille = 0;  // 0 = never inject bus error
+  protected bit        m_has_accepted_req;
+  protected bit [39:0] m_accepted_addr;
+  protected bit        m_accepted_size;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -55,10 +60,28 @@ class ptw_mem_responder extends uvm_component;
     vif.driver_cb.lsu_mmu_bus_error <= 1'b0;
   endtask
 
+  protected function void _stash_accept_if_seen(string ctx);
+    if (vif.driver_cb.mmu_lsu_data_req_accept === 1'b1) begin
+      if (m_has_accepted_req) begin
+        `uvm_error(get_type_name(),
+          $sformatf("%s: PTW accept queue already occupied: old_addr=0x%010h new_addr=0x%010h",
+            ctx, m_accepted_addr, vif.driver_cb.mmu_lsu_data_req_addr))
+      end
+      m_accepted_addr    = vif.driver_cb.mmu_lsu_data_req_addr;
+      m_accepted_size    = vif.driver_cb.mmu_lsu_data_req_size;
+      m_has_accepted_req = 1'b1;
+      `uvm_info(get_type_name(),
+        $sformatf("%s: stashed back-to-back PTW accept addr=0x%010h size=%0b",
+          ctx, m_accepted_addr, m_accepted_size),
+        UVM_HIGH)
+    end
+  endfunction
+
   // ── Main protocol loop ────────────────────────────────────────────────────
   virtual task run_phase(uvm_phase phase);
     // Initialise TB-driven outputs to safe state
     _drive_idle_outputs();
+    m_has_accepted_req = 1'b0;
 
     // Wait for reset de-assertion
     @(posedge vif.clk_i);
@@ -66,22 +89,31 @@ class ptw_mem_responder extends uvm_component;
     @(vif.driver_cb);
 
     // Strictly serial: at most one PTW memory request is outstanding. The
-    // responder handles exactly one request per loop iteration and blocks until
-    // its response is completed. No req-low bubble is required between two
-    // adjacent requests; after one response retires, any later req-high sample
-    // is a new transaction, even if addr/size repeat.
+    // responder handles exactly one accepted request per loop iteration and
+    // blocks until its response is completed. The visible req level can remain
+    // high after a response; the RTL grant pulse disambiguates real new reads
+    // from the tail of an already-serviced request.
     forever begin
       bit [39:0] req_addr;
       bit        req_size;
+
+      if (m_has_accepted_req) begin
+        req_addr = m_accepted_addr;
+        req_size = m_accepted_size;
+        m_has_accepted_req = 1'b0;
+        handle_request(req_addr, req_size);
+        continue;
+      end
 
       @(vif.driver_cb);
 
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();
+        m_has_accepted_req = 1'b0;
         continue;
       end
 
-      if (vif.driver_cb.mmu_lsu_data_req !== 1'b1)
+      if (vif.driver_cb.mmu_lsu_data_req_accept !== 1'b1)
         continue;
 
       req_addr = vif.driver_cb.mmu_lsu_data_req_addr;
@@ -123,6 +155,7 @@ class ptw_mem_responder extends uvm_component;
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();
+        m_has_accepted_req = 1'b0;
         return;
       end
       if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
@@ -156,9 +189,11 @@ class ptw_mem_responder extends uvm_component;
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();
+        m_has_accepted_req = 1'b0;
         return;
       end
       vif.driver_cb.lsu_mmu_bus_error <= 1'b0;
+      _stash_accept_if_seen("PTW_BUS_ERR_DONE");
     end else begin
       // ── Normal data response ───────────────────────────────────────────
       vif.driver_cb.lsu_mmu_data_vld <= 1'b1;
@@ -169,10 +204,12 @@ class ptw_mem_responder extends uvm_component;
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();
+        m_has_accepted_req = 1'b0;
         return;
       end
       vif.driver_cb.lsu_mmu_data_vld <= 1'b0;
       vif.driver_cb.lsu_mmu_data     <= 64'b0;
+      _stash_accept_if_seen("PTW_RSP_DONE");
     end
   endtask
 

@@ -70,6 +70,7 @@ class test_ptw_map4k_directed extends test_base;
     rm = m_env.m_ref;
     pt  = m_env.m_pt_mem;
     m_mismatch = 0;
+    rm.set_auto_sync_shadow_state(1'b0);
 
     // ── Step 1: Configure ref_model CSR mirror ────────────────────────────
     // Direct assignment (FIFO path connected in Phase 5, so re-apply later too)

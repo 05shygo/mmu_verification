@@ -5,7 +5,8 @@
 // Implements Sv39 3-level page walk in software, including 4K / 2M / 1G
 // leaf translation. Acts as the golden model for translation_sb.
 //
-// CSR mirror fields are updated via four TLM FIFOs (consumed in run_phase):
+// CSR mirror fields are updated via four TLM FIFOs drained by sync_shadow_state()
+// immediately before translation compares:
 //   af_csr_write    ← cp0_monitor.ap       (fan-out, Phase 5 connect)
 //   af_tlb_inv      ← lsu_monitor.ap_inv   (fan-out, Phase 5 connect)
 //   af_pmp_cfg      ← pmp_monitor.ap       (fan-out, Phase 5 connect)
@@ -87,6 +88,12 @@ class mmu_ref_model extends uvm_component;
   int unsigned m_n_page_faults;
   int unsigned m_n_passthrough;
 
+  // DUT-facing scoreboards keep this enabled so translate() observes monitor
+  // FIFO updates before each compare.  Pure software directed tests that set
+  // mirror fields directly may disable it to keep those hand-written fields
+  // authoritative.
+  bit m_auto_sync_shadow_state;
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
     // Reset all CSR mirrors to safe defaults
@@ -103,6 +110,7 @@ class mmu_ref_model extends uvm_component;
     m_ptw_en      = 1'b1;
     m_maee        = 1'b0;
     m_no_op       = 1'b0;
+    m_auto_sync_shadow_state = 1'b1;
   // PMP default all-allow: flg[2:0]={X,W,R}=3'b111.
     foreach (m_pmp_flg[i]) m_pmp_flg[i] = 4'h7;
     // SysMap: default all disabled
@@ -121,31 +129,14 @@ class mmu_ref_model extends uvm_component;
     af_sysmap_cfg = new("af_sysmap_cfg", this);
   endfunction
 
-  // run_phase: consume all four FIFOs concurrently (Phase 5: FIFOs receive
-  // events; Phase 4: FIFOs remain empty — no harm, threads block quietly)
+  // Do not consume the shadow FIFOs from a background run_phase thread.  The
+  // translation scoreboard calls translate(), which drains the FIFOs
+  // synchronously through sync_shadow_state() before each compare.  Keeping a
+  // single consumer avoids non-deterministic same-cycle PMP/CSR shadow races.
   virtual task run_phase(uvm_phase phase);
-    fork
-      forever begin
-        cp0_txn tr;
-        af_csr_write.get(tr);
-        on_csr_write(tr);
-      end
-      forever begin
-        lsu_txn tr;
-        af_tlb_inv.get(tr);
-        on_tlb_inv(tr);
-      end
-      forever begin
-        pmp_txn tr;
-        af_pmp_cfg.get(tr);
-        on_pmp_cfg_change(tr);
-      end
-      forever begin
-        sysmap_cfg_txn tr;
-        af_sysmap_cfg.get(tr);
-        on_sysmap_cfg_change(tr);
-      end
-    join_none
+    `uvm_info(get_type_name(),
+      "ref-model shadow FIFOs are drained synchronously by sync_shadow_state()",
+      UVM_HIGH)
   endtask
 
   // Drain any monitor-published shadow-state updates without consuming time.
@@ -195,6 +186,10 @@ class mmu_ref_model extends uvm_component;
     end
   endfunction
 
+  virtual function void set_auto_sync_shadow_state(bit enable);
+    m_auto_sync_shadow_state = enable;
+  endfunction
+
   // =========================================================================
   // Core API: translate()
   // =========================================================================
@@ -238,7 +233,8 @@ class mmu_ref_model extends uvm_component;
     rsp = '{ppn: '0, exc: EXC_NONE,
             sec: 0, ca: 0, buf_en: 0, sh: 0, so: 0, deny: 0};
 
-    sync_shadow_state();
+    if (m_auto_sync_shadow_state)
+      sync_shadow_state();
     m_n_translate_calls++;
 
     // ── [Decision 1] Passthrough ──────────────────────────────────────────
@@ -536,7 +532,7 @@ class mmu_ref_model extends uvm_component;
   endfunction
 
   // =========================================================================
-  // Internal state update callbacks (called from run_phase FIFO consumers)
+  // Internal state update callbacks (called from sync_shadow_state())
   // =========================================================================
 
   // Update CSR mirrors from a cp0_txn (driven by cp0_agent)
@@ -588,6 +584,12 @@ class mmu_ref_model extends uvm_component;
 
   // Update PMP flag mirrors
   virtual function void on_pmp_cfg_change(pmp_txn tr);
+    if (!tr.cfg_update) begin
+      `uvm_info(get_type_name(),
+        "on_pmp_cfg_change: ignoring PMP PA/fetch observation sample",
+        UVM_DEBUG)
+      return;
+    end
     foreach (tr.flg[i])
       m_pmp_flg[i] = tr.flg[i];
     `uvm_info(get_type_name(), "on_pmp_cfg_change: PMP flags updated", UVM_HIGH)

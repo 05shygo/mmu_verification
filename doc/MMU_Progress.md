@@ -2,7 +2,7 @@
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
 > **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-05-02（Phase 12 于 2026-05-01 完成 15 项门禁与 URG/VDB debug 记档；Phase 13 `make phase13_exit_check` PASS；URG `No context available` 为非阻塞 coverage report tooling issue）
+> **更新**：2026-05-05（Phase 14 已进入高并发回归与 UVM 环境问题收敛；补充 PFU/PMP/SysMap 与 LSU_P2 fault mismatch 调试记录；Phase 13 `make phase13_exit_check` PASS）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -24,7 +24,7 @@
 | **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28）                           | ✅`bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `phase11_b_stage_manifest.csv` / `phase11_bug_hunt_matrix.md` 已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
 | **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | ✅ 完成（2026-05-01）                           | ✅ `simu/mmu_v4_phase12_list` 22 个 runnable tests × seeds `95101 95102 95103` 纳入 `run_cov` 回归；MAEE SVA / PMP 骨架 / Phase12 白盒 CG / probe / `phase12_exit_check` **15 项**门禁完成；URG `No context available`、单 VDB probe fail 与覆盖率报告缺失问题已按 debug 记录收口 |
 | **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | ✅ 完成（2026-05-02）                           | `make phase13_exit_check` PASS；Phase 13 list 55 tests × seeds `96101 96102 96103` 共 165/165 通过；SVA cover 与 13 个 covergroup threshold 均达标；URG `No context available` 记录为非阻塞 tooling issue |
-| **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | ⏳ 未开始（Phase 13 已解锁）                    | Phase 13 已完成，可进入全量回归收敛与签核准备；Phase 14 issue / waiver / tooling tracker 已建档：[MMU_Phase14_IssueTracker.md](MMU_Phase14_IssueTracker.md) |
+| **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | 🔄 进行中（高并发回归与问题收敛）              | 已完成高并发 shard/VDB/tooling 收敛入口；UVM 环境侧已补 PFU/PMP/SysMap 白盒诊断与 Phase12/13 用例口径修正，详见 Phase 14 debug 记录与 [MMU_Phase14_IssueTracker.md](MMU_Phase14_IssueTracker.md) |
 
 ---
 
@@ -762,6 +762,17 @@ Closure action:
 Signoff impact: Phase14 remains open. Final evidence must come from a clean
 high-parallel rerun or from a second-reviewed waiver/fallback decision recorded
 in the IssueTracker and SignoffMatrix.
+
+---
+
+### Phase 14 Debug 记录（2026-05-05 持续收敛中）
+
+| # | 调试主题 | 根因 | 已落地修正 / 结果 |
+| --- | --- | --- | --- |
+| P14-D1 | 高并发回归中 LSU_P2 `fault mismatch` / `PA mismatch`：`ref.exc=EXC_NONE ref.deny=0`，`dut.access_fault=1 dut.pa=0` | Phase14 失败样例（如 `test_twu_mask_pmp_wait_all4`、`test_bug_001_twu_fst_fetch_type`、`test_mmu_mbuf_multi_twu_independent_ready`、`test_sysmap_hit_bypass_walk`）显示 DUT 侧 PFU/LSU_P2 会进入 access fault，而参考模型按 PFU 正常翻译。静态排查后确认：PFU 走 PMP port4，且 TWU 的 PMP 权限选择跟随 original miss type；原 UVM 用例/辅助函数把“PTW read deny”过度等价成清 R 权限，导致 PFU/load walker 被错误注入 deny。 | `pmp_sequences.svh` 中 `pmp_flg_deny_rw_seq` 不再误伤 PFU port4，并新增 `pmp_flg_deny_pfu_seq` 专门描述 PFU deny；`phase9_generated_test_base.svh` 已接入新 sequence 分发；`phase12_generated_test_base.svh` 的 `phase12_set_pmp_deny_ptw_reads()` 默认改为保留 R、只 deny W/X，只有访问异常定向测试才显式传 `deny_read_perm=1`。`test_ptw_pmp_deny_accflt.svh`、`test_ptw_pmp_deny_stop.svh`、`test_mmu_twu_accerr_bypass_arb.svh`、`test_mmu_arb_refill_except_priority.svh` 已按新口径显式请求读权限 deny。 |
+| P14-D2 | LSU_P2 PFU fault 来源难区分：PMP deny、SysMap flag fault、还是 PTW/L2 ref access error | 仅看 `mmu_translation_sb` 的 `fault mismatch` 无法判断是 PFU port4 的 `pmp_mmu_flg[0]` 异常、SysMap `flg4` 组合非法，还是 DUT 内部 PTW/L2TLB acc_err 传播。 | `mmu_dut_probes_if.sv` / `tb_top.sv` 已新增并接出 PFU 白盒观测：`pfu_pmp_flg4`、`pfu_sysmap_flg4`、`pfu_l2tlb_deny`、`pfu_l2tlb_acc_fault`、`pfu_l2tlb_flag_fault`；`mmu_translation_sb.svh` 在 LSU_P2 mismatch 时追加 `[LSU_P2][WB]` 诊断，并同时打印 `ref_pmp_flg4` 与最近一次 `ptw_l2tlb_ref_{pgflt,acc_err}` 快照，后续可直接区分 PFU PMP deny / SysMap flag fault / PTW acc_err 三类来源。 |
+| P14-D3 | Phase14 PFU 相关 false fault 受 SysMap 缺省序列影响，非目标用例也会跑进 deny/fault 口径 | 多个 Phase9/13 复用的 SysMap 序列会随机或宽泛改动 flag 组合；对 PFU/LSU_P2 来说，`sysmap_mmu_flg4` 若不是可翻译口径，会把并非想测 SysMap fault 的用例转成 access fault。 | `sysmap_cfg_sequences.svh` 中 `sysmap_hit_cross_tlb_seq.hit_flg` 与 `sysmap_perm_flag_seq.perm_flg` 当前已收敛为 translation-safe 默认值 `5'b01111`，避免在 Phase14 功能回归中把 PFU false fault 混入非目标用例。该修正已作为当前 UVM 环境收敛手段记档，后续若恢复更激进 flag 覆盖，需要按 testcase 目标做更细粒度拆分。 |
+| P14-D4 | Phase14 额外暴露出 RTL 侧 `a_lsu_addr_stable_until_vld` 断言失败，需要与 UVM 侧 false fault 分开记账 | 部分 shard（如 `test_mmu_ptw_ready_all_mask_low`、`test_mmu_pmp_port_config_independence`）同时出现 PTW/MBUF 地址稳定性 SVA 与 LSU/PFU 侧异常；其中前者是 DUT/RTL 行为问题，后者是 UVM 环境配置/建模问题。两者若混在一起，容易把 UVM 误配当成 RTL 根因，或反过来掩盖真实 RTL bug。 | Phase14 调试口径已拆分：`doc/ptw_rtl_debug.md` 单独记 RTL 侧 PTW/MBUF 指针跳转与 LSU PA 稳定性问题；`MMU_Progress.md` 的 Phase14 仅归档 UVM 环境侧已落地修正。当前结论是：PFU/PMP/SysMap false fault 路径已通过 UVM 代码约束与白盒诊断收口；PTW MBUF 指针导致的 LSU PA 失稳仍按 RTL 调试事项单独追踪。 |
 
 ---
 

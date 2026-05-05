@@ -3,7 +3,7 @@
 // Phase 4: PTW memory channel monitor
 //
 // Observes both the DUT-initiated request and the TB-driven response:
-//   ap_req:  fires when a new serial PTW request becomes outstanding
+//   ap_req:  fires when RTL accepts a new serial PTW external read
 //   ap_rsp:  fires when TB asserts lsu_mmu_data_vld=1 or lsu_mmu_bus_error=1
 //   ap_drop: fires only when reset cancels a pending PTW request
 //
@@ -26,10 +26,9 @@ class ptw_mem_monitor extends uvm_monitor;
   uvm_analysis_port #(ptw_mem_txn) ap_rsp;   // TB response (PTE data / bus_error)
   uvm_analysis_port #(ptw_mem_txn) ap_drop;  // Pending req cancelled by reset
 
-  // PTW LSU protocol is strict serial single-outstanding. req may remain high
-  // across back-to-back requests, but there is still only one externally
-  // outstanding request at a time. After a rsp cycle completes, any req that
-  // is still high on a later cycle is a new request, even if addr/size repeat.
+  // PTW LSU protocol is strict serial single-outstanding. The visible req
+  // level may stay high across abort/repoint windows; the RTL grant pulse is
+  // the real external accept event and is used for credit accounting.
   protected bit [39:0]  m_pending_addr;
   protected bit         m_pending_size;
   protected bit         m_has_pending;
@@ -60,13 +59,14 @@ class ptw_mem_monitor extends uvm_monitor;
   endtask
 
   // ── Cycle-accurate collector for strict serial PTW protocol ───────────────
-  // Open a request when req is high and no request is pending. Keep the
-  // pending request until data_vld/bus_error returns. PTW abort can withdraw
-  // the visible req while RTL still waits for the accepted memory response to
-  // clear abort cleanup, so req drop/replace is logged but not counted as drop.
+  // Open a request on mmu_lsu_data_req_accept. Keep the pending request until
+  // data_vld/bus_error returns. PTW abort can withdraw the visible req while
+  // RTL still waits for the accepted memory response to clear abort cleanup,
+  // so req drop/replace is logged but not counted as drop.
   protected task collect_channel();
     forever begin
       bit         req_seen;
+      bit         accept_seen;
       bit         rsp_seen;
       bit [39:0]  cur_addr;
       bit         cur_size;
@@ -94,6 +94,7 @@ class ptw_mem_monitor extends uvm_monitor;
       end
 
       req_seen = (vif.monitor_cb.mmu_lsu_data_req  === 1'b1);
+      accept_seen = (vif.monitor_cb.mmu_lsu_data_req_accept === 1'b1);
       rsp_seen = (vif.monitor_cb.lsu_mmu_data_vld  === 1'b1) ||
                  (vif.monitor_cb.lsu_mmu_bus_error === 1'b1);
       cur_addr = vif.monitor_cb.mmu_lsu_data_req_addr;
@@ -111,8 +112,8 @@ class ptw_mem_monitor extends uvm_monitor;
           m_pending_req_replaced = 1'b0;
         end else begin
           `uvm_warning(get_type_name(),
-            $sformatf("PTW rsp observed without pending req: pte=0x%016h bus_err=%0b req=%0b addr=0x%010h",
-              tr.pte_data, tr.bus_error, req_seen, cur_addr))
+            $sformatf("PTW rsp observed without pending req: pte=0x%016h bus_err=%0b req=%0b accept=%0b addr=0x%010h",
+              tr.pte_data, tr.bus_error, req_seen, accept_seen, cur_addr))
         end
         `uvm_info(get_type_name(),
           $sformatf("PTW RSP: pte=0x%016h bus_err=%0b", tr.pte_data, tr.bus_error),
@@ -142,25 +143,25 @@ class ptw_mem_monitor extends uvm_monitor;
         end
       end
 
-      // Never reopen while a request is pending or on the same sampled cycle
-      // as rsp_seen. In this protocol req high on the rsp cycle is still the
-      // retiring transaction's tail.
-      if (!rsp_seen) begin
-        if (!m_has_pending && req_seen) begin
-          tr          = ptw_mem_txn::type_id::create("ptw_req");
-          tr.addr     = cur_addr;
-          tr.req_size = cur_size;
-          m_pending_addr = cur_addr;
-          m_pending_size = cur_size;
-          m_has_pending = 1'b1;
-          m_pending_req_dropped = 1'b0;
-          m_pending_req_replaced = 1'b0;
-          `uvm_info(get_type_name(),
-            $sformatf("PTW REQ: addr=0x%010h size=%0b", tr.addr, tr.req_size),
-            UVM_HIGH)
-          ap_req.write(tr);
+      if (accept_seen) begin
+        if (m_has_pending) begin
+          `uvm_error(get_type_name(),
+            $sformatf(
+              "PTW accept while previous request is still pending: old_addr=0x%010h new_addr=0x%010h size=%0b rsp_seen=%0b",
+              m_pending_addr, cur_addr, cur_size, rsp_seen))
         end
-
+        tr          = ptw_mem_txn::type_id::create("ptw_req");
+        tr.addr     = cur_addr;
+        tr.req_size = cur_size;
+        m_pending_addr = cur_addr;
+        m_pending_size = cur_size;
+        m_has_pending = 1'b1;
+        m_pending_req_dropped = 1'b0;
+        m_pending_req_replaced = 1'b0;
+        `uvm_info(get_type_name(),
+          $sformatf("PTW REQ ACCEPT: addr=0x%010h size=%0b", tr.addr, tr.req_size),
+          UVM_HIGH)
+        ap_req.write(tr);
       end
     end
   endtask

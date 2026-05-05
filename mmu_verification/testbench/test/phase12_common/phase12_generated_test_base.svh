@@ -67,6 +67,8 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     seq = pmp_flg_raw_seq::type_id::create("phase12_pmp_raw_seq");
     foreach (raw_flg[i]) seq.raw_flg[i] = raw_flg[i];
     seq.start(m_env.m_pmp.m_sequencer);
+    if ((m_env != null) && (m_env.m_ref != null))
+      m_env.m_ref.sync_shadow_state();
     #50ns;
   endtask
 

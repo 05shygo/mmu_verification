@@ -535,6 +535,7 @@ module tb_top;
   assign dut_probes_if.p13_csr_refill_req_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_req};
   assign dut_probes_if.p13_csr_refill_pgs_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_pgs};
   assign dut_probes_if.p13_csr_refill_data_vec = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_data};
+  assign ptw_mem_if_inst.mmu_lsu_data_req_accept = |u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
   assign ifu_if_inst.dbg_iutlb_acc_flt   = u_dut.x_mmu_l1itlb.iutlb_acc_flt;
   assign ifu_if_inst.dbg_iutlb_pmp_deny  = u_dut.x_mmu_l1itlb.pmp_flg_vld

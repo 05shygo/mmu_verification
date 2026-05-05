@@ -472,6 +472,8 @@ class phase9_generated_test_base extends test_base;
       default:
         `uvm_fatal(get_type_name(), $sformatf("Unknown PMP sequence '%s'", seq_name))
     endcase
+    if ((m_env != null) && (m_env.m_ref != null))
+      m_env.m_ref.sync_shadow_state();
   endtask
 
   protected virtual task start_sysmap_seq_by_name(string seq_name);

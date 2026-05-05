@@ -1,6 +1,6 @@
 // =============================================================================
 // MMU UVM Verification — testbench/ptw_mem_agent/ptw_mem_covergroups.svh
-// Phase 7: cg_ptw_rsp_kind + cg_rsp_delay_range（从 mmu_lsu_data_req=1 到 rsp 的拍数差）
+// Phase 7: cg_ptw_rsp_kind + cg_rsp_delay_range（从 RTL accept pulse 到 rsp 的拍数差）
 // =============================================================================
 `ifndef PTW_MEM_COVERGROUPS_SVH
 `define PTW_MEM_COVERGROUPS_SVH
@@ -51,7 +51,7 @@ class ptw_mem_cg_wrapper extends uvm_component;
         req_latched = 0;
         continue;
       end
-      if (vif.mmu_lsu_data_req && !req_latched) begin
+      if (vif.mmu_lsu_data_req_accept && !req_latched) begin
         req_latched    = 1;
         rsp_start_cyc  = cyc;
       end

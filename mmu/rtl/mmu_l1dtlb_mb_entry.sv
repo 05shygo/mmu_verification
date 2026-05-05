@@ -289,6 +289,8 @@ always_ff @(posedge mb_clk or negedge cpurst_b) begin
         fault_hold_r <= 1'b0;
     end else if (state_r == STATE_WFC && refill_vld && (refill_pgflt || refill_acflt)) begin
         fault_hold_r <= 1'b1;
+    end else if (((state_r == STATE_PGFLT) || (state_r == STATE_ACFLT)) && expt_hit) begin
+        fault_hold_r <= 1'b0;
     end else if (state_r == STATE_IDLE || state_nxt == STATE_IDLE) begin
         fault_hold_r <= 1'b0;
     end

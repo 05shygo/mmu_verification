@@ -191,14 +191,14 @@ always_comb begin
             if (abort_this_cyc)
                 state_nxt = STATE_IDLE;
             else if (expt_hit)
-                state_nxt = STATE_WFG;
+                state_nxt = STATE_IDLE;
         end
 
         STATE_ACFLT: begin
             if (abort_this_cyc)
                 state_nxt = STATE_IDLE;
             else if (expt_hit)
-                state_nxt = STATE_WFG;
+                state_nxt = STATE_IDLE;
         end
         
         STATE_ABT: begin

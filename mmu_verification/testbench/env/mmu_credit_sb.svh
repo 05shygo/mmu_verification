@@ -95,12 +95,27 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected bit m_ptw_snap_valid;
   protected logic       m_snap_rst_ni;
   protected logic [8:0] m_snap_l2_reqq_vld_vec;
+  protected logic [8:0] m_snap_l2_reqq_rdy_vec;
+  protected logic       m_snap_l2_reqq_issue_valid;
+  protected logic [2:0] m_snap_l2_reqq_issue_type;
+  protected logic [8:0] m_snap_l2mb_vld_vec;
+  protected logic [8:0] m_snap_l2mb_rdy_vec;
+  protected logic       m_snap_l2mb_issue_req;
+  protected logic [5:0] m_snap_l2mb_issue_eid;
+  protected logic [2:0] m_snap_l2mb_issue_type;
+  protected logic       m_snap_l2mb_alloc_valid;
   protected logic [7:0] m_snap_l1d_mb_vld;
   protected logic       m_snap_l2_final_vld;
   protected logic       m_snap_l2_miss;
   protected logic       m_snap_l2_dtlb_ref_pavld;
   protected logic       m_snap_l2_dtlb_ref_cmplt;
   protected logic       m_snap_l2tlb_ptw_req;
+  protected logic [5:0] m_snap_l2tlb_ptw_id;
+  protected logic [2:0] m_snap_l2tlb_ptw_type;
+  protected logic       m_snap_ptw_l2tlb_cmplt;
+  protected logic [5:0] m_snap_ptw_l2tlb_id;
+  protected logic [2:0] m_snap_ptw_l2tlb_type;
+  protected logic       m_snap_ptw_l1i_ref_cmplt;
   protected logic [8:0] m_snap_ptw_mbuf_entry_vld;
   protected logic [3:0] m_snap_ptw_mbuf_twu_have;
   protected logic [3:0] m_snap_ptw_twu_idle;
@@ -549,12 +564,27 @@ class mmu_credit_sb extends uvm_scoreboard;
     #1ps;
     m_snap_rst_ni                 = v_probe.rst_ni;
     m_snap_l2_reqq_vld_vec        = v_probe.l2_reqq_vld_vec;
+    m_snap_l2_reqq_rdy_vec        = v_probe.l2_reqq_rdy_vec;
+    m_snap_l2_reqq_issue_valid    = v_probe.l2_reqq_issue_valid;
+    m_snap_l2_reqq_issue_type     = v_probe.l2_reqq_issue_type;
+    m_snap_l2mb_vld_vec           = v_probe.l2mb_vld_vec;
+    m_snap_l2mb_rdy_vec           = v_probe.l2mb_rdy_vec;
+    m_snap_l2mb_issue_req         = v_probe.l2mb_issue_req;
+    m_snap_l2mb_issue_eid         = v_probe.l2mb_issue_eid;
+    m_snap_l2mb_issue_type        = v_probe.l2mb_issue_type;
+    m_snap_l2mb_alloc_valid       = v_probe.l2mb_alloc_valid;
     m_snap_l1d_mb_vld             = v_probe.l1d_mb_vld;
     m_snap_l2_final_vld           = v_probe.l2_final_vld;
     m_snap_l2_miss                = v_probe.l2_miss;
     m_snap_l2_dtlb_ref_pavld      = v_probe.l2_dtlb_ref_pavld;
     m_snap_l2_dtlb_ref_cmplt      = v_probe.l2_dtlb_ref_cmplt;
     m_snap_l2tlb_ptw_req          = v_probe.l2tlb_ptw_req;
+    m_snap_l2tlb_ptw_id           = v_probe.l2tlb_ptw_id;
+    m_snap_l2tlb_ptw_type         = v_probe.l2tlb_ptw_type;
+    m_snap_ptw_l2tlb_cmplt        = v_probe.ptw_l2tlb_cmplt;
+    m_snap_ptw_l2tlb_id           = v_probe.ptw_l2tlb_id;
+    m_snap_ptw_l2tlb_type         = v_probe.ptw_l2tlb_type;
+    m_snap_ptw_l1i_ref_cmplt      = v_probe.ptw_l1i_ref_cmplt;
     m_snap_ptw_mbuf_entry_vld     = v_probe.ptw_mbuf_entry_vld;
     m_snap_ptw_mbuf_twu_have      = v_probe.ptw_mbuf_twu_have;
     m_snap_ptw_twu_idle           = v_probe.ptw_twu_idle;
@@ -663,13 +693,28 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected function string _ptw_pending_snapshot();
     if (m_ptw_snap_valid) begin
       return $sformatf(
-        "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_final=%0b l2_miss=%0b l2_ptw_req=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=settled",
+        "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=settled",
         m_ptw_mbuf_cnt,
         m_snap_l1d_mb_vld,
         m_snap_l2_reqq_vld_vec,
+        m_snap_l2_reqq_rdy_vec,
+        m_snap_l2_reqq_issue_valid,
+        m_snap_l2_reqq_issue_type,
+        m_snap_l2mb_vld_vec,
+        m_snap_l2mb_rdy_vec,
+        m_snap_l2mb_issue_req,
+        m_snap_l2mb_issue_eid,
+        m_snap_l2mb_issue_type,
+        m_snap_l2mb_alloc_valid,
         m_snap_l2_final_vld,
         m_snap_l2_miss,
         m_snap_l2tlb_ptw_req,
+        m_snap_l2tlb_ptw_id,
+        m_snap_l2tlb_ptw_type,
+        m_snap_ptw_l2tlb_cmplt,
+        m_snap_ptw_l2tlb_id,
+        m_snap_ptw_l2tlb_type,
+        m_snap_ptw_l1i_ref_cmplt,
         m_snap_ptw_lsu_data_req,
         m_snap_ptw_lsu_data_req_grant,
         m_snap_ptw_mbuf_entry_vld,
@@ -684,13 +729,28 @@ class mmu_credit_sb extends uvm_scoreboard;
     if (v_probe == null)
       return $sformatf("ptw_mbuf_cnt=%0d v_probe=null", m_ptw_mbuf_cnt);
     return $sformatf(
-      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_final=%0b l2_miss=%0b l2_ptw_req=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=raw",
+      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=raw",
       m_ptw_mbuf_cnt,
       v_probe.l1d_mb_vld,
       v_probe.l2_reqq_vld_vec,
+      v_probe.l2_reqq_rdy_vec,
+      v_probe.l2_reqq_issue_valid,
+      v_probe.l2_reqq_issue_type,
+      v_probe.l2mb_vld_vec,
+      v_probe.l2mb_rdy_vec,
+      v_probe.l2mb_issue_req,
+      v_probe.l2mb_issue_eid,
+      v_probe.l2mb_issue_type,
+      v_probe.l2mb_alloc_valid,
       v_probe.l2_final_vld,
       v_probe.l2_miss,
       v_probe.l2tlb_ptw_req,
+      v_probe.l2tlb_ptw_id,
+      v_probe.l2tlb_ptw_type,
+      v_probe.ptw_l2tlb_cmplt,
+      v_probe.ptw_l2tlb_id,
+      v_probe.ptw_l2tlb_type,
+      v_probe.ptw_l1i_ref_cmplt,
       v_probe.ptw_lsu_data_req,
       v_probe.ptw_lsu_data_req_grant,
       v_probe.ptw_mbuf_entry_vld,

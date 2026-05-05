@@ -78,7 +78,18 @@ interface mmu_dut_probes_if (
 
   // mmu_l2tlb / x_l2tlb_reqq
   wire [8:0]   l2_reqq_vld_vec;  // TOTAL_DEPTH=9
+  wire [8:0]   l2_reqq_rdy_vec;
   wire [2:0]   l2_reqq_qid;
+  wire         l2_reqq_issue_valid;
+  wire [2:0]   l2_reqq_issue_type;
+
+  // mmu_l2tlb / x_l2tlb_mb
+  wire [8:0]   l2mb_vld_vec;
+  wire [8:0]   l2mb_rdy_vec;
+  wire         l2mb_issue_req;
+  wire [5:0]   l2mb_issue_eid;
+  wire [2:0]   l2mb_issue_type;
+  wire         l2mb_alloc_valid;
 
   // ptw
   wire [1:0]   ptw_xbar_hit_lvl;
@@ -98,8 +109,14 @@ interface mmu_dut_probes_if (
   wire         ptw_l2tlb_ref_pgflt;
   wire         ptw_l2tlb_ref_acc_err;
   wire         l2tlb_ptw_req;
+  wire [5:0]   l2tlb_ptw_id;
+  wire [2:0]   l2tlb_ptw_type;
   wire         ptw_lsu_data_req;
   wire [8:0]   ptw_lsu_data_req_grant;
+  wire         ptw_l2tlb_cmplt;
+  wire [5:0]   ptw_l2tlb_id;
+  wire [2:0]   ptw_l2tlb_type;
+  wire         ptw_l1i_ref_cmplt;
   wire         ptw_arb_req;
   wire         arb_ptw_grant;
   wire         arb_pfu_grant;
@@ -164,13 +181,15 @@ interface mmu_dut_probes_if (
     input l2_bank0, l2_final_way_hit, l2_raw_pre_pgs0, l2_final_vld, l2_final_tlb_hit;
     input l2_miss, l2_final_is_dtlb, l2_final_vpn, l2_final_hit_ppn;
     input l2_dtlb_ref_pavld, l2_dtlb_ref_cmplt, l2_dtlb_ref_vpn, l2_dtlb_ref_ppn;
-    input l2_reqq_vld_vec, l2_reqq_qid;
+    input l2_reqq_vld_vec, l2_reqq_rdy_vec, l2_reqq_qid, l2_reqq_issue_valid, l2_reqq_issue_type;
+    input l2mb_vld_vec, l2mb_rdy_vec, l2mb_issue_req, l2mb_issue_eid, l2mb_issue_type, l2mb_alloc_valid;
     input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any;
     input ptw_jtlb_ready, ptw_twu_idle, ptw_twu_mask, ptw_twu_data_ready;
     input ptw_mbuf_twu_have, ptw_mbuf_entry_vld;
     input ptw_twu_ref_req, ptw_twu_pgflt_vec, ptw_twu_acc_err_vec;
     input ptw_pgflt_vld, ptw_acc_err_vld, ptw_l2tlb_ref_pgflt, ptw_l2tlb_ref_acc_err;
-    input l2tlb_ptw_req, ptw_lsu_data_req, ptw_lsu_data_req_grant;
+    input l2tlb_ptw_req, l2tlb_ptw_id, l2tlb_ptw_type, ptw_lsu_data_req, ptw_lsu_data_req_grant;
+    input ptw_l2tlb_cmplt, ptw_l2tlb_id, ptw_l2tlb_type, ptw_l1i_ref_cmplt;
     input ptw_arb_req, arb_ptw_grant, arb_pfu_grant, arb_l2tlb_req;
     input ptw_arb_pgs, ptw_arb_vpn, ptw_l1d_ref_cmplt, ptw_l1d_ref_id, ptw_l1d_ref_ppn;
     input ptw_arb_ref_tag_din, ptw_cp0_maee;

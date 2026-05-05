@@ -550,6 +550,14 @@ module tb_top;
                                            && !u_dut.x_mmu_l1itlb.pmp_mmu_flg2[3]);
   assign ifu_if_inst.dbg_iutlb_ref_pgflt = u_dut.x_mmu_l1itlb.iutlb_ref_pgflt;
   assign ifu_if_inst.dbg_jtlb_acc_fault_flop = u_dut.x_mmu_l1itlb.jtlb_acc_fault_flop;
+  assign ifu_if_inst.dbg_iutlb_ref_cur_st = u_dut.x_mmu_l1itlb.ref_cur_st;
+  assign ifu_if_inst.dbg_iutlb_credit_cnt = u_dut.x_mmu_l1itlb.credit_cnt;
+  assign ifu_if_inst.dbg_iutlb_l2tlb_req = u_dut.x_mmu_l1itlb.iutlb_l2tlb_req;
+  assign ifu_if_inst.dbg_iutlb_miss_vld = u_dut.x_mmu_l1itlb.iutlb_miss_vld;
+  assign ifu_if_inst.dbg_iutlb_refill_on = u_dut.x_mmu_l1itlb.iutlb_refill_on;
+  assign ifu_if_inst.dbg_l1itlb_ref_cmplt = u_dut.x_mmu_l1itlb.l1itlb_ref_cmplt;
+  assign ifu_if_inst.dbg_ptw_l1tlb_pgflt = u_dut.x_mmu_l1itlb.ptw_l1tlb_pgflt;
+  assign ifu_if_inst.dbg_jtlb_iutlb_pgflt = u_dut.x_mmu_l1itlb.jtlb_iutlb_pgflt;
 
   // DTLB expt CAM (mmu_l1dtlb_expt_cam): on consume, mmu_l1dtlb_hit_rd muxes
   // PPN=VPN and ORs (expt_match & expt_{pg,ac}flt). Software ref has no CAM.

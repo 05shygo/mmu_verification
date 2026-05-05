@@ -64,7 +64,9 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     end
     $display({"[MMU_TIMEOUT_DBG] IFU ctx=%s busy=%0b end_quiesce=%0b ",
               "va_vld=%0b abort=%0b pavld=%0b va=0x%010h pa=0x%07h ",
-              "pgflt=%0b deny=%0b sec=%0b pmp_deny=%0b watchdog_cycles=%0d"},
+              "pgflt=%0b deny=%0b sec=%0b pmp_deny=%0b watchdog_cycles=%0d ",
+              "l1i_st=0x%0h credit=%0b req=%0b miss=%0b refill_on=%0b ",
+              "cmplt=%0b ptw_pgflt=%0b jtlb_pgflt=%0b"},
       ctx,
       m_drive_busy,
       m_end_quiesce,
@@ -77,7 +79,15 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       vif.mmu_ifu_deny,
       vif.mmu_ifu_sec,
       vif.dbg_iutlb_pmp_deny,
-      m_rsp_watchdog_cycles);
+      m_rsp_watchdog_cycles,
+      vif.dbg_iutlb_ref_cur_st,
+      vif.dbg_iutlb_credit_cnt,
+      vif.dbg_iutlb_l2tlb_req,
+      vif.dbg_iutlb_miss_vld,
+      vif.dbg_iutlb_refill_on,
+      vif.dbg_l1itlb_ref_cmplt,
+      vif.dbg_ptw_l1tlb_pgflt,
+      vif.dbg_jtlb_iutlb_pgflt);
   endfunction
 
   virtual task wait_for_idle(

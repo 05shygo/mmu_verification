@@ -91,6 +91,28 @@
 
 ---
 
+## 调试记录 #4 — `twu.sv` CSR 仲裁：`3'b001` 分支 grant 编码错误（`2'b10` → `2'b01`）
+
+| 项目 | 内容 |
+|------|------|
+| **记录时间** | 2026-05-05 20:15:33 +08:00（写入本条时采集） |
+| **版本号** | `833d737d88acd0046db7803057be638849c02d66`（`833d737`） |
+| **提交说明** | 本条对应 RTL 修正：`mmu/rtl/twu.sv` CSR Arbiter；若你本地另有提交，请以当时 `git rev-parse HEAD` 为准更新版本号 |
+| **涉及文件** | `mmu/rtl/twu.sv`（约 L994–L1001，`csr_grant` 组合逻辑） |
+
+### Bug 内容
+
+- **位置**：`CSR Arbiter` 中 `case({csr_itlb_sel, fst_csr_sel, scd_csr_sel})` 的分支 **`3'b001`**（仅 **`scd_csr_sel`** 为真：第二级 CSR 检查请求占用 CSR 端口）。
+- **错误行为**：原实现将 **`csr_grant[1:0]` 写成 `2'b10`**，使 **`csr_grant[1]=1`**。由下述定义可知 **`csr_grant[1]` 对应 `fst_csr_grant`、`csr_grant[0]` 对应 `scd_csr_grant`**，因此在「仅 scd 请求 CSR」的场景下 **错误地把 grant 给了第一级（fst）通路**。
+- **正确行为**：该场景应只授权 **第二级（scd）**，应 **`csr_grant[1:0] = 2'b01`**（`csr_grant[0]=1`），与后面 `csr_grant`→`csr_vpn`/`csr_type`/… 多路选择（`2'b01` 取 `scd_chk_csr_*`，`2'b10` 取 `fst_chk_csr_*`）一致。
+- **影响**：在仅 scd 侧发起 CSR 相关事务时，grant 与数据多路选择不一致，可导致 **CSR 端口选中源与真实请求级不匹配**（表现为错误 VPN/类型/数据路径或与 PMP/PTW 联动相关的异常；具体以仿真与波形为准）。
+
+### 修改摘要
+
+- **`mmu/rtl/twu.sv` ~L998**：`3'b001 : csr_grant[1:0] = 2'b10;` → **`3'b001 : csr_grant[1:0] = 2'b01;`**
+
+---
+
 ## 后续追加新记录的写法（模板）
 
 复制下表，填 **#N+1**、时间与版本后写要点即可：

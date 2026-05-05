@@ -92,6 +92,33 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int unsigned m_end_drain_attempts; // bounded ready_to_end retries
   protected int unsigned m_end_drain_max_cycles;
   protected int unsigned m_end_drain_stable_cycles;
+  protected bit m_ptw_snap_valid;
+  protected logic       m_snap_rst_ni;
+  protected logic [8:0] m_snap_l2_reqq_vld_vec;
+  protected logic [7:0] m_snap_l1d_mb_vld;
+  protected logic       m_snap_l2_final_vld;
+  protected logic       m_snap_l2_miss;
+  protected logic       m_snap_l2_dtlb_ref_pavld;
+  protected logic       m_snap_l2_dtlb_ref_cmplt;
+  protected logic       m_snap_l2tlb_ptw_req;
+  protected logic [8:0] m_snap_ptw_mbuf_entry_vld;
+  protected logic [3:0] m_snap_ptw_mbuf_twu_have;
+  protected logic [3:0] m_snap_ptw_twu_idle;
+  protected logic [3:0] m_snap_ptw_twu_mask;
+  protected logic [3:0] m_snap_ptw_twu_ref_req;
+  protected logic [3:0] m_snap_ptw_twu_pgflt_vec;
+  protected logic [3:0] m_snap_ptw_twu_acc_err_vec;
+  protected logic       m_snap_ptw_fault_any;
+  protected logic       m_snap_ptw_pgflt_vld;
+  protected logic       m_snap_ptw_acc_err_vld;
+  protected logic       m_snap_ptw_l2tlb_ref_pgflt;
+  protected logic       m_snap_ptw_l2tlb_ref_acc_err;
+  protected logic       m_snap_ptw_lsu_data_req;
+  protected logic [8:0] m_snap_ptw_lsu_data_req_grant;
+  protected logic       m_snap_ptw_arb_req;
+  protected logic       m_snap_arb_ptw_grant;
+  protected logic       m_snap_arb_l2tlb_req;
+  protected logic       m_snap_ptw_l1d_ref_cmplt;
 
   // ── Peak observations (for debug) ─────────────────────────────────────────
   protected int m_peak_l1i;
@@ -111,6 +138,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_end_drain_attempts  = 0;
     m_end_drain_max_cycles    = 262144;
     m_end_drain_stable_cycles = 64;
+    m_ptw_snap_valid     = 1'b0;
     m_peak_l1i            = 0;
     m_peak_l1d            = 0;
     m_peak_lsu_ext        = 0;
@@ -436,13 +464,17 @@ class mmu_credit_sb extends uvm_scoreboard;
     wait_cycles        = 0;
     stable_zero_cycles = 0;
     m_last_drain_timed_out = 1'b0;
+    m_ptw_snap_valid = 1'b0;
 
     while ((stable_zero_cycles < m_end_drain_stable_cycles) &&
            (wait_cycles < m_end_drain_max_cycles)) begin
-      if (v_probe != null)
+      if (v_probe != null) begin
         @(v_probe.mon_cb);
-      else
+        _sample_ptw_snapshot_after_clk();
+      end else begin
         #1ns;
+        m_ptw_snap_valid = 1'b0;
+      end
       wait_cycles++;
 
       if (_ptw_end_idle())
@@ -467,8 +499,49 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endtask
 
+  protected task _sample_ptw_snapshot_after_clk();
+    if (v_probe == null) begin
+      m_ptw_snap_valid = 1'b0;
+      return;
+    end
+
+    // Sample after same-edge NBA/combinational settling.  The end-of-sim idle
+    // check must match the waveform value after the DUT flops have updated,
+    // not a raw whitebox value read in an earlier simulator region.
+    #1ps;
+    m_snap_rst_ni                 = v_probe.rst_ni;
+    m_snap_l2_reqq_vld_vec        = v_probe.l2_reqq_vld_vec;
+    m_snap_l1d_mb_vld             = v_probe.l1d_mb_vld;
+    m_snap_l2_final_vld           = v_probe.l2_final_vld;
+    m_snap_l2_miss                = v_probe.l2_miss;
+    m_snap_l2_dtlb_ref_pavld      = v_probe.l2_dtlb_ref_pavld;
+    m_snap_l2_dtlb_ref_cmplt      = v_probe.l2_dtlb_ref_cmplt;
+    m_snap_l2tlb_ptw_req          = v_probe.l2tlb_ptw_req;
+    m_snap_ptw_mbuf_entry_vld     = v_probe.ptw_mbuf_entry_vld;
+    m_snap_ptw_mbuf_twu_have      = v_probe.ptw_mbuf_twu_have;
+    m_snap_ptw_twu_idle           = v_probe.ptw_twu_idle;
+    m_snap_ptw_twu_mask           = v_probe.ptw_twu_mask;
+    m_snap_ptw_twu_ref_req        = v_probe.ptw_twu_ref_req;
+    m_snap_ptw_twu_pgflt_vec      = v_probe.ptw_twu_pgflt_vec;
+    m_snap_ptw_twu_acc_err_vec    = v_probe.ptw_twu_acc_err_vec;
+    m_snap_ptw_fault_any          = v_probe.ptw_fault_any;
+    m_snap_ptw_pgflt_vld          = v_probe.ptw_pgflt_vld;
+    m_snap_ptw_acc_err_vld        = v_probe.ptw_acc_err_vld;
+    m_snap_ptw_l2tlb_ref_pgflt    = v_probe.ptw_l2tlb_ref_pgflt;
+    m_snap_ptw_l2tlb_ref_acc_err  = v_probe.ptw_l2tlb_ref_acc_err;
+    m_snap_ptw_lsu_data_req       = v_probe.ptw_lsu_data_req;
+    m_snap_ptw_lsu_data_req_grant = v_probe.ptw_lsu_data_req_grant;
+    m_snap_ptw_arb_req            = v_probe.ptw_arb_req;
+    m_snap_arb_ptw_grant          = v_probe.arb_ptw_grant;
+    m_snap_arb_l2tlb_req          = v_probe.arb_l2tlb_req;
+    m_snap_ptw_l1d_ref_cmplt      = v_probe.ptw_l1d_ref_cmplt;
+    m_ptw_snap_valid              = 1'b1;
+  endtask
+
   protected function bit _needs_end_drain();
-    return !_ptw_end_idle();
+    if (m_ptw_mbuf_cnt != 0)
+      return 1'b1;
+    return _ptw_drain_pending_raw();
   endfunction
 
   protected function bit _ptw_end_idle();
@@ -478,6 +551,41 @@ class mmu_credit_sb extends uvm_scoreboard;
   endfunction
 
   protected function bit _ptw_drain_pending();
+    if (m_ptw_snap_valid) begin
+      if (m_snap_rst_ni !== 1'b1)
+        return 1'b0;
+
+      return (m_snap_l2_reqq_vld_vec        !== 9'b0)
+          || (m_snap_l1d_mb_vld             !== 8'b0)
+          || (m_snap_l2_final_vld           === 1'b1)
+          || (m_snap_l2_miss                === 1'b1)
+          || (m_snap_l2_dtlb_ref_pavld      === 1'b1)
+          || (m_snap_l2_dtlb_ref_cmplt      === 1'b1)
+          || (m_snap_l2tlb_ptw_req          === 1'b1)
+          || (m_snap_ptw_mbuf_entry_vld     !== 9'b0)
+          || (m_snap_ptw_mbuf_twu_have      !== 4'b0)
+          || (m_snap_ptw_twu_idle           !== 4'hf)
+          || (m_snap_ptw_twu_mask           !== 4'b0)
+          || (m_snap_ptw_twu_ref_req        !== 4'b0)
+          || (m_snap_ptw_twu_pgflt_vec      !== 4'b0)
+          || (m_snap_ptw_twu_acc_err_vec    !== 4'b0)
+          || (m_snap_ptw_fault_any          === 1'b1)
+          || (m_snap_ptw_pgflt_vld          === 1'b1)
+          || (m_snap_ptw_acc_err_vld        === 1'b1)
+          || (m_snap_ptw_l2tlb_ref_pgflt    === 1'b1)
+          || (m_snap_ptw_l2tlb_ref_acc_err  === 1'b1)
+          || (m_snap_ptw_lsu_data_req       === 1'b1)
+          || (m_snap_ptw_lsu_data_req_grant !== 9'b0)
+          || (m_snap_ptw_arb_req            === 1'b1)
+          || (m_snap_arb_ptw_grant          === 1'b1)
+          || (m_snap_arb_l2tlb_req          === 1'b1)
+          || (m_snap_ptw_l1d_ref_cmplt      === 1'b1);
+    end
+
+    return _ptw_drain_pending_raw();
+  endfunction
+
+  protected function bit _ptw_drain_pending_raw();
     if (v_probe == null)
       return 1'b0;
     if (v_probe.rst_ni !== 1'b1)
@@ -511,43 +619,34 @@ class mmu_credit_sb extends uvm_scoreboard;
   endfunction
 
   protected function bit _ptw_hw_pending();
-    if (v_probe == null)
-      return 1'b0;
-    if (v_probe.rst_ni !== 1'b1)
-      return 1'b0;
-
-    return (v_probe.l1d_mb_vld          !== 8'b0)
-        || (v_probe.l2_reqq_vld_vec     !== 9'b0)
-        || (v_probe.l2_final_vld        === 1'b1)
-        || (v_probe.l2_miss             === 1'b1)
-        || (v_probe.l2_dtlb_ref_pavld   === 1'b1)
-        || (v_probe.l2_dtlb_ref_cmplt   === 1'b1)
-        || (v_probe.l2tlb_ptw_req       === 1'b1)
-        || (v_probe.ptw_mbuf_entry_vld  !== 9'b0)
-        || (v_probe.ptw_mbuf_twu_have   !== 4'b0)
-        || (v_probe.ptw_twu_idle        !== 4'hf)
-        || (v_probe.ptw_twu_mask        !== 4'b0)
-        || (v_probe.ptw_twu_ref_req     !== 4'b0)
-        || (v_probe.ptw_twu_pgflt_vec   !== 4'b0)
-        || (v_probe.ptw_twu_acc_err_vec !== 4'b0)
-        || (v_probe.ptw_fault_any       === 1'b1)
-        || (v_probe.ptw_pgflt_vld       === 1'b1)
-        || (v_probe.ptw_acc_err_vld     === 1'b1)
-        || (v_probe.ptw_l2tlb_ref_pgflt === 1'b1)
-        || (v_probe.ptw_l2tlb_ref_acc_err === 1'b1)
-        || (v_probe.ptw_lsu_data_req    === 1'b1)
-        || (v_probe.ptw_lsu_data_req_grant !== 9'b0)
-        || (v_probe.ptw_arb_req         === 1'b1)
-        || (v_probe.arb_ptw_grant       === 1'b1)
-        || (v_probe.arb_l2tlb_req       === 1'b1)
-        || (v_probe.ptw_l1d_ref_cmplt   === 1'b1);
+    return _ptw_drain_pending();
   endfunction
 
   protected function string _ptw_pending_snapshot();
+    if (m_ptw_snap_valid) begin
+      return $sformatf(
+        "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_final=%0b l2_miss=%0b l2_ptw_req=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=settled",
+        m_ptw_mbuf_cnt,
+        m_snap_l1d_mb_vld,
+        m_snap_l2_reqq_vld_vec,
+        m_snap_l2_final_vld,
+        m_snap_l2_miss,
+        m_snap_l2tlb_ptw_req,
+        m_snap_ptw_lsu_data_req,
+        m_snap_ptw_lsu_data_req_grant,
+        m_snap_ptw_mbuf_entry_vld,
+        m_snap_ptw_twu_idle,
+        m_snap_ptw_twu_mask,
+        m_snap_ptw_twu_ref_req,
+        m_snap_ptw_arb_req,
+        m_snap_arb_ptw_grant,
+        m_snap_arb_l2tlb_req);
+    end
+
     if (v_probe == null)
       return $sformatf("ptw_mbuf_cnt=%0d v_probe=null", m_ptw_mbuf_cnt);
     return $sformatf(
-      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_final=%0b l2_miss=%0b l2_ptw_req=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b",
+      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_final=%0b l2_miss=%0b l2_ptw_req=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=raw",
       m_ptw_mbuf_cnt,
       v_probe.l1d_mb_vld,
       v_probe.l2_reqq_vld_vec,

@@ -37,7 +37,7 @@ class test_mmu_pde_cache_hit_l3_skip_thd extends phase12_generated_test_base;
 
     phase12_map_hugepage_fixture();
     phase12_drive_lsu_rr(39'h0_4000_0000, 1, 1, LSU_PIPE0, 1'b0);
-    phase12_cp0_tlb_allinv();
+    phase12_cp0_tlb_allinv(1'b1, 1'b1);
     repeat (3)
       phase12_drive_lsu_rr(39'h0_4000_0000, 1, 1, LSU_PIPE0, 1'b0);
 

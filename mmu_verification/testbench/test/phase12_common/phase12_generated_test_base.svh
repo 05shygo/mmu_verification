@@ -57,9 +57,31 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     m_env.m_ptw_mem.m_responder.m_bus_error_rate_permille = bus_error_rate_permille;
   endtask
 
-  protected virtual task phase12_cp0_tlb_allinv();
+  protected virtual task phase12_wait_for_quiescent(
+    input string ctx = "phase12_quiescent",
+    input int unsigned max_cycles = 262144,
+    input int unsigned stable_cycles = 16
+  );
+    if (m_env == null)
+      `uvm_fatal(get_type_name(), "phase12_wait_for_quiescent: m_env is null")
+    m_env.wait_for_quiescent_midtest(ctx, max_cycles, stable_cycles);
+    if ((m_env.m_credit_sb != null) && m_env.m_credit_sb.last_drain_timed_out())
+      `uvm_error(get_type_name(),
+        $sformatf("phase12_wait_for_quiescent timed out while waiting for MMU internal idle: %s",
+          ctx))
+  endtask
+
+  protected virtual task phase12_cp0_tlb_allinv(
+    input bit wait_before = 1'b0,
+    input bit wait_after  = 1'b0
+  );
+    if (wait_before)
+      phase12_wait_for_quiescent("phase12_pre_cp0_tlb_allinv");
     start_cp0_seq_by_name("cp0_tlb_allinv_seq");
-    #100ns;
+    if (wait_after)
+      phase12_wait_for_quiescent("phase12_post_cp0_tlb_allinv");
+    else
+      #100ns;
   endtask
 
   protected virtual task phase12_set_pmp_raw(input bit [3:0] raw_flg[8]);

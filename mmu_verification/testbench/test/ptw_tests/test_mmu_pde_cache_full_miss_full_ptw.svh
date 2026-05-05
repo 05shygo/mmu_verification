@@ -37,7 +37,7 @@ class test_mmu_pde_cache_full_miss_full_ptw extends phase12_generated_test_base;
 
     phase12_map_hugepage_fixture();
     phase12_drive_lsu_rr(39'h0_3000_1000, 1, 1, LSU_PIPE0, 1'b0);
-    phase12_cp0_tlb_allinv();
+    phase12_cp0_tlb_allinv(1'b1, 1'b1);
     phase12_drive_lsu_rr(39'h0_3000_2000, 1, 1, LSU_PIPE1, 1'b1);
 
     #(m_post_drain);

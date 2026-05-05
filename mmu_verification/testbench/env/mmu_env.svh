@@ -66,6 +66,26 @@ class mmu_env extends uvm_env;
       UVM_MEDIUM)
   endtask
 
+  virtual task wait_for_quiescent_midtest(
+    string       ctx = "mid-test",
+    int unsigned max_cycles = 262144,
+    int unsigned stable_cycles = 16
+  );
+    fork
+      begin
+        if ((m_ifu != null) && (m_ifu.m_driver != null))
+          m_ifu.m_driver.wait_for_idle({ctx, "_ifu"}, max_cycles, stable_cycles);
+      end
+      begin
+        if ((m_lsu != null) && (m_lsu.m_driver != null))
+          m_lsu.m_driver.wait_for_idle({ctx, "_lsu"}, max_cycles, stable_cycles);
+      end
+    join
+
+    if (m_credit_sb != null)
+      m_credit_sb.wait_for_internal_idle(ctx);
+  endtask
+
   // ── Build phase ───────────────────────────────────────────────────────────
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);

@@ -39,6 +39,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected bit m_stamo_busy;
   protected bit m_inv_busy;
   protected bit m_end_quiesce;
+  protected int unsigned m_retry_probe_cycles;
+  protected int unsigned m_rsp_watchdog_cycles;
 
   // Mutual exclusion between pipe0 and pipe1: the DUT's L1 DTLB lookup logic
   // shares resources between the two pipes.  Asserting va0_vld and va1_vld on
@@ -56,12 +58,20 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     m_stamo_busy = 1'b0;
     m_inv_busy   = 1'b0;
     m_end_quiesce = 1'b0;
+    m_retry_probe_cycles = 4096;
+    m_rsp_watchdog_cycles = 200000;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
     if (!uvm_config_db #(virtual lsu_if)::get(this, "", "LSU_VIF", vif))
       `uvm_fatal(get_type_name(), "Cannot get LSU_VIF from config_db")
+    void'($value$plusargs("LSU_RETRY_PROBE_CYCLES=%0d", m_retry_probe_cycles));
+    void'($value$plusargs("LSU_RSP_WATCHDOG_CYCLES=%0d", m_rsp_watchdog_cycles));
+    if (m_retry_probe_cycles == 0)
+      m_retry_probe_cycles = 1;
+    if (m_rsp_watchdog_cycles == 0)
+      m_rsp_watchdog_cycles = 1;
   endfunction
 
   virtual function void set_end_quiesce(bit enable = 1'b1);
@@ -254,7 +264,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     forever begin
       bit got_rsp;
       bit retry_gate;
-      bit timeout_hit;
+      bit watchdog_hit;
       bit [11:0] prev_wakeup;
       _get_kind(LSU_PIPE0, tr);
       m_pipe0_busy = 1'b1;
@@ -273,10 +283,12 @@ class lsu_driver extends uvm_driver #(lsu_txn);
 
       got_rsp     = 1'b0;
       retry_gate  = 1'b0;
-      timeout_hit = 1'b0;
+      watchdog_hit = 1'b0;
       prev_wakeup = vif.driver_cb.mmu_lsu_tlb_wakeup;
 
-      while (!got_rsp && !timeout_hit) begin
+      while (!got_rsp) begin
+        retry_gate   = 1'b0;
+        watchdog_hit = 1'b0;
         fork
           begin : wait_rsp_p0
             if (vif.driver_cb.mmu_lsu_pa0_vld !== 1'b1)
@@ -289,12 +301,16 @@ class lsu_driver extends uvm_driver #(lsu_txn);
           end
           begin : wait_retry_p0
             bit [11:0] cur_wakeup;
+            int unsigned retry_wait_cycles;
+            retry_wait_cycles = 0;
             forever begin
               @(vif.driver_cb);
+              retry_wait_cycles++;
               cur_wakeup = vif.driver_cb.mmu_lsu_tlb_wakeup;
               if ((vif.driver_cb.mmu_lsu_pa0_vld !== 1'b1)
                   && ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)
-                      || _has_wakeup_edge(prev_wakeup, cur_wakeup))) begin
+                      || _has_wakeup_edge(prev_wakeup, cur_wakeup)
+                      || (retry_wait_cycles >= m_retry_probe_cycles))) begin
                 retry_gate  = 1'b1;
                 prev_wakeup = cur_wakeup;
                 break;
@@ -303,19 +319,26 @@ class lsu_driver extends uvm_driver #(lsu_txn);
             end
           end
           begin : wait_timeout_p0
-            repeat (200000) @(vif.driver_cb);
-            timeout_hit = 1'b1;
+            repeat (m_rsp_watchdog_cycles) @(vif.driver_cb);
+            watchdog_hit = 1'b1;
             `uvm_warning(get_type_name(),
-              $sformatf("Pipe0 response timeout: va=0x%016h id=%0d busy=%0b wakeup=0x%03h",
+              $sformatf("Pipe0 response watchdog expired; retrying until completion: va=0x%016h id=%0d busy=%0b wakeup=0x%03h",
                 tr.va, tr.id, vif.driver_cb.mmu_lsu_tlb_busy,
                 vif.driver_cb.mmu_lsu_tlb_wakeup))
           end
         join_any
         disable fork;
+        if (!got_rsp && (vif.driver_cb.mmu_lsu_pa0_vld === 1'b1)) begin
+          got_rsp         = 1'b1;
+          tr.pa           = vif.driver_cb.mmu_lsu_pa0;
+          tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
+          tr.access_fault = vif.driver_cb.mmu_lsu_access_fault0;
+          tr.sec          = vif.driver_cb.mmu_lsu_sec0;
+        end
 
         if (got_rsp) begin
           @(vif.driver_cb);
-        end else if (!timeout_hit && retry_gate) begin
+        end else if (retry_gate || watchdog_hit) begin
           // Align retry timing with lsu_monitor drop_reopen_block.  Retrying on
           // the same sampled cycle as busy-clear/wakeup lets the next one-cycle
           // pulse fall entirely inside the reopen barrier and the monitor misses
@@ -337,7 +360,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     forever begin
       bit got_rsp;
       bit retry_gate;
-      bit timeout_hit;
+      bit watchdog_hit;
       bit [11:0] prev_wakeup;
       _get_kind(LSU_PIPE1, tr);
       m_pipe1_busy = 1'b1;
@@ -356,10 +379,12 @@ class lsu_driver extends uvm_driver #(lsu_txn);
 
       got_rsp     = 1'b0;
       retry_gate  = 1'b0;
-      timeout_hit = 1'b0;
+      watchdog_hit = 1'b0;
       prev_wakeup = vif.driver_cb.mmu_lsu_tlb_wakeup;
 
-      while (!got_rsp && !timeout_hit) begin
+      while (!got_rsp) begin
+        retry_gate   = 1'b0;
+        watchdog_hit = 1'b0;
         fork
           begin : wait_rsp_p1
             if (vif.driver_cb.mmu_lsu_pa1_vld !== 1'b1)
@@ -372,12 +397,16 @@ class lsu_driver extends uvm_driver #(lsu_txn);
           end
           begin : wait_retry_p1
             bit [11:0] cur_wakeup;
+            int unsigned retry_wait_cycles;
+            retry_wait_cycles = 0;
             forever begin
               @(vif.driver_cb);
+              retry_wait_cycles++;
               cur_wakeup = vif.driver_cb.mmu_lsu_tlb_wakeup;
               if ((vif.driver_cb.mmu_lsu_pa1_vld !== 1'b1)
                   && ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)
-                      || _has_wakeup_edge(prev_wakeup, cur_wakeup))) begin
+                      || _has_wakeup_edge(prev_wakeup, cur_wakeup)
+                      || (retry_wait_cycles >= m_retry_probe_cycles))) begin
                 retry_gate  = 1'b1;
                 prev_wakeup = cur_wakeup;
                 break;
@@ -386,19 +415,26 @@ class lsu_driver extends uvm_driver #(lsu_txn);
             end
           end
           begin : wait_timeout_p1
-            repeat (200000) @(vif.driver_cb);
-            timeout_hit = 1'b1;
+            repeat (m_rsp_watchdog_cycles) @(vif.driver_cb);
+            watchdog_hit = 1'b1;
             `uvm_warning(get_type_name(),
-              $sformatf("Pipe1 response timeout: va=0x%016h id=%0d busy=%0b wakeup=0x%03h",
+              $sformatf("Pipe1 response watchdog expired; retrying until completion: va=0x%016h id=%0d busy=%0b wakeup=0x%03h",
                 tr.va, tr.id, vif.driver_cb.mmu_lsu_tlb_busy,
                 vif.driver_cb.mmu_lsu_tlb_wakeup))
           end
         join_any
         disable fork;
+        if (!got_rsp && (vif.driver_cb.mmu_lsu_pa1_vld === 1'b1)) begin
+          got_rsp         = 1'b1;
+          tr.pa           = vif.driver_cb.mmu_lsu_pa1;
+          tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;
+          tr.access_fault = vif.driver_cb.mmu_lsu_access_fault1;
+          tr.sec          = vif.driver_cb.mmu_lsu_sec1;
+        end
 
         if (got_rsp) begin
           @(vif.driver_cb);
-        end else if (!timeout_hit && retry_gate) begin
+        end else if (retry_gate || watchdog_hit) begin
           // Same reopen-gap rule as pipe0; see note above.
           @(vif.driver_cb);
           retry_gate = 1'b0;
@@ -416,7 +452,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     lsu_txn tr;
     forever begin
       bit got_rsp;
-      bit timeout_hit;
+      bit watchdog_hit;
 
       _get_kind(LSU_PIPE2, tr);
       m_pipe2_busy = 1'b1;
@@ -430,29 +466,36 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_va2_vld <= 1'b1;
       vif.driver_cb.lsu_mmu_va2     <= tr.va2;
 
-      got_rsp     = 1'b0;
-      timeout_hit = 1'b0;
-      fork
-        begin : wait_rsp_p2
-          if (vif.driver_cb.mmu_lsu_pa2_vld !== 1'b1)
-            @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa2_vld === 1'b1);
+      got_rsp = 1'b0;
+      while (!got_rsp) begin
+        watchdog_hit = 1'b0;
+        fork
+          begin : wait_rsp_p2
+            if (vif.driver_cb.mmu_lsu_pa2_vld !== 1'b1)
+              @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa2_vld === 1'b1);
+            got_rsp         = 1'b1;
+            tr.pa           = vif.driver_cb.mmu_lsu_pa2;
+            tr.access_fault = vif.driver_cb.mmu_lsu_pa2_err;
+            tr.sec          = vif.driver_cb.mmu_lsu_sec2;
+          end
+          begin : wait_watchdog_p2
+            repeat (m_rsp_watchdog_cycles) @(vif.driver_cb);
+            watchdog_hit = 1'b1;
+            `uvm_warning(get_type_name(),
+              $sformatf("Pipe2 response watchdog expired; continuing to hold request until completion: va2=0x%07h pa2_vld=%0b",
+                tr.va2, vif.driver_cb.mmu_lsu_pa2_vld))
+          end
+        join_any
+        disable fork;
+        if (!got_rsp && (vif.driver_cb.mmu_lsu_pa2_vld === 1'b1)) begin
           got_rsp         = 1'b1;
           tr.pa           = vif.driver_cb.mmu_lsu_pa2;
           tr.access_fault = vif.driver_cb.mmu_lsu_pa2_err;
           tr.sec          = vif.driver_cb.mmu_lsu_sec2;
         end
-        begin : wait_timeout_p2
-          repeat (200000) @(vif.driver_cb);
-          timeout_hit = 1'b1;
-          `uvm_warning(get_type_name(),
-            $sformatf("Pipe2 response timeout: va2=0x%07h pa2_vld=%0b",
-              tr.va2, vif.driver_cb.mmu_lsu_pa2_vld))
-        end
-      join_any
-      disable fork;
+      end
 
-      if (got_rsp || timeout_hit)
-        vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
+      vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
 
       @(vif.driver_cb);
       m_pipe2_busy = 1'b0;

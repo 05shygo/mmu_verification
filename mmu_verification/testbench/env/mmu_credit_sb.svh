@@ -12,7 +12,7 @@
 //   m_credit_l1d   — outstanding LSU translation requests (external view)
 //     lsu p0/p1 ap_req → +1
 //     lsu p0/p1 ap_rsp → -1
-//     NOTE: under heavy backpressure / timeout, LSU-side sleeping requests
+//     NOTE: under heavy backpressure, LSU-side sleeping requests
 //     can make this externally-visible count exceed L1_DTLB_ENTRIES.
 //     It is therefore a conservation trend signal, not a strict capacity cap.
 //
@@ -42,9 +42,9 @@
 //     Therefore this counter must stay within {0,1}; it is NOT the DUT's
 //     internal 9-entry PTW mbuf occupancy.
 //
-// Conservation: m_credit_l1i/l1d/ptw_mbuf_cnt must == 0 at report_phase.
-// m_lsu_ext_outstanding may be non-zero at end-of-sim if LSU-side sleeping
-// requests were never re-issued (expected under timeout/backpressure).
+// Conservation: m_credit_l1i/l1d/lsu_ext_outstanding/ptw_mbuf_cnt must be 0
+// at report_phase.  LSU-side sleeping requests must be re-issued by the driver
+// until a real DUT response is observed before the test is allowed to finish.
 //
 // Eight TLM analysis FIFOs (one per AP stream):
 //   af_ifu_req, af_ifu_rsp, af_ifu_drop,
@@ -88,6 +88,7 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int m_ptw_mbuf_cnt;        // PTW serialized external outstanding proxy
   protected bit m_end_drain_active;    // run-phase end settle window in progress
   protected bit m_pre_drop_drain_done;  // test_base already performed final drain
+  protected bit m_last_drain_timed_out;
   protected int unsigned m_end_drain_attempts; // bounded ready_to_end retries
   protected int unsigned m_end_drain_max_cycles;
   protected int unsigned m_end_drain_stable_cycles;
@@ -106,8 +107,9 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_ptw_mbuf_cnt        = 0;
     m_end_drain_active    = 1'b0;
     m_pre_drop_drain_done = 1'b0;
+    m_last_drain_timed_out = 1'b0;
     m_end_drain_attempts  = 0;
-    m_end_drain_max_cycles    = 32768;
+    m_end_drain_max_cycles    = 262144;
     m_end_drain_stable_cycles = 64;
     m_peak_l1i            = 0;
     m_peak_l1d            = 0;
@@ -413,6 +415,14 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_end_drain_active = 1'b0;
   endtask
 
+  virtual task wait_for_internal_idle(string ctx = "mid-test");
+    _wait_for_ptw_end_idle(ctx);
+  endtask
+
+  virtual function bit last_drain_timed_out();
+    return m_last_drain_timed_out;
+  endfunction
+
   protected task _drain_ptw_before_end(uvm_phase phase);
     _wait_for_ptw_end_idle("phase-ready");
     m_end_drain_active = 1'b0;
@@ -425,6 +435,7 @@ class mmu_credit_sb extends uvm_scoreboard;
 
     wait_cycles        = 0;
     stable_zero_cycles = 0;
+    m_last_drain_timed_out = 1'b0;
 
     while ((stable_zero_cycles < m_end_drain_stable_cycles) &&
            (wait_cycles < m_end_drain_max_cycles)) begin
@@ -441,6 +452,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
 
     if (!_ptw_end_idle()) begin
+      m_last_drain_timed_out = 1'b1;
       `uvm_warning(get_type_name(),
         $sformatf(
           "PTW/L2 end-drain timeout (%s) after %0d cycles: stable_zero_cycles=%0d/%0d %s",
@@ -472,6 +484,7 @@ class mmu_credit_sb extends uvm_scoreboard;
       return 1'b0;
 
     return (v_probe.l2_reqq_vld_vec     !== 9'b0)
+        || (v_probe.l1d_mb_vld          !== 8'b0)
         || (v_probe.l2_final_vld        === 1'b1)
         || (v_probe.l2_miss             === 1'b1)
         || (v_probe.l2_dtlb_ref_pavld   === 1'b1)
@@ -503,7 +516,13 @@ class mmu_credit_sb extends uvm_scoreboard;
     if (v_probe.rst_ni !== 1'b1)
       return 1'b0;
 
-    return (v_probe.l2tlb_ptw_req       === 1'b1)
+    return (v_probe.l1d_mb_vld          !== 8'b0)
+        || (v_probe.l2_reqq_vld_vec     !== 9'b0)
+        || (v_probe.l2_final_vld        === 1'b1)
+        || (v_probe.l2_miss             === 1'b1)
+        || (v_probe.l2_dtlb_ref_pavld   === 1'b1)
+        || (v_probe.l2_dtlb_ref_cmplt   === 1'b1)
+        || (v_probe.l2tlb_ptw_req       === 1'b1)
         || (v_probe.ptw_mbuf_entry_vld  !== 9'b0)
         || (v_probe.ptw_mbuf_twu_have   !== 4'b0)
         || (v_probe.ptw_twu_idle        !== 4'hf)
@@ -520,6 +539,7 @@ class mmu_credit_sb extends uvm_scoreboard;
         || (v_probe.ptw_lsu_data_req_grant !== 9'b0)
         || (v_probe.ptw_arb_req         === 1'b1)
         || (v_probe.arb_ptw_grant       === 1'b1)
+        || (v_probe.arb_l2tlb_req       === 1'b1)
         || (v_probe.ptw_l1d_ref_cmplt   === 1'b1);
   endfunction
 
@@ -599,16 +619,15 @@ class mmu_credit_sb extends uvm_scoreboard;
           m_credit_l1i))
 
     if (m_credit_l1d != 0)
-      `uvm_warning(get_type_name(),
-        $sformatf("[CreditSB] credit_l1d != 0 at end-of-sim (%0d): includes timed-out/sleeping LSU requests in external view",
+      `uvm_error(get_type_name(),
+        $sformatf("[CreditSB] credit_l1d != 0 at end-of-sim (%0d): LSU requests did not fully complete",
           m_credit_l1d))
 
-    // lsu_ext_outstanding may be non-zero if driver timeouts caused requests to
-    // be abandoned without a DUT response.  This is expected under backpressure
-    // or when sleeping LSU requests never received a wakeup re-issue.
+    // With the LSU driver retrying until real pa*_vld, a non-zero external
+    // count at report_phase means the final stimulus/request drain failed.
     if (m_lsu_ext_outstanding != 0)
-      `uvm_warning(get_type_name(),
-        $sformatf("[CreditSB] lsu_ext_outstanding != 0 at end-of-sim (%0d): includes timed-out/sleeping LSU requests",
+      `uvm_error(get_type_name(),
+        $sformatf("[CreditSB] lsu_ext_outstanding != 0 at end-of-sim (%0d): LSU external requests did not fully complete",
           m_lsu_ext_outstanding))
 
     if (m_ptw_mbuf_cnt != 0)
@@ -621,9 +640,9 @@ class mmu_credit_sb extends uvm_scoreboard;
         $sformatf("[CreditSB] PTW/L2 internal state not idle at end-of-sim: %s",
           _ptw_pending_snapshot()))
 
-    if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_ptw_mbuf_cnt == 0 && !_ptw_hw_pending())
+    if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_lsu_ext_outstanding == 0 && m_ptw_mbuf_cnt == 0 && !_ptw_hw_pending())
       `uvm_info(get_type_name(),
-        "[CreditSB] PASS — credit conservation verified (l1i/l1d/ptw all == 0 and PTW/L2 idle)",
+        "[CreditSB] PASS — credit conservation verified (l1i/l1d/lsu_ext/ptw all == 0 and PTW/L2 idle)",
         UVM_MEDIUM)
   endfunction
 

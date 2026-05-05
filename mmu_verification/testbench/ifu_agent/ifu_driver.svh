@@ -20,17 +20,22 @@ class ifu_driver extends uvm_driver #(ifu_txn);
   virtual ifu_if vif;
   protected bit m_drive_busy;
   protected bit m_end_quiesce;
+  protected int unsigned m_rsp_watchdog_cycles;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
     m_drive_busy  = 1'b0;
     m_end_quiesce = 1'b0;
+    m_rsp_watchdog_cycles = 4000;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
     if (!uvm_config_db #(virtual ifu_if)::get(this, "", "IFU_VIF", vif))
       `uvm_fatal(get_type_name(), "Cannot get IFU_VIF from config_db")
+    void'($value$plusargs("IFU_RSP_WATCHDOG_CYCLES=%0d", m_rsp_watchdog_cycles));
+    if (m_rsp_watchdog_cycles == 0)
+      m_rsp_watchdog_cycles = 1;
   endfunction
 
   virtual function void set_end_quiesce(bit enable = 1'b1);
@@ -140,6 +145,7 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
     vif.driver_cb.ifu_mmu_va     <= tr.va >> 1;
     vif.driver_cb.ifu_mmu_abort  <= tr.abort;
+    tr.pavld                     = 1'b0;
     `uvm_info(get_type_name(),
       $sformatf("[IFU_DRV_REQ_DBG] drive req: va=0x%010h abort=%0b pavld_now=%0b pa_now=0x%07h",
         {1'b0, tr.va[38:0]}, tr.abort, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa),
@@ -151,17 +157,39 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       vif.driver_cb.ifu_mmu_abort  <= 1'b0;
     end else begin
       @(vif.driver_cb);
-      fork
-        begin : wait_ifu_rsp
-          // Hit responses can be visible immediately after the request cycle.
-          // Miss responses require holding the same PC until pavld returns.
-          if (vif.driver_cb.mmu_ifu_pavld !== 1'b1)
-            @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
-          `uvm_info(get_type_name(),
-            $sformatf("[IFU_DRV_RSP_EDGE_DBG] rsp edge: va=0x%010h pavld=%0b pa=0x%07h pgflt=%0b deny=%0b",
-              {1'b0, tr.va[38:0]}, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa,
-              vif.driver_cb.mmu_ifu_pgflt, vif.driver_cb.mmu_ifu_deny),
-            UVM_DEBUG)
+      while (tr.pavld !== 1'b1) begin
+        bit watchdog_hit;
+        watchdog_hit = 1'b0;
+        fork
+          begin : wait_ifu_rsp
+            // Hit responses can be visible immediately after the request cycle.
+            // Miss responses require holding the same PC until pavld returns.
+            if (vif.driver_cb.mmu_ifu_pavld !== 1'b1)
+              @(vif.driver_cb iff vif.driver_cb.mmu_ifu_pavld === 1'b1);
+            `uvm_info(get_type_name(),
+              $sformatf("[IFU_DRV_RSP_EDGE_DBG] rsp edge: va=0x%010h pavld=%0b pa=0x%07h pgflt=%0b deny=%0b",
+                {1'b0, tr.va[38:0]}, vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa,
+                vif.driver_cb.mmu_ifu_pgflt, vif.driver_cb.mmu_ifu_deny),
+              UVM_DEBUG)
+            tr.pa      = vif.driver_cb.mmu_ifu_pa;
+            tr.pgflt   = vif.driver_cb.mmu_ifu_pgflt;
+            tr.deny    = vif.driver_cb.mmu_ifu_deny;
+            tr.sec     = vif.driver_cb.mmu_ifu_sec;
+            tr.ca      = vif.driver_cb.mmu_ifu_ca;
+            tr.buf_bit = vif.driver_cb.mmu_ifu_buf;
+            tr.pavld   = 1'b1;
+          end
+          begin : wait_ifu_watchdog
+            repeat (m_rsp_watchdog_cycles) @(vif.driver_cb);
+            watchdog_hit = 1'b1;
+            `uvm_warning(get_type_name(),
+              $sformatf("IFU response watchdog expired; continuing to hold request until completion: va=0x%016h va_vld=%0b pavld=%0b pa=0x%07h",
+                {1'b0, tr.va}, vif.ifu_mmu_va_vld,
+                vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa))
+          end
+        join_any
+        disable fork;
+        if ((tr.pavld !== 1'b1) && (vif.driver_cb.mmu_ifu_pavld === 1'b1)) begin
           tr.pa      = vif.driver_cb.mmu_ifu_pa;
           tr.pgflt   = vif.driver_cb.mmu_ifu_pgflt;
           tr.deny    = vif.driver_cb.mmu_ifu_deny;
@@ -170,15 +198,9 @@ class ifu_driver extends uvm_driver #(ifu_txn);
           tr.buf_bit = vif.driver_cb.mmu_ifu_buf;
           tr.pavld   = 1'b1;
         end
-        begin : wait_ifu_timeout
-          repeat (4000) @(vif.driver_cb);
-          `uvm_warning(get_type_name(),
-            $sformatf("IFU response timeout: va=0x%016h va_vld=%0b pavld=%0b pa=0x%07h",
-              {1'b0, tr.va}, vif.ifu_mmu_va_vld,
-              vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.mmu_ifu_pa))
-        end
-      join_any
-      disable fork;
+        if (!watchdog_hit)
+          break;
+      end
       @(vif.driver_cb);
       vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
     end

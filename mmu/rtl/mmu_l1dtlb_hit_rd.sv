@@ -146,10 +146,13 @@ assign dutlb_addr_hit = dutlb_entry_hit_vld;
 assign dutlb_hit_vld = lsu_mmu_va_vld_x && dutlb_addr_hit;
 assign dutlb_disable_vld = lsu_mmu_va_vld_x && dutlb_off_hit;
 
+// Access-fault replay is reported from jtlb_acc_fault_flop, one cycle after
+// the exception CAM match, so align pa_vld with the visible fault bit.
 assign mmu_lsu_pa_vld_x = dutlb_hit_vld
                         | dutlb_disable_vld
 			| dutlb_va_illegal
-                        | dutlb_expt_match;
+                        | (dutlb_expt_match & !expt_acflt_x)
+                        | jtlb_acc_fault_flop;
 
 assign mmu_lsu_stall_x  = 1'b0;
 assign mmu_lsu_pa_x[PPN_WIDTH-1:0] = dutlb_fin_pa[PPN_WIDTH-1:0];
@@ -206,16 +209,20 @@ end
 assign dutlb_plru_read_hit_vld_x = |dutlb_plru_read_hit_x;
 
 // L1TLB Miss Determination
+// An exception CAM replay consumes an existing miss-buffer fault entry.  It is
+// not a new DTLB miss and must not allocate another miss-buffer entry.
 assign dutlb_miss_vld_x = lsu_mmu_va_vld_x
                         & !dutlb_entry_hit_vld
                         & !dutlb_va_illegal
                         & !lsu_mmu_abort_x
-                        & !dutlb_off_hit;
+                        & !dutlb_off_hit
+                        & !dutlb_expt_match;
 
 assign dutlb_miss_vld_short_x = lsu_mmu_va_vld_x
                               & !dutlb_entry_hit_vld
                               & !dutlb_va_illegal
-                              & !dutlb_off_hit;
+                              & !dutlb_off_hit
+                              & !dutlb_expt_match;
 
 assign dutlb_inst_id_hit = (refill_id_flop[6:0] == lsu_mmu_id_x[6:0])
                          & lsu_mmu_va_vld_x;

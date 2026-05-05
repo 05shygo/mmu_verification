@@ -87,6 +87,8 @@ class test_base extends uvm_test;
   // then drops objection.  Derived classes override run_test_body() only.
   virtual task run_phase(uvm_phase phase);
     time timeout_delay;
+    int unsigned end_stim_drain_max_cycles;
+    int unsigned end_stim_drain_stable_cycles;
 
     phase.raise_objection(this, {get_type_name(), ": run_phase started"});
     if (timeout_ns == 0) begin
@@ -106,6 +108,14 @@ class test_base extends uvm_test;
       join_any
       disable fork;
     end
+    end_stim_drain_max_cycles = 262144;
+    end_stim_drain_stable_cycles = 32;
+    void'($value$plusargs("TEST_END_STIM_DRAIN_MAX_CYCLES=%0d", end_stim_drain_max_cycles));
+    void'($value$plusargs("TEST_END_STIM_DRAIN_STABLE_CYCLES=%0d", end_stim_drain_stable_cycles));
+    if (m_env != null)
+      m_env.quiesce_request_stimulus_before_end(
+        end_stim_drain_max_cycles,
+        end_stim_drain_stable_cycles);
     if ((m_env != null) && (m_env.m_credit_sb != null))
       m_env.m_credit_sb.drain_before_test_done();
     phase.drop_objection(this, {get_type_name(), ": run_test_body done"});

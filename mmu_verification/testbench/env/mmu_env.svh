@@ -41,6 +41,31 @@ class mmu_env extends uvm_env;
     super.new(name, parent);
   endfunction
 
+  virtual task quiesce_request_stimulus_before_end(
+    int unsigned max_cycles = 262144,
+    int unsigned stable_cycles = 32
+  );
+    if ((m_ifu != null) && (m_ifu.m_driver != null))
+      m_ifu.m_driver.set_end_quiesce(1'b1);
+    if ((m_lsu != null) && (m_lsu.m_driver != null))
+      m_lsu.m_driver.set_end_quiesce(1'b1);
+
+    fork
+      begin
+        if ((m_ifu != null) && (m_ifu.m_driver != null))
+          m_ifu.m_driver.wait_for_idle("test_end_quiesce", max_cycles, stable_cycles);
+      end
+      begin
+        if ((m_lsu != null) && (m_lsu.m_driver != null))
+          m_lsu.m_driver.wait_for_idle("test_end_quiesce", max_cycles, stable_cycles);
+      end
+    join
+
+    `uvm_info(get_type_name(),
+      "IFU/LSU stimulus quiesced and locked before final PTW/L2 drain",
+      UVM_MEDIUM)
+  endtask
+
   // ── Build phase ───────────────────────────────────────────────────────────
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);

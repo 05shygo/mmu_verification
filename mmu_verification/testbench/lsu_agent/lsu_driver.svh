@@ -29,6 +29,17 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   // Pending transaction queues per sub-channel (Phase 3: simple single-entry)
   lsu_txn m_pending[$];  // shared FIFO; threads pop by kind
 
+  // End-of-test quiesce support.  Sequence completion does not imply that the
+  // LSU driver has finished all queued/retry traffic, because _fetch_items()
+  // acknowledges items as soon as they enter m_pending.  test_base waits on
+  // these flags before dropping the final run objection.
+  protected bit m_pipe0_busy;
+  protected bit m_pipe1_busy;
+  protected bit m_pipe2_busy;
+  protected bit m_stamo_busy;
+  protected bit m_inv_busy;
+  protected bit m_end_quiesce;
+
   // Mutual exclusion between pipe0 and pipe1: the DUT's L1 DTLB lookup logic
   // shares resources between the two pipes.  Asserting va0_vld and va1_vld on
   // the same cycle can cause hit-logic interference (问题 2d) and accelerate
@@ -39,6 +50,12 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   function new(string name, uvm_component parent);
     super.new(name, parent);
     m_dtlb_mutex = new(1);
+    m_pipe0_busy = 1'b0;
+    m_pipe1_busy = 1'b0;
+    m_pipe2_busy = 1'b0;
+    m_stamo_busy = 1'b0;
+    m_inv_busy   = 1'b0;
+    m_end_quiesce = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -46,6 +63,81 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     if (!uvm_config_db #(virtual lsu_if)::get(this, "", "LSU_VIF", vif))
       `uvm_fatal(get_type_name(), "Cannot get LSU_VIF from config_db")
   endfunction
+
+  virtual function void set_end_quiesce(bit enable = 1'b1);
+    m_end_quiesce = enable;
+  endfunction
+
+  virtual function bit is_idle();
+    if (vif == null)
+      return 1'b1;
+
+    return (m_pending.size() == 0)
+        && (m_pipe0_busy == 1'b0)
+        && (m_pipe1_busy == 1'b0)
+        && (m_pipe2_busy == 1'b0)
+        && (m_stamo_busy == 1'b0)
+        && (m_inv_busy   == 1'b0)
+        && (vif.lsu_mmu_va0_vld          !== 1'b1)
+        && (vif.lsu_mmu_va1_vld          !== 1'b1)
+        && (vif.lsu_mmu_va2_vld          !== 1'b1)
+        && (vif.lsu_mmu_stamo_vld        !== 1'b1)
+        && (vif.lsu_mmu_tlb_va_all_inv   !== 1'b1)
+        && (vif.lsu_mmu_tlb_all_inv      !== 1'b1)
+        && (vif.lsu_mmu_tlb_va_asid_inv  !== 1'b1)
+        && (vif.lsu_mmu_tlb_asid_all_inv !== 1'b1);
+  endfunction
+
+  virtual function string idle_snapshot();
+    if (vif == null)
+      return "vif=null";
+
+    return $sformatf(
+      "pending=%0d busy={p0:%0b p1:%0b p2:%0b stamo:%0b inv:%0b} vld={p0:%0b p1:%0b p2:%0b stamo:%0b inv:%0b/%0b/%0b/%0b} tlb_busy=%0b wakeup=0x%03h",
+      m_pending.size(), m_pipe0_busy, m_pipe1_busy, m_pipe2_busy,
+      m_stamo_busy, m_inv_busy,
+      vif.lsu_mmu_va0_vld, vif.lsu_mmu_va1_vld, vif.lsu_mmu_va2_vld,
+      vif.lsu_mmu_stamo_vld,
+      vif.lsu_mmu_tlb_va_all_inv, vif.lsu_mmu_tlb_all_inv,
+      vif.lsu_mmu_tlb_va_asid_inv, vif.lsu_mmu_tlb_asid_all_inv,
+      vif.mmu_lsu_tlb_busy, vif.mmu_lsu_tlb_wakeup);
+  endfunction
+
+  virtual task wait_for_idle(
+    string       ctx = "end-of-test",
+    int unsigned max_cycles = 262144,
+    int unsigned stable_cycles = 32
+  );
+    int unsigned wait_cycles;
+    int unsigned stable_idle_cycles;
+
+    if (vif == null)
+      return;
+
+    wait_cycles = 0;
+    stable_idle_cycles = 0;
+    while ((stable_idle_cycles < stable_cycles) &&
+           (wait_cycles < max_cycles)) begin
+      @(vif.driver_cb);
+      wait_cycles++;
+      if (is_idle())
+        stable_idle_cycles++;
+      else
+        stable_idle_cycles = 0;
+    end
+
+    if (!is_idle()) begin
+      `uvm_error(get_type_name(),
+        $sformatf("LSU stimulus did not drain before %s after %0d cycles: stable_idle=%0d/%0d %s",
+          ctx, wait_cycles, stable_idle_cycles, stable_cycles,
+          idle_snapshot()))
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("LSU stimulus idle before %s after %0d cycles (stable_idle=%0d)",
+          ctx, wait_cycles, stable_idle_cycles),
+        UVM_MEDIUM)
+    end
+  endtask
 
   virtual task run_phase(uvm_phase phase);
     _drive_idle();
@@ -68,7 +160,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     lsu_txn tr;
     forever begin
       seq_item_port.get_next_item(tr);
-      m_pending.push_back(tr);
+      if (m_end_quiesce) begin
+        `uvm_warning(get_type_name(),
+          $sformatf("Dropping LSU item after end-of-test quiesce was requested: %s",
+            tr.convert2string()))
+      end else begin
+        m_pending.push_back(tr);
+      end
       seq_item_port.item_done();
     end
   endtask
@@ -159,6 +257,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       bit timeout_hit;
       bit [11:0] prev_wakeup;
       _get_kind(LSU_PIPE0, tr);
+      m_pipe0_busy = 1'b1;
       `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_DEBUG)
       repeat (tr.idle_cycles) @(vif.driver_cb);
 
@@ -168,6 +267,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _pulse_pipe0_req(tr);
       if (tr.abort == 1'b1) begin
         @(vif.driver_cb);
+        m_pipe0_busy = 1'b0;
         continue;
       end
 
@@ -227,6 +327,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       end
 
       @(vif.driver_cb);
+      m_pipe0_busy = 1'b0;
     end
   endtask
 
@@ -239,6 +340,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       bit timeout_hit;
       bit [11:0] prev_wakeup;
       _get_kind(LSU_PIPE1, tr);
+      m_pipe1_busy = 1'b1;
       `uvm_info(get_type_name(), {"Pipe1: ", tr.convert2string()}, UVM_DEBUG)
       repeat (tr.idle_cycles) @(vif.driver_cb);
 
@@ -248,6 +350,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _pulse_pipe1_req(tr);
       if (tr.abort == 1'b1) begin
         @(vif.driver_cb);
+        m_pipe1_busy = 1'b0;
         continue;
       end
 
@@ -304,6 +407,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       end
 
       @(vif.driver_cb);
+      m_pipe1_busy = 1'b0;
     end
   endtask
 
@@ -315,6 +419,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       bit timeout_hit;
 
       _get_kind(LSU_PIPE2, tr);
+      m_pipe2_busy = 1'b1;
       `uvm_info(get_type_name(), {"Pipe2: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
 
@@ -350,6 +455,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
 
       @(vif.driver_cb);
+      m_pipe2_busy = 1'b0;
     end
   endtask
 
@@ -360,6 +466,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     lsu_txn tr;
     forever begin
       _get_kind(LSU_STAMO, tr);
+      m_stamo_busy = 1'b1;
       `uvm_info(get_type_name(), {"STAMO: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
       @(vif.driver_cb);
@@ -367,6 +474,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.driver_cb.lsu_mmu_stamo_pa  <= tr.stamo_pa;
       @(vif.driver_cb);
       vif.driver_cb.lsu_mmu_stamo_vld <= 1'b0;
+      m_stamo_busy = 1'b0;
     end
   endtask
 
@@ -375,6 +483,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     lsu_txn tr;
     forever begin
       _get_kind(LSU_INV, tr);
+      m_inv_busy = 1'b1;
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
       // Avoid issuing a new invalidate when DTLB is still busy.  In that case
@@ -413,6 +522,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         end
       join_any
       disable fork;
+      m_inv_busy = 1'b0;
     end
   endtask
 

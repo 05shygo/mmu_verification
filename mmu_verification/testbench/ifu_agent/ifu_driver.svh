@@ -18,9 +18,13 @@ class ifu_driver extends uvm_driver #(ifu_txn);
   `uvm_component_utils(ifu_driver)
 
   virtual ifu_if vif;
+  protected bit m_drive_busy;
+  protected bit m_end_quiesce;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    m_drive_busy  = 1'b0;
+    m_end_quiesce = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -28,6 +32,61 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     if (!uvm_config_db #(virtual ifu_if)::get(this, "", "IFU_VIF", vif))
       `uvm_fatal(get_type_name(), "Cannot get IFU_VIF from config_db")
   endfunction
+
+  virtual function void set_end_quiesce(bit enable = 1'b1);
+    m_end_quiesce = enable;
+  endfunction
+
+  virtual function bit is_idle();
+    if (vif == null)
+      return 1'b1;
+    return (m_drive_busy == 1'b0)
+        && (vif.ifu_mmu_va_vld !== 1'b1);
+  endfunction
+
+  virtual function string idle_snapshot();
+    if (vif == null)
+      return "vif=null";
+    return $sformatf("busy=%0b va_vld=%0b pavld=%0b va=0x%010h",
+      m_drive_busy, vif.ifu_mmu_va_vld, vif.mmu_ifu_pavld,
+      {1'b0, vif.ifu_mmu_va[38:0]});
+  endfunction
+
+  virtual task wait_for_idle(
+    string       ctx = "end-of-test",
+    int unsigned max_cycles = 262144,
+    int unsigned stable_cycles = 32
+  );
+    int unsigned wait_cycles;
+    int unsigned stable_idle_cycles;
+
+    if (vif == null)
+      return;
+
+    wait_cycles = 0;
+    stable_idle_cycles = 0;
+    while ((stable_idle_cycles < stable_cycles) &&
+           (wait_cycles < max_cycles)) begin
+      @(vif.driver_cb);
+      wait_cycles++;
+      if (is_idle())
+        stable_idle_cycles++;
+      else
+        stable_idle_cycles = 0;
+    end
+
+    if (!is_idle()) begin
+      `uvm_error(get_type_name(),
+        $sformatf("IFU stimulus did not drain before %s after %0d cycles: stable_idle=%0d/%0d %s",
+          ctx, wait_cycles, stable_idle_cycles, stable_cycles,
+          idle_snapshot()))
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("IFU stimulus idle before %s after %0d cycles (stable_idle=%0d)",
+          ctx, wait_cycles, stable_idle_cycles),
+        UVM_MEDIUM)
+    end
+  endtask
 
   virtual task run_phase(uvm_phase phase);
     ifu_txn tr;
@@ -37,8 +96,16 @@ class ifu_driver extends uvm_driver #(ifu_txn);
     @(posedge vif.clk_i);
     forever begin
       seq_item_port.get_next_item(tr);
-      `uvm_info(get_type_name(), {"Driving: ", tr.convert2string()}, UVM_HIGH)
-      drive_one(tr);
+      if (m_end_quiesce) begin
+        `uvm_warning(get_type_name(),
+          $sformatf("Dropping IFU item after end-of-test quiesce was requested: %s",
+            tr.convert2string()))
+      end else begin
+        m_drive_busy = 1'b1;
+        `uvm_info(get_type_name(), {"Driving: ", tr.convert2string()}, UVM_HIGH)
+        drive_one(tr);
+        m_drive_busy = 1'b0;
+      end
       seq_item_port.item_done();
     end
   endtask

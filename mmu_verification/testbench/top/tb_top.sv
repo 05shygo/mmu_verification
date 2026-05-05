@@ -433,6 +433,7 @@ module tb_top;
       ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[7] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[7]) |
       ((u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_twu_idx[8] == 4'b1000) & u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld[8]);
   assign dut_probes_if.ptw_mbuf_twu_have = tb_ptw_mbuf_twu_have;
+  assign dut_probes_if.ptw_mbuf_entry_vld = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld;
   assign dut_probes_if.ptw_twu_ref_req   = u_dut.x_ct_mmu_ptw.twu_arb_ref_req;
   assign dut_probes_if.ptw_twu_pgflt_vec = u_dut.x_ct_mmu_ptw.twu_l2tlb_ref_pgflt;
   assign dut_probes_if.ptw_twu_acc_err_vec = u_dut.x_ct_mmu_ptw.twu_l2tlb_ref_acc_err;
@@ -440,6 +441,10 @@ module tb_top;
   assign dut_probes_if.ptw_acc_err_vld   = u_dut.x_ct_mmu_ptw.acc_err_vld;
   assign dut_probes_if.ptw_l2tlb_ref_pgflt = u_dut.ptw_l2tlb_ref_pgflt;
   assign dut_probes_if.ptw_l2tlb_ref_acc_err = u_dut.ptw_l2tlb_ref_acc_err;
+  assign dut_probes_if.l2tlb_ptw_req      = u_dut.l2tlb_ptw_req;
+  assign dut_probes_if.ptw_lsu_data_req   = u_dut.mmu_lsu_data_req;
+  assign dut_probes_if.ptw_lsu_data_req_grant = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant;
+  assign dut_probes_if.ptw_arb_req        = u_dut.ptw_arb_req;
   assign dut_probes_if.arb_ptw_grant     = u_dut.arb_ptw_grant;
   assign dut_probes_if.arb_l2tlb_req     = u_dut.arb_l2tlb_req;
   assign dut_probes_if.ptw_arb_pgs       = u_dut.ptw_arb_pgs;

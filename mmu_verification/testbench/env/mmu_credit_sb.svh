@@ -87,7 +87,10 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int m_lsu_ext_outstanding; // LSU externally-visible uncompleted (approx, includes sleeping)
   protected int m_ptw_mbuf_cnt;        // PTW serialized external outstanding proxy
   protected bit m_end_drain_active;    // run-phase end settle window in progress
+  protected bit m_pre_drop_drain_done;  // test_base already performed final drain
   protected int unsigned m_end_drain_attempts; // bounded ready_to_end retries
+  protected int unsigned m_end_drain_max_cycles;
+  protected int unsigned m_end_drain_stable_cycles;
 
   // ── Peak observations (for debug) ─────────────────────────────────────────
   protected int m_peak_l1i;
@@ -102,7 +105,10 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_lsu_ext_outstanding = 0;
     m_ptw_mbuf_cnt        = 0;
     m_end_drain_active    = 1'b0;
+    m_pre_drop_drain_done = 1'b0;
     m_end_drain_attempts  = 0;
+    m_end_drain_max_cycles    = 32768;
+    m_end_drain_stable_cycles = 64;
     m_peak_l1i            = 0;
     m_peak_l1d            = 0;
     m_peak_lsu_ext        = 0;
@@ -123,6 +129,12 @@ class mmu_credit_sb extends uvm_scoreboard;
     af_ptw_req    = new("af_ptw_req",    this);
     af_ptw_rsp    = new("af_ptw_rsp",    this);
     af_ptw_drop   = new("af_ptw_drop",   this);
+    void'($value$plusargs("CREDIT_SB_DRAIN_MAX_CYCLES=%0d", m_end_drain_max_cycles));
+    void'($value$plusargs("CREDIT_SB_DRAIN_STABLE_CYCLES=%0d", m_end_drain_stable_cycles));
+    if (m_end_drain_max_cycles == 0)
+      m_end_drain_max_cycles = 1;
+    if (m_end_drain_stable_cycles == 0)
+      m_end_drain_stable_cycles = 1;
     if (!uvm_config_db #(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
       `uvm_info(get_type_name(),
         "MMU_DUT_PROBES_VIF not in config_db — PTW end-drain will use #1ns fallback",
@@ -358,12 +370,12 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endtask
 
-  // ── phase_ready_to_end: allow late PTW completion / abort settle ─────────
-  // The PTW->LSU channel is single-outstanding, but some directed tests
-  // intentionally stretch responder latency into the 64..160 cycle range and
-  // may leave a bounded PTW mbuf backlog draining after stimulus stops. Give
-  // it one bounded settle window before report_phase so a final in-flight
-  // response or cancel path can retire cleanly without hiding real leaks.
+  // ── End-of-test drain: allow late PTW/L2 completion / abort settle ────────
+  // The PTW->LSU channel is single-outstanding externally, but a final L2TLB
+  // miss can already be accepted into the PTW/TWU/mbuf pipeline while the
+  // scoreboard counter is still zero or while the responder has not returned
+  // data yet.  End-of-test must therefore wait for both the external credit
+  // counter and the whitebox DUT pending state to be idle before report_phase.
   virtual function void phase_ready_to_end(uvm_phase phase);
     if (phase.get_name() != "run")
       return;
@@ -371,15 +383,18 @@ class mmu_credit_sb extends uvm_scoreboard;
     if (m_end_drain_active)
       return;
 
+    if (m_pre_drop_drain_done)
+      return;
+
     if (m_end_drain_attempts >= 4)
       return;
 
-    if (m_ptw_mbuf_cnt != 0) begin
+    if (_needs_end_drain()) begin
       m_end_drain_active = 1'b1;
       m_end_drain_attempts++;
       phase.raise_objection(this,
-        $sformatf("Settling PTW counter before end: attempt=%0d ptw_mbuf_cnt=%0d",
-          m_end_drain_attempts, m_ptw_mbuf_cnt));
+        $sformatf("Settling PTW/L2 pending state before end: attempt=%0d %s",
+          m_end_drain_attempts, _ptw_pending_snapshot()));
       fork
         begin
           _drain_ptw_before_end(phase);
@@ -388,47 +403,147 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endfunction
 
+  // Called by test_base while its run_phase objection is still raised. This is
+  // more reliable than relying only on phase_ready_to_end, because it always
+  // requires a stable idle window before the test drops its final objection.
+  virtual task drain_before_test_done();
+    m_end_drain_active = 1'b1;
+    _wait_for_ptw_end_idle("pre-drop");
+    m_pre_drop_drain_done = 1'b1;
+    m_end_drain_active = 1'b0;
+  endtask
+
   protected task _drain_ptw_before_end(uvm_phase phase);
+    _wait_for_ptw_end_idle("phase-ready");
+    m_end_drain_active = 1'b0;
+    phase.drop_objection(this, "PTW/L2 pending state stable (or timeout reached)");
+  endtask
+
+  protected task _wait_for_ptw_end_idle(string ctx);
     int unsigned wait_cycles;
-    int unsigned max_wait_cycles;
     int unsigned stable_zero_cycles;
-    int unsigned min_stable_zero_cycles;
 
-    wait_cycles            = 0;
-    max_wait_cycles        = 4096;
-    stable_zero_cycles     = 0;
-    min_stable_zero_cycles = 32;
+    wait_cycles        = 0;
+    stable_zero_cycles = 0;
 
-    while ((stable_zero_cycles < min_stable_zero_cycles) &&
-           (wait_cycles < max_wait_cycles)) begin
+    while ((stable_zero_cycles < m_end_drain_stable_cycles) &&
+           (wait_cycles < m_end_drain_max_cycles)) begin
       if (v_probe != null)
         @(v_probe.mon_cb);
       else
         #1ns;
       wait_cycles++;
 
-      if (m_ptw_mbuf_cnt == 0)
+      if (_ptw_end_idle())
         stable_zero_cycles++;
       else
         stable_zero_cycles = 0;
     end
 
-    if (m_ptw_mbuf_cnt != 0) begin
+    if (!_ptw_end_idle()) begin
       `uvm_warning(get_type_name(),
         $sformatf(
-          "PTW end-drain timeout after %0d cycles: ptw_mbuf_cnt=%0d stable_zero_cycles=%0d/%0d",
-          wait_cycles, m_ptw_mbuf_cnt, stable_zero_cycles, min_stable_zero_cycles))
+          "PTW/L2 end-drain timeout (%s) after %0d cycles: stable_zero_cycles=%0d/%0d %s",
+          ctx, wait_cycles, stable_zero_cycles, m_end_drain_stable_cycles,
+          _ptw_pending_snapshot()))
     end else begin
       `uvm_info(get_type_name(),
         $sformatf(
-          "PTW end-drain stable after %0d cycles (stable_zero_cycles=%0d)",
-          wait_cycles, stable_zero_cycles),
+          "PTW/L2 end-drain stable (%s) after %0d cycles (stable_zero_cycles=%0d)",
+          ctx, wait_cycles, stable_zero_cycles),
         UVM_MEDIUM)
     end
-
-    m_end_drain_active = 1'b0;
-    phase.drop_objection(this, "PTW counters stable (or timeout reached)");
   endtask
+
+  protected function bit _needs_end_drain();
+    return !_ptw_end_idle();
+  endfunction
+
+  protected function bit _ptw_end_idle();
+    if (m_ptw_mbuf_cnt != 0)
+      return 1'b0;
+    return !_ptw_drain_pending();
+  endfunction
+
+  protected function bit _ptw_drain_pending();
+    if (v_probe == null)
+      return 1'b0;
+    if (v_probe.rst_ni !== 1'b1)
+      return 1'b0;
+
+    return (v_probe.l2_reqq_vld_vec     !== 9'b0)
+        || (v_probe.l2_final_vld        === 1'b1)
+        || (v_probe.l2_miss             === 1'b1)
+        || (v_probe.l2_dtlb_ref_pavld   === 1'b1)
+        || (v_probe.l2_dtlb_ref_cmplt   === 1'b1)
+        || (v_probe.l2tlb_ptw_req       === 1'b1)
+        || (v_probe.ptw_mbuf_entry_vld  !== 9'b0)
+        || (v_probe.ptw_mbuf_twu_have   !== 4'b0)
+        || (v_probe.ptw_twu_idle        !== 4'hf)
+        || (v_probe.ptw_twu_mask        !== 4'b0)
+        || (v_probe.ptw_twu_ref_req     !== 4'b0)
+        || (v_probe.ptw_twu_pgflt_vec   !== 4'b0)
+        || (v_probe.ptw_twu_acc_err_vec !== 4'b0)
+        || (v_probe.ptw_fault_any       === 1'b1)
+        || (v_probe.ptw_pgflt_vld       === 1'b1)
+        || (v_probe.ptw_acc_err_vld     === 1'b1)
+        || (v_probe.ptw_l2tlb_ref_pgflt === 1'b1)
+        || (v_probe.ptw_l2tlb_ref_acc_err === 1'b1)
+        || (v_probe.ptw_lsu_data_req    === 1'b1)
+        || (v_probe.ptw_lsu_data_req_grant !== 9'b0)
+        || (v_probe.ptw_arb_req         === 1'b1)
+        || (v_probe.arb_ptw_grant       === 1'b1)
+        || (v_probe.arb_l2tlb_req       === 1'b1)
+        || (v_probe.ptw_l1d_ref_cmplt   === 1'b1);
+  endfunction
+
+  protected function bit _ptw_hw_pending();
+    if (v_probe == null)
+      return 1'b0;
+    if (v_probe.rst_ni !== 1'b1)
+      return 1'b0;
+
+    return (v_probe.l2tlb_ptw_req       === 1'b1)
+        || (v_probe.ptw_mbuf_entry_vld  !== 9'b0)
+        || (v_probe.ptw_mbuf_twu_have   !== 4'b0)
+        || (v_probe.ptw_twu_idle        !== 4'hf)
+        || (v_probe.ptw_twu_mask        !== 4'b0)
+        || (v_probe.ptw_twu_ref_req     !== 4'b0)
+        || (v_probe.ptw_twu_pgflt_vec   !== 4'b0)
+        || (v_probe.ptw_twu_acc_err_vec !== 4'b0)
+        || (v_probe.ptw_fault_any       === 1'b1)
+        || (v_probe.ptw_pgflt_vld       === 1'b1)
+        || (v_probe.ptw_acc_err_vld     === 1'b1)
+        || (v_probe.ptw_l2tlb_ref_pgflt === 1'b1)
+        || (v_probe.ptw_l2tlb_ref_acc_err === 1'b1)
+        || (v_probe.ptw_lsu_data_req    === 1'b1)
+        || (v_probe.ptw_lsu_data_req_grant !== 9'b0)
+        || (v_probe.ptw_arb_req         === 1'b1)
+        || (v_probe.arb_ptw_grant       === 1'b1)
+        || (v_probe.ptw_l1d_ref_cmplt   === 1'b1);
+  endfunction
+
+  protected function string _ptw_pending_snapshot();
+    if (v_probe == null)
+      return $sformatf("ptw_mbuf_cnt=%0d v_probe=null", m_ptw_mbuf_cnt);
+    return $sformatf(
+      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_final=%0b l2_miss=%0b l2_ptw_req=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b",
+      m_ptw_mbuf_cnt,
+      v_probe.l1d_mb_vld,
+      v_probe.l2_reqq_vld_vec,
+      v_probe.l2_final_vld,
+      v_probe.l2_miss,
+      v_probe.l2tlb_ptw_req,
+      v_probe.ptw_lsu_data_req,
+      v_probe.ptw_lsu_data_req_grant,
+      v_probe.ptw_mbuf_entry_vld,
+      v_probe.ptw_twu_idle,
+      v_probe.ptw_twu_mask,
+      v_probe.ptw_twu_ref_req,
+      v_probe.ptw_arb_req,
+      v_probe.arb_ptw_grant,
+      v_probe.arb_l2tlb_req);
+  endfunction
 
   // ── Inline bound checks ───────────────────────────────────────────────────
   protected function void _check_l1d_bound();
@@ -501,9 +616,14 @@ class mmu_credit_sb extends uvm_scoreboard;
         $sformatf("[CreditSB] ptw_mbuf_cnt != 0 at end-of-sim (%0d): PTW serialized external request not drained",
           m_ptw_mbuf_cnt))
 
-    if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_ptw_mbuf_cnt == 0)
+    if (_ptw_hw_pending())
+      `uvm_error(get_type_name(),
+        $sformatf("[CreditSB] PTW/L2 internal state not idle at end-of-sim: %s",
+          _ptw_pending_snapshot()))
+
+    if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_ptw_mbuf_cnt == 0 && !_ptw_hw_pending())
       `uvm_info(get_type_name(),
-        "[CreditSB] PASS — credit conservation verified (l1i/l1d/ptw all == 0)",
+        "[CreditSB] PASS — credit conservation verified (l1i/l1d/ptw all == 0 and PTW/L2 idle)",
         UVM_MEDIUM)
   endfunction
 

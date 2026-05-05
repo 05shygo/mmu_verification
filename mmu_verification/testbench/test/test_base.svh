@@ -106,6 +106,8 @@ class test_base extends uvm_test;
       join_any
       disable fork;
     end
+    if ((m_env != null) && (m_env.m_credit_sb != null))
+      m_env.m_credit_sb.drain_before_test_done();
     phase.drop_objection(this, {get_type_name(), ": run_test_body done"});
   endtask
 

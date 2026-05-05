@@ -451,6 +451,44 @@ class mmu_credit_sb extends uvm_scoreboard;
     return m_last_drain_timed_out;
   endfunction
 
+  virtual function void print_timeout_debug(string ctx = "timeout");
+    if (v_probe != null)
+      m_ptw_snap_valid = 1'b0;
+    $display({"[MMU_TIMEOUT_DBG] CreditSB ctx=%s ",
+              "credit_l1i=%0d peak_l1i=%0d credit_l1d=%0d peak_l1d=%0d ",
+              "lsu_ext=%0d peak_lsu_ext=%0d ptw_mbuf_cnt=%0d peak_ptw_mbuf=%0d ",
+              "end_drain_active=%0b pre_drop_done=%0b attempts=%0d last_drain_timeout=%0b ",
+              "%s"},
+      ctx,
+      m_credit_l1i,
+      m_peak_l1i,
+      m_credit_l1d,
+      m_peak_l1d,
+      m_lsu_ext_outstanding,
+      m_peak_lsu_ext,
+      m_ptw_mbuf_cnt,
+      m_peak_ptw_mbuf,
+      m_end_drain_active,
+      m_pre_drop_drain_done,
+      m_end_drain_attempts,
+      m_last_drain_timed_out,
+      _ptw_pending_snapshot());
+    if (v_probe != null)
+      $display({"[MMU_TIMEOUT_DBG] CreditSB_P13 ctx=%s ",
+                "pmp_vld=0x%03h pmp_grant=0x%03h pmp_deny=0x%03h pmp_wait=0x%03h ",
+                "pmp_mbuf_req=0x%03h pmp_fetch=0x%0h pfu_flg4=0x%0h pfu_deny=%0b pfu_acc_fault=%0b"},
+        ctx,
+        v_probe.p13_pmp_vld_vec,
+        v_probe.p13_pmp_grant_vec,
+        v_probe.p13_pmp_deny_vec,
+        v_probe.p13_pmp_wait_vec,
+        v_probe.p13_pmp_mbuf_req_vec,
+        v_probe.p13_pmp_fetch_vec,
+        v_probe.pfu_pmp_flg4,
+        v_probe.pfu_l2tlb_deny,
+        v_probe.pfu_l2tlb_acc_fault);
+  endfunction
+
   protected task _drain_ptw_before_end(uvm_phase phase);
     _wait_for_ptw_end_idle("phase-ready");
     m_end_drain_active = 1'b0;

@@ -54,6 +54,31 @@ class ptw_mem_responder extends uvm_component;
     m_pt = pt;
   endfunction
 
+  virtual function void print_timeout_debug(string ctx = "timeout");
+    if (vif == null) begin
+      $display("[MMU_TIMEOUT_DBG] PTW_RESP ctx=%s vif=null", ctx);
+      return;
+    end
+    $display({"[MMU_TIMEOUT_DBG] PTW_RESP ctx=%s delay_min=%0d delay_max=%0d ",
+              "bus_err_permille=%0d has_accepted=%0b accepted_addr=0x%010h accepted_size=%0b ",
+              "req=%0b accept=%0b req_addr=0x%010h req_size=%0b data_vld=%0b bus_error=%0b data=0x%016h pt_configured=%0b"},
+      ctx,
+      m_rsp_delay_min,
+      m_rsp_delay_max,
+      m_bus_error_rate_permille,
+      m_has_accepted_req,
+      m_accepted_addr,
+      m_accepted_size,
+      vif.mmu_lsu_data_req,
+      vif.mmu_lsu_data_req_accept,
+      vif.mmu_lsu_data_req_addr,
+      vif.mmu_lsu_data_req_size,
+      vif.lsu_mmu_data_vld,
+      vif.lsu_mmu_bus_error,
+      vif.lsu_mmu_data,
+      (m_pt != null));
+  endfunction
+
   protected task _drive_idle_outputs();
     vif.driver_cb.lsu_mmu_data_vld  <= 1'b0;
     vif.driver_cb.lsu_mmu_data      <= 64'b0;

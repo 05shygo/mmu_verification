@@ -101,6 +101,11 @@ class test_base extends uvm_test;
         end
         begin : timeout_thread
           #(timeout_delay);
+          if (m_env != null)
+            m_env.print_timeout_debug(get_type_name(), timeout_ns, num_txn);
+          else
+            $display("[MMU_TIMEOUT_DBG] owner=%s timeout_ns=%0d num_txn=%0d env=null",
+              get_type_name(), timeout_ns, num_txn);
           `uvm_fatal(get_type_name(),
             $sformatf("Global test timeout after %0d ns (+TIMEOUT); run_test_body did not complete",
               timeout_ns))

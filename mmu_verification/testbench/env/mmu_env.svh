@@ -87,6 +87,35 @@ class mmu_env extends uvm_env;
   endtask
 
   // ── Build phase ───────────────────────────────────────────────────────────
+  virtual task print_timeout_debug(
+    string owner = "unknown",
+    int unsigned timeout_ns = 0,
+    int unsigned num_txn = 0
+  );
+    $display("[MMU_TIMEOUT_DBG] owner=%s timeout_ns=%0d num_txn=%0d time=%0t",
+      owner, timeout_ns, num_txn, $time);
+
+    if ((m_ifu != null) && (m_ifu.m_driver != null))
+      m_ifu.m_driver.print_timeout_debug("global_timeout");
+    else
+      $display("[MMU_TIMEOUT_DBG] IFU driver unavailable");
+
+    if ((m_lsu != null) && (m_lsu.m_driver != null))
+      m_lsu.m_driver.print_timeout_debug("global_timeout");
+    else
+      $display("[MMU_TIMEOUT_DBG] LSU driver unavailable");
+
+    if (m_credit_sb != null)
+      m_credit_sb.print_timeout_debug("global_timeout");
+    else
+      $display("[MMU_TIMEOUT_DBG] CreditSB unavailable");
+
+    if ((m_ptw_mem != null) && (m_ptw_mem.m_responder != null))
+      m_ptw_mem.m_responder.print_timeout_debug("global_timeout");
+    else
+      $display("[MMU_TIMEOUT_DBG] PTW responder unavailable");
+  endtask
+
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
 

@@ -57,6 +57,29 @@ class ifu_driver extends uvm_driver #(ifu_txn);
       {1'b0, vif.ifu_mmu_va[38:0]});
   endfunction
 
+  virtual function void print_timeout_debug(string ctx = "timeout");
+    if (vif == null) begin
+      $display("[MMU_TIMEOUT_DBG] IFU ctx=%s vif=null", ctx);
+      return;
+    end
+    $display({"[MMU_TIMEOUT_DBG] IFU ctx=%s busy=%0b end_quiesce=%0b ",
+              "va_vld=%0b abort=%0b pavld=%0b va=0x%010h pa=0x%07h ",
+              "pgflt=%0b deny=%0b sec=%0b pmp_deny=%0b watchdog_cycles=%0d"},
+      ctx,
+      m_drive_busy,
+      m_end_quiesce,
+      vif.ifu_mmu_va_vld,
+      vif.ifu_mmu_abort,
+      vif.mmu_ifu_pavld,
+      {1'b0, vif.ifu_mmu_va[38:0]},
+      vif.mmu_ifu_pa,
+      vif.mmu_ifu_pgflt,
+      vif.mmu_ifu_deny,
+      vif.mmu_ifu_sec,
+      vif.dbg_iutlb_pmp_deny,
+      m_rsp_watchdog_cycles);
+  endfunction
+
   virtual task wait_for_idle(
     string       ctx = "end-of-test",
     int unsigned max_cycles = 262144,

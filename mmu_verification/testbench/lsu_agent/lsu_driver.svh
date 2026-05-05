@@ -129,6 +129,52 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       vif.mmu_lsu_tlb_busy, vif.mmu_lsu_tlb_wakeup);
   endfunction
 
+  virtual function void print_timeout_debug(string ctx = "timeout");
+    if (vif == null) begin
+      $display("[MMU_TIMEOUT_DBG] LSU ctx=%s vif=null", ctx);
+      return;
+    end
+    $display({"[MMU_TIMEOUT_DBG] LSU ctx=%s pending=%0d end_quiesce=%0b ",
+              "busy={p0:%0b p1:%0b p2:%0b stamo:%0b inv:%0b} ",
+              "vld={p0:%0b p1:%0b p2:%0b stamo:%0b} ",
+              "rsp={p0:%0b p1:%0b p2:%0b} fault={p0_pg:%0b p0_ac:%0b p1_pg:%0b p1_ac:%0b p2_ac:%0b} ",
+              "tlb_busy=%0b wakeup=0x%03h mmu_en=%0b ",
+              "va0=0x%016h id0=%0d va1=0x%016h id1=%0d va2=0x%07h ",
+              "retry_probe=%0d rsp_watchdog=%0d p2_grant_max=%0d p2_rsp_watchdog=%0d"},
+      ctx,
+      m_pending.size(),
+      m_end_quiesce,
+      m_pipe0_busy,
+      m_pipe1_busy,
+      m_pipe2_busy,
+      m_stamo_busy,
+      m_inv_busy,
+      vif.lsu_mmu_va0_vld,
+      vif.lsu_mmu_va1_vld,
+      vif.lsu_mmu_va2_vld,
+      vif.lsu_mmu_stamo_vld,
+      vif.mmu_lsu_pa0_vld,
+      vif.mmu_lsu_pa1_vld,
+      vif.mmu_lsu_pa2_vld,
+      vif.mmu_lsu_page_fault0,
+      vif.mmu_lsu_access_fault0,
+      vif.mmu_lsu_page_fault1,
+      vif.mmu_lsu_access_fault1,
+      vif.mmu_lsu_pa2_err,
+      vif.mmu_lsu_tlb_busy,
+      vif.mmu_lsu_tlb_wakeup,
+      vif.mmu_lsu_mmu_en,
+      vif.lsu_mmu_va0,
+      vif.lsu_mmu_id0,
+      vif.lsu_mmu_va1,
+      vif.lsu_mmu_id1,
+      vif.lsu_mmu_va2,
+      m_retry_probe_cycles,
+      m_rsp_watchdog_cycles,
+      m_p2_grant_max_cycles,
+      m_p2_rsp_watchdog_cycles);
+  endfunction
+
   virtual task wait_for_idle(
     string       ctx = "end-of-test",
     int unsigned max_cycles = 262144,

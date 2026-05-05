@@ -995,7 +995,7 @@ always_comb begin
     case({csr_itlb_sel,fst_csr_sel,scd_csr_sel})
         3'b100  : csr_grant[1:0] = {fst_csr_itlb_sel,scd_csr_itlb_sel};
         3'b010  : csr_grant[1:0] = 2'b10;
-        3'b010  : csr_grant[1:0] = 2'b01; 
+        3'b001  : csr_grant[1:0] = 2'b01; 
         default : csr_grant[1:0] = 2'b00;
     endcase
 end

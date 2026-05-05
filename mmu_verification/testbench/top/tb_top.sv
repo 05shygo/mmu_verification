@@ -446,6 +446,7 @@ module tb_top;
   assign dut_probes_if.ptw_lsu_data_req_grant = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant;
   assign dut_probes_if.ptw_arb_req        = u_dut.ptw_arb_req;
   assign dut_probes_if.arb_ptw_grant     = u_dut.arb_ptw_grant;
+  assign dut_probes_if.arb_pfu_grant     = u_dut.arb_pfu_grant;
   assign dut_probes_if.arb_l2tlb_req     = u_dut.arb_l2tlb_req;
   assign dut_probes_if.ptw_arb_pgs       = u_dut.ptw_arb_pgs;
   assign dut_probes_if.ptw_arb_vpn       = u_dut.ptw_arb_vpn;

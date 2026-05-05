@@ -28,6 +28,7 @@ class lsu_monitor extends uvm_monitor;
   `uvm_component_utils(lsu_monitor)
 
   virtual lsu_if vif;
+  virtual mmu_dut_probes_if v_probe;
 
   // Pipe 0
   uvm_analysis_port #(lsu_txn) ap_pipe0_req;
@@ -103,6 +104,10 @@ class lsu_monitor extends uvm_monitor;
     super.build_phase(phase);
     if (!uvm_config_db #(virtual lsu_if)::get(this, "", "LSU_VIF", vif))
       `uvm_fatal(get_type_name(), "Cannot get LSU_VIF from config_db")
+    if (!uvm_config_db #(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
+      `uvm_info(get_type_name(),
+        "MMU_DUT_PROBES_VIF not in config_db - pipe2 monitor will fall back to va2_vld edge correlation",
+        UVM_LOW)
     ap_pipe0_req = new("ap_pipe0_req", this);
     ap_pipe0_rsp = new("ap_pipe0_rsp", this);
     ap_pipe0_drop = new("ap_pipe0_drop", this);
@@ -611,32 +616,38 @@ class lsu_monitor extends uvm_monitor;
   // ── Pipe 2 (prefetch) single-state monitor ───────────────────────────────
   protected task _collect_pipe2_sm();
     lsu_txn tr, req_tr;
-    bit     prev_req_seen;
     bit     prev_rsp_seen;
+    bit     has_visible_req;
+    bit     publish_rsp;
 
-    prev_req_seen = 1'b0;
     prev_rsp_seen = 1'b0;
+    has_visible_req = 1'b0;
     forever begin
       @(vif.monitor_cb);
       if (vif.rst_ni !== 1'b1) begin
-        prev_req_seen = 1'b0;
         prev_rsp_seen = 1'b0;
+        has_visible_req = 1'b0;
         m_p2_rsp_seen = 1'b0;
         m_pending_p2.delete();
         continue;
       end
 
-      if (vif.monitor_cb.lsu_mmu_va2_vld && !prev_req_seen) begin
+      if (vif.monitor_cb.lsu_mmu_va2_vld && !has_visible_req
+          && ((v_probe == null)
+              || (v_probe.mon_cb.arb_pfu_grant === 1'b1)
+              || (vif.monitor_cb.mmu_lsu_pa2_vld === 1'b1))) begin
         tr      = lsu_txn::type_id::create("lsu_p2_req");
         tr.kind = LSU_PIPE2;
         tr.va2  = vif.monitor_cb.lsu_mmu_va2;
         tr.va2_valid = 1'b1;
+        has_visible_req = 1'b1;
         m_p2_rsp_seen = 1'b0;
         m_pending_p2.push_back(_clone_txn(tr, "lsu_p2_req_pending"));
         ap_pipe2_req.write(tr);
       end
 
       if (vif.monitor_cb.mmu_lsu_pa2_vld && !prev_rsp_seen) begin
+        publish_rsp     = 1'b1;
         tr              = lsu_txn::type_id::create("lsu_p2_rsp");
         tr.kind         = LSU_PIPE2;
         tr.pa           = vif.monitor_cb.mmu_lsu_pa2;
@@ -648,22 +659,35 @@ class lsu_monitor extends uvm_monitor;
           tr.va2_valid = 1'b1;
           m_p2_rsp_seen = 1'b1;
         end else begin
-          `uvm_warning(get_type_name(),
-            $sformatf("[LSU_P2_ORPHAN_RSP] rsp observed without pending req: pa=0x%07h err=%0b",
-              tr.pa, tr.access_fault))
+          if (has_visible_req && m_p2_rsp_seen) begin
+            publish_rsp = 1'b0;
+            `uvm_info(get_type_name(),
+              $sformatf("[LSU_P2_DUP_RSP] extra rsp while PFU req is closing: pa=0x%07h err=%0b",
+                tr.pa, tr.access_fault),
+              UVM_DEBUG)
+          end else begin
+            `uvm_warning(get_type_name(),
+              $sformatf("[LSU_P2_ORPHAN_RSP] rsp observed without pending req: pa=0x%07h err=%0b",
+                tr.pa, tr.access_fault))
+          end
         end
-        ap_pipe2_rsp.write(tr);
+        if (publish_rsp)
+          ap_pipe2_rsp.write(tr);
       end
 
-      if (!vif.monitor_cb.lsu_mmu_va2_vld && prev_req_seen && !m_p2_rsp_seen) begin
+      if (!vif.monitor_cb.lsu_mmu_va2_vld && has_visible_req) begin
         if (m_pending_p2.size() > 0) begin
           tr = m_pending_p2.pop_front();
-          `uvm_warning(get_type_name(),
-            $sformatf("[LSU_P2_DROP] req dropped before rsp: va2=0x%07h", tr.va2))
+          if (!m_p2_rsp_seen) begin
+            `uvm_info(get_type_name(),
+              $sformatf("[LSU_P2_DROP] granted PFU req released before visible rsp: va2=0x%07h", tr.va2),
+              UVM_DEBUG)
+          end
         end
+        has_visible_req = 1'b0;
+        m_p2_rsp_seen = 1'b0;
       end
 
-      prev_req_seen = vif.monitor_cb.lsu_mmu_va2_vld;
       prev_rsp_seen = vif.monitor_cb.mmu_lsu_pa2_vld;
     end
   endtask

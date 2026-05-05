@@ -10,10 +10,10 @@
 //            issue one-cycle pulse first, if no response then wait for
 //            wakeup-or-busy-clear, leave one reopen-gap cycle for monitor
 //            drop/reopen barrier, then retry the same txn with one-cycle pulses.
-//   pipe2:   PFU-style prefetch request.  Hold va2_vld/va2 stable while the
-//            MMU request is outstanding, then release after pa2_vld.  The DUT
-//            PFU side has no ready input; changing va2 before pa2_vld creates
-//            non-architectural PTW pressure and can corrupt live PTW mbuf state.
+//   pipe2:   PFU-style prefetch request.  Hold va2_vld/va2 until the L2 arbiter
+//            grants the PFU request, then keep it stable until pa2_vld.
+//            If PFU is never granted, drop the advisory prefetch and continue
+//            draining LSU stimulus; pipe0/1 remain retry-until-real-response.
 //   stamo:   single-cycle PA check assertion (no response wait)
 //   inv:     Phase 6 implement
 // =============================================================================
@@ -25,6 +25,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   `uvm_component_utils(lsu_driver)
 
   virtual lsu_if vif;
+  virtual mmu_dut_probes_if v_probe;
 
   // Pending transaction queues per sub-channel (Phase 3: simple single-entry)
   lsu_txn m_pending[$];  // shared FIFO; threads pop by kind
@@ -41,6 +42,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected bit m_end_quiesce;
   protected int unsigned m_retry_probe_cycles;
   protected int unsigned m_rsp_watchdog_cycles;
+  protected int unsigned m_p2_grant_max_cycles;
+  protected int unsigned m_p2_rsp_watchdog_cycles;
 
   // Mutual exclusion between pipe0 and pipe1: the DUT's L1 DTLB lookup logic
   // shares resources between the two pipes.  Asserting va0_vld and va1_vld on
@@ -60,18 +63,31 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     m_end_quiesce = 1'b0;
     m_retry_probe_cycles = 4096;
     m_rsp_watchdog_cycles = 200000;
+    m_p2_grant_max_cycles = 256;
+    m_p2_rsp_watchdog_cycles = 8192;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
     if (!uvm_config_db #(virtual lsu_if)::get(this, "", "LSU_VIF", vif))
       `uvm_fatal(get_type_name(), "Cannot get LSU_VIF from config_db")
+    if (!uvm_config_db #(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
+      `uvm_info(get_type_name(),
+        "MMU_DUT_PROBES_VIF not in config_db - pipe2 grant observation is disabled",
+        UVM_LOW)
     void'($value$plusargs("LSU_RETRY_PROBE_CYCLES=%0d", m_retry_probe_cycles));
     void'($value$plusargs("LSU_RSP_WATCHDOG_CYCLES=%0d", m_rsp_watchdog_cycles));
+    void'($value$plusargs("LSU_P2_GRANT_MAX_CYCLES=%0d", m_p2_grant_max_cycles));
+    void'($value$plusargs("LSU_P2_RSP_WATCHDOG_CYCLES=%0d", m_p2_rsp_watchdog_cycles));
+    void'($value$plusargs("LSU_P2_RSP_MAX_CYCLES=%0d", m_p2_rsp_watchdog_cycles));
     if (m_retry_probe_cycles == 0)
       m_retry_probe_cycles = 1;
     if (m_rsp_watchdog_cycles == 0)
       m_rsp_watchdog_cycles = 1;
+    if (m_p2_grant_max_cycles == 0)
+      m_p2_grant_max_cycles = 1;
+    if (m_p2_rsp_watchdog_cycles == 0)
+      m_p2_rsp_watchdog_cycles = 1;
   endfunction
 
   virtual function void set_end_quiesce(bit enable = 1'b1);
@@ -452,7 +468,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     lsu_txn tr;
     forever begin
       bit got_rsp;
-      bit watchdog_hit;
+      bit got_grant;
+      int unsigned wait_cycles;
 
       _get_kind(LSU_PIPE2, tr);
       m_pipe2_busy = 1'b1;
@@ -463,39 +480,62 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       do begin
         @(vif.driver_cb);
       end while (vif.driver_cb.mmu_lsu_pa2_vld === 1'b1);
+
+      got_rsp   = 1'b0;
+      got_grant = 1'b0;
       vif.driver_cb.lsu_mmu_va2_vld <= 1'b1;
       vif.driver_cb.lsu_mmu_va2     <= tr.va2;
 
-      got_rsp = 1'b0;
-      while (!got_rsp) begin
-        watchdog_hit = 1'b0;
-        fork
-          begin : wait_rsp_p2
-            if (vif.driver_cb.mmu_lsu_pa2_vld !== 1'b1)
-              @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa2_vld === 1'b1);
+      wait_cycles = 0;
+      while (!got_rsp && !got_grant && (wait_cycles < m_p2_grant_max_cycles)) begin
+        @(vif.driver_cb);
+        wait_cycles++;
+        if (vif.driver_cb.mmu_lsu_pa2_vld === 1'b1) begin
+          got_rsp         = 1'b1;
+          tr.pa           = vif.driver_cb.mmu_lsu_pa2;
+          tr.access_fault = vif.driver_cb.mmu_lsu_pa2_err;
+          tr.sec          = vif.driver_cb.mmu_lsu_sec2;
+        end else if ((v_probe != null) && (v_probe.mon_cb.arb_pfu_grant === 1'b1)) begin
+          got_grant = 1'b1;
+        end
+      end
+
+      if (!got_rsp && got_grant) begin
+        while (!got_rsp) begin
+          fork
+            begin : wait_rsp_p2_granted
+              if (vif.driver_cb.mmu_lsu_pa2_vld !== 1'b1)
+                @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa2_vld === 1'b1);
+              got_rsp         = 1'b1;
+              tr.pa           = vif.driver_cb.mmu_lsu_pa2;
+              tr.access_fault = vif.driver_cb.mmu_lsu_pa2_err;
+              tr.sec          = vif.driver_cb.mmu_lsu_sec2;
+            end
+            begin : wait_watchdog_p2_granted
+              repeat (m_p2_rsp_watchdog_cycles) @(vif.driver_cb);
+              `uvm_warning(get_type_name(),
+                $sformatf("Pipe2 granted PFU response watchdog expired; holding request until MMU completion: va2=0x%07h pa2_vld=%0b",
+                  tr.va2, vif.driver_cb.mmu_lsu_pa2_vld))
+            end
+          join_any
+          disable fork;
+          if (!got_rsp && (vif.driver_cb.mmu_lsu_pa2_vld === 1'b1)) begin
             got_rsp         = 1'b1;
             tr.pa           = vif.driver_cb.mmu_lsu_pa2;
             tr.access_fault = vif.driver_cb.mmu_lsu_pa2_err;
             tr.sec          = vif.driver_cb.mmu_lsu_sec2;
           end
-          begin : wait_watchdog_p2
-            repeat (m_rsp_watchdog_cycles) @(vif.driver_cb);
-            watchdog_hit = 1'b1;
-            `uvm_warning(get_type_name(),
-              $sformatf("Pipe2 response watchdog expired; continuing to hold request until completion: va2=0x%07h pa2_vld=%0b",
-                tr.va2, vif.driver_cb.mmu_lsu_pa2_vld))
-          end
-        join_any
-        disable fork;
-        if (!got_rsp && (vif.driver_cb.mmu_lsu_pa2_vld === 1'b1)) begin
-          got_rsp         = 1'b1;
-          tr.pa           = vif.driver_cb.mmu_lsu_pa2;
-          tr.access_fault = vif.driver_cb.mmu_lsu_pa2_err;
-          tr.sec          = vif.driver_cb.mmu_lsu_sec2;
         end
       end
 
       vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
+
+      if (!got_rsp) begin
+        `uvm_info(get_type_name(),
+          $sformatf("Pipe2 PFU prefetch released before grant/response: va2=0x%07h grant_wait_limit=%0d",
+            tr.va2, m_p2_grant_max_cycles),
+          UVM_DEBUG)
+      end
 
       @(vif.driver_cb);
       m_pipe2_busy = 1'b0;

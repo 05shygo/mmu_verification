@@ -253,6 +253,7 @@ logic [EID_WIDTH-1:0] alloc_sel0, alloc_sel1;
 logic                  issue_req;
 logic [VPN_WIDTH-1:0]  issue_vpn;
 logic [EID_WIDTH-1:0]  issue_eid;
+logic                  dutlb_l2tlb_req_store;
 
 
 
@@ -283,9 +284,11 @@ logic dutlb_read_type0, dutlb_read_type1;
 logic expt_match0, expt_match1;
 logic expt_pgflt0, expt_pgflt1;
 logic expt_acflt0, expt_acflt1;
+logic [MB_DEPTH-1:0] expt_hit_vec;
 logic [11:0] expt_wakeup;
 logic [11:0] install_wakeup;
 logic expt_wr0_vld, expt_wr1_vld;
+logic [EID_WIDTH-1:0] expt_wr0_eid, expt_wr1_eid;
 logic [IID_WIDTH-1:0] expt_wr0_iid, expt_wr1_iid;
 logic [VPN_WIDTH-1:0] expt_wr0_vpn, expt_wr1_vpn;
 logic expt_wr0_pgflt, expt_wr1_pgflt;
@@ -299,6 +302,7 @@ assign dutlb_read_type1 = dutlb_ori_read1;
 
 assign expt_wr0_vld   = ptw_l1dtlb_ref_cmplt && (ptw_l1tlb_pgflt || ptw_l1tlb_acc_err)
                       && mb_entry_vld[ptw_l1dtlb_ref_id];
+assign expt_wr0_eid   = ptw_l1dtlb_ref_id[EID_WIDTH-1:0];
 assign expt_wr0_iid   = mb_entry_iid[ptw_l1dtlb_ref_id];
 assign expt_wr0_vpn   = mb_entry_vpn[ptw_l1dtlb_ref_id];
 assign expt_wr0_pgflt = ptw_l1tlb_pgflt;
@@ -306,6 +310,7 @@ assign expt_wr0_acflt = ptw_l1tlb_acc_err;
 
 assign expt_wr1_vld   = jtlb_dutlb_ref_cmplt && jtlb_dutlb_pgflt
                       && mb_entry_vld[jtlb_dutlb_ref_id];
+assign expt_wr1_eid   = jtlb_dutlb_ref_id[EID_WIDTH-1:0];
 assign expt_wr1_iid   = mb_entry_iid[jtlb_dutlb_ref_id];
 assign expt_wr1_vpn   = mb_entry_vpn[jtlb_dutlb_ref_id];
 assign expt_wr1_pgflt = jtlb_dutlb_pgflt;
@@ -406,11 +411,13 @@ mmu_l1dtlb_expt_cam #(
     .tlboper_utlb_inv_va_req(tlboper_utlb_inv_va_req),
 
     .expt_wr0_vld           (expt_wr0_vld),
+    .expt_wr0_eid           (expt_wr0_eid),
     .expt_wr0_iid           (expt_wr0_iid),
     .expt_wr0_vpn           (expt_wr0_vpn),
     .expt_wr0_pgflt         (expt_wr0_pgflt),
     .expt_wr0_acflt         (expt_wr0_acflt),
     .expt_wr1_vld           (expt_wr1_vld),
+    .expt_wr1_eid           (expt_wr1_eid),
     .expt_wr1_iid           (expt_wr1_iid),
     .expt_wr1_vpn           (expt_wr1_vpn),
     .expt_wr1_pgflt         (expt_wr1_pgflt),
@@ -431,6 +438,7 @@ mmu_l1dtlb_expt_cam #(
     .expt_match1            (expt_match1),
     .expt_pgflt1            (expt_pgflt1),
     .expt_acflt1            (expt_acflt1),
+    .expt_hit_vec           (expt_hit_vec),
     .expt_wakeup            (expt_wakeup)
 );
 
@@ -1063,6 +1071,7 @@ generate
             .refill_ppn    (entry_ref_ppn),
             .refill_flg    (entry_ref_flg),
 	    .refill_pgs	   (entry_ref_pgs),
+            .expt_hit      (expt_hit_vec[i]),
             
             // Flush Interface
             .rtu_yy_xx_flush(rtu_yy_xx_flush),
@@ -1247,7 +1256,10 @@ endgenerate
 //! Install and Wakeup Logic
 //!************************************************
 logic install_clk, install_clk_en;
-assign install_clk_en = jtlb_dutlb_ref_cmplt || |mb_entry_wfc;
+assign install_clk_en = jtlb_dutlb_ref_cmplt
+                      || ptw_l1dtlb_ref_cmplt
+                      || |mb_entry_wfc
+                      || |mb_entry_wfi;
 
 gated_clk_cell x_install_gateclk (
     .clk_in(forever_cpuclk), .clk_out(install_clk),
@@ -1334,6 +1346,3 @@ assign dutlb_top_scd_updt = 1'b0;    // TODO
 //assign dutlb_arb_cmplt = 1'b0;       // TODO
 
 endmodule
-
-
-

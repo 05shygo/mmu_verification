@@ -40,6 +40,7 @@ module mmu_l1dtlb_mb_entry #(
     input  logic [PPN_WIDTH-1:0]     refill_ppn,        // Data payload
     input  logic [FLG_WIDTH-1:0]     refill_flg,        // Data payload
     input  logic [2:0]		     refill_pgs,
+    input  logic                     expt_hit,
 
     //! Flush/Invalidation
     input  logic                     rtu_yy_xx_flush,
@@ -86,6 +87,7 @@ logic [2:0]		pgs_r;
 logic                   store_r;    // New: Register to hold store attribute
 logic                   issued_r;
 logic                   abort_hold_r;
+logic                   fault_hold_r;
 
 //!************************************************
 //! Control Signals
@@ -139,6 +141,8 @@ always_comb begin
                 if (issue_sel && issue_grant) begin
                     // Race condition: Granted and Aborted same cycle -> go to ABT
                     state_nxt = STATE_ABT;
+                end else begin
+                    state_nxt = STATE_IDLE;
                 end
             end else if (issue_sel && issue_grant) begin
                 // Successfully issued to L2TLB
@@ -183,8 +187,19 @@ always_comb begin
             end
         end
         
-        STATE_PGFLT: state_nxt = STATE_IDLE; // Hold 1 cycle to signal output
-        STATE_ACFLT: state_nxt = STATE_IDLE; // Hold 1 cycle to signal output
+        STATE_PGFLT: begin
+            if (abort_this_cyc)
+                state_nxt = STATE_IDLE;
+            else if (expt_hit)
+                state_nxt = STATE_WFG;
+        end
+
+        STATE_ACFLT: begin
+            if (abort_this_cyc)
+                state_nxt = STATE_IDLE;
+            else if (expt_hit)
+                state_nxt = STATE_WFG;
+        end
         
         STATE_ABT: begin
             if (refill_vld) begin
@@ -269,6 +284,16 @@ always_ff @(posedge mb_clk or negedge cpurst_b) begin
     end
 end
 
+always_ff @(posedge mb_clk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+        fault_hold_r <= 1'b0;
+    end else if (state_r == STATE_WFC && refill_vld && (refill_pgflt || refill_acflt)) begin
+        fault_hold_r <= 1'b1;
+    end else if (state_r == STATE_IDLE || state_nxt == STATE_IDLE) begin
+        fault_hold_r <= 1'b0;
+    end
+end
+
 //!************************************************
 //! Output Assignments
 //!************************************************
@@ -288,7 +313,7 @@ assign entry_flg     = flg_r;
 assign entry_pgs     = pgs_r;
 
 // Ready to issue: in WFG state and not aborted this cycle
-assign entry_ready   = (state_r == STATE_WFG) && !abort_this_cyc;
+assign entry_ready   = (state_r == STATE_WFG) && !abort_this_cyc && !fault_hold_r;
 
 // Wait for complete (Top logic uses this to track busy status)
 assign entry_wfc     = (state_r == STATE_WFC) || (state_r == STATE_ABT);
@@ -300,5 +325,3 @@ assign entry_wfi     = (state_r == STATE_WFI);
 assign entry_clk_en  = alloc_vld || (state_r != STATE_IDLE) || refill_vld;
 
 endmodule
-
-

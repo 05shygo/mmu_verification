@@ -119,7 +119,6 @@ logic [2 :0]  dutlb_pre_pgs;
 logic         dutlb_pre_sel;
 logic         dutlb_req_id_older;
 logic         dutlb_va_illegal;
-logic         jtlb_acc_fault;
 logic         lsu_va_chg;
 logic [2 :0]  mmu_lsu_page_size_x;
 logic         pabuf_clk;
@@ -192,8 +191,7 @@ assign mmu_lsu_access_fault_x = jtlb_acc_fault_flop
                                && pmp_flg_vld
                             || !pmp_mmu_flg_x[1] && !pmp_read_type
                                && !(cp0_mach_mode && !pmp_mmu_flg_x[3])
-                               && pmp_flg_vld
-                            || expt_match_x && expt_acflt_x;
+                               && pmp_flg_vld;
 
 assign dutlb_acc_flt_x = jtlb_acc_fault_flop;
 
@@ -285,17 +283,11 @@ assign dutlb_fin_pgs[PGS_WIDTH-1:0] = dutlb_pre_sel ? dutlb_pre_pgs[PGS_WIDTH-1:
 //----------------------------------------------------------
 //                  JTLB Access Fault Latch
 //----------------------------------------------------------
-// Legacy refill-global access-fault path disabled.
-// Access fault is replayed by CAM ownership on expt_match.
-assign jtlb_acc_fault = expt_match_x & expt_acflt_x;
-
 always @(posedge dutlb_clk or negedge cpurst_b) begin
   if(!cpurst_b)
     jtlb_acc_fault_flop <= 1'b0;
-  else if(jtlb_acc_fault)
-    jtlb_acc_fault_flop <= 1'b1;
   else
-    jtlb_acc_fault_flop <= 1'b0;
+    jtlb_acc_fault_flop <= expt_match_x & expt_acflt_x & !lsu_mmu_abort_x;
 end
 
 //----------------------------------------------------------
@@ -386,5 +378,3 @@ end
 `endif
 
 endmodule
-
-

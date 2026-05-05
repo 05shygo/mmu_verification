@@ -212,23 +212,13 @@ assign plru_refill_way  = (16'b1 << replace_idx);
 //! 7. Wakeup Logic
 //!************************************************
 // We need to generate a wakeup pulse for the LSU IID when a translation completes.
-// Completion occurs when:
-// 1. Fresh Refill Wins Arbitration (PTW or JTLB)
-// 2. Fresh Refill has Exception (PTW or JTLB) - doesn't write RAM but finishes flow
-// 3. WFI Entry Wins Arbitration
+// Wakeup occurs when:
+// 1. Refill data is installed into L1DTLB (fresh PTW/JTLB winner or WFI winner)
+// 2. LSU request hits an exception entry (generated in expt CAM)
 
-logic [11:0] wakeup_vec_next;
 logic	     wakeup_event;
-logic	     ptw_ref_fault;
-logic	     l2tlb_ref_fault;
-logic	     l1dtlb_expt_for_taken;
-
-assign ptw_ref_fault = (ptw_l1dtlb_ref_cmplt && req_ptw_expt && !req_ptw_aborted);
-assign l2tlb_ref_fault = (jtlb_dutlb_ref_cmplt && req_jtlb_expt && !req_jtlb_aborted);
-
-assign l1dtlb_expt_for_taken = ptw_ref_fault | l2tlb_ref_fault;
-assign wakeup_event = sel_ptw || sel_jtlb || sel_wfi || l1dtlb_expt_for_taken;
-assign wakeup_vec_next = {12{wakeup_event}};
+assign wakeup_event = sel_ptw || sel_jtlb || sel_wfi;
+assign mmu_lsu_tlb_wakeup = {12{wakeup_event}};
 
 
 
@@ -254,14 +244,4 @@ assign wakeup_vec_next = {12{wakeup_event}};
 //    end
 //end
 
-always_ff @(posedge install_clk or negedge cpurst_b) begin
-    if (!cpurst_b) begin
-        mmu_lsu_tlb_wakeup <= 12'b0;
-    end else begin
-        mmu_lsu_tlb_wakeup <= wakeup_vec_next;
-    end
-end
-
 endmodule
-
-

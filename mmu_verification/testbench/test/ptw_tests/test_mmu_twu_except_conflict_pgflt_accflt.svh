@@ -21,7 +21,7 @@ class test_mmu_twu_except_conflict_pgflt_accflt extends phase12_generated_test_b
     p12_fid      = "F4.NEW.9";
     p12_priority = "P0";
     p12_status   = "Implemented";
-    p12_seq_desc = "phase12 mixed pgflt + bus-error accerr under concurrent IFU/LSU pressure";
+    p12_seq_desc = "phase12 mixed LSU pgflt + bus-error accerr under concurrent TWU pressure";
     p12_checker  = "sva_twu_pgflt_acc_mutex + cg_twu_except_while_arb_busy";
     p12_reviewer = "A+B";
     num_txn      = 128;
@@ -38,20 +38,27 @@ class test_mmu_twu_except_conflict_pgflt_accflt extends phase12_generated_test_b
 
     phase12_map_4k_window(39'h10_0000, 8, 40'h0_2010_0000);
     m_env.m_pt_mem.m_builder.inject_fault(39'h10_0000, "V_OFF");
-    phase12_config_ptw_responder(32, 72, 350);
+    phase12_set_pmp_allow_all();
 
-    fork
-      begin
-        phase12_drive_ifu_rr(39'h10_0000, 1, 12);
-      end
-      begin
-        #150ns;
-        repeat (6) begin
-          phase12_cp0_tlb_allinv();
-          phase12_drive_lsu_rr(39'h10_1000, 1, 1, LSU_PIPE0, 1'b0);
-        end
-      end
-    join
+    // Make one deterministic page-fault sample first.  IFU fault requests can
+    // be exception-only and do not always produce the pavld handshake that the
+    // IFU driver waits for, so use LSU for the fault stream in this conflict
+    // test.
+    phase12_config_ptw_responder(32, 72, 0);
+    phase12_cp0_tlb_allinv();
+    phase12_drive_lsu_rr(39'h10_0000, 1, 1, LSU_PIPE0, 1'b0, 1'b1);
+
+    phase12_config_ptw_responder(32, 72, 350);
+    repeat (12) begin
+      phase12_cp0_tlb_allinv();
+      fork
+        phase12_drive_lsu_rr(39'h10_0000, 1, 1, LSU_PIPE0, 1'b0, 1'b1);
+        phase12_drive_lsu_rr(39'h10_1000, 1, 1, LSU_PIPE1, 1'b0, 1'b1);
+      join
+      #50ns;
+    end
+
+    phase12_config_ptw_responder(1, 4, 0);
 
     #(m_post_drain);
   endtask

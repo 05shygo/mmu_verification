@@ -32,6 +32,12 @@ REGRESS_DIR     ?= $(OUTPUT_DIR)/regression
 # NFS client/server clock skew produces "modification time ... in the future" in csrc
 # sub-makes and can trigger empty compile rules (cc -o .o) after simv exits. Refresh
 # csrc mtimes to this host after comp and before each run_cov simv.
+#
+# When this Makefile is invoked by GNU make, simv inherits MAKEFLAGS / MAKELEVEL /
+# MFLAGS. VCS then runs a nested make under output/csrc; those vars break the
+# inner makejobserver and can yield bogus rules (cc -o .o, make [.o] Error 4).
+# Strip them for every simv launch. Override with SIMV_ENV= if you must debug.
+SIMV_ENV        ?= env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL
 export PROJECT_DIR MMU_RTL_DIR RELATE_RTL_DIR MMU_PARAMS_DIR TB_DIR
 export CORE_V_VERIF CV_DV_UTILS_DIR OUTPUT_DIR
 
@@ -1739,7 +1745,7 @@ run: setup
 			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
 			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
 		fi; \
-		cd "$(RUN_DIR)" && ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(FSDB_OPTS) \
@@ -1792,7 +1798,7 @@ run_gui: setup
 		echo "  Use 'make run TEST_NAME=$(TEST_NAME) SEED=$(SEED)' for batch execution, or pass an exact UVM test name to run_gui."; \
 		exit 2; \
 	fi
-	cd $(OUTPUT_DIR) && ./simv \
+	cd $(OUTPUT_DIR) && $(SIMV_ENV) ./simv \
 		$(RUN_OPTS) \
 		$(SEED_OPTS) \
 		$(FSDB_OPTS) \
@@ -1818,7 +1824,7 @@ run_batch: setup
 			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
 			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
 		fi; \
-		cd "$(RUN_DIR)" && ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			-l $(LOG_DIR)/$(TEST_NAME)_batch.log; \
@@ -1889,7 +1895,7 @@ run_cov: setup
 		if [ -d "$(OUTPUT_DIR)/csrc" ]; then \
 			find "$(OUTPUT_DIR)/csrc" \( -type f -o -type d \) -exec touch {} + 2>/dev/null || true; \
 		fi; \
-		cd "$(RUN_DIR)" && ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(COV_RUN_COMMON_OPTS) \
@@ -1947,7 +1953,7 @@ debug: setup
 			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
 			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
 		fi; \
-		cd "$(RUN_DIR)" && ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(FSDB_OPTS) \

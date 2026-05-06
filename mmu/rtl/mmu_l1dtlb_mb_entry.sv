@@ -44,6 +44,7 @@ module mmu_l1dtlb_mb_entry #(
 
     //! Flush/Invalidation
     input  logic                     rtu_yy_xx_flush,
+    input  logic                     tlboper_utlb_clr,
     input  logic                     tlboper_utlb_inv_va_req,
     input  logic [VPN_WIDTH-1:0]     lsu_mmu_tlb_va,
 
@@ -112,9 +113,10 @@ gated_clk_cell x_mb_entry_gateclk (
 //!************************************************
 //! Invalidation / Abort Logic
 //!************************************************
-// Abort if flush occurs OR if a TLB invalidation targets this VPN while active
+// Abort if flush/global clear occurs OR if a TLB invalidation targets this VPN
+// while active.
 assign inv_hit = tlboper_utlb_inv_va_req && (lsu_mmu_tlb_va == vpn_r) && (state_r != STATE_IDLE);
-assign abort_this_cyc = rtu_yy_xx_flush || inv_hit;
+assign abort_this_cyc = rtu_yy_xx_flush || tlboper_utlb_clr || inv_hit;
 
 //!************************************************
 //! State Machine
@@ -151,7 +153,9 @@ always_comb begin
         end
         
         STATE_WFC: begin
-            if (refill_vld) begin
+            if (abort_this_cyc && refill_vld) begin
+                state_nxt = STATE_IDLE;
+            end else if (refill_vld) begin
                 // [Priority 1]: Aborted previously
                 if (abort_hold_r) begin
                     state_nxt = STATE_IDLE;

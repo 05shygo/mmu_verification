@@ -1075,6 +1075,7 @@ generate
             
             // Flush Interface
             .rtu_yy_xx_flush(rtu_yy_xx_flush),
+            .tlboper_utlb_clr(tlboper_utlb_clr),
             .tlboper_utlb_inv_va_req(tlboper_utlb_inv_va_req),
             .lsu_mmu_tlb_va(lsu_mmu_tlb_va),
             

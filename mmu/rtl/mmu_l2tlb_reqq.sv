@@ -91,6 +91,7 @@ module mmu_l2tlb_reqq#(
     // Arbitration Control
     logic [TOTAL_DEPTH-1:0]     ffr_oh;           // Find First Ready One-Hot
     logic [TOTAL_DEPTH-1:0]     entry_grant_vec;  // Grant to specific entry
+    logic [TOTAL_DEPTH-1:0]     bypass_grant_vec; // Grant to entry allocated by bypass issue
 
     // Internal Payload Arrays (to collect data from instances)
     logic [VPN_W-1:0]           entry_out_vpn   [TOTAL_DEPTH-1:0];
@@ -215,7 +216,7 @@ module mmu_l2tlb_reqq#(
 
                 // Issue (Read)
                 .issue_grant        (entry_grant_vec[i]),
-		.bypass_grant       (issue_grant & !entry_ready),
+		.bypass_grant       (bypass_grant_vec[i]),
                 // Feedback (Status Update)
                 // Note: Each entry checks if fb_trans_id matches its own index 'i'
                 .fb_match_id        (fb_valid && (fb_trans_id == i[ID_W-1:0])),
@@ -272,6 +273,9 @@ module mmu_l2tlb_reqq#(
 
     // Only issue a grant if the external arbiter allows it
       assign entry_grant_vec = ffr_oh & {TOTAL_DEPTH{issue_grant}};
+      assign bypass_grant_vec[0] = issue_grant & !entry_ready & i_req_valid;
+      assign bypass_grant_vec[TOTAL_DEPTH-1:1] =
+        dtlb_alloc_oh & {DTLB_DEPTH{issue_grant & !entry_ready & !i_req_valid & d_req_valid}};
       
 	
       assign entry_ready = |entry_rdy_vec; 
@@ -309,15 +313,17 @@ module mmu_l2tlb_reqq#(
 			 i_req_valid ? i_req_vpn :
 		 	 d_req_valid ? d_req_vpn :27'b0;
 
-      assign issue_eid = entry_ready ? entry_rdy_eid : 
-			 d_req_valid ? d_req_eid : {EID_W{1'b0}};
+      assign issue_eid = entry_ready ? entry_rdy_eid :
+                         i_req_valid ? {EID_W{1'b0}} :
+                         d_req_valid ? d_req_eid : {EID_W{1'b0}};
 
       assign issue_queue_id = entry_ready ? entry_rdy_id : 
         		 i_req_valid ? {ID_W{1'b0}} :
         	 	 d_req_valid ? dtlb_alloc_index : {ID_W{1'b0}};
 
-      assign issue_type = entry_ready ? entry_rdy_type : 
-		 	 d_req_valid ? d_req_type :3'b011;
+      assign issue_type = entry_ready ? entry_rdy_type :
+                         i_req_valid ? 3'b011 :
+                         d_req_valid ? d_req_type : 3'b011;
 
       //assign issue_is_dtlb = entry_ready ? entry_rdy_is_dtlb : 
       //		 	 d_req_valid ? 1'b1 :1'b0;

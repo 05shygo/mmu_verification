@@ -628,7 +628,7 @@ module mmu_l2tlb#(
     always_ff@(posedge l2tlb_clk or negedge cpurst_b) begin
         if(!cpurst_b) begin
             raw_vld      <=     1'b0;
-	end else if(arb_l2tlb_req & (arb_l2tlb_acc_type != 3'b101 || arb_l2tlb_acc_type != 3'b000)) begin
+	end else if(arb_l2tlb_req & (arb_l2tlb_acc_type != 3'b101 && arb_l2tlb_acc_type != 3'b000)) begin
 		raw_vld	 <=	1'b1;
 	end else raw_vld <= 1'b0;
     end	    

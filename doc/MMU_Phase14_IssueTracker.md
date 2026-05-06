@@ -77,6 +77,8 @@ Review policy:
 | MMU-P14-ISSUE-008 | RTL/Design Record | L1DTLB fault replay consumed entry could reissue/stick instead of release | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-009 | RTL/Design Record | L2TLB reqq sent entry did not retry when L2 miss-buffer allocation failed | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-010 | RTL/Design Record | L1ITLB missed L2TLB/JTLB page-fault completion in WFC transition | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-011 | RTL/Design Record | L2TLB reqq ITLB/DTLB simultaneous bypass mixed issue type | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-012 | RTL/Design Record | L2TLB raw_vld incorrectly sent PTW refill helper accesses into lookup pipeline | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 
 ---
 
@@ -966,13 +968,179 @@ make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
 
 ---
 
+## MMU-P14-ISSUE-011 - L2TLB Reqq Simultaneous ITLB/DTLB Bypass Mixed Type
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Status | Open |
+| Blocking | Yes |
+| Primary file | `mmu/rtl/mmu_l2tlb_reqq.sv` |
+| Fix commit | Pending; working-tree RTL fix present |
+| Evidence | Wave/debug triage of `test_twu_mask_pmp_wait_all4 SEED=97102`; simultaneous ITLB and DTLB miss into empty L2TLB reqq |
+
+### Failure Signature
+
+When an ITLB miss and a DTLB miss entered `mmu_l2tlb_reqq` in the same cycle
+while no reqq entry was ready, the issue path used the bypass mux. The bypass
+selected ITLB for `issue_vpn` and `issue_queue_id`, but selected DTLB for
+`issue_type`.
+
+Problematic condition:
+
+```text
+entry_ready=0 i_req_valid=1 d_req_valid=1
+issue_vpn      = i_req_vpn
+issue_queue_id = 0
+issue_type     = d_req_type
+```
+
+This created a mixed transaction: the VPN and queue ID identified an ITLB
+request, while the type identified a DTLB request.
+
+### Root Cause
+
+The bypass mux priority was inconsistent across fields:
+
+```systemverilog
+assign issue_vpn = entry_ready ? entry_rdy_vpn :
+                   i_req_valid ? i_req_vpn :
+                   d_req_valid ? d_req_vpn : 27'b0;
+
+assign issue_queue_id = entry_ready ? entry_rdy_id :
+                        i_req_valid ? {ID_W{1'b0}} :
+                        d_req_valid ? dtlb_alloc_index : {ID_W{1'b0}};
+
+assign issue_type = entry_ready ? entry_rdy_type :
+                    d_req_valid ? d_req_type : 3'b011;
+```
+
+`issue_type` did not include the `i_req_valid` priority used by
+`issue_vpn` and `issue_queue_id`. The downstream L2TLB/PTW completion routing
+depends on the type. A mixed ITLB VPN/queue ID with DTLB type can prevent the
+completion from returning to the L1ITLB path, leaving the ITLB refill FSM
+waiting for a completion that was routed as a DTLB transaction.
+
+### Fix
+
+The bypass payload mux now uses consistent priority for the transaction fields:
+ready entry first, then ITLB bypass, then DTLB bypass.
+
+```systemverilog
+assign issue_eid = entry_ready ? entry_rdy_eid :
+                   i_req_valid ? {EID_W{1'b0}} :
+                   d_req_valid ? d_req_eid : {EID_W{1'b0}};
+
+assign issue_type = entry_ready ? entry_rdy_type :
+                    i_req_valid ? 3'b011 :
+                    d_req_valid ? d_req_type : 3'b011;
+```
+
+ITLB has no L1 miss-buffer EID, so the ITLB bypass EID is explicitly zero. The
+critical fix is that `issue_type` now matches the ITLB priority used by
+`issue_vpn` and `issue_queue_id`.
+
+### Verification Notes
+
+Required rerun:
+
+```bash
+make comp
+make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
+make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
+```
+
+If further debug is needed, enable `PLUS_ARGS=+MMU_ITLB_DBG` and confirm that
+the simultaneous empty-queue bypass case produces:
+
+```text
+i_req=1 d_req=1 issue_qid=0 issue_type=3 issue_vpn=i_req_vpn
+```
+
+---
+
+## MMU-P14-ISSUE-012 - L2TLB raw_vld Includes PTW Refill Helper Accesses
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Status | Open |
+| Blocking | Yes |
+| Primary file | `mmu/rtl/mmu_l2tlb.sv` |
+| Fix commit | Pending; working-tree RTL fix present |
+| Evidence | Wave/debug triage of PTW refill path; raw lookup pipeline active for PTW RRPV helper accesses |
+
+### Failure Signature
+
+PTW refill uses L2TLB SRAM accesses that are not normal TLB lookups:
+
+- `type=3'b000`: PTW refill helper read to obtain RRPV state and choose a
+  victim entry.
+- `type=3'b101`: PTW refill write to update RRPV/tag/data SRAM after the victim
+  is selected.
+
+These accesses should interact with the replacement/refill SRAM path only.
+They should not enter the L2 lookup pipeline through `raw_vld`, because they
+are not translation lookup requests and do not need lookup hit/miss handling.
+
+### Root Cause
+
+The `raw_vld` generation attempted to exclude `type=101` and `type=000`, but
+used OR between two not-equal comparisons:
+
+```systemverilog
+arb_l2tlb_req & (arb_l2tlb_acc_type != 3'b101 || arb_l2tlb_acc_type != 3'b000)
+```
+
+This condition is always true for any single type value, because a type cannot
+be both `3'b101` and `3'b000` at the same time. As a result, every
+`arb_l2tlb_req` could assert `raw_vld`, including PTW refill helper accesses
+that should bypass the lookup pipeline.
+
+### Fix
+
+The exclusion condition now uses AND, so `raw_vld` is asserted only for real
+lookup accesses and not for PTW refill helper accesses:
+
+```systemverilog
+arb_l2tlb_req & (arb_l2tlb_acc_type != 3'b101 && arb_l2tlb_acc_type != 3'b000)
+```
+
+Expected behavior:
+
+- `type=000`: read RRPV/victim information only, no raw/final lookup pipeline.
+- `type=101`: write RRPV/tag/data only, no raw/final lookup pipeline.
+- Other lookup request types may assert `raw_vld`.
+
+### Verification Notes
+
+Required rerun:
+
+```bash
+make comp
+make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
+make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
+```
+
+Wave/debug checks:
+
+```text
+arb_l2tlb_req=1 arb_l2tlb_acc_type=000 -> raw_vld=0
+arb_l2tlb_req=1 arb_l2tlb_acc_type=101 -> raw_vld=0
+arb_l2tlb_req=1 arb_l2tlb_acc_type in real lookup types -> raw_vld=1
+```
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010, MMU-P14-ISSUE-011, MMU-P14-ISSUE-012
 ```
 
 Before final signoff, update this table:
@@ -989,3 +1157,5 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-008 | Closed | Commits `17177f1`, `e6c31ea`; `test_twu_mask_pmp_wait_all4 SEED=97102` no longer shows `l1d_mb=0xff` L1DTLB hang |
 | MMU-P14-ISSUE-009 | Closed | Commit `5fea263`; guard against `l2_reqq=0x002 l2_reqq_rdy=0x000 l2mb=0x000` retry starvation signature |
 | MMU-P14-ISSUE-010 | TBD | Working-tree fix in `mmu/rtl/mmu_l1itlb.sv`; rerun must show L2TLB/JTLB page-fault completion drives `WFC -> PGFLT -> IDLE` |
+| MMU-P14-ISSUE-011 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_reqq.sv`; rerun must show simultaneous ITLB/DTLB bypass issues ITLB type when ITLB VPN/qid are selected |
+| MMU-P14-ISSUE-012 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb.sv`; rerun/wave must show PTW `type=000/101` helper accesses do not assert `raw_vld` |

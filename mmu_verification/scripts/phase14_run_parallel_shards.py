@@ -3,6 +3,7 @@
 
 import argparse
 from collections import deque
+import errno
 import os
 import re
 import shutil
@@ -104,9 +105,40 @@ def parse_manifest(path: Path) -> List[Dict[str, str]]:
 
 
 def clean_path(path: Path) -> None:
+    """Remove a path; tolerate NFS/transient errors during directory removal."""
+
+    def _rmtree_retry(dir_path: Path) -> None:
+        last_exc: Optional[OSError] = None
+        for attempt in range(12):
+            try:
+                shutil.rmtree(dir_path)
+                return
+            except OSError as exc:
+                last_exc = exc
+                err = exc.errno
+                if err in (
+                    errno.ENOTEMPTY,
+                    errno.EBUSY,
+                    errno.EEXIST,
+                    errno.EACCES,
+                    errno.EPERM,
+                ):
+                    time.sleep(0.12 * (attempt + 1))
+                    continue
+                raise
+        aside = dir_path.with_name(
+            f"{dir_path.name}.stale.{os.getpid()}.{int(time.time() * 1000000)}"
+        )
+        try:
+            dir_path.rename(aside)
+        except OSError:
+            if last_exc is not None:
+                raise last_exc
+            raise
+
     if path.is_dir():
-        shutil.rmtree(path)
-    elif path.exists():
+        _rmtree_retry(path)
+    elif path.exists() or path.is_symlink():
         path.unlink()
 
 

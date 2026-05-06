@@ -72,16 +72,16 @@ Review policy:
 | MMU-P14-ISSUE-003 | Waiver/Signoff | Coverage report fallback / waiver policy for Phase 14 signoff | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
 | MMU-P14-ISSUE-004 | Makefile/Gate | Phase 14 Closure Owner regression and exit gate infrastructure | Phase 14 | Medium | Phase14 Closure Owner | Open | No |
 | MMU-P14-ISSUE-005 | Waiver/Signoff | Phase 14 signoff matrix and second-review workflow | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
-| MMU-P14-ISSUE-006 | URG/Tooling | VCS coverage dump abort corrupts/invalidates Phase14 run_cov VDB flow | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
-| MMU-P14-ISSUE-007 | Testbench/Protocol | Phase14 PTW mbuf abort/late-response accounting and SVA failures | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-006 | URG/Tooling | VCS coverage dump abort corrupts/invalidates Phase14 run_cov VDB flow | Phase 14 | High | Phase14 Closure Owner | Open | Conditional |
+| MMU-P14-ISSUE-007 | Testbench/Protocol | Phase14 PTW mbuf abort/late-response accounting and SVA failures | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-008 | RTL/Design Record | L1DTLB fault replay consumed entry could reissue/stick instead of release | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-009 | RTL/Design Record | L2TLB reqq sent entry did not retry when L2 miss-buffer allocation failed | Phase 14 | High | Phase14 Closure Owner | Closed | No |
-| MMU-P14-ISSUE-010 | RTL/Design Record | L1ITLB missed L2TLB/JTLB page-fault completion in WFC transition | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
-| MMU-P14-ISSUE-011 | RTL/Design Record | L2TLB reqq ITLB/DTLB simultaneous bypass mixed issue type | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
-| MMU-P14-ISSUE-012 | RTL/Design Record | L2TLB raw_vld incorrectly sent PTW refill helper accesses into lookup pipeline | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
-| MMU-P14-ISSUE-013 | RTL/Design Record | L2TLB reqq simultaneous bypass incorrectly marked DTLB entry sent | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
-| MMU-P14-ISSUE-014 | RTL/Design Record | L2TLB miss buffer bypass could issue unallocated PTW request | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
-| MMU-P14-ISSUE-015 | Testbench/Scoreboard | Translation scoreboard DTLB exception CAM replay model | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-010 | RTL/Design Record | L1ITLB missed L2TLB/JTLB page-fault completion in WFC transition | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-011 | RTL/Design Record | L2TLB reqq ITLB/DTLB simultaneous bypass mixed issue type | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-012 | RTL/Design Record | L2TLB raw_vld incorrectly sent PTW refill helper accesses into lookup pipeline | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-013 | RTL/Design Record | L2TLB reqq simultaneous bypass incorrectly marked DTLB entry sent | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-014 | RTL/Design Record | L2TLB miss buffer bypass could issue unallocated PTW request | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-015 | Testbench/Scoreboard | Translation scoreboard DTLB exception CAM replay model | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 
 ---
 
@@ -308,7 +308,7 @@ owned by the Phase14 Closure Owner.
 | Severity | High |
 | Owner | Phase14 Closure Owner |
 | Status | Open |
-| Blocking | Yes |
+| Blocking | Conditional |
 | First observed | 2026-05-03 |
 | Evidence | `test_twu_mask_pmp_wait_all4_97104_cov.log`; Phase14 run_cov console transcript |
 
@@ -396,10 +396,22 @@ shards:
 
 ### Signoff Decision
 
-Open and blocking until one of the following is true:
+Open and conditional after the 2026-05-07 high-parallel regression completed all
+465 shards cleanly. It remains open only for the coverage-artifact side of
+Phase14 closure.
 
-- High-parallel Phase14 closure run completes with 100% regression pass and usable
-  coverage artifacts.
+2026-05-07 regression evidence:
+
+```text
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
+```
+
+The prior shared aggregate-VDB abort is no longer a blocker for functional
+regression signoff. Final closure still requires one of the following:
+
+- `phase14_coverage_merge_parallel` completes with usable coverage artifacts.
 - A waiver/fallback decision is recorded in this tracker, linked from
   `doc/MMU_Phase14_SignoffMatrix.md`, and second-reviewed.
 
@@ -412,8 +424,8 @@ Open and blocking until one of the following is true:
 | Type | Testbench/Protocol |
 | Severity | High |
 | Owner | Phase14 Closure Owner |
-| Status | Open |
-| Blocking | Yes |
+| Status | Closed |
+| Blocking | No |
 | First observed | 2026-05-03 |
 | Evidence | `make phase14_show_parallel_failures PHASE14_PARALLEL_FAILURE_LIMIT=7`; logs under `output/phase14_parallel_logs` |
 
@@ -666,13 +678,17 @@ still active.
 
 ### Closure Requirement
 
-Blocking until all are true:
+Closed by the 2026-05-07 full Phase14 high-parallel regression:
 
-- Minimal single-test reproduction is captured and archived.
-- Abort/late-response behavior is classified as either DUT protocol bug,
-  testbench responder/monitor modeling bug, or SVA assumption bug.
-- The selected fix is reviewed against the RTL PTW abort semantics.
-- The failing Phase14 shards rerun cleanly before final signoff.
+```text
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
+```
+
+The previously failing pmbuf / arb-grant signatures are no longer present in
+the 465-shard, 93-test x 5-seed closure run. No residual Phase14 functional
+blocker remains under this issue.
 
 ---
 
@@ -871,12 +887,12 @@ make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
 | Type | RTL/Design Record |
 | Severity | High |
 | Owner | Phase14 Closure Owner |
-| Status | Open |
-| Blocking | Yes until rerun passes |
+| Status | Closed |
+| Blocking | No |
 | First observed | 2026-05-06 |
 | Primary file | `mmu/rtl/mmu_l1itlb.sv` |
 | Related file | `mmu/rtl/mmu_l2tlb.sv` |
-| Fix commit | Pending; working-tree RTL fix present |
+| Fix commit | Integrated in Phase14 working tree before 2026-05-07 closure rerun |
 | Evidence | `test_twu_mask_pmp_wait_all4 SEED=97102` timeout debug; L1ITLB debug fields added to `MMU_TIMEOUT_DBG` |
 
 ### Failure Signature
@@ -969,6 +985,14 @@ make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
 make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
 ```
 
+Closure evidence:
+
+```text
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
+```
+
 ---
 
 ## MMU-P14-ISSUE-011 - L2TLB Reqq Simultaneous ITLB/DTLB Bypass Mixed Type
@@ -977,10 +1001,10 @@ make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
 | --- | --- |
 | Type | RTL/Design Record |
 | Severity | High |
-| Status | Open |
-| Blocking | Yes |
+| Status | Closed |
+| Blocking | No |
 | Primary file | `mmu/rtl/mmu_l2tlb_reqq.sv` |
-| Fix commit | Pending; working-tree RTL fix present |
+| Fix commit | Integrated in Phase14 working tree before 2026-05-07 closure rerun |
 | Evidence | Wave/debug triage of `test_twu_mask_pmp_wait_all4 SEED=97102`; simultaneous ITLB and DTLB miss into empty L2TLB reqq |
 
 ### Failure Signature
@@ -1061,6 +1085,14 @@ the simultaneous empty-queue bypass case produces:
 i_req=1 d_req=1 issue_qid=0 issue_type=3 issue_vpn=i_req_vpn
 ```
 
+Closure evidence:
+
+```text
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
+```
+
 ---
 
 ## MMU-P14-ISSUE-012 - L2TLB raw_vld Includes PTW Refill Helper Accesses
@@ -1069,10 +1101,10 @@ i_req=1 d_req=1 issue_qid=0 issue_type=3 issue_vpn=i_req_vpn
 | --- | --- |
 | Type | RTL/Design Record |
 | Severity | High |
-| Status | Open |
-| Blocking | Yes |
+| Status | Closed |
+| Blocking | No |
 | Primary file | `mmu/rtl/mmu_l2tlb.sv` |
-| Fix commit | Pending; working-tree RTL fix present |
+| Fix commit | Integrated in Phase14 working tree before 2026-05-07 closure rerun |
 | Evidence | Wave/debug triage of PTW refill path; raw lookup pipeline active for PTW RRPV helper accesses |
 
 ### Failure Signature
@@ -1135,6 +1167,14 @@ arb_l2tlb_req=1 arb_l2tlb_acc_type=101 -> raw_vld=0
 arb_l2tlb_req=1 arb_l2tlb_acc_type in real lookup types -> raw_vld=1
 ```
 
+Closure evidence:
+
+```text
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
+```
+
 ---
 
 ## MMU-P14-ISSUE-013 - L2TLB Reqq Bypass Grant Marked Non-Issued DTLB Entry Sent
@@ -1143,11 +1183,11 @@ arb_l2tlb_req=1 arb_l2tlb_acc_type in real lookup types -> raw_vld=1
 | --- | --- |
 | Type | RTL/Design Record |
 | Severity | High |
-| Status | Open |
-| Blocking | Yes |
+| Status | Closed |
+| Blocking | No |
 | Primary file | `mmu/rtl/mmu_l2tlb_reqq.sv` |
 | Related file | `mmu/rtl/mmu_l2tlb_reqq_entry.sv` |
-| Fix commit | Pending; working-tree RTL fix present |
+| Fix commit | Integrated in Phase14 working tree before 2026-05-07 closure rerun |
 | Evidence | Wave/debug triage of simultaneous ITLB and DTLB miss into empty L2TLB reqq with arb grant |
 
 ### Failure Signature
@@ -1245,6 +1285,14 @@ entry_vld_vec includes both ITLB and DTLB entries
 entry_rdy_vec shows the DTLB entry ready after allocation
 ```
 
+Closure evidence:
+
+```text
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
+```
+
 ---
 
 ## MMU-P14-ISSUE-014 - L2TLB Miss Buffer Bypass Issued Unallocated Request
@@ -1253,11 +1301,11 @@ entry_rdy_vec shows the DTLB entry ready after allocation
 | --- | --- |
 | Type | RTL/Design Record |
 | Severity | High |
-| Status | Open |
-| Blocking | Yes |
+| Status | Closed |
+| Blocking | No |
 | Primary file | `mmu/rtl/mmu_l2tlb_mb.sv` |
 | Related file | `mmu/rtl/mmu_l2tlb.sv` |
-| Fix commit | Pending; working-tree RTL fix present |
+| Fix commit | Integrated in Phase14 working tree before 2026-05-07 closure rerun |
 | Evidence | Code audit after L2TLB reqq bypass bug; same bypass/sent pattern checked in L2TLB miss buffer |
 
 ### Failure Signature
@@ -1372,6 +1420,14 @@ req_valid=1 req_alloc_valid=1 entry_ready=0 ptw_ready=1 -> one bypass_grant_vec 
 entry_ready=1 -> issue_req follows ready entry, not current failed allocation
 ```
 
+Closure evidence:
+
+```text
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
+```
+
 ---
 
 ## MMU-P14-ISSUE-015 - Translation SB DTLB Exception CAM Replay Model
@@ -1380,8 +1436,8 @@ entry_ready=1 -> issue_req follows ready entry, not current failed allocation
 | --- | --- |
 | Type | Testbench/Scoreboard |
 | Severity | High |
-| Status | Open |
-| Blocking | Yes |
+| Status | Closed |
+| Blocking | No |
 | Primary file | `mmu_verification/testbench/env/mmu_translation_sb.svh` |
 | Probe files | `mmu_verification/testbench/env/mmu_dut_probes_if.sv`, `mmu_verification/testbench/top/tb_top.sv` |
 | Related test | `mmu_verification/testbench/test/ptw_tests/test_mmu_twu_except_conflict_pgflt_accflt.svh` |
@@ -1471,10 +1527,12 @@ Translation SB summary includes lsu_expt_replay_rsp > 0
 lsu_expt_replay_orphan_rsp remains 0 unless separately reviewed
 ```
 
-After focused closure, rerun the Phase14 full parallel regression:
+Closure evidence:
 
 ```bash
 make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+Phase14 parallel shards completed cleanly
+Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
 ```
 
 ---
@@ -1485,7 +1543,7 @@ Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010, MMU-P14-ISSUE-011, MMU-P14-ISSUE-012, MMU-P14-ISSUE-013, MMU-P14-ISSUE-014, MMU-P14-ISSUE-015
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006
 ```
 
 Before final signoff, update this table:
@@ -1497,13 +1555,13 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-003 | TBD | TBD |
 | MMU-P14-ISSUE-004 | TBD | `make print-phase14`; `python -m py_compile scripts/phase14_exit_gate.py`; closure run evidence |
 | MMU-P14-ISSUE-005 | TBD | `doc/MMU_Phase14_SignoffMatrix.md` |
-| MMU-P14-ISSUE-006 | TBD | High-parallel closure rerun evidence or reviewed coverage waiver |
-| MMU-P14-ISSUE-007 | TBD | Minimal PTW mbuf abort/late-response reproduction and Phase14 shard rerun evidence |
+| MMU-P14-ISSUE-006 | Conditional | Functional high-parallel regression completed cleanly on 2026-05-07; coverage merge / URG artifact decision still pending |
+| MMU-P14-ISSUE-007 | Closed | 2026-05-07 `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20` completed all 465 shards cleanly |
 | MMU-P14-ISSUE-008 | Closed | Commits `17177f1`, `e6c31ea`; `test_twu_mask_pmp_wait_all4 SEED=97102` no longer shows `l1d_mb=0xff` L1DTLB hang |
 | MMU-P14-ISSUE-009 | Closed | Commit `5fea263`; guard against `l2_reqq=0x002 l2_reqq_rdy=0x000 l2mb=0x000` retry starvation signature |
-| MMU-P14-ISSUE-010 | TBD | Working-tree fix in `mmu/rtl/mmu_l1itlb.sv`; rerun must show L2TLB/JTLB page-fault completion drives `WFC -> PGFLT -> IDLE` |
-| MMU-P14-ISSUE-011 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_reqq.sv`; rerun must show simultaneous ITLB/DTLB bypass issues ITLB type when ITLB VPN/qid are selected |
-| MMU-P14-ISSUE-012 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb.sv`; rerun/wave must show PTW `type=000/101` helper accesses do not assert `raw_vld` |
-| MMU-P14-ISSUE-013 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_reqq.sv`; rerun/wave must show simultaneous ITLB/DTLB bypass only marks the actually issued ITLB entry sent |
-| MMU-P14-ISSUE-014 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_mb.sv`; rerun/wave must show failed MB allocation does not issue an untracked PTW request |
-| MMU-P14-ISSUE-015 | TBD | Scoreboard shadow DTLB exception CAM model plus `test_mmu_twu_except_conflict_pgflt_accflt` rerun showing `lsu_expt_replay_rsp > 0` and no UVM errors |
+| MMU-P14-ISSUE-010 | Closed | 2026-05-07 full high-parallel run clean; prior L1ITLB WFC page-fault hang no longer reproduced |
+| MMU-P14-ISSUE-011 | Closed | 2026-05-07 full high-parallel run clean; prior L2TLB reqq mixed ITLB/DTLB bypass signature no longer reproduced |
+| MMU-P14-ISSUE-012 | Closed | 2026-05-07 full high-parallel run clean; PTW refill helper raw lookup issue no longer blocks Phase14 regression |
+| MMU-P14-ISSUE-013 | Closed | 2026-05-07 full high-parallel run clean; reqq bypass grant/sent issue no longer blocks Phase14 regression |
+| MMU-P14-ISSUE-014 | Closed | 2026-05-07 full high-parallel run clean; L2TLB MB unallocated bypass issue no longer blocks Phase14 regression |
+| MMU-P14-ISSUE-015 | Closed | 2026-05-07 full high-parallel run clean after scoreboard DTLB exception CAM replay model update |

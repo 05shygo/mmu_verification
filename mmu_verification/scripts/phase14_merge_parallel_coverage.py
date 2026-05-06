@@ -9,6 +9,15 @@ from pathlib import Path
 from typing import Dict, List
 
 
+def _popen_text_stdio_kwargs():
+    """Text mode for captured stdout (``text=`` requires Python 3.7+)."""
+    if sys.version_info >= (3, 7):
+        return {"text": True, "errors": "ignore"}
+    if sys.version_info >= (3, 6):
+        return {"universal_newlines": True, "encoding": "utf-8", "errors": "ignore"}
+    return {"universal_newlines": True}
+
+
 FIELDS = (
     "shard_id",
     "seed",
@@ -54,7 +63,12 @@ def run_and_tee(cmd: List[str], log_path: Path) -> int:
     with log_path.open("a", encoding="utf-8", errors="ignore") as log:
         log.write("\n$ " + " ".join(cmd) + "\n")
         log.flush()
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, errors="ignore")
+        proc = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            **_popen_text_stdio_kwargs(),
+        )
         assert proc.stdout is not None
         for line in proc.stdout:
             print(line, end="")

@@ -41,12 +41,12 @@ must have a non-empty reviewer plus `Reviewed` or `Approved` review status.
 
 | ID | VerificationPlan Section 9 criterion | Status | Evidence | Issue / Waiver | Reviewer | Review status |
 | --- | --- | --- | --- | --- | --- | --- |
-| S1 | nightly_full / Phase14 full list 5 seeds 100% pass | Open | `output/regression/phase14_v4_full/summary.txt` from high-parallel rerun | MMU-P14-ISSUE-006, MMU-P14-ISSUE-007 until rerun passes | TBD | TBD |
-| S2 | weekly_coverage / latest coverage run has no regression | Open | `output/coverage/phase14_urgReport` or reviewed fallback from high-parallel rerun | MMU-P14-ISSUE-001, MMU-P14-ISSUE-003, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007 | TBD | TBD |
+| S1 | nightly_full / Phase14 full list 5 seeds 100% pass | Open | `output/regression/phase14_v4_full/summary.txt` from high-parallel rerun | MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-015 until rerun passes | TBD | TBD |
+| S2 | weekly_coverage / latest coverage run has no regression | Open | `output/coverage/phase14_urgReport` or reviewed fallback from high-parallel rerun | MMU-P14-ISSUE-001, MMU-P14-ISSUE-003, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-015 | TBD | TBD |
 | S3 | Code coverage: line >=99.5%, branch >=99%, toggle >=98%, FSM >=99% | Open | `output/coverage/phase14_urgReport` from high-parallel rerun | MMU-P14-ISSUE-003, MMU-P14-ISSUE-006 if waiver is needed | TBD | TBD |
 | S4 | Functional coverage 100% | Open | `output/coverage/phase14_urgReport` and/or reviewed log-summary fallback | MMU-P14-ISSUE-003 if fallback/waiver is used | TBD | TBD |
 | S5 | Assertion coverage 100% triggered, 0 fail | Open | `output/coverage/phase14_urgReport`; SVA cover summaries | MMU-P14-ISSUE-003 if fallback/waiver is used; MMU-P14-ISSUE-007 until SVA failure is resolved | TBD | TBD |
-| S6 | P0/P1 open bugs are 0 | Open | `doc/MMU_Phase14_IssueTracker.md`; R19/R20/DA-003 records | MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-007 | TBD | TBD |
+| S6 | P0/P1 open bugs are 0 | Open | `doc/MMU_Phase14_IssueTracker.md`; R19/R20/DA-003 records | MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-007, MMU-P14-ISSUE-015 | TBD | TBD |
 | S7 | P2 bugs reviewed and agreed | Open | Issue tracker review notes | MMU-P14-ISSUE-003, MMU-P14-ISSUE-007 | TBD | TBD |
 | S8 | Waivers all co-signed | Open | This matrix plus `simu/exclude_v4.do` | MMU-P14-ISSUE-003 | TBD | TBD |
 | S9 | GLS zero-delay critical set 100% pass or formally out of Phase14 scope | Open | GLS logs or scope waiver | MMU-P14-ISSUE-003 if waived | TBD | TBD |

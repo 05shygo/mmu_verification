@@ -81,6 +81,7 @@ Review policy:
 | MMU-P14-ISSUE-012 | RTL/Design Record | L2TLB raw_vld incorrectly sent PTW refill helper accesses into lookup pipeline | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 | MMU-P14-ISSUE-013 | RTL/Design Record | L2TLB reqq simultaneous bypass incorrectly marked DTLB entry sent | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 | MMU-P14-ISSUE-014 | RTL/Design Record | L2TLB miss buffer bypass could issue unallocated PTW request | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-015 | Testbench/Scoreboard | Translation scoreboard DTLB exception CAM replay model | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 
 ---
 
@@ -1373,13 +1374,118 @@ entry_ready=1 -> issue_req follows ready entry, not current failed allocation
 
 ---
 
+## MMU-P14-ISSUE-015 - Translation SB DTLB Exception CAM Replay Model
+
+| Field | Value |
+| --- | --- |
+| Type | Testbench/Scoreboard |
+| Severity | High |
+| Status | Open |
+| Blocking | Yes |
+| Primary file | `mmu_verification/testbench/env/mmu_translation_sb.svh` |
+| Probe files | `mmu_verification/testbench/env/mmu_dut_probes_if.sv`, `mmu_verification/testbench/top/tb_top.sv` |
+| Related test | `mmu_verification/testbench/test/ptw_tests/test_mmu_twu_except_conflict_pgflt_accflt.svh` |
+| First observed | 2026-05-06 Phase14 high-parallel regression |
+| Evidence | `test_mmu_twu_except_conflict_pgflt_accflt` and related Phase14 shards reported translation fault mismatches / LSU drain failures around DTLB exception replay |
+
+### Failure Signature
+
+`test_mmu_twu_except_conflict_pgflt_accflt` exposed cases where the DUT returned
+a response sourced from the L1D DTLB exception CAM replay/pre-select path, while
+the software reference still evaluated the current page-table/PMP state as a
+fresh translation.
+
+Representative symptoms:
+
+```text
+[MMU_EXPT_TRACE_ONCE][REPLAY_HIT] ... vpn=0x100 pa_vld=1 pgflt=1 acflt=0 miss=0
+UVM_ERROR ... [LSU_P0] VA=0x0000100000: fault mismatch ...
+UVM_ERROR ... LSU stimulus did not drain ...
+```
+
+The replay response can legitimately carry a stored page-fault or access-fault
+class from the DTLB exception CAM. Comparing that replay response directly
+against a fresh software walk is not a valid reference check.
+
+### Root Cause
+
+This is a testbench modeling gap, not a DUT timing fix. The translation
+scoreboard previously modeled ordinary translation results and some LSU replay
+waivers, but it did not keep a shadow model of the DTLB exception CAM contents.
+Therefore it could not distinguish:
+
+- normal LSU translation response,
+- DTLB exception CAM replay response,
+- same-cycle exception CAM write and replay/pre-select visibility,
+- orphan replay indication without a known shadow entry.
+
+### Fix
+
+The scoreboard/probe flow now models DTLB exception replay explicitly:
+
+- `mmu_dut_probes_if.sv` exposes L1D exception CAM write ports
+  `l1d_expt_wr0_*` / `l1d_expt_wr1_*` plus flush/invalidate clear events.
+- `tb_top.sv` wires those probes from `u_dut.u_mmu_l1dtlb`.
+- `mmu_translation_sb.svh` maintains an 8-entry shadow exception CAM keyed by
+  `{iid, vpn}` and storing `{pgflt, acflt, eid}`.
+- The shadow CAM is cleared on reset, RTU flush, uTLB clear, and VA invalidate.
+- LSU compare now takes the LSU request id, detects shadow hits, same-cycle
+  writes, DTLB `expt_match`, and request-VPN PA bypass replay signatures.
+- Replay responses skip the ordinary ref-vs-DUT fresh-translation compare, but
+  still check the replay fault class against the shadow CAM entry.
+- New counters are reported:
+  `m_lsu_expt_replay_rsp`, `m_lsu_expt_replay_timing_waive_rsp`, and
+  `m_lsu_expt_replay_orphan_rsp`.
+
+The related test `test_mmu_twu_except_conflict_pgflt_accflt` was adjusted to
+keep stable, attributable exception samples:
+
+- Stage 1 creates a deterministic LSU page fault on a `V_OFF` VA while IFU only
+  applies mapped pressure.
+- Stage 2 creates a deterministic PTW access fault on a different mapped VA.
+- The test requires `translation_sb` to be present and requires
+  `m_lsu_expt_replay_rsp > 0`, so a pass proves the scoreboard observed the
+  modeled replay path.
+
+### Non-Goal
+
+No DUT RTL change is part of this issue. The recorded decision is that the DUT
+exception replay/pre-select timing is intentional for this closure item; the
+fix is to model that behavior in the UVM reference/scoreboard layer.
+
+### Verification Notes
+
+Required focused rerun:
+
+```bash
+make run_cov TEST_NAME=test_mmu_twu_except_conflict_pgflt_accflt SEED=97101 VERBOSITY=UVM_MEDIUM TIMEOUT=10000000 UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0
+make check_log LOG=output/logs/test_mmu_twu_except_conflict_pgflt_accflt_97101_cov.log
+```
+
+Expected evidence:
+
+```text
+UVM_ERROR : 0
+UVM_FATAL : 0
+Translation SB summary includes lsu_expt_replay_rsp > 0
+lsu_expt_replay_orphan_rsp remains 0 unless separately reviewed
+```
+
+After focused closure, rerun the Phase14 full parallel regression:
+
+```bash
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+```
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010, MMU-P14-ISSUE-011, MMU-P14-ISSUE-012, MMU-P14-ISSUE-013, MMU-P14-ISSUE-014
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010, MMU-P14-ISSUE-011, MMU-P14-ISSUE-012, MMU-P14-ISSUE-013, MMU-P14-ISSUE-014, MMU-P14-ISSUE-015
 ```
 
 Before final signoff, update this table:
@@ -1400,3 +1506,4 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-012 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb.sv`; rerun/wave must show PTW `type=000/101` helper accesses do not assert `raw_vld` |
 | MMU-P14-ISSUE-013 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_reqq.sv`; rerun/wave must show simultaneous ITLB/DTLB bypass only marks the actually issued ITLB entry sent |
 | MMU-P14-ISSUE-014 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_mb.sv`; rerun/wave must show failed MB allocation does not issue an untracked PTW request |
+| MMU-P14-ISSUE-015 | TBD | Scoreboard shadow DTLB exception CAM model plus `test_mmu_twu_except_conflict_pgflt_accflt` rerun showing `lsu_expt_replay_rsp > 0` and no UVM errors |

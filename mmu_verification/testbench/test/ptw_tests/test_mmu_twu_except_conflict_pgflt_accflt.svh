@@ -51,18 +51,20 @@ class test_mmu_twu_except_conflict_pgflt_accflt extends phase12_generated_test_b
       phase12_drive_ifu_rr(39'h10_8000, 8, 16, 1'b1);
       phase12_drive_lsu_rr(39'h10_0000, 1, 1, LSU_PIPE0, 1'b0, 1'b1);
     join
+    phase12_wait_for_quiescent("phase12_except_conflict_pgflt_seed");
 
     phase12_config_ptw_responder(32, 72, 350);
-    repeat (12) begin
+    repeat (4) begin
       phase12_cp0_tlb_allinv();
       fork
         phase12_drive_lsu_rr(39'h10_0000, 1, 1, LSU_PIPE0, 1'b0, 1'b1);
         phase12_drive_lsu_rr(39'h10_1000, 1, 1, LSU_PIPE1, 1'b0, 1'b1);
       join
-      #50ns;
+      phase12_wait_for_quiescent("phase12_except_conflict_iter", 524288, 16);
     end
 
     phase12_config_ptw_responder(1, 4, 0);
+    phase12_wait_for_quiescent("phase12_except_conflict_recover", 524288, 16);
 
     #(m_post_drain);
   endtask

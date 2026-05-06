@@ -1121,9 +1121,11 @@ phase14_coverage_merge_parallel:
 	@$(PYTHON) "$(PHASE14_MERGE_PARALLEL_COVERAGE)" \
 		--manifest "$(PHASE14_PARALLEL_MANIFEST)" \
 		--urg "$(URG)" \
+		--base-db "$(COV_BASE_DB_DIR)" \
 		--merged-db "$(PHASE14_URG_MERGED_DB)" \
 		--report-dir "$(PHASE14_URG_REPORT_DIR)" \
-		--log "$(PHASE14_PARALLEL_URG_LOG)"
+		--log "$(PHASE14_PARALLEL_URG_LOG)" \
+		--batch-size "$(URG_BATCH_SIZE)"
 
 phase14_gate_sharded:
 	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)

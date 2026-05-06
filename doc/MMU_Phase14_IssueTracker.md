@@ -394,6 +394,28 @@ shards:
   (`PHASE14_PARALLEL_LAUNCH_STAGGER=0.05`) to avoid a single burst of VCS
   startup and license/NFS traffic.
 
+Follow-up from `phase14_coverage_merge_parallel` after the 465-shard run passed:
+
+- The server environment exposes only Synopsys `VCS/URG T-2022.06`
+  (`which vcs` and `which urg` both resolve under `/usr/tools/synopsys/VCS2022`).
+- `phase14_coverage_merge_parallel` reached URG but crashed while merging all
+  high-parallel shard VDBs directly:
+
+```text
+URG Version T-2022.06
+Command line: ... urg1 -full64 -dir output/phase14_parallel_vdb/phase14_parallel_*.vdb -dbname output/coverage/phase14_merged.vdb
+No context available
+make: *** [phase14_coverage_merge_parallel] Error 1
+```
+
+- This is classified as a Phase14 coverage tooling artifact issue, not a
+  functional regression failure.
+- The parallel coverage merge flow now passes `COV_BASE_DB_DIR` as the compile
+  context VDB and uses `URG_BATCH_SIZE` to build intermediate batch VDBs before
+  the final report. This avoids one monolithic `urg -dir` invocation over all
+  465 isolated runtime VDBs and mirrors the aggregate-VDB context fallback used
+  by `make cov`.
+
 ### Signoff Decision
 
 Open and conditional after the 2026-05-07 high-parallel regression completed all

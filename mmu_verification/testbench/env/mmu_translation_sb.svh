@@ -74,8 +74,24 @@ class mmu_translation_sb extends uvm_scoreboard;
   int unsigned m_lsu_fault_replay_rsp;
   int unsigned m_lsu_replay_mismatch;
   int unsigned m_lsu_replay_waive_rsp;
+  int unsigned m_lsu_expt_replay_rsp;
+  int unsigned m_lsu_expt_replay_timing_waive_rsp;
+  int unsigned m_lsu_expt_replay_orphan_rsp;
   int unsigned m_ifu_accerr_waive_rsp;
   int unsigned m_ifu_refpgflt_waive_rsp;
+
+  localparam int DTLB_EXPT_CAM_DEPTH = 8;
+
+  typedef struct packed {
+    bit        vld;
+    bit [6:0]  iid;
+    bit [26:0] vpn;
+    bit        pgflt;
+    bit        acflt;
+    bit [3:0]  eid;
+  } dtlb_expt_cam_entry_t;
+
+  dtlb_expt_cam_entry_t m_dtlb_expt_cam[DTLB_EXPT_CAM_DEPTH];
 
   // ── Recent whitebox snapshots for LSU_P1 root-cause diagnostics ──────────
   bit          m_last_l2_ref_valid;
@@ -112,6 +128,9 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_lsu_fault_replay_rsp = 0;
     m_lsu_replay_mismatch = 0;
     m_lsu_replay_waive_rsp = 0;
+    m_lsu_expt_replay_rsp = 0;
+    m_lsu_expt_replay_timing_waive_rsp = 0;
+    m_lsu_expt_replay_orphan_rsp = 0;
     m_ifu_accerr_waive_rsp = 0;
     m_ifu_refpgflt_waive_rsp = 0;
     m_last_l2_ref_valid = 1'b0;
@@ -160,6 +179,25 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     forever begin
       @(v_probe.mon_cb);
+      if (v_probe.rst_ni !== 1'b1
+          || v_probe.mon_cb.rtu_yy_xx_flush
+          || v_probe.mon_cb.tlboper_utlb_clr
+          || v_probe.mon_cb.tlboper_utlb_inv_va_req) begin
+        _dtlb_expt_cam_clear_all();
+      end else begin
+        if (v_probe.mon_cb.l1d_expt_wr0_vld)
+          _dtlb_expt_cam_write(v_probe.mon_cb.l1d_expt_wr0_iid,
+                               v_probe.mon_cb.l1d_expt_wr0_vpn,
+                               v_probe.mon_cb.l1d_expt_wr0_pgflt,
+                               v_probe.mon_cb.l1d_expt_wr0_acflt,
+                               v_probe.mon_cb.l1d_expt_wr0_eid);
+        if (v_probe.mon_cb.l1d_expt_wr1_vld)
+          _dtlb_expt_cam_write(v_probe.mon_cb.l1d_expt_wr1_iid,
+                               v_probe.mon_cb.l1d_expt_wr1_vpn,
+                               v_probe.mon_cb.l1d_expt_wr1_pgflt,
+                               v_probe.mon_cb.l1d_expt_wr1_acflt,
+                               v_probe.mon_cb.l1d_expt_wr1_eid);
+      end
       if (v_probe.mon_cb.l2_dtlb_ref_pavld || v_probe.mon_cb.l2_dtlb_ref_cmplt) begin
         m_last_l2_ref_valid = 1'b1;
         m_last_l2_ref_pavld = v_probe.mon_cb.l2_dtlb_ref_pavld;
@@ -196,6 +234,63 @@ class mmu_translation_sb extends uvm_scoreboard;
       end
     end
   endtask
+
+  protected function int _dtlb_expt_cam_find(bit [6:0] iid, bit [26:0] vpn);
+    for (int i = 0; i < DTLB_EXPT_CAM_DEPTH; i++) begin
+      if (m_dtlb_expt_cam[i].vld
+          && (m_dtlb_expt_cam[i].iid == iid)
+          && (m_dtlb_expt_cam[i].vpn == vpn))
+        return i;
+    end
+    return -1;
+  endfunction
+
+  protected function int _dtlb_expt_cam_first_free();
+    for (int i = 0; i < DTLB_EXPT_CAM_DEPTH; i++) begin
+      if (!m_dtlb_expt_cam[i].vld)
+        return i;
+    end
+    return -1;
+  endfunction
+
+  protected function void _dtlb_expt_cam_clear_all();
+    for (int i = 0; i < DTLB_EXPT_CAM_DEPTH; i++)
+      m_dtlb_expt_cam[i].vld = 1'b0;
+  endfunction
+
+  protected function void _dtlb_expt_cam_clear_match(bit [6:0] iid, bit [26:0] vpn);
+    int idx;
+    idx = _dtlb_expt_cam_find(iid, vpn);
+    if (idx >= 0)
+      m_dtlb_expt_cam[idx].vld = 1'b0;
+  endfunction
+
+  protected function void _dtlb_expt_cam_write(
+    bit [6:0]  iid,
+    bit [26:0] vpn,
+    bit        pgflt,
+    bit        acflt,
+    bit [3:0]  eid
+  );
+    int idx;
+    idx = _dtlb_expt_cam_find(iid, vpn);
+    if (idx < 0)
+      idx = _dtlb_expt_cam_first_free();
+
+    if (idx < 0) begin
+      `uvm_warning(get_type_name(),
+        $sformatf("[LSU_EXPT_CAM_SHADOW_FULL] drop write iid=%0d vpn=0x%07h pgflt=%0b acflt=%0b eid=%0d",
+          iid, vpn, pgflt, acflt, eid))
+      return;
+    end
+
+    m_dtlb_expt_cam[idx].vld   = 1'b1;
+    m_dtlb_expt_cam[idx].iid   = iid;
+    m_dtlb_expt_cam[idx].vpn   = vpn;
+    m_dtlb_expt_cam[idx].pgflt = pgflt;
+    m_dtlb_expt_cam[idx].acflt = acflt;
+    m_dtlb_expt_cam[idx].eid   = eid;
+  endfunction
 
   // =========================================================================
   // write_ifu — IFU fetch translation check
@@ -257,6 +352,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     _compare(.channel("LSU_P0"), .va(va), .ref_rsp(ref_rsp),
              .dut_pa(tr.pa),     .dut_fault(dut_fault),
              .req_vpn(va[38:12]), .dbg_valid(1'b1),
+             .lsu_iid(tr.id),
              .tr_stall(tr.stall), .tr_pgflt(tr.pgflt),
              .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en),
              .dtlb_expt_match(tr.dtlb_expt_match));
@@ -294,6 +390,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     _compare(.channel("LSU_P1"), .va(va), .ref_rsp(ref_rsp),
              .dut_pa(tr.pa),     .dut_fault(dut_fault),
              .req_vpn(va[38:12]), .dbg_valid(1'b1),
+             .lsu_iid(tr.id),
              .tr_stall(tr.stall), .tr_pgflt(tr.pgflt),
              .tr_access_fault(tr.access_fault), .tr_mmu_en(tr.mmu_en),
              .skip_ref_ppn_check(tr.stamo_vld_at_rsp),
@@ -378,9 +475,10 @@ class mmu_translation_sb extends uvm_scoreboard;
   // =========================================================================
   virtual function void report_phase(uvm_phase phase);
     `uvm_info(get_type_name(),
-      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d",
+      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d lsu_expt_replay_rsp=%0d lsu_expt_replay_timing_waive_rsp=%0d lsu_expt_replay_orphan_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d",
         m_total_checked, m_mismatch, m_lsu_fault_replay_rsp, m_lsu_replay_mismatch,
-        m_lsu_replay_waive_rsp,
+        m_lsu_replay_waive_rsp, m_lsu_expt_replay_rsp,
+        m_lsu_expt_replay_timing_waive_rsp, m_lsu_expt_replay_orphan_rsp,
         m_ifu_accerr_waive_rsp, m_ifu_refpgflt_waive_rsp),
       UVM_NONE)
     if (m_mismatch > 0)
@@ -404,6 +502,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit           dut_fault,
     bit [27:0]    req_vpn = '0,
     bit           dbg_valid = 1'b0,
+    bit [6:0]     lsu_iid = '0,
     bit           tr_stall = 1'b0,
     bit           tr_pgflt = 1'b0,
     bit           tr_access_fault = 1'b0,
@@ -423,6 +522,17 @@ class mmu_translation_sb extends uvm_scoreboard;
     // Ref does not model DTLB pre_sel/expt CAM; see file header.
     bit skip_lsu_dtlb_ref_compare;
     bit lsu_req_vpn_bypass_sig;
+    bit lsu_pre_sel_probe_sig;
+    int lsu_expt_cam_idx;
+    bit lsu_expt_cam_hit;
+    bit lsu_expt_cur_wr_hit;
+    dtlb_expt_cam_entry_t lsu_expt_cam_ent;
+    bit lsu_expt_replay_sig;
+    bit lsu_expt_replay_rsp;
+    bit lsu_expt_expected_fault;
+    bit lsu_expt_fault_class_ok;
+    bit lsu_expt_timing_waive;
+    bit lsu_expt_orphan;
     bit skip_ifu_accerr_fault_compare;
     bit skip_ifu_accerr_completion_compare;
     bit skip_ifu_refpgflt_fault_compare;
@@ -434,22 +544,98 @@ class mmu_translation_sb extends uvm_scoreboard;
     if (fault_replay_rsp)
       m_lsu_fault_replay_rsp++;
 
+    lsu_expt_cam_ent = '0;
+    lsu_expt_cam_idx = dbg_valid ? _dtlb_expt_cam_find(lsu_iid, req_vpn[26:0]) : -1;
+    lsu_expt_cam_hit = (lsu_expt_cam_idx >= 0);
+    if (lsu_expt_cam_hit)
+      lsu_expt_cam_ent = m_dtlb_expt_cam[lsu_expt_cam_idx];
+
+    lsu_expt_cur_wr_hit = 1'b0;
+    if (dbg_valid && !lsu_expt_cam_hit && (v_probe != null)) begin
+      if (v_probe.l1d_expt_wr0_vld
+          && (v_probe.l1d_expt_wr0_iid == lsu_iid)
+          && (v_probe.l1d_expt_wr0_vpn == req_vpn[26:0])) begin
+        lsu_expt_cur_wr_hit = 1'b1;
+        lsu_expt_cam_ent.vld   = 1'b1;
+        lsu_expt_cam_ent.iid   = v_probe.l1d_expt_wr0_iid;
+        lsu_expt_cam_ent.vpn   = v_probe.l1d_expt_wr0_vpn;
+        lsu_expt_cam_ent.pgflt = v_probe.l1d_expt_wr0_pgflt;
+        lsu_expt_cam_ent.acflt = v_probe.l1d_expt_wr0_acflt;
+        lsu_expt_cam_ent.eid   = v_probe.l1d_expt_wr0_eid;
+      end else if (v_probe.l1d_expt_wr1_vld
+          && (v_probe.l1d_expt_wr1_iid == lsu_iid)
+          && (v_probe.l1d_expt_wr1_vpn == req_vpn[26:0])) begin
+        lsu_expt_cur_wr_hit = 1'b1;
+        lsu_expt_cam_ent.vld   = 1'b1;
+        lsu_expt_cam_ent.iid   = v_probe.l1d_expt_wr1_iid;
+        lsu_expt_cam_ent.vpn   = v_probe.l1d_expt_wr1_vpn;
+        lsu_expt_cam_ent.pgflt = v_probe.l1d_expt_wr1_pgflt;
+        lsu_expt_cam_ent.acflt = v_probe.l1d_expt_wr1_acflt;
+        lsu_expt_cam_ent.eid   = v_probe.l1d_expt_wr1_eid;
+      end
+      lsu_expt_cam_hit = lsu_expt_cur_wr_hit;
+    end
+
+    lsu_pre_sel_probe_sig = 1'b0;
+    if (dbg_valid && (v_probe != null)) begin
+      if (channel == "LSU_P0")
+        lsu_pre_sel_probe_sig = v_probe.l1d_p0_pre_sel;
+      else if (channel == "LSU_P1")
+        lsu_pre_sel_probe_sig = v_probe.l1d_p1_pre_sel;
+    end
+
     lsu_req_vpn_bypass_sig = dbg_valid
       && tr_mmu_en
       && !tr_stall
       && (dut_pa == req_vpn)
-      && !skip_ref_ppn_check;
+      && !skip_ref_ppn_check
+      && (dtlb_expt_match || lsu_expt_cam_hit || lsu_expt_cur_wr_hit || (v_probe == null));
 
-    skip_lsu_dtlb_ref_compare = dbg_valid
-      && (ref_rsp.exc == EXC_NONE)
-      && !ref_rsp.deny
+    lsu_expt_replay_sig = dbg_valid
+      && !skip_ref_ppn_check
+      && (dtlb_expt_match || lsu_req_vpn_bypass_sig);
+
+    lsu_expt_replay_rsp = lsu_expt_replay_sig
+      || (dbg_valid && !skip_ref_ppn_check && lsu_expt_cam_hit && dut_fault);
+
+    lsu_expt_expected_fault = lsu_expt_cam_hit
+      && (lsu_expt_cam_ent.pgflt || lsu_expt_cam_ent.acflt);
+
+    lsu_expt_fault_class_ok = lsu_expt_cam_hit
       && (
-           dtlb_expt_match
-        || lsu_req_vpn_bypass_sig
+           (lsu_expt_cam_ent.pgflt && tr_pgflt)
+        || (lsu_expt_cam_ent.acflt && tr_access_fault)
       );
+
+    lsu_expt_timing_waive = lsu_expt_expected_fault
+      && !lsu_expt_fault_class_ok
+      && dtlb_expt_match
+      && lsu_req_vpn_bypass_sig;
+
+    lsu_expt_orphan = lsu_expt_replay_sig && !lsu_expt_cam_hit;
+
+    skip_lsu_dtlb_ref_compare = lsu_expt_replay_rsp;
+
+    if (lsu_expt_replay_rsp)
+      m_lsu_expt_replay_rsp++;
 
     if (skip_lsu_dtlb_ref_compare)
       m_lsu_replay_waive_rsp++;
+
+    if (lsu_expt_timing_waive)
+      m_lsu_expt_replay_timing_waive_rsp++;
+
+    if (lsu_expt_replay_rsp && lsu_expt_cam_hit && !lsu_expt_cur_wr_hit && dtlb_expt_match)
+      _dtlb_expt_cam_clear_match(lsu_iid, req_vpn[26:0]);
+
+    if (lsu_expt_orphan) begin
+      m_lsu_expt_replay_orphan_rsp++;
+      `uvm_warning(get_type_name(),
+        $sformatf("[%s][EXPT_REPLAY_ORPHAN] iid=%0d vpn=0x%07h VA=0x%010h expt_match=%0b req_vpn_pa=%0b pre_sel_probe=%0b dut_fault=%0b dut.pa=0x%07h ref.exc=%s ref.deny=%0b",
+          channel, lsu_iid, req_vpn[26:0], {1'b0, va}, dtlb_expt_match,
+          lsu_req_vpn_bypass_sig, lsu_pre_sel_probe_sig, dut_fault, dut_pa,
+          ref_rsp.exc.name(), ref_rsp.deny))
+    end
 
     // IFU access-fault can surface in two observable forms:
     //   1) completion-only pulse: pavld is visible while deny/pgflt are still 0
@@ -483,6 +669,21 @@ class mmu_translation_sb extends uvm_scoreboard;
       m_ifu_accerr_waive_rsp++;
     if (skip_ifu_refpgflt_fault_compare)
       m_ifu_refpgflt_waive_rsp++;
+
+    if (lsu_expt_replay_rsp && lsu_expt_cam_hit) begin
+      if (lsu_expt_expected_fault
+          && !lsu_expt_fault_class_ok
+          && !lsu_expt_timing_waive) begin
+        `uvm_error(get_type_name(),
+          $sformatf("[%s][EXPT_REPLAY] iid=%0d vpn=0x%07h VA=0x%010h: fault class mismatch on DTLB exception replay - shadow(pgflt=%0b acflt=%0b eid=%0d cur_wr_hit=%0b) dut.pgflt=%0b dut.acflt=%0b expt_match=%0b req_vpn_pa=%0b dut.pa=0x%07h",
+            channel, lsu_iid, req_vpn[26:0], {1'b0, va},
+            lsu_expt_cam_ent.pgflt, lsu_expt_cam_ent.acflt, lsu_expt_cam_ent.eid,
+            lsu_expt_cur_wr_hit, tr_pgflt, tr_access_fault, dtlb_expt_match,
+            lsu_req_vpn_bypass_sig, dut_pa))
+        m_lsu_replay_mismatch++;
+        local_mismatch = 1;
+      end
+    end
 
     // ── Exception / fault check ───────────────────────────────────────────
     if (exp_fault !== dut_fault) begin
@@ -529,10 +730,12 @@ class mmu_translation_sb extends uvm_scoreboard;
     if (local_mismatch) begin
       if (dbg_valid) begin
         `uvm_error(get_type_name(),
-          $sformatf("[%s][DBG] VA=0x%010h dut.pa=0x%07h req_vpn(va[38:12])=0x%07h | stall=%0b pgflt=%0b access_fault=%0b mmu_lsu_mmu_en=%0b dtlb_expt_match=%0b skip_ref_ppn_check=%0b",
-            channel, {1'b0, va}, dut_pa, req_vpn,
+          $sformatf("[%s][DBG] VA=0x%010h iid=%0d dut.pa=0x%07h req_vpn(va[38:12])=0x%07h | stall=%0b pgflt=%0b access_fault=%0b mmu_lsu_mmu_en=%0b dtlb_expt_match=%0b shadow_hit=%0b cur_wr_hit=%0b shadow_pgflt=%0b shadow_acflt=%0b shadow_eid=%0d req_vpn_pa=%0b skip_ref_ppn_check=%0b",
+            channel, {1'b0, va}, lsu_iid, dut_pa, req_vpn,
             tr_stall, tr_pgflt, tr_access_fault, tr_mmu_en,
-            dtlb_expt_match, skip_ref_ppn_check))
+            dtlb_expt_match, lsu_expt_cam_hit, lsu_expt_cur_wr_hit, lsu_expt_cam_ent.pgflt,
+            lsu_expt_cam_ent.acflt, lsu_expt_cam_ent.eid,
+            lsu_req_vpn_bypass_sig, skip_ref_ppn_check))
         if (channel == "LSU_P0")
           _dump_lsu_p0_whitebox(va, ref_rsp, dut_pa, req_vpn);
         else if (channel == "LSU_P1")
@@ -550,9 +753,12 @@ class mmu_translation_sb extends uvm_scoreboard;
     end else begin
       if (skip_lsu_dtlb_ref_compare) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] VA=0x%010h  DTLB replay/pre_sel path: compare waived  exc=%s  expt_match=%0b  vpn_bypass=%0b  dut_fault=%0b  dut.pa=0x%07h  req_vpn=0x%07h",
-            channel, {1'b0, va}, ref_rsp.exc.name(), dtlb_expt_match,
-            lsu_req_vpn_bypass_sig, dut_fault, dut_pa, req_vpn),
+          $sformatf("[%s] VA=0x%010h iid=%0d  DTLB expt replay/pre_sel path: compare waived  ref.exc=%s  shadow_hit=%0b cur_wr_hit=%0b pgflt=%0b acflt=%0b eid=%0d timing_waive=%0b orphan=%0b expt_match=%0b vpn_bypass=%0b dut.pgflt=%0b dut.acflt=%0b dut.pa=0x%07h req_vpn=0x%07h",
+            channel, {1'b0, va}, lsu_iid, ref_rsp.exc.name(),
+            lsu_expt_cam_hit, lsu_expt_cur_wr_hit, lsu_expt_cam_ent.pgflt, lsu_expt_cam_ent.acflt,
+            lsu_expt_cam_ent.eid, lsu_expt_timing_waive, lsu_expt_orphan,
+            dtlb_expt_match, lsu_req_vpn_bypass_sig, tr_pgflt,
+            tr_access_fault, dut_pa, req_vpn),
           UVM_HIGH)
       end else if (skip_ifu_accerr_completion_compare) begin
         `uvm_info(get_type_name(),

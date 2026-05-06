@@ -60,6 +60,18 @@ interface mmu_dut_probes_if (
   wire         l1d_ptw_ref_mb_vld;
   wire [6:0]   l1d_ptw_ref_mb_iid;
   wire [26:0]  l1d_ptw_ref_mb_vpn;
+  wire         l1d_expt_wr0_vld;
+  wire [3:0]   l1d_expt_wr0_eid;
+  wire [6:0]   l1d_expt_wr0_iid;
+  wire [26:0]  l1d_expt_wr0_vpn;
+  wire         l1d_expt_wr0_pgflt;
+  wire         l1d_expt_wr0_acflt;
+  wire         l1d_expt_wr1_vld;
+  wire [3:0]   l1d_expt_wr1_eid;
+  wire [6:0]   l1d_expt_wr1_iid;
+  wire [26:0]  l1d_expt_wr1_vpn;
+  wire         l1d_expt_wr1_pgflt;
+  wire         l1d_expt_wr1_acflt;
 
   // mmu_l2tlb
   wire [2:0]   l2_bank0;   // way_index[0][2:0]
@@ -163,6 +175,9 @@ interface mmu_dut_probes_if (
 
   // ct_mmu_tlboper
   wire [3:0]   tlbiva_cur_st;
+  wire         rtu_yy_xx_flush;
+  wire         tlboper_utlb_clr;
+  wire         tlboper_utlb_inv_va_req;
 
   // Monitor clocking
   clocking mon_cb @(posedge clk_i);
@@ -178,6 +193,10 @@ interface mmu_dut_probes_if (
     input l1d_p0_hit_vec, l1d_p0_hit_idx, l1d_p0_hit_vpn, l1d_p0_hit_ppn, l1d_p0_hit_pgs;
     input l1d_p1_hit_vec, l1d_p1_hit_idx, l1d_p1_hit_vpn, l1d_p1_hit_ppn, l1d_p1_hit_pgs;
     input l1d_ptw_ref_mb_vld, l1d_ptw_ref_mb_iid, l1d_ptw_ref_mb_vpn;
+    input l1d_expt_wr0_vld, l1d_expt_wr0_eid, l1d_expt_wr0_iid, l1d_expt_wr0_vpn;
+    input l1d_expt_wr0_pgflt, l1d_expt_wr0_acflt;
+    input l1d_expt_wr1_vld, l1d_expt_wr1_eid, l1d_expt_wr1_iid, l1d_expt_wr1_vpn;
+    input l1d_expt_wr1_pgflt, l1d_expt_wr1_acflt;
     input l2_bank0, l2_final_way_hit, l2_raw_pre_pgs0, l2_final_vld, l2_final_tlb_hit;
     input l2_miss, l2_final_is_dtlb, l2_final_vpn, l2_final_hit_ppn;
     input l2_dtlb_ref_pavld, l2_dtlb_ref_cmplt, l2_dtlb_ref_vpn, l2_dtlb_ref_ppn;
@@ -204,7 +223,7 @@ interface mmu_dut_probes_if (
     input p13_twu_sysmap_adder_vec, p13_twu_csr_cross_vec;
     input p13_twu_crs2_1g_vec, p13_twu_crs2_2m_vec, p13_twu_crs2_chk_vec;
     input p13_csr_refill_req_vec, p13_csr_refill_pgs_vec, p13_csr_refill_data_vec;
-    input tlbiva_cur_st;
+    input tlbiva_cur_st, rtu_yy_xx_flush, tlboper_utlb_clr, tlboper_utlb_inv_va_req;
   endclocking
 
 endinterface : mmu_dut_probes_if

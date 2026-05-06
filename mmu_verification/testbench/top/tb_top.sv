@@ -331,6 +331,18 @@ module tb_top;
   assign dut_probes_if.l1d_ptw_ref_mb_vld = u_dut.u_mmu_l1dtlb.mb_entry_vld[u_dut.ptw_l1dtlb_id[2:0]];
   assign dut_probes_if.l1d_ptw_ref_mb_iid = u_dut.u_mmu_l1dtlb.mb_entry_iid[u_dut.ptw_l1dtlb_id[2:0]];
   assign dut_probes_if.l1d_ptw_ref_mb_vpn = u_dut.u_mmu_l1dtlb.mb_entry_vpn[u_dut.ptw_l1dtlb_id[2:0]];
+  assign dut_probes_if.l1d_expt_wr0_vld   = u_dut.u_mmu_l1dtlb.expt_wr0_vld;
+  assign dut_probes_if.l1d_expt_wr0_eid   = u_dut.u_mmu_l1dtlb.expt_wr0_eid;
+  assign dut_probes_if.l1d_expt_wr0_iid   = u_dut.u_mmu_l1dtlb.expt_wr0_iid;
+  assign dut_probes_if.l1d_expt_wr0_vpn   = u_dut.u_mmu_l1dtlb.expt_wr0_vpn;
+  assign dut_probes_if.l1d_expt_wr0_pgflt = u_dut.u_mmu_l1dtlb.expt_wr0_pgflt;
+  assign dut_probes_if.l1d_expt_wr0_acflt = u_dut.u_mmu_l1dtlb.expt_wr0_acflt;
+  assign dut_probes_if.l1d_expt_wr1_vld   = u_dut.u_mmu_l1dtlb.expt_wr1_vld;
+  assign dut_probes_if.l1d_expt_wr1_eid   = u_dut.u_mmu_l1dtlb.expt_wr1_eid;
+  assign dut_probes_if.l1d_expt_wr1_iid   = u_dut.u_mmu_l1dtlb.expt_wr1_iid;
+  assign dut_probes_if.l1d_expt_wr1_vpn   = u_dut.u_mmu_l1dtlb.expt_wr1_vpn;
+  assign dut_probes_if.l1d_expt_wr1_pgflt = u_dut.u_mmu_l1dtlb.expt_wr1_pgflt;
+  assign dut_probes_if.l1d_expt_wr1_acflt = u_dut.u_mmu_l1dtlb.expt_wr1_acflt;
   assign dut_probes_if.l2_bank0          = u_dut.x_mmu_l2tlb.way_index[0][2:0];
   assign dut_probes_if.l2_final_way_hit  = u_dut.x_mmu_l2tlb.final_way_hit;
   assign dut_probes_if.l2_raw_pre_pgs0  = u_dut.x_mmu_l2tlb.raw_pre_pgs[0];
@@ -558,6 +570,9 @@ module tb_top;
   assign dut_probes_if.p13_csr_refill_data_vec = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_data};
   assign ptw_mem_if_inst.mmu_lsu_data_req_accept = |u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
+  assign dut_probes_if.rtu_yy_xx_flush   = misc_if_inst.rtu_yy_xx_flush;
+  assign dut_probes_if.tlboper_utlb_clr  = u_dut.tlboper_utlb_clr;
+  assign dut_probes_if.tlboper_utlb_inv_va_req = u_dut.tlboper_utlb_inv_va_req;
   assign ifu_if_inst.dbg_iutlb_acc_flt   = u_dut.x_mmu_l1itlb.iutlb_acc_flt;
   assign ifu_if_inst.dbg_iutlb_pmp_deny  = u_dut.x_mmu_l1itlb.pmp_flg_vld
                                          && !u_dut.x_mmu_l1itlb.pmp_mmu_flg2[2]

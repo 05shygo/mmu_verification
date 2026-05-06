@@ -1,0 +1,57 @@
+<Command name="schRTLInfo"  delimiter="."  >
+<RTLBlock >
+<RTLInfo   name="ptw_cur_st_0"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/twu.sv"  >
+    <Seg beginLine="1043"  endLine="1068"  />
+  </RTLInfo>
+<Instance name="tb_top.u_dut.x_ct_mmu_ptw.twu_one"  />
+<Instance name="tb_top.u_dut.x_ct_mmu_ptw.twu_two"  />
+<Instance name="tb_top.u_dut.x_ct_mmu_ptw.twu_three"  />
+<Instance name="tb_top.u_dut.x_ct_mmu_ptw.twu_four"  />
+</RTLBlock>
+<RTLBlock >
+<RTLInfo   name="state_r_1"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/mmu_l1dtlb_mb_entry.sv"  >
+    <Seg beginLine="134"  endLine="224"  />
+  </RTLInfo>
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry"  />
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry"  />
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry"  />
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry"  />
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry"  />
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry"  />
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry"  />
+<Instance name="tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry"  />
+</RTLBlock>
+<RTLBlock >
+<RTLInfo   name="tlbiasid_cur_st_2"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/ct_mmu_tlboper.v"  >
+    <Seg beginLine="548"  endLine="577"  />
+  </RTLInfo>
+<RTLInfo   name="tlbiva_cur_st_3"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/ct_mmu_tlboper.v"  >
+    <Seg beginLine="849"  endLine="886"  />
+  </RTLInfo>
+<RTLInfo   name="tlbp_cur_st_4"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/ct_mmu_tlboper.v"  >
+    <Seg beginLine="283"  endLine="306"  />
+  </RTLInfo>
+<RTLInfo   name="tlbr_cur_st_5"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/ct_mmu_tlboper.v"  >
+    <Seg beginLine="343"  endLine="366"  />
+  </RTLInfo>
+<RTLInfo   name="tlbwi_cur_st_6"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/ct_mmu_tlboper.v"  >
+    <Seg beginLine="403"  endLine="426"  />
+  </RTLInfo>
+<RTLInfo   name="tlbwr_cur_st_7"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/ct_mmu_tlboper.v"  >
+    <Seg beginLine="465"  endLine="495"  />
+  </RTLInfo>
+<Instance name="tb_top.u_dut.x_ct_mmu_tlboper"  />
+</RTLBlock>
+<RTLBlock >
+<RTLInfo   name="pfu_cur_st_8"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/mmu_l2tlb.sv"  >
+    <Seg beginLine="1272"  endLine="1296"  />
+  </RTLInfo>
+<Instance name="tb_top.u_dut.x_mmu_l2tlb"  />
+</RTLBlock>
+<RTLBlock >
+<RTLInfo   name="ref_cur_st_9"  type="2"  fileName="/home/st-wangjun/project/mmu_verification/mmu_verification/../mmu/rtl/mmu_l1itlb.sv"  >
+    <Seg beginLine="735"  endLine="767"  />
+  </RTLInfo>
+<Instance name="tb_top.u_dut.x_mmu_l1itlb"  />
+</RTLBlock>
+</Command>

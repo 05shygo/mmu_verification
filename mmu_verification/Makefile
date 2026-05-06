@@ -28,6 +28,10 @@ REGRESS_DIR     ?= $(OUTPUT_DIR)/regression
 # VCS and any subordinate make in output/csrc must see the same file-list paths
 # as this Makefile. Stale csrc with -Mupdate can also produce "cc -o .o" / make [.o] errors
 # — if that appears: `make clean` then rebuild, or use PERF_OPTS without -Mupdate.
+#
+# NFS client/server clock skew produces "modification time ... in the future" in csrc
+# sub-makes and can trigger empty compile rules (cc -o .o) after simv exits. Refresh
+# csrc mtimes to this host after comp and before each run_cov simv.
 export PROJECT_DIR MMU_RTL_DIR RELATE_RTL_DIR MMU_PARAMS_DIR TB_DIR
 export CORE_V_VERIF CV_DV_UTILS_DIR OUTPUT_DIR
 
@@ -1684,6 +1688,9 @@ comp_all: setup check_env
 	@cp -a "$(COV_DB_DIR)" "$(COV_BASE_DB_DIR)"
 	@touch "$(COV_BASELINE_STAMP)"
 	@chmod -R u+w "$(COV_BASE_DB_DIR)" "$(COV_DB_DIR)" 2>/dev/null || true
+	@if [ -d "$(OUTPUT_DIR)/csrc" ]; then \
+		find "$(OUTPUT_DIR)/csrc" \( -type f -o -type d \) -exec touch {} + 2>/dev/null || true; \
+	fi
 	@echo "Build done: $(OUTPUT_DIR)/simv"
 
 comp_fast: setup check_env
@@ -1878,6 +1885,9 @@ run_cov: setup
 		if [ "$(RUN_DIR)" != "$(OUTPUT_DIR)" ]; then \
 			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
 			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
+		fi; \
+		if [ -d "$(OUTPUT_DIR)/csrc" ]; then \
+			find "$(OUTPUT_DIR)/csrc" \( -type f -o -type d \) -exec touch {} + 2>/dev/null || true; \
 		fi; \
 		cd "$(RUN_DIR)" && ./simv \
 			$(RUN_OPTS) \

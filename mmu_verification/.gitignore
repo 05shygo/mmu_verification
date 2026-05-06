@@ -20,3 +20,8 @@ verdiLog/
 csrc/
 simv
 simv.daidir/
+
+# Tool / Python artifacts (never commit)
+__pycache__/
+*.pyc
+.fsm.sch.verilog.xml

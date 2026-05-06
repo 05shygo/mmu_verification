@@ -37,7 +37,14 @@ REGRESS_DIR     ?= $(OUTPUT_DIR)/regression
 # MFLAGS. VCS then runs a nested make under output/csrc; those vars break the
 # inner makejobserver and can yield bogus rules (cc -o .o, make [.o] Error 4).
 # Strip them for every simv launch. Override with SIMV_ENV= if you must debug.
-SIMV_ENV        ?= env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL
+# MAKEOVERRIDES/GNUMAKEFLAGS can also leak into simv's environment on some setups.
+SIMV_ENV        ?= env -u MAKEFLAGS -u MFLAGS -u MAKELEVEL -u MAKEOVERRIDES -u GNUMAKEFLAGS
+
+# GNU make -jN passes a jobserver through inherited FDs as well as MAKEFLAGS.
+# VCS runs make under output/csrc after simv exits; an orphaned jobserver fd can
+# corrupt parallel scheduling and yield empty recipes ("cc -o .o", make [.o] Error 4).
+# Prefix simv with this wrapper (bash). Override with SIMV_CLOSE_JOB_FDS= to disable.
+SIMV_CLOSE_JOB_FDS ?= bash -c 'for fd in {3..31}; do eval "exec $$fd>&-" 2>/dev/null || true; done; exec "$$@"' --
 export PROJECT_DIR MMU_RTL_DIR RELATE_RTL_DIR MMU_PARAMS_DIR TB_DIR
 export CORE_V_VERIF CV_DV_UTILS_DIR OUTPUT_DIR
 
@@ -1745,7 +1752,7 @@ run: setup
 			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
 			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
 		fi; \
-		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) $(SIMV_CLOSE_JOB_FDS) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(FSDB_OPTS) \
@@ -1798,7 +1805,7 @@ run_gui: setup
 		echo "  Use 'make run TEST_NAME=$(TEST_NAME) SEED=$(SEED)' for batch execution, or pass an exact UVM test name to run_gui."; \
 		exit 2; \
 	fi
-	cd $(OUTPUT_DIR) && $(SIMV_ENV) ./simv \
+	cd $(OUTPUT_DIR) && $(SIMV_ENV) $(SIMV_CLOSE_JOB_FDS) ./simv \
 		$(RUN_OPTS) \
 		$(SEED_OPTS) \
 		$(FSDB_OPTS) \
@@ -1824,7 +1831,7 @@ run_batch: setup
 			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
 			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
 		fi; \
-		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) $(SIMV_CLOSE_JOB_FDS) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			-l $(LOG_DIR)/$(TEST_NAME)_batch.log; \
@@ -1895,7 +1902,7 @@ run_cov: setup
 		if [ -d "$(OUTPUT_DIR)/csrc" ]; then \
 			find "$(OUTPUT_DIR)/csrc" \( -type f -o -type d \) -exec touch {} + 2>/dev/null || true; \
 		fi; \
-		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) $(SIMV_CLOSE_JOB_FDS) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(COV_RUN_COMMON_OPTS) \
@@ -1953,7 +1960,7 @@ debug: setup
 			ln -sfn "$(OUTPUT_DIR)/simv" "$(RUN_DIR)/simv"; \
 			ln -sfn "$(OUTPUT_DIR)/simv.daidir" "$(RUN_DIR)/simv.daidir"; \
 		fi; \
-		cd "$(RUN_DIR)" && $(SIMV_ENV) ./simv \
+		cd "$(RUN_DIR)" && $(SIMV_ENV) $(SIMV_CLOSE_JOB_FDS) ./simv \
 			$(RUN_OPTS) \
 			$(SEED_OPTS) \
 			$(FSDB_OPTS) \

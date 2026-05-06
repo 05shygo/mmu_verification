@@ -763,7 +763,7 @@ always_comb begin
             ref_nxt_st[2:0] = IDLE;
           else if(ifu_mmu_abort)
             ref_nxt_st[2:0] = ABT;
-          else if(l1itlb_ref_cmplt && ptw_l1tlb_pgflt)
+          else if(l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))
             ref_nxt_st[2:0] = PGFLT;
           else if(l1itlb_ref_cmplt)
             ref_nxt_st[2:0] = IDLE;
@@ -2302,7 +2302,6 @@ assign iutlb_ptw_wfc             = iutlb_wfc;
 
 // &ModuleEnd; @899
 endmodule
-
 
 
 

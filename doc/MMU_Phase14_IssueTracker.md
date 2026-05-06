@@ -74,6 +74,9 @@ Review policy:
 | MMU-P14-ISSUE-005 | Waiver/Signoff | Phase 14 signoff matrix and second-review workflow | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
 | MMU-P14-ISSUE-006 | URG/Tooling | VCS coverage dump abort corrupts/invalidates Phase14 run_cov VDB flow | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 | MMU-P14-ISSUE-007 | Testbench/Protocol | Phase14 PTW mbuf abort/late-response accounting and SVA failures | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-008 | RTL/Design Record | L1DTLB fault replay consumed entry could reissue/stick instead of release | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-009 | RTL/Design Record | L2TLB reqq sent entry did not retry when L2 miss-buffer allocation failed | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-010 | RTL/Design Record | L1ITLB missed L2TLB/JTLB page-fault completion in WFC transition | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 
 ---
 
@@ -668,13 +671,308 @@ Blocking until all are true:
 
 ---
 
+## MMU-P14-ISSUE-008 - L1DTLB Fault Replay Consumed Entry Release
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Closed |
+| Blocking | No after fix; Yes before fix for Phase14 regression |
+| First observed | 2026-05-05 |
+| Primary files | `mmu/rtl/mmu_l1dtlb_mb_entry.sv`, `mmu/rtl/mmu_l1dtlb_hit_rd.sv` |
+| Fix commits | `17177f1`, `e6c31ea`; related LSU fault response commits `4410055`, `e464199`, `8756b69` |
+| Evidence | `test_twu_mask_pmp_wait_all4 SEED=97102`; logs under `output/logs` and `output/phase14_parallel_logs` |
+
+### Failure Signature
+
+`test_twu_mask_pmp_wait_all4 SEED=97102` initially failed during end-of-test
+drain:
+
+```text
+LSU stimulus did not drain before test_end_quiesce after 262144 cycles
+pending=431 busy={p0:1 p1:1 p2:0 stamo:0 inv:0} tlb_busy=1 wakeup=0x000
+```
+
+The credit scoreboard snapshot showed all L1DTLB miss-buffer entries still
+valid while PTW/L2 were otherwise idle:
+
+```text
+ptw_mbuf_cnt=0 l1d_mb=0xff l2_reqq=0x000 l2_final=0 l2_miss=0
+ptw_lsu_req=0 ptw_lsu_grant=0x000 ptw_mbuf=0x000
+```
+
+This matched a local L1DTLB miss-buffer drain problem rather than an outstanding
+PTW memory transaction.
+
+### Root Cause
+
+When an LSU request missed L1DTLB and refill later reported page fault or access
+fault, the L1DTLB miss-buffer entry moved from `WFC` into `PGFLT` or `ACFLT` and
+the exception CAM recorded the fault.
+
+The consumed replay path was wrong in two ways:
+
+- On exception CAM hit, the fault-state miss-buffer entry could return to
+  `WFG`. In this RTL, `WFG` means the entry is ready to issue again
+  (`entry_ready = state_r == STATE_WFG && !fault_hold_r`), so the consumed
+  fault entry was not released.
+- Exception CAM hits could still be classified as new DTLB misses, creating a
+  replay / reallocation loop instead of completing the fault response.
+
+The `fault_hold_r` state also had to be cleared when the exception CAM hit
+consumed the fault, otherwise an entry returning through `WFG` could remain
+blocked.
+
+### Fix
+
+The L1DTLB miss-buffer fault-state transition now releases the entry when the
+exception CAM hit is consumed:
+
+```systemverilog
+STATE_PGFLT: if (expt_hit) state_nxt = STATE_IDLE;
+STATE_ACFLT: if (expt_hit) state_nxt = STATE_IDLE;
+```
+
+`fault_hold_r` is cleared on consumed exception hits. The L1DTLB hit path also
+prevents exception CAM hits from being reported as new misses:
+
+```systemverilog
+dutlb_miss_vld_x       ... & !dutlb_expt_match;
+dutlb_miss_vld_short_x ... & !dutlb_expt_match;
+```
+
+### Verification Notes
+
+After the L1DTLB fix, the same seed no longer showed the previous full L1DTLB
+miss-buffer hang. The later timeout snapshot moved to the IFU/L2 path and showed
+L1DTLB drained:
+
+```text
+LSU pending=0 busy={p0:0 p1:0 p2:0 stamo:0 inv:0} tlb_busy=0 wakeup=0x000
+l1d_mb=0x00
+```
+
+That post-fix signature exposed the independent L2TLB request-queue retry issue
+tracked as `MMU-P14-ISSUE-009`.
+
+Recommended closure rerun:
+
+```bash
+make comp
+make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
+make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
+```
+
+---
+
+## MMU-P14-ISSUE-009 - L2TLB Reqq Retry Feedback on Miss-Buffer Full
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Closed |
+| Blocking | No after fix; Yes before fix for Phase14 regression |
+| First observed | 2026-05-06 |
+| Primary file | `mmu/rtl/mmu_l2tlb.sv` |
+| Fix commit | `5fea263` |
+| Evidence | `test_twu_mask_pmp_wait_all4 SEED=97102` timeout debug; `MMU_TIMEOUT_DBG` CreditSB snapshot |
+
+### Failure Signature
+
+After the L1DTLB fault replay fix, the same test/seed timed out with LSU fully
+idle but IFU still waiting:
+
+```text
+IFU busy=1 va_vld=1 pavld=0 pgflt=1 l1i_st=0x2 credit=1
+req=0 miss=1 refill_on=1 cmplt=0
+```
+
+The L2TLB/credit snapshot was:
+
+```text
+l1d_mb=0x00 l2_reqq=0x002 l2_reqq_rdy=0x000
+l2_reqq_issue=0/type=0x3 l2mb=0x000 l2mb_rdy=0x000
+l2_final=0 l2_miss=0 l2_ptw_req=0 ptw_mbuf=0x000
+```
+
+`l2_reqq=0x002` with `l2_reqq_rdy=0x000` means request-queue entry 1 remained
+valid but had already been marked sent. With `l2mb=0x000`, there was no L2 miss
+buffer entry left to make progress. The request had neither allocated a miss
+buffer nor received retry feedback.
+
+### Root Cause
+
+The L2TLB request queue previously received feedback only on final hit or on
+miss-buffer allocation:
+
+```systemverilog
+l2tlb_reqq_fb_vld = final_pa_vld | l2tlb_reqq_fb_miss_alloc;
+l2tlb_reqq_fb_miss_alloc = l2tlb_miss & mb_alloc_valid;
+l2tlb_reqq_fb_miss_retry = 1'b0;
+```
+
+If an L2 lookup missed while the L2 miss buffer could not allocate
+(`l2tlb_miss && !mb_alloc_valid`), no feedback was sent to the request queue.
+The entry stayed valid+sent forever and could no longer be retried.
+
+### Fix
+
+The request queue now receives feedback for every L2 miss. A miss with a
+successful miss-buffer allocation remains an allocation feedback; a miss without
+allocation becomes retry feedback:
+
+```systemverilog
+assign l2tlb_reqq_fb_vld        = final_pa_vld | l2tlb_miss;
+assign l2tlb_reqq_fb_miss_alloc = l2tlb_miss & mb_alloc_valid;
+assign l2tlb_reqq_fb_miss_retry = l2tlb_miss & !mb_alloc_valid;
+```
+
+This clears the sent state and allows the queued request to retry instead of
+parking in `l2_reqq`.
+
+### Verification Notes
+
+The pre-fix timeout signature to guard against is:
+
+```text
+l2_reqq=0x002 l2_reqq_rdy=0x000 l2mb=0x000 l2_final=0 l2_miss=0 l2_ptw_req=0
+```
+
+Recommended closure rerun:
+
+```bash
+make comp
+make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
+make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
+```
+
+If this single seed passes, rerun the Phase14 parallel list to confirm no other
+request-queue starvation signature remains:
+
+```bash
+make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20
+```
+
+---
+
+## MMU-P14-ISSUE-010 - L1ITLB Refill FSM WFC Did Not Release
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Open |
+| Blocking | Yes until rerun passes |
+| First observed | 2026-05-06 |
+| Primary file | `mmu/rtl/mmu_l1itlb.sv` |
+| Related file | `mmu/rtl/mmu_l2tlb.sv` |
+| Fix commit | Pending; working-tree RTL fix present |
+| Evidence | `test_twu_mask_pmp_wait_all4 SEED=97102` timeout debug; L1ITLB debug fields added to `MMU_TIMEOUT_DBG` |
+
+### Failure Signature
+
+The post-L1DTLB-fix timeout showed the IFU side repeatedly stuck in the L1ITLB
+refill path:
+
+```text
+IFU busy=1 end_quiesce=0 va_vld=1 abort=0 pavld=0
+pgflt=1 deny=0 pmp_deny=0
+l1i_st=0x2 credit=1 req=0 miss=1 refill_on=1
+```
+
+In `mmu_l1itlb.sv`, `l1i_st=0x2` is `WFC`. The key failing completion cycle is
+the L2TLB/JTLB page-fault completion:
+
+```text
+l1i_st=0x2 refill_on=1 l1itlb_ref_cmplt=1
+ptw_l1tlb_pgflt=0 jtlb_iutlb_pgflt=1
+```
+
+On that cycle, L1ITLB should enter `PGFLT` for one cycle so
+`iutlb_ref_pgflt` contributes to `mmu_ifu_pavld` and `mmu_ifu_pgflt`. Instead,
+the fault was not recognized as a fault-state transition, so IFU never consumed
+the translation as a completed page fault and kept holding/retrying the same VA.
+
+### Root Cause
+
+The L1ITLB FSM release condition in `WFC` is completion-driven:
+
+```systemverilog
+assign l1itlb_ref_cmplt = ptw_l1itlb_ref_cmplt | jtlb_iutlb_ref_cmplt;
+```
+
+`l1itlb_ref_cmplt` correctly merges both completion sources. However, the
+fault-state branch only checked the PTW page-fault signal:
+
+```systemverilog
+if (l1itlb_ref_cmplt && ptw_l1tlb_pgflt)
+  ref_nxt_st = PGFLT;
+else if (l1itlb_ref_cmplt)
+  ref_nxt_st = IDLE;
+```
+
+When the completion came from L2TLB/JTLB with `jtlb_iutlb_pgflt=1`, the FSM did
+not treat it as a page-fault completion. The `else if (l1itlb_ref_cmplt)` branch
+could release the FSM to `IDLE` without ever asserting the one-cycle `PGFLT`
+state. Because `mmu_ifu_pavld` is driven by `iutlb_ref_pgflt` for refill page
+faults, IFU did not see a completed fault response and the same VA could reenter
+the refill path. This made the ITLB refill/fault replay path inconsistent with
+L1DTLB, where both PTW refill faults and L2TLB refill faults are part of the
+fault completion path.
+
+### Fix
+
+The `WFC` page-fault transition now includes both page-fault sources:
+
+```systemverilog
+else if (l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))
+  ref_nxt_st = PGFLT;
+```
+
+This makes L1ITLB recognize page-fault completions from either PTW or L2TLB/JTLB
+before releasing the refill FSM.
+
+### Verification Notes
+
+Keep the L1ITLB timeout debug fields in any failing rerun until Phase14 closure:
+
+```text
+ref_cur_st, credit_cnt, iutlb_l2tlb_req, iutlb_refill_on,
+l1itlb_ref_cmplt, ptw_l1tlb_pgflt, jtlb_iutlb_pgflt
+```
+
+The fixed signature to guard against is a L2TLB/JTLB page-fault completion that
+does not drive the L1ITLB fault path:
+
+```text
+l1i_st=0x2 refill_on=1 l1itlb_ref_cmplt=1 ptw_pgflt=0 jtlb_pgflt=1
+```
+
+Expected post-fix behavior is `WFC -> PGFLT -> IDLE`, with a completed IFU page
+fault response during the `PGFLT` cycle.
+
+Recommended closure rerun:
+
+```bash
+make comp
+make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
+make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
+```
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010
 ```
 
 Before final signoff, update this table:
@@ -688,3 +986,6 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-005 | TBD | `doc/MMU_Phase14_SignoffMatrix.md` |
 | MMU-P14-ISSUE-006 | TBD | High-parallel closure rerun evidence or reviewed coverage waiver |
 | MMU-P14-ISSUE-007 | TBD | Minimal PTW mbuf abort/late-response reproduction and Phase14 shard rerun evidence |
+| MMU-P14-ISSUE-008 | Closed | Commits `17177f1`, `e6c31ea`; `test_twu_mask_pmp_wait_all4 SEED=97102` no longer shows `l1d_mb=0xff` L1DTLB hang |
+| MMU-P14-ISSUE-009 | Closed | Commit `5fea263`; guard against `l2_reqq=0x002 l2_reqq_rdy=0x000 l2mb=0x000` retry starvation signature |
+| MMU-P14-ISSUE-010 | TBD | Working-tree fix in `mmu/rtl/mmu_l1itlb.sv`; rerun must show L2TLB/JTLB page-fault completion drives `WFC -> PGFLT -> IDLE` |

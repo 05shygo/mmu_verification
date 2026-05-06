@@ -333,6 +333,66 @@ module mmu_l2tlb_reqq#(
     // DTLB Credit: Return when any of Entry 1-8 deallocates
     assign d_credit_return = |entry_dealloc_vec[TOTAL_DEPTH-1:1];
 
+// synopsys translate_off
+logic mmu_itlb_dbg_en;
+int unsigned mmu_itlb_dbg_stuck_cycles;
+
+initial begin
+  mmu_itlb_dbg_en = $test$plusargs("MMU_ITLB_DBG");
+end
+
+always_ff @(posedge reqq_clk or negedge cpurst_b) begin
+  if (!cpurst_b) begin
+    mmu_itlb_dbg_stuck_cycles <= 0;
+  end else begin
+    if (entry_vld_vec != '0) begin
+      mmu_itlb_dbg_stuck_cycles <= mmu_itlb_dbg_stuck_cycles + 1;
+    end else begin
+      mmu_itlb_dbg_stuck_cycles <= 0;
+    end
+
+    if (mmu_itlb_dbg_en
+        && (i_req_valid
+            || d_req_valid
+            || issue_valid
+            || issue_grant
+            || fb_valid
+            || i_credit_return
+            || d_credit_return
+            || ((entry_vld_vec != '0) && (mmu_itlb_dbg_stuck_cycles[11:0] == 12'hfff)))) begin
+      $display("[MMU_ITLB_DBG][L2REQQ] t=%0t stuck_cycles=%0d i_req=%0b i_vpn=0x%07h d_req=%0b d_vpn=0x%07h d_type=0x%0h issue_valid=%0b issue_grant=%0b issue_qid=0x%0h issue_type=0x%0h issue_vpn=0x%07h fb_valid=%0b fb_id=0x%0h fb_hit=%0b fb_miss_alloc=%0b fb_miss_retry=%0b i_credit=%0b d_credit=%0b vld=0x%03h rdy=0x%03h dealloc=0x%03h e0_type=0x%0h e0_vpn=0x%07h e1_type=0x%0h e1_vpn=0x%07h e1_eid=0x%0h",
+               $time,
+               mmu_itlb_dbg_stuck_cycles,
+               i_req_valid,
+               i_req_vpn,
+               d_req_valid,
+               d_req_vpn,
+               d_req_type,
+               issue_valid,
+               issue_grant,
+               issue_queue_id,
+               issue_type,
+               issue_vpn,
+               fb_valid,
+               fb_trans_id,
+               fb_hit,
+               fb_miss_alloc,
+               fb_miss_retry,
+               i_credit_return,
+               d_credit_return,
+               entry_vld_vec,
+               entry_rdy_vec,
+               entry_dealloc_vec,
+               entry_out_type[0],
+               entry_out_vpn[0],
+               entry_out_type[1],
+               entry_out_vpn[1],
+               entry_out_eid[1]);
+    end
+  end
+end
+// synopsys translate_on
+
 endmodule
 
 

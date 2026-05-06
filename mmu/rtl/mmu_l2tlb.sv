@@ -1365,6 +1365,66 @@ assign l2tlb_pfu_pa[PPN_WIDTH-1:0] = l1dtlb_xx_mmu_off ? lsu_mmu_va2[PPN_WIDTH-1
 assign l2tlb_pfu_sec               = (l1dtlb_xx_mmu_off || !cp0_mmu_maee) ? sysmap_mmu_flg4[0] : ref_flg[9];
 assign l2tlb_pfu_share             = (l1dtlb_xx_mmu_off || !cp0_mmu_maee) ? sysmap_mmu_flg4[1] : ref_flg[10];
 
+// synopsys translate_off
+logic mmu_itlb_dbg_en;
+
+initial begin
+  mmu_itlb_dbg_en = $test$plusargs("MMU_ITLB_DBG");
+end
+
+always_ff @(posedge l2tlb_clk or negedge cpurst_b) begin
+  if (!cpurst_b) begin
+  end else if (mmu_itlb_dbg_en
+               && (queue_arb_req
+                   || arb_l2tlb_req
+                   || final_vld
+                   || l2tlb_miss
+                   || mb_alloc_valid
+                   || l2tlb_reqq_fb_vld
+                   || l2tlb_ptw_req
+                   || ptw_l2tlb_ref_cmplt
+                   || l2tlb_l1itlb_ref_cmplt
+                   || l2tlb_l1itlb_ref_pavld
+                   || l2tlb_l1itlb_pgflt)) begin
+    $display("[MMU_ITLB_DBG][L2TLB] t=%0t queue_req=%0b q_vpn=0x%07h q_type=0x%0h q_id=0x%0h arb_req=%0b arb_type=0x%0h arb_tid=0x%0h final_vld=%0b final_type=0x%0h final_qid=0x%0h final_vpn=0x%07h hit=%0b hit_mult=%0b miss=%0b mb_alloc=%0b fb_vld=%0b fb_id=0x%0h fb_hit=%0b fb_alloc=%0b fb_retry=%0b ptw_req=%0b ptw_type=0x%0h ptw_id=0x%02h ptw_vpn=0x%07h ptw_cmplt=%0b ptw_ref_type=0x%0h ptw_ref_id=0x%02h ptw_data=%0b ptw_pgflt=%0b ptw_acc=%0b l1i_cmplt=%0b l1i_pavld=%0b l1i_pgflt=%0b",
+             $time,
+             queue_arb_req,
+             queue_arb_vpn,
+             queue_arb_acc_type,
+             queue_arb_trans_id,
+             arb_l2tlb_req,
+             arb_l2tlb_acc_type,
+             arb_l2tlb_trans_id,
+             final_vld,
+             final_acc_type,
+             final_queue_id,
+             final_vpn,
+             final_pa_vld,
+             final_tlb_hit_mult,
+             l2tlb_miss,
+             mb_alloc_valid,
+             l2tlb_reqq_fb_vld,
+             l2tlb_reqq_fb_id,
+             l2tlb_reqq_fb_hit,
+             l2tlb_reqq_fb_miss_alloc,
+             l2tlb_reqq_fb_miss_retry,
+             l2tlb_ptw_req,
+             l2tlb_ptw_type,
+             l2tlb_ptw_id,
+             l2tlb_ptw_vpn,
+             ptw_l2tlb_ref_cmplt,
+             ptw_l2tlb_ref_type,
+             ptw_l2tlb_ref_id,
+             ptw_l2tlb_ref_data_vld,
+             ptw_l2tlb_ref_pgflt,
+             ptw_l2tlb_ref_acc_err,
+             l2tlb_l1itlb_ref_cmplt,
+             l2tlb_l1itlb_ref_pavld,
+             l2tlb_l1itlb_pgflt);
+  end
+end
+// synopsys translate_on
+
 // flop pa for pmp check
 always @(posedge l2tlb_clk or negedge cpurst_b)
 begin
@@ -1402,4 +1462,3 @@ end
 
 
 endmodule
-

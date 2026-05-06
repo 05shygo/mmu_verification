@@ -839,6 +839,66 @@ end
 
 assign mmu_hpcp_iutlb_miss = iutlb_miss;
 
+// synopsys translate_off
+logic        mmu_itlb_dbg_en;
+int unsigned mmu_itlb_wfc_cycles;
+
+initial begin
+  mmu_itlb_dbg_en = $test$plusargs("MMU_ITLB_DBG");
+end
+
+always_ff @(posedge iutlb_clk or negedge cpurst_b) begin
+  if (!cpurst_b) begin
+    mmu_itlb_wfc_cycles <= 0;
+  end else begin
+    if (ref_cur_st[2:0] == WFC)
+      mmu_itlb_wfc_cycles <= mmu_itlb_wfc_cycles + 1;
+    else
+      mmu_itlb_wfc_cycles <= 0;
+
+    if (mmu_itlb_dbg_en
+        && (iutlb_miss_vld
+            || iutlb_l2tlb_req
+            || credit_return
+            || l1itlb_ref_cmplt
+            || ptw_l1itlb_ref_pavld
+            || jtlb_iutlb_ref_pavld
+            || ptw_l1tlb_pgflt
+            || jtlb_iutlb_pgflt
+            || ptw_l1tlb_acc_err
+            || iutlb_ref_pgflt
+            || (ref_cur_st[2:0] != ref_nxt_st[2:0])
+            || ((ref_cur_st[2:0] == WFC) && (mmu_itlb_wfc_cycles[11:0] == 12'hfff)))) begin
+      $display("[MMU_ITLB_DBG][L1I] t=%0t st=0x%0h nxt=0x%0h wfc_cycles=%0d va_vld=%0b abort=%0b va=0x%010h miss=%0b req=%0b vpn=0x%07h credit=%0b credit_ret=%0b refill_on=%0b l1_cmplt=%0b ptw_cmplt=%0b jtlb_cmplt=%0b ptw_pavld=%0b jtlb_pavld=%0b ptw_pgflt=%0b jtlb_pgflt=%0b ptw_acc=%0b ifu_pavld=%0b ifu_pgflt=%0b ifu_deny=%0b",
+               $time,
+               ref_cur_st[2:0],
+               ref_nxt_st[2:0],
+               mmu_itlb_wfc_cycles,
+               ifu_mmu_va_vld,
+               ifu_mmu_abort,
+               {1'b0, ifu_mmu_va[38:0]},
+               iutlb_miss_vld,
+               iutlb_l2tlb_req,
+               iutlb_l2tlb_vpn[VPN_WIDTH-1:0],
+               credit_cnt,
+               credit_return,
+               iutlb_refill_on,
+               l1itlb_ref_cmplt,
+               ptw_l1itlb_ref_cmplt,
+               jtlb_iutlb_ref_cmplt,
+               ptw_l1itlb_ref_pavld,
+               jtlb_iutlb_ref_pavld,
+               ptw_l1tlb_pgflt,
+               jtlb_iutlb_pgflt,
+               ptw_l1tlb_acc_err,
+               mmu_ifu_pavld,
+               mmu_ifu_pgflt,
+               mmu_ifu_deny);
+    end
+  end
+end
+// synopsys translate_on
+
 //==============================================================================
 //                  Data Path
 //==============================================================================

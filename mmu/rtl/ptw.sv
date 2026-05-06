@@ -1008,6 +1008,64 @@ always_ff @(posedge ptw_clk or negedge cpurst_b) begin
 	end
 end
 
+// synopsys translate_off
+logic mmu_itlb_dbg_en;
+
+initial begin
+  mmu_itlb_dbg_en = $test$plusargs("MMU_ITLB_DBG");
+end
+
+always_ff @(posedge ptw_clk or negedge cpurst_b) begin
+  if (!cpurst_b) begin
+  end else if (mmu_itlb_dbg_en
+               && (l2tlb_ptw_req
+                   || ptw_l2tlb_cmplt
+                   || ptw_l1itlb_cmplt
+                   || ptw_l1itlb_ref_pa_vld
+                   || ptw_l1itlb_pgflt
+                   || ptw_l1itlb_ref_acc_err
+                   || arb_ptw_grant
+                   || ptw_arb_req
+                   || pgflt_grant
+                   || acc_err_grant
+                   || ref_grant
+                   || (|refill_arb_twu_grant[3:0])
+                   || (|twu_arb_ref_req[3:0])
+                   || (|twu_mbuf_req[3:0]))) begin
+    $display("[MMU_ITLB_DBG][PTW] t=%0t l2_req=%0b l2_type=0x%0h l2_id=0x%02h l2_vpn=0x%07h ready=%0b arb_req=%0b arb_grant=%0b arb_mask=%0b ref_vld=%0b ref_grant=%0b pgflt_vld=%0b pgflt_grant=%0b acc_vld=%0b acc_grant=%0b twu_ref_req=0x%0h refill_grant=0x%0h arb_ref_type=0x%0h arb_ref_id=0x%02h cmplt=%0b cmplt_type=0x%0h cmplt_id=0x%02h data=%0b pgflt=%0b acc=%0b l1i_cmplt=%0b l1i_pavld=%0b l1i_pgflt=%0b l1i_acc=%0b",
+             $time,
+             l2tlb_ptw_req,
+             l2tlb_ptw_type,
+             l2tlb_ptw_id,
+             l2tlb_ptw_vpn,
+             ptw_jtlb_ready,
+             ptw_arb_req,
+             arb_ptw_grant,
+             arb_ptw_mask,
+             ref_vld,
+             ref_grant,
+             pgflt_vld,
+             pgflt_grant,
+             acc_err_vld,
+             acc_err_grant,
+             twu_arb_ref_req,
+             refill_arb_twu_grant,
+             ptw_arb_ref_type,
+             ptw_arb_ref_id,
+             ptw_l2tlb_cmplt,
+             ptw_l2tlb_type,
+             ptw_l2tlb_id,
+             ptw_l2tlb_ref_data_vld,
+             ptw_l2tlb_ref_pgflt,
+             ptw_l2tlb_ref_acc_err,
+             ptw_l1itlb_cmplt,
+             ptw_l1itlb_ref_pa_vld,
+             ptw_l1itlb_pgflt,
+             ptw_l1itlb_ref_acc_err);
+  end
+end
+// synopsys translate_on
+
 //assign ptw_l2tlb_id = ptw_rsp_id_q;
 //assign ptw_l2tlb_type[2:0] = ptw_rsp_type_q[2:0];
 //assign ptw_l2tlb_flg = ptw_rsp_data_q[13:0];

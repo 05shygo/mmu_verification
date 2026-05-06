@@ -260,6 +260,62 @@ module mmu_l2tlb_mb #(
 
     assign req_alloc_valid = req_valid & |alloc_en_vec;
 
+// synopsys translate_off
+logic mmu_itlb_dbg_en;
+int unsigned mmu_itlb_dbg_stuck_cycles;
+
+initial begin
+  mmu_itlb_dbg_en = $test$plusargs("MMU_ITLB_DBG");
+end
+
+always_ff @(posedge reqq_clk or negedge cpurst_b) begin
+  if (!cpurst_b) begin
+    mmu_itlb_dbg_stuck_cycles <= 0;
+  end else begin
+    if (entry_vld_vec != '0) begin
+      mmu_itlb_dbg_stuck_cycles <= mmu_itlb_dbg_stuck_cycles + 1;
+    end else begin
+      mmu_itlb_dbg_stuck_cycles <= 0;
+    end
+
+    if (mmu_itlb_dbg_en
+        && ((!req_is_dtlb && req_valid)
+            || issue_req
+            || fb_valid
+            || entry_dealloc_vec[0]
+            || ((entry_vld_vec != '0) && (mmu_itlb_dbg_stuck_cycles[11:0] == 12'hfff)))) begin
+      $display("[MMU_ITLB_DBG][L2MB] t=%0t stuck_cycles=%0d req_valid=%0b req_is_dtlb=%0b req_vpn=0x%07h req_type=0x%0h req_l1eid=0x%0h alloc_valid=%0b issue_req=%0b issue_vpn=0x%07h issue_type=0x%0h issue_eid=0x%02h issue_is_dtlb=%0b ptw_ready=%0b fb_valid=%0b fb_id=0x%0h fb_hit=%0b vld=0x%03h rdy=0x%03h dealloc=0x%03h e0_type=0x%0h e0_vpn=0x%07h e0_l1eid=0x%0h e1_type=0x%0h e1_vpn=0x%07h e1_l1eid=0x%0h",
+               $time,
+               mmu_itlb_dbg_stuck_cycles,
+               req_valid,
+               req_is_dtlb,
+               req_vpn,
+               req_acc_type,
+               req_l1eid,
+               req_alloc_valid,
+               issue_req,
+               issue_vpn,
+               issue_type,
+               issue_eid,
+               issue_is_dtlb,
+               ptw_ready,
+               fb_valid,
+               fb_trans_id,
+               fb_hit,
+               entry_vld_vec,
+               entry_rdy_vec,
+               entry_dealloc_vec,
+               entry_out_type[0],
+               entry_out_vpn[0],
+               entry_out_l1eid[0],
+               entry_out_type[1],
+               entry_out_vpn[1],
+               entry_out_l1eid[1]);
+    end
+  end
+end
+// synopsys translate_on
+
 endmodule
 
 

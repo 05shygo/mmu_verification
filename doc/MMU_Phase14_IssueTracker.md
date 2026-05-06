@@ -79,6 +79,8 @@ Review policy:
 | MMU-P14-ISSUE-010 | RTL/Design Record | L1ITLB missed L2TLB/JTLB page-fault completion in WFC transition | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 | MMU-P14-ISSUE-011 | RTL/Design Record | L2TLB reqq ITLB/DTLB simultaneous bypass mixed issue type | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 | MMU-P14-ISSUE-012 | RTL/Design Record | L2TLB raw_vld incorrectly sent PTW refill helper accesses into lookup pipeline | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-013 | RTL/Design Record | L2TLB reqq simultaneous bypass incorrectly marked DTLB entry sent | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
+| MMU-P14-ISSUE-014 | RTL/Design Record | L2TLB miss buffer bypass could issue unallocated PTW request | Phase 14 | High | Phase14 Closure Owner | Open | Yes |
 
 ---
 
@@ -1134,13 +1136,250 @@ arb_l2tlb_req=1 arb_l2tlb_acc_type in real lookup types -> raw_vld=1
 
 ---
 
+## MMU-P14-ISSUE-013 - L2TLB Reqq Bypass Grant Marked Non-Issued DTLB Entry Sent
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Status | Open |
+| Blocking | Yes |
+| Primary file | `mmu/rtl/mmu_l2tlb_reqq.sv` |
+| Related file | `mmu/rtl/mmu_l2tlb_reqq_entry.sv` |
+| Fix commit | Pending; working-tree RTL fix present |
+| Evidence | Wave/debug triage of simultaneous ITLB and DTLB miss into empty L2TLB reqq with arb grant |
+
+### Failure Signature
+
+When ITLB and DTLB miss requests arrived at `mmu_l2tlb_reqq` in the same cycle,
+and the reqq had no ready entry, the request path used bypass issue. With ITLB
+priority, the transaction sent to L2TLB was the ITLB request.
+
+Problematic condition:
+
+```text
+entry_ready=0 issue_grant=1 i_req_valid=1 d_req_valid=1
+```
+
+Expected behavior:
+
+```text
+ITLB entry0 allocates with sent=1
+DTLB allocated entry allocates with sent=0
+```
+
+Observed RTL behavior before the fix:
+
+```text
+ITLB entry0 allocates with sent=1
+DTLB allocated entry also allocates with sent=1
+```
+
+The DTLB request was allocated into the queue but was not actually issued. Since
+it was incorrectly marked `sent=1`, it was not ready for later issue and could
+wait for feedback for a transaction that was never sent.
+
+### Root Cause
+
+All reqq entries received the same scalar bypass grant:
+
+```systemverilog
+.bypass_grant(issue_grant & !entry_ready)
+```
+
+Inside `mmu_l2tlb_reqq_entry.sv`, a newly allocated entry initializes `r_sent`
+from `bypass_grant`:
+
+```systemverilog
+else if (entry_alloc_en)
+  r_sent <= bypass_grant;
+```
+
+Therefore, in the simultaneous ITLB/DTLB bypass case, both allocated entries saw
+`bypass_grant=1`, even though only the ITLB request was actually selected by the
+bypass issue mux.
+
+### Fix
+
+The bypass grant is now per-entry and follows the same priority as bypass issue:
+
+```systemverilog
+assign bypass_grant_vec[0] =
+  issue_grant & !entry_ready & i_req_valid;
+
+assign bypass_grant_vec[TOTAL_DEPTH-1:1] =
+  dtlb_alloc_oh & {DTLB_DEPTH{issue_grant & !entry_ready & !i_req_valid & d_req_valid}};
+```
+
+Each entry receives only its own grant:
+
+```systemverilog
+.bypass_grant(bypass_grant_vec[i])
+```
+
+This preserves the intended behavior:
+
+- ITLB and DTLB same-cycle bypass: only ITLB entry0 is marked sent.
+- DTLB same-cycle bypass without ITLB: the selected DTLB allocation entry is
+  marked sent.
+- DTLB allocated but not bypass-issued remains `sent=0` and can be issued later.
+
+### Verification Notes
+
+Required rerun:
+
+```bash
+make comp
+make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
+make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
+```
+
+Wave/debug checks:
+
+```text
+entry_ready=0 issue_grant=1 i_req_valid=1 d_req_valid=1
+bypass_grant_vec[0]=1
+bypass_grant_vec[DTLB allocated entry]=0
+entry_vld_vec includes both ITLB and DTLB entries
+entry_rdy_vec shows the DTLB entry ready after allocation
+```
+
+---
+
+## MMU-P14-ISSUE-014 - L2TLB Miss Buffer Bypass Issued Unallocated Request
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Status | Open |
+| Blocking | Yes |
+| Primary file | `mmu/rtl/mmu_l2tlb_mb.sv` |
+| Related file | `mmu/rtl/mmu_l2tlb.sv` |
+| Fix commit | Pending; working-tree RTL fix present |
+| Evidence | Code audit after L2TLB reqq bypass bug; same bypass/sent pattern checked in L2TLB miss buffer |
+
+### Failure Signature
+
+The L2TLB miss buffer is single-input, so it does not have the same ITLB/DTLB
+dual-input mixed-payload bug as `mmu_l2tlb_reqq`. However, it used the same
+style of bypass issue and sent initialization. Before the fix, the issue request
+to PTW was generated from:
+
+```systemverilog
+assign issue_req = entry_ready | req_valid;
+```
+
+The bypass payload also used `req_valid` directly:
+
+```systemverilog
+assign issue_vpn  = entry_ready ? entry_rdy_vpn :
+                    req_valid ? req_vpn : '0;
+
+assign issue_type = entry_ready ? entry_rdy_type :
+                    req_valid ? req_acc_type : '0;
+```
+
+This could issue a request to PTW even when the miss buffer did not actually
+allocate an entry for that request.
+
+### Root Cause
+
+Allocation can fail even when `req_valid=1`:
+
+- ITLB miss buffer slot entry0 is already valid:
+
+  ```systemverilog
+  assign alloc_en_vec[0] = req_valid & !req_is_dtlb & !entry_vld_vec[0];
+  ```
+
+- All DTLB miss buffer slots are full:
+
+  ```systemverilog
+  assign alloc_en_vec[TOTAL_DEPTH-1:1] =
+    (req_valid & req_is_dtlb & !mb_dtlb_full) ? dtlb_alloc_oh : {DTLB_DEPTH{1'b0}};
+  ```
+
+The miss buffer correctly reported whether allocation succeeded through:
+
+```systemverilog
+assign req_alloc_valid = req_valid & |alloc_en_vec;
+```
+
+but `issue_req` and the bypass payload ignored that result. Therefore an
+unallocated miss could still be sent to PTW. Since no miss-buffer entry owned
+that transaction, the later PTW completion could not be reliably matched and
+cleared.
+
+The entry-level sent initialization also received a scalar bypass grant:
+
+```systemverilog
+.bypass_grant(ptw_ready & !entry_ready)
+```
+
+That was safe only if allocation succeeded. It was not explicitly tied to the
+allocated entry.
+
+### Fix
+
+The miss buffer now gates bypass issue by successful allocation:
+
+```systemverilog
+assign req_alloc_valid = req_valid & |alloc_en_vec;
+assign issue_req       = entry_ready | req_alloc_valid;
+```
+
+The bypass payload also uses `req_alloc_valid` instead of raw `req_valid`:
+
+```systemverilog
+assign issue_vpn = entry_ready ? entry_rdy_vpn :
+                   req_alloc_valid ? req_vpn : {VPN_WIDTH{1'b0}};
+
+assign issue_eid = entry_ready ? {entry_rdy_id,entry_rdy_eid} :
+                   (req_alloc_valid & req_is_dtlb)
+                     ? {dtlb_alloc_index[L2EID_WIDTH-1:0],req_l1eid}
+                     : {(L1EID_WIDTH+L2EID_WIDTH){1'b0}};
+
+assign issue_type = entry_ready ? entry_rdy_type :
+                    req_alloc_valid ? req_acc_type[PTW_TYPE_WIDTH-1:0] :
+                    {PTW_TYPE_WIDTH{1'b0}};
+```
+
+The sent initialization grant is now per-entry and aligned with allocation:
+
+```systemverilog
+assign bypass_grant_vec = alloc_en_vec & {TOTAL_DEPTH{ptw_ready & !entry_ready}};
+```
+
+Each entry receives only `bypass_grant_vec[i]`.
+
+### Verification Notes
+
+Required rerun:
+
+```bash
+make comp
+make run_cov TEST_NAME=test_twu_mask_pmp_wait_all4 SEED=97102
+make check_log LOG=output/logs/test_twu_mask_pmp_wait_all4_97102_cov.log
+```
+
+Wave/debug checks:
+
+```text
+req_valid=1 req_alloc_valid=0 entry_ready=0 -> issue_req=0
+req_valid=1 req_alloc_valid=1 entry_ready=0 ptw_ready=1 -> one bypass_grant_vec bit set
+entry_ready=1 -> issue_req follows ready entry, not current failed allocation
+```
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010, MMU-P14-ISSUE-011, MMU-P14-ISSUE-012
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006, MMU-P14-ISSUE-007, MMU-P14-ISSUE-008, MMU-P14-ISSUE-009, MMU-P14-ISSUE-010, MMU-P14-ISSUE-011, MMU-P14-ISSUE-012, MMU-P14-ISSUE-013, MMU-P14-ISSUE-014
 ```
 
 Before final signoff, update this table:
@@ -1159,3 +1398,5 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-010 | TBD | Working-tree fix in `mmu/rtl/mmu_l1itlb.sv`; rerun must show L2TLB/JTLB page-fault completion drives `WFC -> PGFLT -> IDLE` |
 | MMU-P14-ISSUE-011 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_reqq.sv`; rerun must show simultaneous ITLB/DTLB bypass issues ITLB type when ITLB VPN/qid are selected |
 | MMU-P14-ISSUE-012 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb.sv`; rerun/wave must show PTW `type=000/101` helper accesses do not assert `raw_vld` |
+| MMU-P14-ISSUE-013 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_reqq.sv`; rerun/wave must show simultaneous ITLB/DTLB bypass only marks the actually issued ITLB entry sent |
+| MMU-P14-ISSUE-014 | TBD | Working-tree fix in `mmu/rtl/mmu_l2tlb_mb.sv`; rerun/wave must show failed MB allocation does not issue an untracked PTW request |

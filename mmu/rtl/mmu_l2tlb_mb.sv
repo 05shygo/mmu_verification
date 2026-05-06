@@ -78,6 +78,7 @@ module mmu_l2tlb_mb #(
     // Arbitration Control
     logic [TOTAL_DEPTH-1:0]     ffr_oh;           
     logic [TOTAL_DEPTH-1:0]     entry_grant_vec; 
+    logic [TOTAL_DEPTH-1:0]     bypass_grant_vec;
     logic                       entry_ready;
 
     // Payload Arrays (Missing in original code)
@@ -182,7 +183,7 @@ module mmu_l2tlb_mb #(
 
                 // Issue
                 .issue_grant        (entry_grant_vec[i]),
-                .bypass_grant       (ptw_ready & !entry_ready), // Logic: Bypass if Buffer Empty
+                .bypass_grant       (bypass_grant_vec[i]), // Logic: Bypass if allocated and buffer has no ready entry
 
                 // Feedback
                 .fb_match_id        (fb_valid && (fb_trans_id == i[ID_WIDTH-1:0])),
@@ -220,8 +221,10 @@ module mmu_l2tlb_mb #(
     endgenerate
      
     assign entry_grant_vec = ffr_oh & {TOTAL_DEPTH{ptw_ready}};
+    assign bypass_grant_vec = alloc_en_vec & {TOTAL_DEPTH{ptw_ready & !entry_ready}};
     assign entry_ready     = |entry_rdy_vec; 
-    assign issue_req       = entry_ready | req_valid;
+    assign req_alloc_valid = req_valid & |alloc_en_vec;
+    assign issue_req       = entry_ready | req_alloc_valid;
 
     //=========================================================================
     // 4. Output Mux Logic
@@ -247,18 +250,16 @@ module mmu_l2tlb_mb #(
 
     // Final Bypass Mux
     assign issue_vpn = entry_ready ? entry_rdy_vpn : 
-                       req_valid   ? req_vpn : {VPN_WIDTH{1'b0}};
+                       req_alloc_valid ? req_vpn : {VPN_WIDTH{1'b0}};
 
     assign issue_eid = entry_ready ?  {entry_rdy_id,entry_rdy_eid} : // Note: issue_eid width mismatch fix might be needed
-                       (req_valid & req_is_dtlb) ? {dtlb_alloc_index,req_l1eid} : {(L1EID_WIDTH+L2EID_WIDTH){1'b0}};
+                       (req_alloc_valid & req_is_dtlb) ? {dtlb_alloc_index[L2EID_WIDTH-1:0],req_l1eid} : {(L1EID_WIDTH+L2EID_WIDTH){1'b0}};
 
     assign issue_type = entry_ready ? entry_rdy_type : 
-                        req_valid   ? req_acc_type[PTW_TYPE_WIDTH-1:0] : {PTW_TYPE_WIDTH{1'b0}}; // Fixed typo
+                        req_alloc_valid ? req_acc_type[PTW_TYPE_WIDTH-1:0] : {PTW_TYPE_WIDTH{1'b0}}; // Fixed typo
 
     assign issue_is_dtlb = entry_ready ? entry_rdy_is_dtlb : 
-                           (req_valid & req_is_dtlb) ? 1'b1 : 1'b0;
-
-    assign req_alloc_valid = req_valid & |alloc_en_vec;
+                           (req_alloc_valid & req_is_dtlb) ? 1'b1 : 1'b0;
 
 // synopsys translate_off
 logic mmu_itlb_dbg_en;

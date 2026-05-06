@@ -954,14 +954,14 @@ module mmu_l2tlb#(
 
     assign final_pa_vld  = final_tlb_hit & final_vld;
 
-    assign l2tlb_reqq_fb_vld        = final_pa_vld | l2tlb_reqq_fb_miss_alloc;
+    assign l2tlb_reqq_fb_vld        = final_pa_vld | l2tlb_miss;
     assign l2tlb_reqq_fb_id         = final_queue_id;
     assign l2tlb_reqq_fb_hit        = final_pa_vld;
     
-    // Miss Alloc logic: Miss occurred, and it wasn't a refill completion
-    // Since we alloc on every miss, we notify reqq to mark as "Sent"
+    // A miss that cannot allocate an L2 miss-buffer entry must retry.  Without
+    // this feedback, the reqq entry stays valid+sent forever.
     assign l2tlb_reqq_fb_miss_alloc = l2tlb_miss & mb_alloc_valid;////////////////////////////////////add logic mb response to reqq
-    assign l2tlb_reqq_fb_miss_retry = 1'b0; // Add logic if MB full signal exists
+    assign l2tlb_reqq_fb_miss_retry = l2tlb_miss & !mb_alloc_valid;
 
   
     assign ptw_req = (final_acc_type == 3'b000) & final_vld;
@@ -1402,5 +1402,4 @@ end
 
 
 endmodule
-
 

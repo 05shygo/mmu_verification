@@ -44,7 +44,6 @@ module mmu_l1dtlb_expt_cam #(
 
   typedef struct packed {
     logic                 vld;
-    logic [$clog2(CAM_DEPTH)-1:0] eid;
     logic [IID_WIDTH-1:0] iid;
     logic [VPN_WIDTH-1:0] vpn;
     logic                 pgflt;
@@ -68,32 +67,22 @@ module mmu_l1dtlb_expt_cam #(
     end
   endfunction
 
-  logic [CAM_DEPTH-1:0] free_vec;
   logic [CAM_DEPTH-1:0] hit0_vec, hit1_vec;
   logic [CAM_DEPTH-1:0] hit0_use_vec, hit1_use_vec;
-  logic [CAM_DEPTH-1:0] wr0_dup_vec, wr1_dup_vec;
-  logic [CAM_DEPTH-1:0] free_vec_after_wr0;
 
   logic hit0_any, hit1_any;
   logic [$clog2(CAM_DEPTH)-1:0] hit0_idx, hit1_idx;
   logic consume0, consume1, same_hit_entry;
   logic consume0_eff, consume1_eff;
-
-  logic wr0_dup, wr1_dup;
-  logic [$clog2(CAM_DEPTH)-1:0] wr0_dup_idx, wr1_dup_idx;
-  logic wr0_alloc, wr1_alloc;
-  logic [$clog2(CAM_DEPTH)-1:0] wr0_alloc_idx, wr1_alloc_idx;
+  logic same_wr_eid;
 
   int j;
   always_comb begin
     for (j = 0; j < CAM_DEPTH; j++) begin
-      free_vec[j]    = !ent[j].vld;
       hit0_vec[j]    = ent[j].vld && (ent[j].iid == lsu_mmu_id0);
       hit1_vec[j]    = ent[j].vld && (ent[j].iid == lsu_mmu_id1);
       hit0_use_vec[j]= hit0_vec[j] && (ent[j].vpn == lsu_mmu_vpn0);
       hit1_use_vec[j]= hit1_vec[j] && (ent[j].vpn == lsu_mmu_vpn1);
-      wr0_dup_vec[j] = ent[j].vld && (ent[j].iid == expt_wr0_iid) && (ent[j].vpn == expt_wr0_vpn);
-      wr1_dup_vec[j] = ent[j].vld && (ent[j].iid == expt_wr1_iid) && (ent[j].vpn == expt_wr1_vpn);
     end
   end
 
@@ -111,9 +100,9 @@ module mmu_l1dtlb_expt_cam #(
   always_comb begin
     expt_hit_vec = '0;
     if (consume0_eff)
-      expt_hit_vec[ent[hit0_idx].eid] = 1'b1;
+      expt_hit_vec[hit0_idx] = 1'b1;
     if (consume1_eff)
-      expt_hit_vec[ent[hit1_idx].eid] = 1'b1;
+      expt_hit_vec[hit1_idx] = 1'b1;
   end
 
   always_comb begin
@@ -138,29 +127,14 @@ module mmu_l1dtlb_expt_cam #(
     expt_wakeup = {12{consume0_eff || consume1_eff}};
   end
 
-  assign wr0_dup = expt_wr0_vld && (|wr0_dup_vec);
-  assign wr1_dup = expt_wr1_vld && (|wr1_dup_vec);
-  assign wr0_dup_idx = first_one_idx(wr0_dup_vec);
-  assign wr1_dup_idx = first_one_idx(wr1_dup_vec);
-
-  assign wr0_alloc = expt_wr0_vld && !wr0_dup && (|free_vec);
-  assign wr0_alloc_idx = first_one_idx(free_vec);
-
-  always_comb begin
-    free_vec_after_wr0 = free_vec;
-    if (wr0_alloc)
-      free_vec_after_wr0[wr0_alloc_idx] = 1'b0;
-  end
-
-  assign wr1_alloc = expt_wr1_vld && !wr1_dup && (|free_vec_after_wr0);
-  assign wr1_alloc_idx = first_one_idx(free_vec_after_wr0);
+  assign same_wr_eid = expt_wr0_vld && expt_wr1_vld
+                    && (expt_wr0_eid == expt_wr1_eid);
 
   int k;
   always_ff @(posedge clk or negedge rst_b) begin
     if (!rst_b) begin
       for (k = 0; k < CAM_DEPTH; k++) begin
         ent[k].vld   <= 1'b0;
-        ent[k].eid   <= '0;
         ent[k].iid   <= '0;
         ent[k].vpn   <= '0;
         ent[k].pgflt <= 1'b0;
@@ -178,38 +152,20 @@ module mmu_l1dtlb_expt_cam #(
       if (consume1_eff)
         ent[hit1_idx].vld <= 1'b0;
 
-      if (wr0_dup) begin
-        ent[wr0_dup_idx].vld   <= 1'b1;
-        ent[wr0_dup_idx].eid   <= expt_wr0_eid;
-        ent[wr0_dup_idx].iid   <= expt_wr0_iid;
-        ent[wr0_dup_idx].vpn   <= expt_wr0_vpn;
-        ent[wr0_dup_idx].pgflt <= expt_wr0_pgflt;
-        ent[wr0_dup_idx].acflt <= expt_wr0_acflt;
-      end
-      else if (wr0_alloc) begin
-        ent[wr0_alloc_idx].vld   <= 1'b1;
-        ent[wr0_alloc_idx].eid   <= expt_wr0_eid;
-        ent[wr0_alloc_idx].iid   <= expt_wr0_iid;
-        ent[wr0_alloc_idx].vpn   <= expt_wr0_vpn;
-        ent[wr0_alloc_idx].pgflt <= expt_wr0_pgflt;
-        ent[wr0_alloc_idx].acflt <= expt_wr0_acflt;
+      if (expt_wr1_vld && !same_wr_eid) begin
+        ent[expt_wr1_eid].vld   <= 1'b1;
+        ent[expt_wr1_eid].iid   <= expt_wr1_iid;
+        ent[expt_wr1_eid].vpn   <= expt_wr1_vpn;
+        ent[expt_wr1_eid].pgflt <= expt_wr1_pgflt;
+        ent[expt_wr1_eid].acflt <= expt_wr1_acflt;
       end
 
-      if (wr1_dup) begin
-        ent[wr1_dup_idx].vld   <= 1'b1;
-        ent[wr1_dup_idx].eid   <= expt_wr1_eid;
-        ent[wr1_dup_idx].iid   <= expt_wr1_iid;
-        ent[wr1_dup_idx].vpn   <= expt_wr1_vpn;
-        ent[wr1_dup_idx].pgflt <= expt_wr1_pgflt;
-        ent[wr1_dup_idx].acflt <= expt_wr1_acflt;
-      end
-      else if (wr1_alloc) begin
-        ent[wr1_alloc_idx].vld   <= 1'b1;
-        ent[wr1_alloc_idx].eid   <= expt_wr1_eid;
-        ent[wr1_alloc_idx].iid   <= expt_wr1_iid;
-        ent[wr1_alloc_idx].vpn   <= expt_wr1_vpn;
-        ent[wr1_alloc_idx].pgflt <= expt_wr1_pgflt;
-        ent[wr1_alloc_idx].acflt <= expt_wr1_acflt;
+      if (expt_wr0_vld) begin
+        ent[expt_wr0_eid].vld   <= 1'b1;
+        ent[expt_wr0_eid].iid   <= expt_wr0_iid;
+        ent[expt_wr0_eid].vpn   <= expt_wr0_vpn;
+        ent[expt_wr0_eid].pgflt <= expt_wr0_pgflt;
+        ent[expt_wr0_eid].acflt <= expt_wr0_acflt;
       end
     end
   end

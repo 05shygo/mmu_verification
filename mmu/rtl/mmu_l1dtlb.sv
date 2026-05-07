@@ -830,6 +830,7 @@ end
 // T1 Stage Hit signals
 logic mb_hit0;
 logic mb_hit1;
+logic same_4k_miss01;
 logic [MB_DEPTH-1:0] mb_hit0_vec;
 logic [MB_DEPTH-1:0] mb_hit1_vec;
 
@@ -851,11 +852,16 @@ always_comb begin
     mb_hit1 = |mb_hit1_vec;
 end
 
+assign same_4k_miss01 = miss0_vld_q && !miss0_abort_q
+                      && miss1_vld_q && !miss1_abort_q
+                      && (miss0_vpn_q == miss1_vpn_q);
+
 
 //!************************************************
 //! Allocator Instance (Modified)
 //!************************************************
-// Modify the req*_vld logic to gate allocation on MB Hit
+// Modify the req*_vld logic to gate allocation on MB Hit.
+// If both LSU ports miss the same 4K page in T1, allocate only port 0.
 mmu_l1dtlb_allocator #(
     .MB_DEPTH(MB_DEPTH),
     .VPN_WIDTH(VPN_WIDTH),
@@ -873,7 +879,7 @@ mmu_l1dtlb_allocator #(
     .req0_port_id(1'b0),
     
     // Port 1: Add !mb_hit1
-    .req1_vld(miss1_vld_q && !miss1_abort_q && !mb_hit1),
+    .req1_vld(miss1_vld_q && !miss1_abort_q && !mb_hit1 && !same_4k_miss01),
     .req1_vpn(miss1_vpn_q),
     .req1_iid(miss1_iid_q),
     .req1_port_id(1'b1),

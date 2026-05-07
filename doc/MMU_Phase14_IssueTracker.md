@@ -72,7 +72,7 @@ Review policy:
 | MMU-P14-ISSUE-003 | Waiver/Signoff | Coverage report fallback / waiver policy for Phase 14 signoff | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
 | MMU-P14-ISSUE-004 | Makefile/Gate | Phase 14 Closure Owner regression and exit gate infrastructure | Phase 14 | Medium | Phase14 Closure Owner | Open | No |
 | MMU-P14-ISSUE-005 | Waiver/Signoff | Phase 14 signoff matrix and second-review workflow | Phase 14 | Medium | Phase14 Closure Owner | Open | Conditional |
-| MMU-P14-ISSUE-006 | URG/Tooling | VCS coverage dump abort corrupts/invalidates Phase14 run_cov VDB flow | Phase 14 | High | Phase14 Closure Owner | Open | Conditional |
+| MMU-P14-ISSUE-006 | URG/Tooling | VCS coverage dump abort corrupts/invalidates Phase14 run_cov VDB flow | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-007 | Testbench/Protocol | Phase14 PTW mbuf abort/late-response accounting and SVA failures | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-008 | RTL/Design Record | L1DTLB fault replay consumed entry could reissue/stick instead of release | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-009 | RTL/Design Record | L2TLB reqq sent entry did not retry when L2 miss-buffer allocation failed | Phase 14 | High | Phase14 Closure Owner | Closed | No |
@@ -217,16 +217,38 @@ For Phase 14, the project needs one explicit coverage closure policy:
 
 ### Signoff Decision
 
-Open for Phase 14. This becomes blocking only if Phase 14 requires final coverage closure exclusively from URG HTML/text reports.
+Open for Phase 14. The Phase14 URG report is now available, and
+`make phase14_gate_parallel` proves S3 code coverage and S5 assertion coverage
+meet their thresholds. S4 functional coverage remains conditional/blocking
+because the generated URG report shows functional coverage at 67.66% against
+the 100.00% exit threshold.
+
+Latest gate evidence:
+
+```text
+make phase14_gate_parallel
+line       100.00% >= 99.50% source=output/coverage/phase14_urgReport/mod4.html
+branch     100.00% >= 99.00% source=output/coverage/phase14_urgReport/mod4.html
+toggle     100.00% >= 98.00% source=output/coverage/phase14_urgReport/mod4.html
+fsm        100.00% >= 99.00% source=output/coverage/phase14_urgReport/mod4.html
+assertion  100.00% >= 100.00% source=output/coverage/phase14_urgReport/mod4.html
+functional 67.66% below 100.00% source=output/coverage/phase14_urgReport/groups.txt
+```
+
+Close this issue by either adding coverage to reach the functional threshold or
+recording a second-reviewed waiver/fallback decision for the uncovered
+functional groups/bins.
 
 ### Next Action
 
 Before Phase 14 signoff, A/B should decide and record:
 
-1. Whether URG HTML/text report is mandatory.
-2. Which coverage groups are signed off by URG.
-3. Which coverage groups are signed off by log-summary fallback.
-4. Which bins or scenarios are waived as illegal, unreachable, or outside Phase 14 scope.
+1. Which groups/bins in `output/coverage/phase14_urgReport/groups.txt` account
+   for the 67.66% functional result.
+2. Whether to add tests for the missing legal scenarios.
+3. Which bins or scenarios are waived as illegal, unreachable, or outside Phase
+   14 scope.
+4. The second reviewer and approval status for any waiver.
 
 ---
 
@@ -307,8 +329,8 @@ owned by the Phase14 Closure Owner.
 | Type | URG/Tooling |
 | Severity | High |
 | Owner | Phase14 Closure Owner |
-| Status | Open |
-| Blocking | Conditional |
+| Status | Closed |
+| Blocking | No |
 | First observed | 2026-05-03 |
 | Evidence | `test_twu_mask_pmp_wait_all4_97104_cov.log`; Phase14 run_cov console transcript |
 
@@ -415,12 +437,21 @@ make: *** [phase14_coverage_merge_parallel] Error 1
   the final report. This avoids one monolithic `urg -dir` invocation over all
   465 isolated runtime VDBs and mirrors the aggregate-VDB context fallback used
   by `make cov`.
+- The same artifact set was also merged successfully on the server with matching
+  Synopsys `VCS/URG V-2023.12-SP2`, producing:
+
+```text
+URG Version V-2023.12-SP2
+Note-[URG-RDG] Report directory generated
+Report written to directory output/coverage/phase14_urgReport
+Phase14 parallel URG report: output/coverage/phase14_urgReport
+```
 
 ### Signoff Decision
 
-Open and conditional after the 2026-05-07 high-parallel regression completed all
-465 shards cleanly. It remains open only for the coverage-artifact side of
-Phase14 closure.
+Closed after the 2026-05-07 high-parallel regression completed all 465 shards
+cleanly and `phase14_coverage_merge_parallel` generated a Phase14 URG report
+with Synopsys `VCS/URG V-2023.12-SP2`.
 
 2026-05-07 regression evidence:
 
@@ -431,11 +462,9 @@ Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
 ```
 
 The prior shared aggregate-VDB abort is no longer a blocker for functional
-regression signoff. Final closure still requires one of the following:
-
-- `phase14_coverage_merge_parallel` completes with usable coverage artifacts.
-- A waiver/fallback decision is recorded in this tracker, linked from
-  `doc/MMU_Phase14_SignoffMatrix.md`, and second-reviewed.
+regression or coverage artifact generation. The remaining coverage signoff work
+is to review the generated URG metrics against S3/S4/S5 thresholds and record
+any required coverage waiver under MMU-P14-ISSUE-003.
 
 ---
 
@@ -1565,7 +1594,7 @@ Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-006
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005
 ```
 
 Before final signoff, update this table:
@@ -1574,10 +1603,10 @@ Before final signoff, update this table:
 | --- | --- | --- |
 | MMU-P14-ISSUE-001 | TBD | TBD |
 | MMU-P14-ISSUE-002 | Accepted | `doc/DA-003_phase13_port_mapping.md`; Phase 13 criterion 6 PASS |
-| MMU-P14-ISSUE-003 | TBD | TBD |
+| MMU-P14-ISSUE-003 | Conditional | `make phase14_gate_parallel`: S3/S5 pass; S4 functional coverage is 67.66% below 100.00%, pending additional tests or reviewed waiver |
 | MMU-P14-ISSUE-004 | TBD | `make print-phase14`; `python -m py_compile scripts/phase14_exit_gate.py`; closure run evidence |
 | MMU-P14-ISSUE-005 | TBD | `doc/MMU_Phase14_SignoffMatrix.md` |
-| MMU-P14-ISSUE-006 | Conditional | Functional high-parallel regression completed cleanly on 2026-05-07; coverage merge / URG artifact decision still pending |
+| MMU-P14-ISSUE-006 | Closed | 2026-05-07 functional high-parallel regression completed cleanly; `phase14_coverage_merge_parallel` generated `output/coverage/phase14_urgReport` with Synopsys `VCS/URG V-2023.12-SP2` |
 | MMU-P14-ISSUE-007 | Closed | 2026-05-07 `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20` completed all 465 shards cleanly |
 | MMU-P14-ISSUE-008 | Closed | Commits `17177f1`, `e6c31ea`; `test_twu_mask_pmp_wait_all4 SEED=97102` no longer shows `l1d_mb=0xff` L1DTLB hang |
 | MMU-P14-ISSUE-009 | Closed | Commit `5fea263`; guard against `l2_reqq=0x002 l2_reqq_rdy=0x000 l2mb=0x000` retry starvation signature |

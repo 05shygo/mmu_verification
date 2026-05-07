@@ -1,0 +1,28 @@
+1.l1dtlb function description 
+    lsu有两个能完成VA到PA转换的端口与MMU连接，每一拍lsu可以同时有两个VA转换的请求到l1dtlb。lsu把VA，va_vld，iid，vabuf信号，是否是store指令的标识信号，以及abort信号发给mmu
+        vabuf信号未使用
+        lsu__abort0/1 的本质：LSU 在同一拍仍然把 VA/ID 发给 MMU，但告诉 MMU“这次 AG 请求不要产生有状态后果”。它主要防止一个已经要 stall、restart、异常或 flush 的 load/store 去触发 DTLB miss/refill、匹配旧 refill 异常，或把错误异常算到这条指令上。
+            lsu__abort0/1为1时，这个请求不会进入miss buffer（不启动refill流程），也不会触发异常信号的上报（不释放异常阵列的entry）
+    TO时，LSU发地址转换请求到MMU，mmu将lsu发来的va同时在tlb和异常请求寄存阵列异常请求寄存阵列中进行cam比较（lsu的两个端口同时进行）。
+        如果在tlb中命中，当拍返回pa_vld,以及pa和对应的属性给lsu（T0返回）
+        如果发现page fault，当拍返回pa_vld信号，并当拍拉高page_fault信号（T0返回）
+        如果在tlb中hit，并且没有发现page fault，那么就会拉高pmp check信号，把T0时hit的pa打一拍，在T1时发往PMP模块进行PMP检查，PMP模块在当拍就返回response给mmu。如果检查发现pmp不通过，那么拉高acc_fault信号，返回给lsu（T1拉高cc_fault信号）
+        如果在tlb中miss，在异常请求寄存阵列中hit，那么会把对应的miss buffer entry释放，并且拉高pa_vld。如果fault类型是page fault，那么当拍拉高page fault信号；如果是access fault，那么寄存一拍，在T1时拉高access fault信号。
+            注意：与异常请求寄存阵列的cam比较要按iid和vpn来比较。如果在异常请求寄存阵列中hit，那么一定不能给这个请求分配miss buffer。如果在异常请求寄存阵列中hit，必须把异常请求寄存阵列中的entry和miss buffer中对应的entry释放。
+        如果在tlb中miss，在异常请求寄存阵列中也miss，那么把miss_vld信号寄存一拍，当寄存后的miss_vld信号有效时，在miss buffer中进行cam比较（在T1时，把lsuT0发来的VA与miss buffer中的entry中存的vpn进行比较），与miss buffer的cam比较以4k page的vpn进行比较，也就是说，要对比全部的27bit vpn
+            如果在miss buffer中hit，那么这个请求不分配miss buffer entry。
+            如果在miss buffer中 miss，那么要根据miss buffer中剩余的空闲entry数量和lsu两个端口miss的数量来决定如何分配。
+                如果lsu的两端口都需要分配miss buffer entry，且在同一个4k page，且miss buffer空位≥1,那么把端口0的miss写入MB entry，且entry状态进入 WFG，端口一的miss不分配miss buffer entry。（T1分配）
+                如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer空位≥2，那么两条 miss 同拍写入不同MB entry。（T1分配）
+                如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer仅 1 空位，那么iid更老的一个miss请求写入MB entry，另一个不分配MB entry（T1时分配miss buffer entry）
+                如果lsu的两端口中只有一个端口需要分配miss buffer entry，那么在miss buffer有空位的情况下，分配一个miss buffer entry；如果miss buffer没空位，那么不分配miss buffer entry。
+    只有当ptw或l2tlb refill的pa带着fault信号时（page fault或access fault），分配异常阵列的entry。
+        能够进入异常阵列的请求一定存在于miss buffer中。那么异常阵列的entry数量应该与miss buffer保持一致。
+        写入异常阵列是通过refill带着的id来索引。
+        如果同一拍中，ptw和l2tlb的refill都带着fault，那么都会写进异常阵列。理论上来说，一定是写入不同的阵列entry
+        当清空信号到来时，必须清空所有的异常阵列entry。
+        
+
+
+
+        

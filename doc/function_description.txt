@@ -1,8 +1,15 @@
-1.l1dtlb function description 
+1.l1dtlb function description
+    signal description
     lsu有两个能完成VA到PA转换的端口与MMU连接，每一拍lsu可以同时有两个VA转换的请求到l1dtlb。lsu把VA，va_vld，iid，vabuf信号，是否是store指令的标识信号，以及abort信号发给mmu
         vabuf信号未使用
         lsu__abort0/1 的本质：LSU 在同一拍仍然把 VA/ID 发给 MMU，但告诉 MMU“这次 AG 请求不要产生有状态后果”。它主要防止一个已经要 stall、restart、异常或 flush 的 load/store 去触发 DTLB miss/refill、匹配旧 refill 异常，或把错误异常算到这条指令上。
             lsu__abort0/1为1时，这个请求不会进入miss buffer（不启动refill流程），也不会触发异常信号的上报（不释放异常阵列的entry）
+    mmu回给lsu的weakup信号和busy信号
+        weakup：当l1dtlb要进行回填时（把页面的数据写入tlb entry中）或lsu发来的请求在异常阵列中hit时，拉高weakup信号
+        busy:当l1dtlb的miss buffer存在有效的entry时（有valid的entry），拉高busy信号
+    
+    
+    pipeline description
     TO时，LSU发地址转换请求到MMU，mmu将lsu发来的va同时在tlb和异常请求寄存阵列异常请求寄存阵列中进行cam比较（lsu的两个端口同时进行）。
         如果在tlb中命中，当拍返回pa_vld,以及pa和对应的属性给lsu（T0返回）
         如果发现page fault，当拍返回pa_vld信号，并当拍拉高page_fault信号（T0返回）
@@ -16,13 +23,111 @@
                 如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer空位≥2，那么两条 miss 同拍写入不同MB entry。（T1分配）
                 如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer仅 1 空位，那么iid更老的一个miss请求写入MB entry，另一个不分配MB entry（T1时分配miss buffer entry）
                 如果lsu的两端口中只有一个端口需要分配miss buffer entry，那么在miss buffer有空位的情况下，分配一个miss buffer entry；如果miss buffer没空位，那么不分配miss buffer entry。
+    l1dtlb需要把miss的请求发送到l2tlb走refill流程。
+        l1dtlb内部会维护一个credit计数器，计数器初始化为l2tlb的request queue entry的数量。
+            当credit计数器的值大于0时，能发请求到l2tlb request queue。
+            当credit计数器等于0，但是l2tlb刚好归还了credit时，也能发请求到l2tlb。
+            也就是说，只要l1dtlb能发请求到l2tlb，那一定说明l2tlb request queue的为dtlb准备的entry还有空位。
+            每当l1dtlb的miss buffer发送一个请求到l2tlb request queue，都要把这个计数器减一。
+            当l2tlb归还了credit时，credit计数器加一。
+            如果同时发生l2tlb归还credit和发送请求到l2tlb，那么credit不变。
+        在有miss请求未发送到l2tlb（有判定需要分配miss buffer entry的miss请求或miss buffer中有未发送的请求），且l1dtlb满足发请求给l2tlb（credit满足上面所说的情况）的时侯，一拍发送一个请求到l2tlb的request queue。
+            当miss buffer中有未发送的请求时，优先发miss buffer中的请求；
+            当miss buffer中没有未发送给l2tlb的请求时，如果有被判定需要分配miss buffer entry的miss请求，那么这个要被分配miss buffer entry的请求走bypass，直接发送到l2tlb request queue。
+    当ptw或l2tlb refill完成时，需要把数据写进l1dtlb。
+        每一拍只能写入一个tlb entry。
+        如果miss buffer中有正在等待写入tlb的请求，优先选择miss buffer中有正在等待写入tlb的请求。
+            如果同一拍出现ptw refill完成，l2tlb refill完成，miss buffer中有等待写入tlb的请求，那么选miss buffer中有正在等待写入tlb的请求，将其写入tlb
+                而对应的ptw和l2tlb refill的请求，会把需要回填进tlb的内容锁存，并且它们对应的miss buffer entry的状态机进入wfi（wait for install）状态，也就是等待写入tlb的状态
+        然后miss buffer中没有正在等待写入tlb的请求，那么优先选择ptw refill的请求，将其写入tlb
+            如果同一拍出现ptw refill完成，l2tlb refill完成，那么优先选择ptw refill的请求，将其写入tlb
+                而对应的l2tlb refill的请求，会把需要回填进tlb的内容锁存，并且对应的miss buffer entry的状态机进入wfi（wait for install）状态，也就是等待写入tlb的状态
+        如果miss buffer中没有正在等待写入tlb的请求，且没有ptw refill的请求，那么选择l2tlb refill的请求，将其写入tlb
+
+    异常阵列description
     只有当ptw或l2tlb refill的pa带着fault信号时（page fault或access fault），分配异常阵列的entry。
         能够进入异常阵列的请求一定存在于miss buffer中。那么异常阵列的entry数量应该与miss buffer保持一致。
         写入异常阵列是通过refill带着的id来索引。
         如果同一拍中，ptw和l2tlb的refill都带着fault，那么都会写进异常阵列。理论上来说，一定是写入不同的阵列entry
-        当清空信号到来时，必须清空所有的异常阵列entry。
+        当异常阵列的清除信号到来时，要按情况清理entry
+            当rtu的冲刷信号有效时，那么清空异常阵列（rtu的冲刷信号到来时，会把miss buffer清空，异常阵列也就没有必要保留了）
         
+    tlb description
+        l1dtlb是full associative
+        当lsu有地址转化请求进入mmu时，与l1dtlb的所有entry进行比较
+            比较时，按照tlb中存储的page size比较vpn
+        如果有需要写进tlb的数据，按照plru模块选择的victim entry来写入
+        每一拍只能有一个tlb entry被写入
+        只有两种情况能让entry被写入
+            第一种：当要写入tlb entry的来源是ptw或l2tlb的refill数据的时候，只有ptw或l2tlb返回refill有效信号，且refill的miss buffer entry id对应的miss buffer entry处于WFC状态，且这个entry被plru选为victim entry时，entry才能被写入
+            第二种：当要写入tlb entry的来源是miss buffer中处于WFI的entry时，当entry被plru选为victim entry时，entry才能被写入
+        如果ptw或l2tlb的refill完成的时候，refill的miss buffer entry id对应的miss buffer entry处于ABT状态，那么即使entry被plru选为victim entry并且refill有效，tlb entry也不能被写入
+        当异常阵列的清除信号到来时，要按情况清理entry
+            1.当tlboper_utlb_clr信号有效时，清空tlb的entry。
+                tlboper_utlb_clr由 TLB 操作模块 ct_mmu_tlboper 产生，以下场景会产生tlboper_utlb_clr信号：
+                    TLBWI：软件按指定 index 写 l2TLB。
+                    TLBWR：软件按替换策略写 l2TLB。
+                    INVASID / TLBI_ASID_ALL：按 ASID 失效 l2TLB。
+                    INVALL / TLBI_ALL / cp0_mmu_tlb_all_inv：全失效 l2TLB。
+                    这些操作都会改变 l2TLB 内容。l1TLB 是 l2TLB/PTW 翻译结果的小缓存，如果 l2TLB 被写入、替换或大范围失效，l1TLB 可能还缓存旧翻译，所以用 tlboper_utlb_clr 直接清掉全部 uTLB entry。注意它不用于 TLBP/TLBR，因为 probe/read 不改变翻译内容
+            2.当regs_utlb_clr信号有效时，清空tlb的entry。
+                当前端/CP0 写 SATP 时，regs_utlb_clr 拉高。SATP 里有 mode/asid/ppn，决定当前地址空间、页表根和 ASID。l1TLB entry 里没有保存 ASID，代码注释也写了 “ASID field are not included in uTLB entry”。所以 SATP 一变，原来 l1TLB 里的 VA->PA 翻译可能属于旧地址空间，必须全部失效。
+            3.当ctc_inv_va_hit_clr信号有效时，将tlb的每个entry存储的vpn的0到7bit和lsu_mmu_tlb_va[7:0]进行比较，如果相同，那么就把相同的tlb entry清理掉（valid拉低）
+                ctc_inv_va_hit_clr不是顶层产生的全局信号，而是每个 l1TLB entry 内部自己产生的局部清除信号。来源是 CTC/TLBI 按 VA 失效，这类操作只想失效某个 VA 相关的翻译，所以不走 tlboper_utlb_clr 全清，而是广播 tlboper_utlb_inv_va_req 和目标 lsu_mmu_tlb_va 给所有 uTLB entry。每个 entry 自己比较：命中则产生 ctc_inv_va_hit_clr，只清这个 entry。这里比较低 8 bit VPN，是一种保守的局部匹配：真实同 VA 一定会命中这 8 bit；不同 VA 低 8 bit 相同会被误清，但只是性能损失，不影响正确性。
+              完整因果链可以概括为：
+                1. SATP 改变、JTLB 被写/替换、或收到 TLBI/CTC 失效请求。
+                2. MMU 必须防止 uTLB 继续返回旧 VA->PA/权限。
+                3. 如果是 SATP 写，ct_mmu_regs 拉高 regs_utlb_clr，全清 uTLB。
+                4. 如果是 TLBWI/TLBWR/INVASID/INVALL，ct_mmu_tlboper 拉高 tlboper_utlb_clr，全清 uTLB。
+                5. 如果是 VA 定点失效，ct_mmu_tlboper 拉高 tlboper_utlb_inv_va_req，各 entry 内部命中后拉高 ctc_inv_va_hit_clr，清对应 entry。
+                6. 清除动作最终都是 utlb_vld <= 1'b0，entry 数据可以还在，但已经不会作为有效翻译使用。
 
 
 
-        
+    
+    miss buffer description
+        miss buffer是full associative
+        当T0时在tlb中和异常阵列中miss的请求要在miss buffer中查找时，与miss buffer中所有的entry进行比较
+            比较时，按照4K page size进行VPN的对比
+        每个miss buffer entry维护一个refill FSM
+            FSM总共有IDLE,WFG(wait for grant),WFC(wait for complete),WFI(wait for install),PGFLT(page fault),ACFLT(access fault),ABT(aborted)这七个状态
+                当某个entry被分配之后，就会拉高valid信号
+                    只要不是IDLE状态，valid都是拉高的
+                    valid拉高表示entry已经被分配了，不再是空闲状态
+                当某个entry被发送到l2tlb之后就会拉高sent信号
+                    sent拉高之后表示已经被发送到l2tlb了，不再作为发送的候选
+                    sent没有拉高，但是valid拉高的时候表示这个entry是发送到l2tlb的候选
+                当某个entry在refill时，遇到其他比它优先级更高的请求要写回到tlb中时，会进入WFI状态，拉高WFI信号
+                    wfi信号拉高的时候表示作为写入tlb的候选，等待被写入tlb
+                当某个entry被分配时
+                    如果在分配的同一拍没有被bypass发射到l2tlb，那么就会在拉高allocate信号的下一拍进入WFG状态（IDLE->WFG）
+                    如果在分配的同一拍被bypass发射到l2tlb，那么就会在拉高allocate信号的下一拍进入WFC状态（IDLE->WFC）
+                当某个entry处于WFG状态时
+                    如果被发送到l2tlb，那么就会在下一拍进入WFC状态
+                    如果遇到rtu发来的流水线冲刷信号
+                        如果rtu的冲刷信号到来的这拍，这个entry没有被选择发射出去，那么会回到IDLE状态，并且把valid拉低，把entry变回空闲状态
+                        如果rtu的冲刷信号到来的这拍，这个entry被选择发射出去，那么会进入ABT状态，只有当ptw或l2tlb返回refill完成信号时，回到IDLE状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于WFC状态时
+                    如果遇到rtu发来的流水线冲刷信号
+                        如果rtu的冲刷信号到来的这拍，ptw或l2tlb的refill完成信号拉高了，那么会回到IDLE状态，并且把valid拉低，把entry变回空闲状态
+                        如果rtu的冲刷信号到来的这拍，ptw或l2tlb的refill完成信号没有拉高，那么进入ABT状态，只有当ptw或l2tlb返回refill完成信号时，回到IDLE状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号
+                        当ptw或l2tlb的refill完成信号拉高，并且page fault为高时，进入PGFLT状态。当后续lsu发来的请求在异常阵列中hit时，才能回到idle状态（拉低valid信号，把entry变回空闲状态）。
+                        当ptw或l2tlb的refill完成信号拉高，并且page fault不为高，且access fault为高时，进入ACFLT状态。当后续lsu发来的请求在异常阵列中hit时，才能回到idle状态（拉低valid信号，把entry变回空闲状态）。
+                        当ptw或l2tlb的refill完成信号拉高，并且page fault和access fault均不为高时
+                            如果被授权写入tlb，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                            如果没有被授权写入tlb，那么进入WFI状态
+                当某个某个entry处于WFI状态时
+                    如果遇到rtu发来的流水线冲刷信号，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号，且被授权写入tlb，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于PGFLT状态
+                    如果遇到rtu发来的流水线冲刷信号，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号
+                        当后续lsu发来的请求在异常阵列中hit时，回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于ACFLT状态时
+                    如果遇到rtu发来的流水线冲刷信号，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号
+                        当后续lsu发来的请求在异常阵列中hit时，回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于ABT状态时
+                    如果ptw或l2tlb的refill完成信号拉高，那么回到IDLE状态
+

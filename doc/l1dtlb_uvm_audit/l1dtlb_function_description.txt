@@ -1,0 +1,350 @@
+1.l1dtlb function description
+    signal description
+    lsu有两个能完成VA到PA转换的端口与MMU连接，每一拍lsu可以同时有两个VA转换的请求到l1dtlb。lsu把VA，va_vld，iid，vabuf信号，是否是store指令的标识信号，以及abort信号发给mmu
+        vabuf信号未使用
+        lsu__abort0/1 的本质：LSU 在同一拍仍然把 VA/ID 发给 MMU，但告诉 MMU“这次 AG 请求不要产生有状态后果”。它主要防止一个已经要 stall、restart、异常或 flush 的 load/store 去触发 DTLB miss/refill、匹配旧 refill 异常，或把错误异常算到这条指令上。
+            lsu__abort0/1为1时，这个请求不会进入miss buffer（不启动refill流程），也不会触发异常信号的上报（不释放异常阵列的entry）
+    mmu回给lsu的weakup信号和busy信号
+        weakup：当l1dtlb要进行回填时（把页面的数据写入tlb entry中）或lsu发来的请求在异常阵列中hit时，拉高weakup信号
+        busy:当l1dtlb的miss buffer任意miss buffer entry valid时，拉高。意味着只要有miss正在refill，busy信号就拉高
+    
+    
+    pipeline description
+    TO时，LSU发地址转换请求到MMU，mmu将lsu发来的va同时在tlb和异常请求寄存阵列异常请求寄存阵列中进行cam比较（lsu的两个端口同时进行）。
+        如果在tlb中命中，当拍返回pa_vld,以及pa和对应的属性给lsu（T0返回）
+        如果发现page fault，当拍返回pa_vld信号，并当拍拉高page_fault信号（T0返回）
+        如果在tlb中hit，并且没有发现page fault，那么就会拉高pmp check信号，把T0时hit的pa打一拍，在T1时发往PMP模块进行PMP检查，PMP模块在当拍就返回response给mmu。如果检查发现pmp不通过，那么拉高acc_fault信号，返回给lsu（T1拉高cc_fault信号）
+        如果在tlb中miss，在异常请求寄存阵列中hit，那么会把对应的miss buffer entry释放，并且拉高pa_vld。如果fault类型是page fault，那么当拍拉高page fault信号；如果是access fault，那么寄存一拍，在T1时拉高access fault信号。
+            注意：与异常请求寄存阵列的cam比较要按iid和vpn来比较。如果在异常请求寄存阵列中hit，那么一定不能给这个请求分配miss buffer。如果在异常请求寄存阵列中hit，必须把异常请求寄存阵列中的entry和miss buffer中对应的entry释放。
+        如果在tlb中miss，在异常请求寄存阵列中也miss，那么把miss_vld信号寄存一拍，当寄存后的miss_vld信号有效时，在miss buffer中进行cam比较（在T1时，把lsuT0发来的VA与miss buffer中的entry中存的vpn进行比较），与miss buffer的cam比较以4k page的vpn进行比较，也就是说，要对比全部的27bit vpn
+            如果在miss buffer中hit，那么这个请求不分配miss buffer entry。
+            如果在miss buffer中 miss，那么要根据miss buffer中剩余的空闲entry数量和lsu两个端口miss的数量来决定如何分配。
+                如果lsu的两端口都需要分配miss buffer entry，且在同一个4k page，且miss buffer空位≥1,那么把端口0的miss写入MB entry，且entry状态进入 WFG，端口一的miss不分配miss buffer entry。（T1分配）
+                如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer空位≥2，那么两条 miss 同拍写入不同MB entry。（T1分配）
+                如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer仅 1 空位，那么iid更老的一个miss请求写入MB entry，另一个不分配MB entry（T1时分配miss buffer entry）
+                如果lsu的两端口中只有一个端口需要分配miss buffer entry，那么在miss buffer有空位的情况下，分配一个miss buffer entry；如果miss buffer没空位，那么不分配miss buffer entry。
+    l1dtlb需要把miss的请求发送到l2tlb走refill流程。
+        l1dtlb内部会维护一个credit计数器，计数器初始化为l2tlb的request queue entry的数量。
+            当credit计数器的值大于0时，能发请求到l2tlb request queue。
+            当credit计数器等于0，但是l2tlb刚好归还了credit时，也能发请求到l2tlb。
+            也就是说，只要l1dtlb能发请求到l2tlb，那一定说明l2tlb request queue的为dtlb准备的entry还有空位。
+            每当l1dtlb的miss buffer发送一个请求到l2tlb request queue，都要把这个计数器减一。
+            当l2tlb归还了credit时，credit计数器加一。
+            如果同时发生l2tlb归还credit和发送请求到l2tlb，那么credit不变。
+        在有miss请求未发送到l2tlb（有判定需要分配miss buffer entry的miss请求或miss buffer中有未发送的请求），且l1dtlb满足发请求给l2tlb（credit满足上面所说的情况）的时侯，一拍发送一个请求到l2tlb的request queue。
+            当miss buffer中有未发送的请求时，优先发miss buffer中的请求；
+            当miss buffer中没有未发送给l2tlb的请求时，如果有被判定需要分配miss buffer entry的miss请求，那么这个要被分配miss buffer entry的请求走bypass，直接发送到l2tlb request queue。
+    当ptw或l2tlb refill完成时，需要把数据写进l1dtlb。
+        每一拍只能写入一个tlb entry。
+        如果miss buffer中有正在等待写入tlb的请求，优先选择miss buffer中有正在等待写入tlb的请求。
+            如果同一拍出现ptw refill完成，l2tlb refill完成，miss buffer中有等待写入tlb的请求，那么选miss buffer中有正在等待写入tlb的请求，将其写入tlb
+                而对应的ptw和l2tlb refill的请求，会把需要回填进tlb的内容锁存，并且它们对应的miss buffer entry的状态机进入wfi（wait for install）状态，也就是等待写入tlb的状态
+        然后miss buffer中没有正在等待写入tlb的请求，那么优先选择ptw refill的请求，将其写入tlb
+            如果同一拍出现ptw refill完成，l2tlb refill完成，那么优先选择ptw refill的请求，将其写入tlb
+                而对应的l2tlb refill的请求，会把需要回填进tlb的内容锁存，并且对应的miss buffer entry的状态机进入wfi（wait for install）状态，也就是等待写入tlb的状态
+        如果miss buffer中没有正在等待写入tlb的请求，且没有ptw refill的请求，那么选择l2tlb refill的请求，将其写入tlb
+
+    异常阵列description
+    只有当ptw或l2tlb refill的pa带着fault信号时（page fault或access fault），分配异常阵列的entry。
+        能够进入异常阵列的请求一定存在于miss buffer中。那么异常阵列的entry数量应该与miss buffer保持一致。
+        写入异常阵列是通过refill带着的id来索引。
+        如果同一拍中，ptw和l2tlb的refill都带着fault，那么都会写进异常阵列。理论上来说，一定是写入不同的阵列entry
+        当异常阵列的清除信号到来时，要按情况清理entry
+            当rtu的冲刷信号有效时，那么清空异常阵列（rtu的冲刷信号到来时，会把miss buffer清空，异常阵列也就没有必要保留了）
+        
+    tlb description
+        l1dtlb是full associative
+        当lsu有地址转化请求进入mmu时，与l1dtlb的所有entry进行比较
+            比较时，按照tlb中存储的page size比较vpn
+        如果有需要写进tlb的数据，按照plru模块选择的victim entry来写入
+        每一拍只能有一个tlb entry被写入
+        只有两种情况能让entry被写入
+            第一种：当要写入tlb entry的来源是ptw或l2tlb的refill数据的时候，只有ptw或l2tlb返回refill有效信号，且refill的miss buffer entry id对应的miss buffer entry处于WFC状态，且这个entry被plru选为victim entry时，entry才能被写入
+            第二种：当要写入tlb entry的来源是miss buffer中处于WFI的entry时，当entry被plru选为victim entry时，entry才能被写入
+        如果ptw或l2tlb的refill完成的时候，refill的miss buffer entry id对应的miss buffer entry处于ABT状态，那么即使entry被plru选为victim entry并且refill有效，tlb entry也不能被写入
+        当异常阵列的清除信号到来时，要按情况清理entry
+            1.当tlboper_utlb_clr信号有效时，清空tlb的entry。
+                tlboper_utlb_clr由 TLB 操作模块 ct_mmu_tlboper 产生，以下场景会产生tlboper_utlb_clr信号：
+                    TLBWI：软件按指定 index 写 l2TLB。
+                    TLBWR：软件按替换策略写 l2TLB。
+                    INVASID / TLBI_ASID_ALL：按 ASID 失效 l2TLB。
+                    INVALL / TLBI_ALL / cp0_mmu_tlb_all_inv：全失效 l2TLB。
+                    这些操作都会改变 l2TLB 内容。l1TLB 是 l2TLB/PTW 翻译结果的小缓存，如果 l2TLB 被写入、替换或大范围失效，l1TLB 可能还缓存旧翻译，所以用 tlboper_utlb_clr 直接清掉全部 uTLB entry。注意它不用于 TLBP/TLBR，因为 probe/read 不改变翻译内容
+            2.当regs_utlb_clr信号有效时，清空tlb的entry。
+                当前端/CP0 写 SATP 时，regs_utlb_clr 拉高。SATP 里有 mode/asid/ppn，决定当前地址空间、页表根和 ASID。l1TLB entry 里没有保存 ASID，代码注释也写了 “ASID field are not included in uTLB entry”。所以 SATP 一变，原来 l1TLB 里的 VA->PA 翻译可能属于旧地址空间，必须全部失效。
+            3.当ctc_inv_va_hit_clr信号有效时，将tlb的每个entry存储的vpn的0到7bit和lsu_mmu_tlb_va[7:0]进行比较，如果相同，那么就把相同的tlb entry清理掉（valid拉低）
+                ctc_inv_va_hit_clr不是顶层产生的全局信号，而是每个 l1TLB entry 内部自己产生的局部清除信号。来源是 CTC/TLBI 按 VA 失效，这类操作只想失效某个 VA 相关的翻译，所以不走 tlboper_utlb_clr 全清，而是广播 tlboper_utlb_inv_va_req 和目标 lsu_mmu_tlb_va 给所有 uTLB entry。每个 entry 自己比较：命中则产生 ctc_inv_va_hit_clr，只清这个 entry。这里比较低 8 bit VPN，是一种保守的局部匹配：真实同 VA 一定会命中这 8 bit；不同 VA 低 8 bit 相同会被误清，但只是性能损失，不影响正确性。
+              完整因果链可以概括为：
+                1. SATP 改变、JTLB 被写/替换、或收到 TLBI/CTC 失效请求。
+                2. MMU 必须防止 uTLB 继续返回旧 VA->PA/权限。
+                3. 如果是 SATP 写，ct_mmu_regs 拉高 regs_utlb_clr，全清 uTLB。
+                4. 如果是 TLBWI/TLBWR/INVASID/INVALL，ct_mmu_tlboper 拉高 tlboper_utlb_clr，全清 uTLB。
+                5. 如果是 VA 定点失效，ct_mmu_tlboper 拉高 tlboper_utlb_inv_va_req，各 entry 内部命中后拉高 ctc_inv_va_hit_clr，清对应 entry。
+                6. 清除动作最终都是 utlb_vld <= 1'b0，entry 数据可以还在，但已经不会作为有效翻译使用。
+
+
+
+    
+    miss buffer description
+        miss buffer是full associative
+        当T0时在tlb中和异常阵列中miss的请求要在miss buffer中查找时，与miss buffer中所有的entry进行比较
+            比较时，按照4K page size进行VPN的对比
+        每个miss buffer entry维护一个refill FSM
+            FSM总共有IDLE,WFG(wait for grant),WFC(wait for complete),WFI(wait for install),PGFLT(page fault),ACFLT(access fault),ABT(aborted)这七个状态
+                当某个entry被分配之后，就会拉高valid信号
+                    只要不是IDLE状态，valid都是拉高的
+                    valid拉高表示entry已经被分配了，不再是空闲状态
+                当某个entry被发送到l2tlb之后就会拉高sent信号
+                    sent拉高之后表示已经被发送到l2tlb了，不再作为发送的候选
+                    sent没有拉高，但是valid拉高的时候表示这个entry是发送到l2tlb的候选
+                当某个entry在refill时，遇到其他比它优先级更高的请求要写回到tlb中时，会进入WFI状态，拉高WFI信号
+                    wfi信号拉高的时候表示作为写入tlb的候选，等待被写入tlb
+                当某个entry被分配时
+                    如果在分配的同一拍没有被bypass发射到l2tlb，那么就会在拉高allocate信号的下一拍进入WFG状态（IDLE->WFG）
+                    如果在分配的同一拍被bypass发射到l2tlb，那么就会在拉高allocate信号的下一拍进入WFC状态（IDLE->WFC）
+                当某个entry处于WFG状态时
+                    如果被发送到l2tlb，那么就会在下一拍进入WFC状态
+                    如果遇到rtu发来的流水线冲刷信号
+                        如果rtu的冲刷信号到来的这拍，这个entry没有被选择发射出去，那么会回到IDLE状态，并且把valid拉低，把entry变回空闲状态
+                        如果rtu的冲刷信号到来的这拍，这个entry被选择发射出去，那么会进入ABT状态，只有当ptw或l2tlb返回refill完成信号时，回到IDLE状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于WFC状态时
+                    如果遇到rtu发来的流水线冲刷信号
+                        如果rtu的冲刷信号到来的这拍，ptw或l2tlb的refill完成信号拉高了，那么会回到IDLE状态，并且把valid拉低，把entry变回空闲状态
+                        如果rtu的冲刷信号到来的这拍，ptw或l2tlb的refill完成信号没有拉高，那么进入ABT状态，只有当ptw或l2tlb返回refill完成信号时，回到IDLE状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号
+                        当ptw或l2tlb的refill完成信号拉高，并且page fault为高时，进入PGFLT状态。当后续lsu发来的请求在异常阵列中hit时，才能回到idle状态（拉低valid信号，把entry变回空闲状态）。
+                        当ptw或l2tlb的refill完成信号拉高，并且page fault不为高，且access fault为高时，进入ACFLT状态。当后续lsu发来的请求在异常阵列中hit时，才能回到idle状态（拉低valid信号，把entry变回空闲状态）。
+                        当ptw或l2tlb的refill完成信号拉高，并且page fault和access fault均不为高时
+                            如果被授权写入tlb，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                            如果没有被授权写入tlb，那么进入WFI状态
+                当某个某个entry处于WFI状态时
+                    如果遇到rtu发来的流水线冲刷信号，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号，且被授权写入tlb，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于PGFLT状态
+                    如果遇到rtu发来的流水线冲刷信号，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号
+                        当后续lsu发来的请求在异常阵列中hit时，回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于ACFLT状态时
+                    如果遇到rtu发来的流水线冲刷信号，那么回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                    如果没有遇到rtu发来的流水线冲刷信号
+                        当后续lsu发来的请求在异常阵列中hit时，回到idle状态，并拉低valid信号，把entry变回空闲状态。
+                当某个entry处于ABT状态时
+                    如果ptw或l2tlb的refill完成信号拉高，那么回到IDLE状态
+
+
+
+2.l1dtlb spec待澄清问题
+    说明
+        本节所有条目都是待回答问题，不代表已经确认的设计行为。
+        这些问题的目标是把l1dtlb_function_description.txt补充到足够清晰，使后续可以只基于spec审核UVM中的l1dtlb scoreboard和reference model，而不是参考RTL实现。
+        建议回答时尽量给出：是否成立、精确时序、优先级、同拍冲突处理、对外可观测信号，以及reference model/scoreboard应该如何建模。
+
+    接口与基本信号语义
+        Q-L1DTLB-001: lsu发给mmu的两个请求端口是否完全对称？如果不对称，请明确pipe0和pipe1在支持的请求类型、STAMO、abort、fault、PMP检查、miss分配、wakeup/busy语义上的差异。
+        人类工程师对Q-L1DTLB-001的回答：不是完全对称。更准确地说：DTLB 读命中路径基本对称，但两个端口的来源、语义不是完全对称。普通 DTLB 查表、hit 判断、PA 返回、page fault/access fault/PMA/PMP 等逻辑，大体是同一套模板。可以理解成两个 DTLB read port。
+                                      port0 主要服务 load 类请求，port1 主要服务 store 类请求。port0 不是纯 load，因为 ldamo 会让 st_inst0 拉高，用于类似原子操作的权限类型判断。
+                                      STAMO 只走 port1，stamo 不查 TLB，而是用 LM 的 PA 信息。LM 是 LSU 里的 Local Monitor，它主要服务 LR/SC 和 AMO 这类原子访问，作用是记录一次原子 load/LR 建立起来的地址、属性和状态。LM 保存原子 load 的物理地址，给 STAMO 用的 PA 就来自 LM。这里的逻辑是：AMO/LR 的 load 部分先查 TLB，得到 PA，并把 PA 存进 LM；后续 STAMO store 部分不再查 TLB，而是直接复用 LM 里保存的 PA。
+
+        Q-L1DTLB-002: vabuf信号当前描述为未使用。它在l1dtlb spec中应被视为无功能影响的旁路字段，还是某些场景下会影响VA、PA、异常、属性或scoreboard比较？
+        人类工程师对Q-L1DTLB-002的回答：vabuf信号目前完全没有任何作用。
+
+        Q-L1DTLB-003: lsu_mmu_va_vld0/1为高但对应abort0/1也为高时，l1dtlb是否仍允许返回TLB hit的pa_vld/pa/attr，还是必须屏蔽该请求的所有对外响应？
+        人类工程师对Q-L1DTLB-003的回答：允许返回 TLB hit 的 pa_vld/pa/attr，没有因为 abort0/1 把所有对外响应屏蔽掉。不必屏蔽所有对外响应，当前设计也没有这么做。 pa_vld/pa/attr 在 hit 时仍可组合返回；abort 的语义不是“MMU 输出全无效”，而是“这次 LSU 请求不能在 MMU 内部产生后续状态，也不能消费 refill 异常”。
+
+        Q-L1DTLB-004: abort0/1需要屏蔽哪些有状态后果？请分别明确TLB hit响应、miss buffer分配、L2TLB request、exception array hit释放、page_fault/access_fault输出、PMP check、PLRU更新是否受abort影响。
+        人类工程师对Q-L1DTLB-004的回答：abort0/1对TLB hit响应没有影响，允许返回 TLB hit 的 pa_vld/pa/attr，没有因为 abort0/1 把所有对外响应屏蔽掉，因为在lsu内部会丢弃这个请求的响应。abort 的语义不是“MMU 输出全无效”，而是“这次 LSU 请求不能在 MMU 内部产生后续状态，也不能消费 refill 异常”。因为lsu的设计，导致需要abort信号请求取消在 MMU 内部产生后续状态。
+                                      abort0/1对miss buffer分配的影响是，有abort0/1的情况下，对应的miss请求不会分配miss buffer entry。
+                                      abort0/1对L2TLB request没有任何影响。因为能给l2tlb发req的都是分配了miss buffer entry的其他请求。
+                                      abort0/1对exception array hit释放的影响是：即使这个带着abort信号的请求在exception array中hit，也不会释放对应的exception array entry。不允许这个带着abort信号的请求匹配pending refill
+                                      abort0/1不屏蔽 hit 响应、page_fault、PMP check、PLRU read-hit 更新。
+        
+        Q-L1DTLB-005: iid的年龄比较规则是什么？iid是否可能回绕？如果两个pipe同拍请求都需要仲裁，scoreboard应如何判断哪个iid更老？
+        人类工程师对Q-L1DTLB-005的回答：IID 可以理解成一个 0 到 127 循环递增的编号。新指令进入 ROB 时拿到当前 IID，之后 IID 加 1；如果一拍创建 4 条，就连续给 4 个 IID，然后整体加 4。加到 127 之后再加 1，就回到 0。所以 IID 一定会回绕。
+                                      判断年龄时不能简单说“数字小的老”或“数字大的老”，因为有回绕。
+                                      如果两个 IID 的 bit6 相同，就看低 6 位：
+                                        低 6 位小的更老
+                                        例如：
+                                        IID 10 比 IID 20 老
+                                        IID 65 比 IID 80 老
+                                        因为它们都在同一个 64 个编号区间里。
+                                      如果两个 IID 的 bit6 不同，就说明比较可能跨过了 64 边界。这时规则反过来：
+                                        低 6 位大的更老
+                                        例如：
+                                        IID 70 比 IID 5 老。因为70 = bit6 为 1，低 6 位是 6，5  = bit6 为 0，低 6 位是 5。这代表 ROB 里可能还有回绕前分配的 70，同时又已经开始分配回绕后的 5。70 是先进入 ROB 的旧指令，5 是后进入 ROB 的新指令，所以 70 更老。
+                                        这个比较方法依赖一个前提：ROB 同时在飞的指令数量不会超过一个最多覆盖 64 条在飞指令的可比较窗口
+                                        意思是：ROB 里同时存在的有效指令，只会占据 IID 环上的一段连续区间，而且这段区间长度最多是 64 条。
+                                        IID 是 7 bit，所以编号循环是：0, 1, 2, ... 126, 127, 0, 1, ...。但低 6 位每 64 个就重复一次：IID 5   的低 6 位是 5，IID 69  的低 6 位也是 5。如果 5 和 69 同时存在，就会很麻烦，因为它们低 6 位相同，只靠 bit6 区分相位。
+                                        比较器要求这种相隔正好 64 的两个 IID 不会同时在 ROB 里有效。这种要求通过ROB 只有 64 项来保证。如果 ROB 最老指令是 IID 5，那么 ROB 里最多还能同时存在：5, 6, 7, ... 68，最多 64 条。下一条 IID 69 只有在最老的 IID 5 退掉、ROB 有空位后才会分配进来。所以 5 和 69 不会同时有效。
+                                        以“可比较窗口”指的是这种范围：一段长度不超过 64 的连续 IID 区间
+               
+        Q-L1DTLB-006: store标识只影响store权限/page fault判断，还是也影响L2TLB request type、PMP访问类型、属性输出、refill路径或异常优先级？
+        人类工程师对Q-L1DTLB-006的回答：store标识对TLB hit 侧 page fault：会影响。store 标识决定 R/W/D 权限怎么检查：load：检查 R，且可能受 MXR寄存器 影响。store：检查 W 和 D bit。A bit、U/S 权限、VA illegal 等不区分 load/store。store 标识会直接影响 mmu_lsu_page_fault* 是否拉高。
+                                      store 标识会影响发给 L2TLB 的 access type。store标识会在refill过程中生成一些控制信号。store标识会随着refill的过程一直传递下去，如l2tlb也会把type发给ptw。
+                                      store标识对PTW/refill 权限判断的影响是：store type 会影响 PTW 对最终 PTE 的权限判断：store 要求 W=1，D=1，load 要求 R=1，或 MXR 允许 X 当 R。
+                                      store标识对PMP 访问类型：会影响。lsu的请求在l1tlb中hit 后做 PMP check 时，会记录当前访问是 read 还是 write，之后 access fault 判断会按 read/write 选择 PMP 权限位。还有一个细节：port0 有 dutlb_ori_read0 = 1，所以某些从 load pipe 过来的 atomic/LDAMO 类请求，即使 st_inst0 让它表现为 store，也可能同时要求 read 权限。这是为了 atomic 这类读改写访问。PTW 侧 PMP 也受 type 影响，store type 会检查 store/write 相关 PMP 权限。
+                                      store标识对属性输出：基本不影响。输出属性来自 TLB entry/PMA flag。不看 lsu_mmu_st_inst。所以同一个 VA 翻译到同一个 PTE/PMA 时，load 和 store 返回的 cacheable、bufferable、shareable、secure、SO 属性应一致。
+                                      store标识对异常优先级：不改变优先级，但会改变哪个异常条件成立。
+                                      总结一句：store 标识不是只用于 store permission/page fault；它还决定 DTLB miss 发给 JTLB/L2TLB 的 request type，并一路影响 PTW 和 PMP 的访问类型。它不直接影响 PA/属性输出，也不切换另一条 refill 物理路径，只是给同一条 refill 逻辑带上 load/store 语义
+                        
+        Q-L1DTLB-007: l1dtlb输出给lsu的pa_vld表示“本次转换完成”，还是只表示“有返回事件”？当page fault/access fault发生时，pa_vld是否必须同时为高？
+        人类工程师对Q-L1DTLB-007的回答：mmu_lsu_pa*_vld 更准确地说是 DTLB 对 LSU AG 口的“转换结束/有终态结果”标志，不是单纯表示“PA 可用于真正访存”。它为高时可能有几种含义：1. DTLB hit，正常得到 PA/属性。2. MMU off / machine mode，直接得到 PA。3. VA illegal，转换以 page fault 结束。4. pending refill 返回 的page fault/access fault正在挂起，发来的匹配到异常请求的iid
+                                      所以 pa_vld=1 表示 LSU 这次查 MMU 不应该再当成 utlb_miss 等待了。
+                                      对 LSU 来说，page fault 事件必须和 pa_vld 一起看。也就是说，mmu_lsu_page_fault 单独为高不算一个有效 page fault 返回；有效 page fault 返回需要 pa_vld=1。
+                                      access fault 不要求和 pa_vld 同拍。正常来说，如果有access fault，那么access fault会在pa_vld的下一拍拉高。
+                                      总结：pa_vld = 本次 DTLB 查询有终态结果，不一定是成功 PA 。page_fault 有效事件：需要和 pa_vld 配对（同一拍均为高）。access_fault 有效事件：不和 pa_vld 同拍，是独立的后级异常信号（但也只有在hit之后才可能有access fault）                                      
+                                      
+        Q-L1DTLB-008: page_fault和access_fault输出是1-cycle pulse、保持到lsu接受、还是保持到对应entry释放？请分别说明TLB hit路径、exception array hit路径、PMP路径和refill fault路径。
+        人类工程师对Q-L1DTLB-008的回答：page_fault和access_fault输出均是1-cycle pulse。
+                                      TLB hit时，lsu发请求到mmu的当拍就能查出是否page fault组合逻辑输出，只拉高一拍。access fault是在lsu发请求到mmu的下一拍产生。只有当tlb hit并且没有page fault，或者关闭了dtlb并且没有page fault的时候，会拉高pmp check信号，在拉高pmp check信号的下一拍会进行pmp检查，如果pmp检查没通过，那么就在检查的这一拍拉高access fault信号。
+                                      exception array hit时：exception array中的请求一定是存在于miss buffer中的请求，因为只有当ptw或l2tlb在refill完成时携带了fault信号（page fault或access fault）时，才会把这个refill的请求写进exception array。当lsu后续再次发来对应的请求的时候，反馈给lsu的fault信号的时序和tib hit时候完全一样。区别在于page fault和access fault的产生并不是由检查产生，而是由exception array存储的fault传输给lsu。（page fault依旧查找tlb的当拍上报，access fault依旧在查找tlb的下一拍上报）
+                                      refill fault路径：当ptw或l2tlb在refill完成时携带了fault信号（page fault或access fault）时，会把这个refill的请求写进exception array。当lsu后续再次发来对应的请求的时候，反馈给lsu的fault信号的时序和tib hit时候完全一样。区别在于page fault和access fault的产生并不是由检查产生，而是由exception array存储的fault传输给lsu。（page fault依旧查找tlb的当拍上报，access fault依旧在查找tlb的下一拍上报）
+                                      l1dtlb中的PMP路径在TLB hit时进行，已在TLB hit时说清楚
+        
+        Q-L1DTLB-009: page_fault和access_fault是否可能同一pipe同拍同时为高？如果可能，优先级和scoreboard期望是什么；如果不可能，spec应明确互斥条件。
+        人类工程师对Q-L1DTLB-009的回答：“同一条 LSU/MMU 请求”，page fault 和 access fault 是互斥的；如果只看裸的 mmu_lsu_page_faultx / mmu_lsu_access_faultx 端口同一周期波形，它们可能因为对应不同流水级/不同请求而同时为 1，不能直接当成同一请求双异常。
+                                      对同一条请求/同一条指令：page fault 和 access fault 不应同时成立，是互斥异常。DTLB hit 路径：page fault 会阻止 PMP check，hit 后先算 page fault。只有没有 page fault 时，才启动 PMP check。所以同一条 hit 请求如果已经因为 PTE 权限、A/D、U/S、VA illegal 等产生 page fault，就不会再生成这条请求的 PMP access fault。
+                                      refill的情况已经在上一条问题中回答
+                                      
+        Q-L1DTLB-010: weakup/wakeup信号的准确名称、位宽和含义是什么？它是每个pipe独立、每个miss buffer entry独立，还是广播给LSU的全局提示？
+        人类工程师对Q-L1DTLB-0010的回答：wakeup信号的准确名称是mmu_lsu_tlb_wakeup[11:0]。链路是：MMU/L1DTLB -> LSU: mmu_lsu_tlb_wakeup[11:0]，LSU -> IDU: lsu_idu_tlb_wakeup[11:0] 。含义是：当 当tlb要被写入了，或者lsu发来的请求在exception array hit， exception array中挂起的请求以 page fault/access fault 这种异常结果结束时，MMU 发出一个 TLB wakeup，提示等待 tlb_busy 的 LSU 指令可以重新参与调度/发射判断。
+                                      mmu_lsu_tlb_wakeup[11:0]不是每个 pipe 独立的 wakeup。没有 wakeup0/wakeup1，也不带 load/store pipe 编号。它也不是精确到某条 IID 的完成信号。里面没有 IID compare，也没有标识“哪个请求完成”。它本质上是广播式全局提示，L1DTLB 生成时 12 位要么全 1，要么全 0。LSU 在 lsu/rtl/ct_lsu_ctrl.v:975 只是透传成 lsu_idu_tlb_wakeup[11:0]。IDU 侧把 12 位分别接到 12 个 LSIQ entry。每个 entry 收到自己的 x_tlb_wakeup，用于清掉该 entry 的 tlb_busy 等待状态，并允许它重新判断是否可发射。
+                                      
+
+        Q-L1DTLB-011: wakeup的触发源有哪些？请明确TLB install、miss buffer entry释放、miss buffer出现空位、exception array hit、PTW/L2TLB fault返回、RTU flush清理entry是否都会触发。
+        人类工程师对Q-L1DTLB-0011的回答：wakeup的触发源有两种。
+                                       第一种是：lsu发来的请求在exception array hit，标志着之前的某个请求以page fault/access fault 这种异常结果结束时，MMU 发出一个 TLB wakeup，提示等待 tlb_busy 的 LSU 指令可以重新参与调度/发射判断。
+                                       第二种是：当tlb要被写入了（意味着有一条之前miss的请求要回填写进tlb）
+                                      
+        Q-L1DTLB-012: busy信号的拉高条件是什么？是任意miss buffer entry valid，还是miss buffer全满，还是当前无法接受新的miss请求？
+        人类工程师对Q-L1DTLB-0012的回答：busy信号的拉高条件是任意miss buffer entry valid，意味着有miss请求正在refill。
+                                      
+        Q-L1DTLB-013: busy对lsu的协议含义是什么？busy为高时LSU是否仍可能发送va_vld请求；如果发送，l1dtlb应该正常处理、drop，还是要求LSU重试？
+        人类工程师对Q-L1DTLB-0013的回答：mmu_lsu_tlb_busy 在 LSU 里的作用是：当一条 load/store 发生 uTLB miss 时，判断这次 miss 是可以马上 replay，还是必须挂到 IDU LSIQ 里等 TLB refill 完成后再 replay。它不是用来阻止LSU发 VA 请求，也不是全局停 LSU。                                      
+                                      busy 对 LSU 的协议含义是：MMU/L1DTLB 当前有请求正在refill。它不是 va_vld 的 ready 反压信号。也就是说，busy=1 不等于“LSU 禁止发送 VA 请求”。busy=1 时，LSU 仍然可能发送 lsu_mmu_va_vld0/1 请求。
+                                      原因是 DTLB 支持 hit-under-miss：虽然有请求在refill，但 L1 DTLB 本身仍然可以做查表。如果新来的 VA 在 L1 DTLB hit，就应该正常返回 pa_vld/pa/attr，不能因为 busy=1 就丢掉或屏蔽 hit 响应。
+                                      busy意味着当前 DTLB 内存在未完成的 miss/refill，因此 miss 结果还不能立即完成，LSU 对 miss 指令应挂起等待 wakeup，等 MMU 后续发 tlb_wakeup 后再重试。    
+                                      所以不是“LSU 看到 busy 就不许发请求”，也不是“DTLB 把所有 busy 期间的请求都 drop”。
+                                      从 LSU 的角度看，如果busy=1，LSU 不再立即反复 replay，而是把对应 LSIQ entry 挂起到 tlb_busy 状态，等 tlb_wakeup 再发。
+                                      一句话总结：busy 不是 VA 请求握手的 ready；它是“新 miss 不能被接受”的状态提示。LSU 可以继续发 VA，DTLB必须正常查 hit；miss 指令由 LSU 等 wakeup 后重试。
+                                      busy=0 时发生 miss，所谓“LSU 立即 replay”，不是 LSU 自己固定把同一个 VA 请求再发一次，也不是 MMU 要求它马上重试一次。更准确地说：这条 LSU 指令这一次在 AG/DC 流水中已经失败了，不能继续往后走。LSU 给 IDU/LSIQ 对应 entry 一个 immediate wakeup，把这个 entry 从 freeze 状态释放出来，让它重新参与调度。至于它下一拍、隔几拍、还是更晚再发，由 IDU 的调度仲裁决定。所以 replay 的次数不是“硬件规定一次”。
+                                      总结：
+                                      1.L1 DTLB hit：不受 busy 影响，正常返回。
+                                      2.L1 DTLB miss，miss buffer 空：可以分配第一个 entry，但 LSU 可能会 immediate replay 一次。
+                                      3.L1 DTLB miss，miss buffer 已有有效 entry：MMU 仍然可以分配或 merge 这个 miss，但 LSU 应把该指令挂成 tlb_busy，等 refill/wakeup 后再发。
+                                      4.L1 DTLB miss，miss buffer 满：不能分配，只能等 wakeup 后重试。
+
+    T0/T1流水线与对外时序
+        Q-L1DTLB-014: T0、T1的边界需要精确定义。哪些信号在T0组合返回，哪些信号在T1寄存返回？请列出pa_vld、pa、attr、page_fault、access_fault、pmp_check_req、miss_vld、miss buffer分配的周期。
+        人类工程师对Q-L1DTLB-0014的回答：pa_vld、pa、attr、page_fault均在T0组合逻辑返回。
+                                       pmp_check_req在T0时，根据hit的结果和page fault的结果决定。当tlb hit并且没有page fault，或者关闭了dtlb并且没有page fault的时候，会拉高pmp check信号，拉高pmp check信号时，会把当前的pa寄存一排，在拉高pmp check信号的下一拍会进行pmp检查，如果pmp检查没通过，那么就在检查的这一拍拉高access fault信号。
+                                       access_fault是在pmp检查的那一拍，即pa_vld的下一拍会拉高（如果pmp检查没通过的话）。
+                                       miss_vld：对LSU来说，没有pa_vld=1的信号就意味着miss。而对mmu来说，当lsu发来的请求没有在tlb和exception array中hit时，就算miss；但是只有当请求在tlb和exception array和miss buffer中均miss时才会分配miss buffer entry。
+                                       miss buffer分配的周期：T0时，lsu发来的请求在tlb和exception array中查找，当在tlb和exception array中均miss时，会把miss信号寄存一拍，在下一拍（即T1时）在miss buffer中查找，如果在miss buffer中也miss，那么就在T1这一拍分配miss buffer entry。                                       
+
+        Q-L1DTLB-015: TLB hit且无page fault时，pa_vld是在T0返回还是等待PMP在T1完成后返回？如果T0已返回pa_vld而T1又发现PMP access fault，LSU如何关联这两个事件？
+        人类工程师对Q-L1DTLB-0015的回答：TLB hit且无page fault时，pa_vld是在T0返回，无需等待PMP在T1的检查。
+                                       如果T0已返回pa_vld，那么有两种情况
+                                       情况一：T0时有page fault，那么T1就不会进行PMP的检查
+                                       情况二：T0时没有page fault，那么T1会进行PMP的检查。如果在T1时发现PMP access fault，LSU 不是靠重新匹配地址来关联这两个事件，而是靠固定流水时序关联。T0 时，L1DTLB 命中后给 LSU 返回 pa_vld，同时 MMU 内部把这次请求的 PA、读写类型锁进 PMP 检查缓冲，并置起一个下一拍有效的 token，也就是类似 pmp_flg_vld 的标志。T1 时，PMP 结果回来。MMU 用上一拍保存的 PA 和读写类型判断 access fault，然后在同一个 MMU 端口上输出 mmu_lsu_access_fault0 或 mmu_lsu_access_fault1。LSU 这边同一条指令也按固定流水从 AG 推到后级。load 用 port0，store 用 port1。T0 的 pa_vld 被 AG 用来形成物理地址和页属性；T1 的 access fault 到来时，该指令已经在 DC/DA 对应位置，DA 级直接采样mmu_lsu_access_fault0/1 到 ld_da_expt_access_fault_mmu 或 st_da_expt_access_fault_mmu。
+                                       所以关联关系是：同一端口、固定晚一拍、流水级对齐。T0 的 pa_vld 表示地址翻译结果可用，不表示 PMP 权限最终通过；T1 如果 PMP 报 access fault，LSU 在后级把这条已经前推的同一条访存指令标成异常，并阻止正常提交/前递。
+
+        Q-L1DTLB-016: page fault在T0返回时，是否还会发起PMP check？如果不会，spec应明确page fault优先于PMP access fault。
+        人类工程师对Q-L1DTLB-0016的回答：page fault在T0返回时，不会发起PMP check。page fault优先于PMP access fault。
+
+        Q-L1DTLB-017: TLB hit且PMP check失败时，access_fault在T1输出时是否也需要pa_vld为高？PA和属性是否同时有效？
+        人类工程师对Q-L1DTLB-0017的回答：TLB hit且PMP check失败时，access_fault在T1输出时有可能pa_vld也是高的，但是这个时候的pa_vld和access_fault肯定不是LSU同一次发来的请求的结果。
+                                      pa_vld 表示当拍 L1 DTLB lookup / VA translation 有返回。access_fault 的 PMP 部分表示上一拍 hit 后发起的 PMP check 返回失败。
+                                      PA 和属性应同时有效。即使最终因为 PMP deny 不允许真正访问 cache/总线，PA 仍然是 PMP check 的依据，属性也来自命中的 TLB entry。LSU 后续会因为 access fault 抑制正常访存副作用。
+
+        Q-L1DTLB-018: exception array hit且fault类型为access fault时，当前描述说寄存一拍后T1拉高access fault。该T1是否相对于原LSU请求的T0，还是相对于exception array hit检测周期？
+        人类工程师对Q-L1DTLB-0018的回答：该T1是否相对于exception array hit检测周期
+
+        Q-L1DTLB-019: 如果同一pipe连续两拍发起请求，上一拍的T1 access_fault和下一拍的T0 page_fault可能重叠时，输出信号如何区分归属的iid/pipe？
+        人类工程师对Q-L1DTLB-0019的回答：
+
+        Q-L1DTLB-020: 对外响应是否携带iid？如果不携带，scoreboard应如何在乱序或跨拍异常场景下匹配请求和响应？
+        人类工程师对Q-L1DTLB-0020的回答：
+
+    双端口并发和仲裁
+        Q-L1DTLB-021: pipe0和pipe1同拍都TLB hit时，是否都能同拍返回pa_vld/pa/attr？如果两个pipe命中同一个entry，PLRU如何更新？
+        Q-L1DTLB-022: pipe0 hit、pipe1 miss同拍发生时，hit响应、miss buffer分配、PLRU更新和L2TLB request是否互不影响？如果有优先级，请明确。
+        Q-L1DTLB-023: pipe0和pipe1同拍都miss且属于同一4K page时，只给pipe0分配miss buffer entry的描述是否固定为pipe0优先，还是应按iid年龄或端口优先级决定？
+        Q-L1DTLB-024: pipe0和pipe1同拍都miss、不同4K page但只有一个miss buffer空位时，当前描述说选择iid更老者。若iid相等或不可比较，优先级是什么？
+        Q-L1DTLB-025: 双pipe同拍分别命中TLB和exception array时，exception array entry释放、miss buffer entry释放、wakeup、TLB hit响应是否都可以同拍发生？
+        Q-L1DTLB-026: 双pipe同拍都命中同一个exception array entry时，是两个pipe都上报fault，还是只有一个pipe消费并释放entry？如果只允许一个，请明确优先级。
+        Q-L1DTLB-027: 双pipe同拍都需要分配miss buffer且都有空位时，entry选择规则是什么？是固定最低空闲entry、按pipe顺序、还是其他策略？
+
+    TLB hit、权限、属性和特殊模式
+        Q-L1DTLB-028: l1dtlb entry中需要保存哪些字段？请明确VPN、PPN、page size、权限位、cache属性、global/user/dirty/accessed等属性是否在L1DTLB中存在并由scoreboard建模。
+        Q-L1DTLB-029: l1dtlb支持哪些page size？4K、2M、1G或其他page size的VPN比较位宽分别是什么？
+        Q-L1DTLB-030: 如果多个TLB entry同时命中同一VA，spec期望选择哪个entry？这是非法状态需要报错，还是有确定优先级？
+        Q-L1DTLB-031: load、store、AMO/STAMO在page fault权限判断上的完整规则是什么？请明确R/W/X/U/S/M、MXR、SUM、A/D位等条件是否属于l1dtlb判断范围。
+        Q-L1DTLB-032: STAMO是否需要经过TLB lookup、permission check和PMP check？如果存在STAMO bypass，请明确只支持pipe0还是两个pipe都支持，以及bypass时PA/attr/fault如何产生。
+        Q-L1DTLB-033: MMU off、machine mode、direct map或sysmap bypass是否属于l1dtlb spec范围？若属于，请明确默认PA、属性、fault和PMP行为。
+        Q-L1DTLB-034: PMP access fault是只在TLB hit后由PMP模块产生，还是PTW/L2TLB refill也可能携带access fault？两类access fault在输出时序上是否一致？
+
+    miss buffer分配、去重和请求重试
+        Q-L1DTLB-035: miss buffer CAM比较固定按4K VPN比较。对于2M/1G page的miss，去重仍然按完整4K VPN，还是按最终page size相关的VPN比较？
+        人类工程师对Q-L1DTLB-0035的回答：miss buffer CAM比较固定按4K VPN比较。对于2M/1G page的miss，去重仍然按完整4K VPN比较。
+
+        Q-L1DTLB-036: T0 TLB miss且exception array miss后，T1 miss buffer CAM hit时，LSU本次请求是否会收到任何响应或wakeup，还是完全依赖已有miss完成后LSU重试？
+        人类工程师对Q-L1DTLB-0035的回答：T0 TLB miss且exception array miss后，T1 miss buffer CAM hit时，LSU本次请求只会在T0时收到pa_vld=0（在lsu看来是当成miss处理），并且
+
+        Q-L1DTLB-037: miss buffer无空位导致不分配entry时，本次LSU请求是否被drop？是否需要busy或wakeup通知LSU重发？
+        Q-L1DTLB-038: 一个miss buffer entry能否代表多个等待同一4K page的LSU请求？如果能，entry中是否记录多个iid/pipe；如果不能，后续同VPN请求如何获得正确响应？
+        Q-L1DTLB-039: miss buffer entry valid、sent、wfi等状态信号与FSM状态之间是否存在严格对应关系？例如valid是否等价于state!=IDLE，sent是否等价于已经进入WFC/WFI/PGFLT/ACFLT/ABT中的某些状态？
+        Q-L1DTLB-040: 当miss buffer entry处于PGFLT或ACFLT时，entry保留的目的是什么？是为了等待原请求重放命中exception array，还是为了防止同VPN重复分配？
+        Q-L1DTLB-041: PGFLT/ACFLT状态的entry在没有后续LSU请求命中exception array时是否可能一直保持？是否有flush、timeout或其他清除条件？
+
+    L2TLB request和credit
+        Q-L1DTLB-042: credit计数器初始值是多少？它等于L2TLB request queue中DTLB专用entry数量，还是总entry数量？
+        Q-L1DTLB-043: credit计数器的最大值、最小值、饱和/溢出处理是什么？scoreboard是否需要检查credit守恒？
+        Q-L1DTLB-044: credit为0且同拍收到credit return时可以发请求。该请求是否消耗同拍归还的credit，使计数值保持0？
+        Q-L1DTLB-045: 每拍最多发送一个请求到L2TLB。该限制是否包括bypass请求和miss buffer中未发送请求的总和？
+        Q-L1DTLB-046: 当miss buffer中已有未发送entry，同时当前周期又产生可bypass的新miss时，优先发送miss buffer旧entry还是当前bypass请求？
+        Q-L1DTLB-047: bypass发送到L2TLB的请求是否也必须先分配miss buffer entry？若L2TLB request被接受后，entry下一拍应进入WFC还是其他状态？
+        Q-L1DTLB-048: L2TLB request需要携带哪些字段？请明确VA/VPN、asid、page size预测、load/store类型、iid、pipe id、miss buffer id等是否需要进入reference model。
+
+    refill、install和TLB写入
+        Q-L1DTLB-049: PTW refill和L2TLB refill的语义差异是什么？两者是否都可能返回正常翻译、page fault和access fault？
+        Q-L1DTLB-050: 每拍只能写一个TLB entry时，install仲裁优先级是否固定为WFI entry > PTW refill > L2TLB refill？如果不是，请给出完整优先级。
+        Q-L1DTLB-051: 如果同拍多个miss buffer entry处于WFI，选择哪个entry install？是固定entry编号优先、PLRU相关、年龄优先，还是其他规则？
+        Q-L1DTLB-052: PTW/L2TLB refill正常返回但未获得TLB install授权时，返回数据锁存在哪里？对应miss buffer entry进入WFI后需要保留哪些字段？
+        Q-L1DTLB-053: refill携带fault时是否一定不写TLB？如果fault和正常install候选同拍出现，fault entry是否仍然写exception array并释放/改变miss buffer状态？
+        Q-L1DTLB-054: PTW和L2TLB同拍都返回fault时，是否允许同拍写入两个exception array entry？如果array写端口有限，请明确优先级和丢弃/延迟策略。
+        Q-L1DTLB-055: refill返回的miss buffer id如果对应entry不在WFC状态，spec期望如何处理？例如entry已被flush到IDLE、处于ABT、或处于PGFLT/ACFLT。
+        Q-L1DTLB-056: ABT状态下late refill到达时，是否必须禁止TLB install和exception array写入？是否需要归还资源或产生wakeup？
+        Q-L1DTLB-057: TLB写入后，原miss buffer entry是在同拍释放还是下一拍释放？LSU能否在同拍新请求命中刚写入的TLB entry？
+
+    exception array
+        Q-L1DTLB-058: exception array entry数量是否必须等于miss buffer深度？如果不等，满阵列时fault refill如何处理？
+        Q-L1DTLB-059: exception array entry的索引是否直接使用refill携带的miss buffer id？如果是，entry生命周期是否和对应miss buffer entry严格绑定？
+        Q-L1DTLB-060: exception array CAM匹配key是iid+VPN。VPN按4K完整VPN比较，还是按page size比较？是否包含pipe id、asid、store/load类型？
+        Q-L1DTLB-061: 后续LSU请求命中exception array后，释放exception array entry和对应miss buffer entry是在同拍还是下一拍？
+        Q-L1DTLB-062: exception array hit时是否必须禁止给该请求分配新的miss buffer entry？如果同拍也满足TLB hit，哪个结果优先？
+        Q-L1DTLB-063: exception array中page fault和access fault的输出时序是否不同？请明确page fault T0、access fault T1的原因和scoreboard匹配方式。
+        Q-L1DTLB-064: RTU flush清空exception array时，对应miss buffer entry是否也全部清空？如果有refill随后返回，如何避免旧fault再次被消费？
+
+    flush、invalidate、reset和entry清理
+        Q-L1DTLB-065: regs_utlb_clr、tlboper_utlb_clr、ctc_inv_va_hit_clr同时发生时，清理优先级是什么？是否都只影响TLB entry valid，不影响miss buffer和exception array？
+        Q-L1DTLB-066: tlboper_utlb_clr会清空全部L1DTLB entry。它是否也应该清空miss buffer中正在等待的请求或exception array中的fault？
+        Q-L1DTLB-067: regs_utlb_clr由SATP变化触发。若L1DTLB entry不保存ASID，所有ASID相关失效操作是否都应全清L1DTLB？
+        Q-L1DTLB-068: VA定点失效只比较VPN低8 bit是否是架构/微架构spec允许的保守失效行为？reference model是否也应按低8 bit误清建模，还是只需保证被指定VA一定失效？
+        Q-L1DTLB-069: invalidate与TLB hit同拍发生时，本拍hit是否仍可返回旧entry，还是invalidate优先导致miss？
+        Q-L1DTLB-070: invalidate与TLB install同拍选择同一个entry时，最终entry valid应为0还是1？
+        Q-L1DTLB-071: reset释放后的初始状态需要明确哪些内容？TLB valid、miss buffer state/valid/sent、exception array valid、credit counter、PLRU状态分别是什么？
+        Q-L1DTLB-072: RTU flush与L2TLB request发送同拍、refill完成同拍、TLB install同拍时，miss buffer FSM的最终状态和对外响应优先级是什么？
+
+    PLRU和替换策略
+        Q-L1DTLB-073: PLRU victim选择在所有TLB entry中进行，还是按bank/way分组？NUM_ENTRY、bank数量和每组entry数量需要明确。
+        Q-L1DTLB-074: TLB hit是否更新PLRU？如果更新，pipe0/pipe1同拍hit不同entry时如何串行化更新？
+        Q-L1DTLB-075: TLB install是否更新PLRU？如果install和hit同拍发生，PLRU更新优先级是什么？
+        Q-L1DTLB-076: TLB entry被invalidate后，PLRU是否需要更新或优先选择invalid entry作为victim？
+
+    UVM reference model和scoreboard口径
+        Q-L1DTLB-077: 后续审核UVM时，l1dtlb reference model允许建模哪些内部结构？TLB、miss buffer、exception array、credit、PLRU是否都属于spec可见模型？
+        Q-L1DTLB-078: 哪些行为必须只从外部接口判断，不能依赖RTL内部探针？例如MB FSM状态、PLRU victim、exception array entry id是否允许作为scoreboard观测点？
+        Q-L1DTLB-079: 对于spec未定义但RTL有固定实现的仲裁细节，UVM应检查精确实现，还是只检查功能等价和无错误响应？
+        Q-L1DTLB-080: 如果同一请求可能因为busy/full/abort/flush被drop或重试，scoreboard如何识别这是合法无响应而不是漏响应？
+        Q-L1DTLB-081: 对PA、属性、page_fault、access_fault、wakeup、busy、miss统计等信号，哪些属于必须逐拍精确比较，哪些只需事件级或最终状态比较？
+        Q-L1DTLB-082: l1dtlb相关覆盖点应覆盖哪些spec行为？请确认是否需要覆盖双pipe并发、同VPN去重、MB full、credit边界、WFI仲裁、fault replay、flush/refill race、invalidate/install race等场景。

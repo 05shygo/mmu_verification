@@ -134,7 +134,10 @@ logic               pde_updata_data_vld                  ;
 logic   [63:0]      pde_updata_data_flop                 ;
 logic   [26:0]      pde_updata_vpn                       ;
 logic   [2:0]       pde_updata_lvl                       ;
-
+logic [8:0] mmu_lsu_data_req_ptr;
+logic [8:0] mbuf_ptr_one_reg;
+logic mmu_lsu_data_req_fst_time;
+logic tlboper_ptw_abort_reg;
 
 parameter VADDR_WIDTH = 39;              // VADDR
 parameter PADDR_WIDTH = 40;              // PADDR
@@ -294,7 +297,7 @@ end
 //	end
 //end
 
-assign create_en = |twu_mbuf_req[3:0] & (!twu_itlb_sel);
+assign create_en = |twu_mbuf_req[3:0] & (!twu_itlb_sel) & (!tlboper_ptw_abort);
 
 always@(posedge mbuf_clk or negedge cpurst_b)
 begin
@@ -305,31 +308,44 @@ begin
 end
 assign mbuf_entry_upd[7:0] = {8{create_en}} & create_ptr[7:0];
 
-assign mbuf_entry_upd[8] = twu_itlb_sel;
+assign mbuf_entry_upd[8] = twu_itlb_sel & (!tlboper_ptw_abort);
 
 
 //==============================================================================
 //                  Req to LSU
 //==============================================================================
 
-assign mmu_lsu_data_req = |(mbuf_entry_vld[8:0] & (~mbuf_entry_get[8:0]) & (~mbuf_entry_bus_err_flop[8:0])) & (!tlboper_ptw_abort);
-assign req_on_ptr[8] = mbuf_entry_vld[8] & (~mbuf_entry_get[8]) & (~mbuf_entry_bus_err_flop[8]);
+assign mmu_lsu_data_req = (|(mbuf_entry_vld[8:0] & (~mbuf_entry_get[8:0]) & (~mbuf_entry_bus_err_flop[8:0]))) & !(mmu_lsu_data_req_fst_time & tlboper_ptw_abort) | tlboper_ptw_abort_reg ;
+
+
 
 always@(posedge mbuf_clk or negedge cpurst_b)
 begin
   if (!cpurst_b)
-    req_ptr[7:0] <= 8'b1;
-  else if (lsu_mmu_data_vld & (~req_on_ptr[8]))
-    req_ptr[7:0] <= {req_ptr[6:0], req_ptr[7]};
+    tlboper_ptw_abort_reg <= 1'b0;
+  else if(tlboper_ptw_abort & (!mmu_lsu_data_req_fst_time) & (!lsu_mmu_data_vld))
+    tlboper_ptw_abort_reg <= 1'b1;
+  else if(lsu_mmu_data_vld)
+    tlboper_ptw_abort_reg <= 1'b0;
+end
+
+
+assign req_on_ptr[8] = mbuf_entry_vld[8] & (~mbuf_entry_get[8]) & (~mbuf_entry_bus_err_flop[8]);
+
+always@(posedge mbuf_clk or negedge cpurst_b)
+begin
+     if (!cpurst_b)
+        req_ptr[7:0] <= 8'b1;
+    else if((mmu_lsu_data_req_fst_time | lsu_mmu_data_vld) & tlboper_ptw_abort | tlboper_ptw_abort_reg & lsu_mmu_data_vld)
+        req_ptr[7:0] <= create_ptr[7:0];
+    else if (lsu_mmu_data_vld & (~req_on_ptr[8]))
+        req_ptr[7:0] <= {req_ptr[6:0], req_ptr[7]};
 end
 
 assign req_on_ptr[7:0] = {8{~req_on_ptr[8]}} & req_ptr[7:0];
 
 assign mbuf_ptr = req_on_ptr;
 
-logic [8:0] mmu_lsu_data_req_ptr;
-logic [8:0] mbuf_ptr_one_reg;
-logic mmu_lsu_data_req_fst_time;
 
 assign mmu_lsu_data_req_fst_time = (lsu_mmu_data_vld_reg & mmu_lsu_data_req) | (mbuf_entry_empty_reg & mmu_lsu_data_req);
 
@@ -382,7 +398,7 @@ always_comb begin
     end
 end
 
-assign mmu_lsu_data_req_grant[8:0] = {9{mmu_lsu_data_req}} & mbuf_ptr_one[8:0];
+assign mmu_lsu_data_req_grant[8:0] = {9{mmu_lsu_data_req & (!tlboper_ptw_abort)}} & mbuf_ptr_one[8:0];
 
 ////generate
 ////	genvar i;
@@ -578,7 +594,9 @@ end
 always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
 	if(!cpurst_b)begin
 	    mbuf_bus_error <= 1'b0;
-    end else if(|mbuf_bus_error_grant[8:0])begin
+	end else if(tlboper_ptw_abort)
+        mbuf_bus_error <= 1'b1;
+    else if(|mbuf_bus_error_grant[8:0])begin
         mbuf_bus_error <= 1'b1;
     end else if(acc_err_mbuf_grant)begin
         mbuf_bus_error <= 1'b0;
@@ -641,7 +659,7 @@ end
 always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
     if(!cpurst_b)
         pde_updata_data_vld <= 1'b0;
-    else if(|write_back_grant[8:0])
+    else if(|write_back_grant[8:0] & (tlboper_ptw_abort))
         pde_updata_data_vld <= 1'b1;
     else 
         pde_updata_data_vld <= 1'b0;

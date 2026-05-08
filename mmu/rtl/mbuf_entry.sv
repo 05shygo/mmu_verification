@@ -99,6 +99,8 @@ end
 always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
 	if(!cpurst_b)
 		mbuf_on <= 1'b0;
+    else if(mbuf_all_clr)
+        mbuf_on <= 1'b0;
 	else if(lsu_mmu_data_vld | lsu_mmu_bus_error)
 		mbuf_on <= 1'b0;
 	else if(mmu_lsu_data_req_grant) 

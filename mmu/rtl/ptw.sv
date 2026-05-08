@@ -779,7 +779,7 @@ end
 //==============================================================================
 //                  Refill arbiter
 //==============================================================================
-assign ptw_arb_req = (|twu_arb_ref_req[3:0]) & (!arb_ptw_mask) & ref_grant;
+assign ptw_arb_req = (|twu_arb_ref_req[3:0]) & (!arb_ptw_mask) & (!tlboper_ptw_abort) & ref_grant;
 
 assign fst_twu_itlb_sel = twu_arb_ref_req[0] & twu_arb_ref_type[0][2:0] == 3'b011;
 assign scd_twu_itlb_sel = twu_arb_ref_req[1] & twu_arb_ref_type[1][2:0] == 3'b011;

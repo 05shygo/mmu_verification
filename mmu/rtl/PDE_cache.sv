@@ -148,6 +148,8 @@ end
 logic [15:0] L1PDE_entry_before_upd_hit;
 //logic [26:0] L2PDE_entry_before_upd_vpn;
 logic [15:0] L2PDE_entry_before_upd_hit;
+logic pde_cache_clear;
+assign pde_cache_clear = regs_ptw_clr | tlboper_ptw_abort;
 
 generate
 	for(genvar L1PDE_ent = 0;L1PDE_ent <= 15;L1PDE_ent = L1PDE_ent + 1)begin:u_L1PDE_ent_0_15
@@ -157,7 +159,7 @@ generate
 		.cpurst_b						(cpurst_b					),
         .pad_yy_icg_scan_en             (pad_yy_icg_scan_en         ),
         .cp0_mmu_icg_en                 (cp0_mmu_icg_en             ),
-		.regs_ptw_clr					(regs_ptw_clr				),
+		.regs_ptw_clr					(pde_cache_clear			),
 	
 		.ptw_vpn						(ptw_vpn[VPN_WIDTH-1:18]	),
 		.L1PDE_entry_upd				(L1PDE_entry_upd[L1PDE_ent]	),
@@ -182,7 +184,7 @@ generate
 		.cpurst_b						(cpurst_b					),
         .pad_yy_icg_scan_en             (pad_yy_icg_scan_en         ),
         .cp0_mmu_icg_en                 (cp0_mmu_icg_en             ),
-		.regs_ptw_clr					(regs_ptw_clr				),
+		.regs_ptw_clr					(pde_cache_clear			),
                                                                     
 		.ptw_vpn						(ptw_vpn[VPN_WIDTH-1:9] 	),
 		.L2PDE_entry_upd				(L2PDE_entry_upd[L2PDE_ent] ),

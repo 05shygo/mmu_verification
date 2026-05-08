@@ -407,6 +407,8 @@ assign pde_cache_clear = regs_ptw_clr | tlboper_ptw_abort;
 //     .regs_ptw_clr    (pde_cache_clear),
 ```
 
+**当前 RTL** 在 **`pde_cache_clear`** 上另并入 **`pmp_regs_update`**（PMP CSR 配置变更时冲刷），见 **调试记录 #13**。
+
 ### 验证关注点
 
 - **`tlboper_ptw_abort` 上升/有效窗口**：对应 ASID/上下文中 **L1/L2 PDE 条目应按 `regs_ptw_clr` 同类语义被清除或失效**，后续 lookup **不应**再命中废止前缓存的 PDE（除非 walk 重新填充）。
@@ -453,6 +455,42 @@ end
 
 - **`tlboper_ptw_abort` 与 `|mbuf_bus_error_grant` 同拍**：确认是否符合预期（允许已授权上报 vs 一律按 abort 语义吞掉），与 TWU 侧可见 **`mbuf_twu_*`** / **`lsu_mmu_bus_error`** 连线一致。
 - **abort 后**：无新的 **`mbuf_bus_error_grant`** 窗口时，**不应**再见到残留 entry 的 bus error 上报（除非协议另有「abort 后单独脉冲」定义）。
+
+---
+
+## 调试记录 #13 — `pmp_regs_update`：PMP 配置变更时冲刷 PDE cache
+
+| 项目 | 内容 |
+|------|------|
+| **记录时间** | 2026-05-08 22:49:13 +08:00（写入本条时采集） |
+| **版本号** | 基准：`7fa80e440557cdc492711f4b051bf14e660b2de0`（`7fa80e4`，提交说明：`rtldebug`，提交时间：2026-05-08 22:39:22 +0800）— **`mmu/rtl/PDE_cache.sv`、`mmu/rtl/ptw.sv`、`mmu/rtl/ct_mmu_top.v` 相对该提交仍有工作区未提交改动** |
+| **涉及文件** | `mmu/rtl/ct_mmu_top.v`（顶层输入 `pmp_regs_update`，约 L178；实例化 PTW 约 L880）、`mmu/rtl/ptw.sv`（端口 `pmp_regs_update`，约 L65；`PDE_cache` 连线约 L285）、`mmu/rtl/PDE_cache.sv`（端口 `pmp_regs_update`，约 L44；`pde_cache_clear` 约 L153） |
+
+### 背景与动机
+
+- **PMP（Physical Memory Protection）寄存器配置变更**后，对 **同一物理页 / 同一 walk 路径** 的 **读写执行权限** 可能与变更前不同：原先在某级页表 walk 上 **已通过 PMP 检查** 的路径，在新配置下 **可能不再通过**。
+- **PDE cache** 若仍保留变更前缓存的 **中间级 PDE**，后续 lookup 可能 **错误地 shortcut**，跳过本应在新 PMP 规则下重新执行的 **地址级 / 层级检查**，导致 **权限语义与真实 CSR 配置不一致**。
+- 因此在 **`pmp_regs_update`** 有效（表示 **PMP 相关 CSR 已更新、配置变更需对 MMU 侧可见**）时，须与 **`regs_ptw_clr`、`tlboper_ptw_abort`** 一样参与 **`pde_cache_clear`**，**清空 PDE cache**，迫使后续 walk **重新取页表并走完整检查路径**。
+
+### RTL 要点
+
+- **`PDE_cache.sv`**：**`assign pde_cache_clear = regs_ptw_clr \| tlboper_ptw_abort \| pmp_regs_update;`**  
+- **`ptw.sv`**：增加 **`pmp_regs_update`** 输入并传入 **`PDE_cache`**。  
+- **`ct_mmu_top.v`**：自顶层接入 **`pmp_regs_update`** 并向下传给 **`ptw`**（与 PMP/CSR 侧一致；上游可由 `ct_pmp_top` 等对 CSR 写使能归纳产生，与局部 `wr_pmp_regs` 类组合信号区分）。
+
+### 代码锚点（写入本条时工作区）
+
+```systemverilog
+// PDE_cache.sv
+assign pde_cache_clear = regs_ptw_clr | tlboper_ptw_abort | pmp_regs_update;
+
+// ct_mmu_top.v / ptw.sv：端口与实例 .pmp_regs_update(pmp_regs_update)
+```
+
+### 验证关注点
+
+- **`pmp_regs_update` 脉冲后**：L1/L2 PDE 阵列 **不应**再命中变更前缓存条目（除非后续 walk 重新 refill）。  
+- 回归场景：**PMP 配置改写前后** 对 **同一 VPN/物理区域** 的访问，权限应与 **新 PMP** 一致；无「仅靠旧 PDE cache hit 绕过新规则」的路径。
 
 ---
 

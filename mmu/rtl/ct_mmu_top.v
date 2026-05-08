@@ -175,7 +175,7 @@ module ct_mmu_top(
     output logic   [27:0]  mmu_pmp_pa6,
     output logic   [27:0]  mmu_pmp_pa7,//!!!!!!!!!!!!!!!!!!!!!!!
 
-
+    input  logic           pmp_regs_update,
     //!*************************************************************************
     //! RTU (Retire Unit) <=> MMU Interface
     //!*************************************************************************
@@ -877,7 +877,7 @@ module ct_mmu_top(
         .mmu_pmp_fetch7             (mmu_pmp_fetch7),
         .mmu_pmp_fetch5             (mmu_pmp_fetch5),
         .mmu_pmp_fetch6             (mmu_pmp_fetch6),
-        
+        .pmp_regs_update            (pmp_regs_update),
         // From L2TLB
         .l2tlb_ptw_req              (l2tlb_ptw_req),
         .l2tlb_ptw_type             (l2tlb_ptw_type),

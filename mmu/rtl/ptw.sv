@@ -62,7 +62,7 @@ output logic  		 	mmu_pmp_fetch3,
 output logic  		 	mmu_pmp_fetch7,
 output logic  		 	mmu_pmp_fetch5,
 output logic  		 	mmu_pmp_fetch6,
-
+input  logic            pmp_regs_update,
 //!******************************************
 //! L2TLB Request
 //!******************************************
@@ -282,6 +282,7 @@ PDE_cache	u_PDE_cache(
 			
 //.twu_cache_stop						(twu_cache_stop		),
 .tlboper_ptw_abort					(tlboper_ptw_abort	),
+.pmp_regs_update					(pmp_regs_update	),
 .xbar_pde_ready						(xbar_pde_ready		),
 .pde_cache_ready                    (pde_cache_ready    )
 );

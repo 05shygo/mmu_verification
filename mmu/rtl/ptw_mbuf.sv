@@ -318,7 +318,7 @@ assign create_en = |twu_mbuf_req[3:0] & (!twu_itlb_sel) & (!tlboper_ptw_abort);
 always@(posedge mbuf_clk or negedge cpurst_b)
 begin
   if (!cpurst_b)
-    create_ptr[MBUF_ENTRY_NUM-2:0] <= {(MBUF_ENTRY_NUM-2){1'b0},1'b1};
+    create_ptr[MBUF_ENTRY_NUM-2:0] <= {{(MBUF_ENTRY_NUM-2){1'b0}}, 1'b1};
   else if (create_en)
     create_ptr[MBUF_ENTRY_NUM-2:0] <= {create_ptr[MBUF_ENTRY_NUM-3:0],create_ptr[MBUF_ENTRY_NUM-2]};
 end
@@ -351,7 +351,7 @@ assign req_on_ptr[MBUF_ENTRY_NUM-1] = mbuf_entry_vld[MBUF_ENTRY_NUM-1] & (~mbuf_
 always@(posedge mbuf_clk or negedge cpurst_b)
 begin
      if (!cpurst_b)
-        req_ptr[MBUF_ENTRY_NUM-2:0] <= {(MBUF_ENTRY_NUM-2){1'b0},1'b1};
+        req_ptr[MBUF_ENTRY_NUM-2:0] <= {{(MBUF_ENTRY_NUM-2){1'b0}}, 1'b1};
     else if((mmu_lsu_data_req_fst_time | lsu_mmu_data_vld) & tlboper_ptw_abort | tlboper_ptw_abort_reg & lsu_mmu_data_vld)
         req_ptr[MBUF_ENTRY_NUM-2:0] <= create_ptr[MBUF_ENTRY_NUM-2:0];
     else if (lsu_mmu_data_vld & (~req_on_ptr[MBUF_ENTRY_NUM-1]))

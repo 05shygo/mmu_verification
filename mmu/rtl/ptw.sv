@@ -1,232 +1,258 @@
-module ptw(
+module ptw #(
+    parameter VADDR_WIDTH = 39,                         // VADDR
+    parameter PADDR_WIDTH = 40,                         // PADDR
+    parameter VPN_WIDTH   = VADDR_WIDTH-12,             // VPN
+    parameter PPN_WIDTH   = PADDR_WIDTH-12,             // PPN
+    parameter FLG_WIDTH   = 14,                         // PPN
+    parameter ASID_WIDTH  = 16,                         // PPN
+    parameter PGS_WIDTH   = 3,                          // Page Size
+    parameter PTE_LEVEL   = 3,                          // Page Table Label
+    parameter ID_WIDTH    = 6,
+    parameter TYPE_WIDTH  = 3,
+    parameter L1PDE_ENTRY_NUM = 16,
+    parameter L2PDE_ENTRY_NUM = 16,
+
+// VPN width per level
+    parameter VPN_PERLEL  = VPN_WIDTH/PTE_LEVEL,
+
+// Valid + VPN + ASID + PageSize + Global
+    parameter TAG_WIDTH   = 1+VPN_WIDTH+ASID_WIDTH+PGS_WIDTH+1,
+    parameter DATA_WIDTH  = PPN_WIDTH+FLG_WIDTH
+) (
 //!******************************************
 //! Clock and Reset
 //!******************************************
-input logic 			forever_cpuclk,
-input logic 			cpurst_b,
+    input  logic                   forever_cpuclk,
+    input  logic                   cpurst_b,
 
 //!******************************************
 //! System Regs
 //!******************************************
-input  logic         	cp0_mmu_icg_en,       
-input  logic         	cp0_mmu_maee,         
-input  logic [1 :0]  	cp0_mmu_mpp,          
-input  logic         	cp0_mmu_mprv,         
-input  logic         	cp0_mmu_mxr,          
-input  logic         	cp0_mmu_sum,          
-input  logic [1 :0]  	cp0_yy_priv_mode,     
-input  logic         	pad_yy_icg_scan_en,
-input  logic            hpcp_mmu_cnt_en,
+    input  logic                   cp0_mmu_icg_en,
+    input  logic                   cp0_mmu_maee,
+    input  logic [1:0]             cp0_mmu_mpp,
+    input  logic                   cp0_mmu_mprv,
+    input  logic                   cp0_mmu_mxr,
+    input  logic                   cp0_mmu_sum,
+    input  logic [1:0]             cp0_yy_priv_mode,
+    input  logic                   pad_yy_icg_scan_en,
+    input  logic                   hpcp_mmu_cnt_en,
 	
-input  logic [15:0]  	regs_ptw_cur_asid,
-input  logic [27:0]  	regs_ptw_satp_ppn,
-input  logic  	     	regs_ptw_clr,
+    input  logic [ASID_WIDTH-1:0]  regs_ptw_cur_asid,
+    input  logic [PPN_WIDTH-1:0]   regs_ptw_satp_ppn,
+    input  logic                   regs_ptw_clr,
 
 //!******************************************
 //! Systemmap <=> ptw
 //!******************************************
-input  logic [4 :0]	 	sysmap_mmu_flg3,
+    input  logic [4:0]             sysmap_mmu_flg3,
 //input  logic [4 :0]	 	sysmap_mmu_flg4,
-input  logic [4 :0]	 	sysmap_mmu_flg5,
-input  logic [4 :0]	 	sysmap_mmu_flg6,
-input  logic [4 :0]	 	sysmap_mmu_flg7,
+    input  logic [4:0]             sysmap_mmu_flg5,
+    input  logic [4:0]             sysmap_mmu_flg6,
+    input  logic [4:0]             sysmap_mmu_flg7,
+    input  logic [4:0]             sysmap_mmu_flg8,
+    input  logic [4:0]             sysmap_mmu_flg9,
+    input  logic [4:0]             sysmap_mmu_flg10,
+    input  logic [4:0]             sysmap_mmu_flg11,
+    input  logic [4:0]             sysmap_mmu_flg12,
+    input  logic [4:0]             sysmap_mmu_flg13,
+    input  logic [4:0]             sysmap_mmu_flg14,
+    input  logic [4:0]             sysmap_mmu_flg15,
 
-input  logic [7 :0]	 	sysmap_mmu_hit3,
+    input  logic [7:0]             sysmap_mmu_hit3,
 //input  logic [7 :0]	 	sysmap_mmu_hit4,
-input  logic [7 :0]	 	sysmap_mmu_hit5,
-input  logic [7 :0]	 	sysmap_mmu_hit6,	
-input  logic [7 :0]	 	sysmap_mmu_hit7,
+    input  logic [7:0]             sysmap_mmu_hit5,
+    input  logic [7:0]             sysmap_mmu_hit6,
+    input  logic [7:0]             sysmap_mmu_hit7,
+    input  logic [7:0]             sysmap_mmu_hit8,
+    input  logic [7:0]             sysmap_mmu_hit9,
+    input  logic [7:0]             sysmap_mmu_hit10,
+    input  logic [7:0]             sysmap_mmu_hit11,
+    input  logic [7:0]             sysmap_mmu_hit12,
+    input  logic [7:0]             sysmap_mmu_hit13,
+    input  logic [7:0]             sysmap_mmu_hit14,
+    input  logic [7:0]             sysmap_mmu_hit15,
 
-output logic [27:0]	 	mmu_sysmap_pa3,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa3,
 //output logic [27:0]	 	mmu_sysmap_pa4,
-output logic [27:0]	 	mmu_sysmap_pa5,
-output logic [27:0]	 	mmu_sysmap_pa6,
-output logic [27:0]	 	mmu_sysmap_pa7,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa5,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa6,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa7,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa8,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa9,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa10,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa11,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa12,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa13,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa14,
+    output logic [PPN_WIDTH-1:0]   mmu_sysmap_pa15,
 
 //!******************************************
 //! PMP <=> ptw
 //!******************************************
-input  logic [3 :0]	 	pmp_mmu_flg3,
+    input  logic [3:0]             pmp_mmu_flg3,
 //input  logic [3 :0]	 	pmp_mmu_flg4,
-input  logic [3 :0]	 	pmp_mmu_flg7,
-input  logic [3 :0]	 	pmp_mmu_flg5,
-input  logic [3 :0]	 	pmp_mmu_flg6,
+    input  logic [3:0]             pmp_mmu_flg7,
+    input  logic [3:0]             pmp_mmu_flg5,
+    input  logic [3:0]             pmp_mmu_flg6,
 	
-output logic [27:0]	 	mmu_pmp_pa3,
+    output logic [PPN_WIDTH-1:0]   mmu_pmp_pa3,
 //output logic [27:0]	 	mmu_pmp_pa4,
-output logic [27:0]	 	mmu_pmp_pa7,
-output logic [27:0]	 	mmu_pmp_pa5,
-output logic [27:0]	 	mmu_pmp_pa6,
-output logic  		 	mmu_pmp_fetch3,
+    output logic [PPN_WIDTH-1:0]   mmu_pmp_pa7,
+    output logic [PPN_WIDTH-1:0]   mmu_pmp_pa5,
+    output logic [PPN_WIDTH-1:0]   mmu_pmp_pa6,
+    output logic                   mmu_pmp_fetch3,
 //output logic  		 	mmu_pmp_fetch4,
-output logic  		 	mmu_pmp_fetch7,
-output logic  		 	mmu_pmp_fetch5,
-output logic  		 	mmu_pmp_fetch6,
-input  logic            pmp_regs_update,
+    output logic                   mmu_pmp_fetch7,
+    output logic                   mmu_pmp_fetch5,
+    output logic                   mmu_pmp_fetch6,
+    input  logic                   pmp_regs_update,
 //!******************************************
 //! L2TLB Request
 //!******************************************
-input  logic 		 	l2tlb_ptw_req,
-input  logic [2:0]	 	l2tlb_ptw_type,
-input  logic [26:0]	 	l2tlb_ptw_vpn,
-input  logic [5:0]	 	l2tlb_ptw_id,
+    input  logic                   l2tlb_ptw_req,
+    input  logic [TYPE_WIDTH-1:0]  l2tlb_ptw_type,
+    input  logic [VPN_WIDTH-1:0]   l2tlb_ptw_vpn,
+    input  logic [ID_WIDTH-1:0]    l2tlb_ptw_id,
 
 //!******************************************
 //! LSU <=> PTW
 //!******************************************
-input  logic		 	lsu_mmu_bus_error,
-input  logic [63:0]	 	lsu_mmu_data,
-input  logic		 	lsu_mmu_data_vld,
+    input  logic                   lsu_mmu_bus_error,
+    input  logic [63:0]            lsu_mmu_data,
+    input  logic                   lsu_mmu_data_vld,
 	
 	
-output logic 		 	mmu_lsu_data_req,
-output logic [39:0]	 	mmu_lsu_data_req_addr,
-output logic 		 	mmu_lsu_data_req_size,
+    output logic                   mmu_lsu_data_req,
+    output logic [PADDR_WIDTH-1:0] mmu_lsu_data_req_addr,
+    output logic                   mmu_lsu_data_req_size,
 
 //!******************************************
 //! Refill
 //!******************************************
-input  logic 		 	arb_ptw_grant,
-input  logic 		 	arb_ptw_mask,
+    input  logic                   arb_ptw_grant,
+    input  logic                   arb_ptw_mask,
 
-output logic [26:0]		ptw_arb_vpn,	
-output logic 		 	ptw_arb_req,
-output logic [41:0]	 	ptw_arb_ref_data_din,
-output logic [47:0]	 	ptw_arb_ref_tag_din,
-output logic [2:0]	 	ptw_arb_ref_pgs,
+    output logic [VPN_WIDTH-1:0]   ptw_arb_vpn,
+    output logic                   ptw_arb_req,
+    output logic [DATA_WIDTH-1:0]  ptw_arb_ref_data_din,
+    output logic [TAG_WIDTH-1:0]   ptw_arb_ref_tag_din,
+    output logic [PGS_WIDTH-1:0]   ptw_arb_ref_pgs,
 
 // to l1tlb
-output logic 			ptw_l1dtlb_ref_pa_vld,
-output logic [26:0]		ptw_l1dtlb_ref_vpn,  
-output logic [2:0]		ptw_l1dtlb_ref_pgs,  
-output logic [27:0]		ptw_l1dtlb_ref_ppn,  
-output logic [13:0]		ptw_l1dtlb_ref_flg,
-output logic [5:0]  	ptw_l1tlb_id,
-output logic            ptw_l1dtlb_cmplt,
-output logic            ptw_l1dtlb_pgflt,
-output logic 			ptw_l1dtlb_ref_acc_err,  
+    output logic                   ptw_l1dtlb_ref_pa_vld,
+    output logic [VPN_WIDTH-1:0]   ptw_l1dtlb_ref_vpn,
+    output logic [PGS_WIDTH-1:0]   ptw_l1dtlb_ref_pgs,
+    output logic [PPN_WIDTH-1:0]   ptw_l1dtlb_ref_ppn,
+    output logic [FLG_WIDTH-1:0]   ptw_l1dtlb_ref_flg,
+    output logic [ID_WIDTH-1:0]    ptw_l1tlb_id,
+    output logic                   ptw_l1dtlb_cmplt,
+    output logic                   ptw_l1dtlb_pgflt,
+    output logic                   ptw_l1dtlb_ref_acc_err,
 
-output logic 			ptw_l1itlb_ref_pa_vld,
-output logic [26:0]		ptw_l1itlb_ref_vpn,  
-output logic [2:0]		ptw_l1itlb_ref_pgs,  
-output logic [27:0]		ptw_l1itlb_ref_ppn,  
-output logic [13:0]		ptw_l1itlb_ref_flg,
-output logic            ptw_l1itlb_cmplt,
-output logic            ptw_l1itlb_pgflt,
-output logic 			ptw_l1itlb_ref_acc_err,
+    output logic                   ptw_l1itlb_ref_pa_vld,
+    output logic [VPN_WIDTH-1:0]   ptw_l1itlb_ref_vpn,
+    output logic [PGS_WIDTH-1:0]   ptw_l1itlb_ref_pgs,
+    output logic [PPN_WIDTH-1:0]   ptw_l1itlb_ref_ppn,
+    output logic [FLG_WIDTH-1:0]   ptw_l1itlb_ref_flg,
+    output logic                   ptw_l1itlb_cmplt,
+    output logic                   ptw_l1itlb_pgflt,
+    output logic                   ptw_l1itlb_ref_acc_err,
 //!******************************************
 //! Fault to L2TLB
 //!******************************************
-output logic 			ptw_l2tlb_ref_acc_err,
-output logic 			ptw_l2tlb_ref_pgflt,
-output logic        	ptw_l2tlb_ref_data_vld,
-output logic        	ptw_l2tlb_cmplt,
-output logic [2:0]  	ptw_l2tlb_type,    
-output logic [5:0]  	ptw_l2tlb_id,
-output logic [13:0]     ptw_l2tlb_flg,
+    output logic                   ptw_l2tlb_ref_acc_err,
+    output logic                   ptw_l2tlb_ref_pgflt,
+    output logic                   ptw_l2tlb_ref_data_vld,
+    output logic                   ptw_l2tlb_cmplt,
+    output logic [TYPE_WIDTH-1:0]  ptw_l2tlb_type,
+    output logic [ID_WIDTH-1:0]    ptw_l2tlb_id,
+    output logic [FLG_WIDTH-1:0]   ptw_l2tlb_flg,
         
-output logic 			ptw_jtlb_ready,
-input  logic  	     	tlboper_ptw_abort,
+    output logic                   ptw_jtlb_ready,
+    input  logic                   tlboper_ptw_abort,
 //output logic            ptw_top_imiss,
-output logic            mmu_hpcp_jtlb_miss
+    output logic                   mmu_hpcp_jtlb_miss
 
 );
 
 
-logic                   pde_cache_ready             ;
-logic					mbuf_cache_upd			    ;
-logic	[1:0]			mbuf_cache_upd_lvl	        ;
-logic	[27:0]			mbuf_cache_upd_ppn	        ;
-logic	[26:0]			mbuf_cache_upd_vpn	        ;
-logic					L2PDE_xbar_hit_vld		    ;
-logic					L1PDE_xbar_hit_vld		    ;
-logic	[27:0]			PDE_xbar_ppn			    ;
-logic	[26:0]			PDE_xbar_vpn			    ;
-logic	[2:0]			PDE_xbar_type			    ;
-logic	[5:0]			PDE_xbar_id			        ;
-logic					PDE_xbar_req			    ;
-logic					twu_cache_stop			    ;
+logic                  pde_cache_ready   ;
+logic                  mbuf_cache_upd    ;
+logic [PTE_LEVEL-2:0]  mbuf_cache_upd_lvl;
+logic [PPN_WIDTH-1:0]  mbuf_cache_upd_ppn;
+logic [VPN_WIDTH-1:0]  mbuf_cache_upd_vpn;
+logic                  L2PDE_xbar_hit_vld;
+logic                  L1PDE_xbar_hit_vld;
+logic [PPN_WIDTH-1:0]  PDE_xbar_ppn      ;
+logic [VPN_WIDTH-1:0]  PDE_xbar_vpn      ;
+logic [TYPE_WIDTH-1:0] PDE_xbar_type     ;
+logic [ID_WIDTH-1:0]   PDE_xbar_id       ;
+logic                  PDE_xbar_req      ;
+logic                  twu_cache_stop    ;
 //logic	[3:0]			twu_idle				    ;
-logic	[3:0]			xbar_twu_req		        ;
-logic	[1:0]			xbar_twu_hit_level		    ;
-logic	[27:0]			xbar_twu_ppn			    ;
-logic	[26:0]			xbar_twu_vpn			    ;
-logic	[2:0]			xbar_twu_type			    ;
-logic	[5:0]			xbar_twu_id			        ;
-logic	[3:0]			refill_arb_twu_grant		;
-logic	[26:0]			mbuf_twu_vpn			    ;
-logic	[2:0]			mbuf_twu_type			    ;
-logic	[5:0]			mbuf_twu_id			        ;
-logic   [2:0]			mbuf_twu_lvl				;
-logic	[63:0]			mbuf_twu_data			    ;
-logic	[3:0]			mbuf_twu_data_vld	     	;
-logic	[3:0]			mbuf_grant			     	;
-logic	[3:0]			twu_mbuf_req			    ;
-logic	[3:0][39:0]		twu_mbuf_paddr			 	;
-logic	[3:0][26:0]		twu_mbuf_vpn			    ;
-logic	[3:0][2:0]		twu_mbuf_type			 	;
-logic	[3:0][5:0]		twu_mbuf_id				 	;
-logic	[3:0][2:0]		twu_mbuf_lvl			    ;
-logic	[3:0][3:0]		twu_mbuf_twu_idx		    ;
-logic	[3:0]			twu_mbuf_mask				;
-logic	[3:0]			twu_arb_ref_req			 	;
-logic	[3:0][41:0]		twu_arb_ref_data_din	    ;
-logic	[3:0][47:0]		twu_arb_ref_tag_din			;
-logic	[3:0][2:0]		twu_arb_ref_pgs			 	;
-logic	[3:0][2:0]		twu_arb_ref_type		 	;
-logic	[3:0][5:0]		twu_arb_ref_id			 	;
-logic	[3:0]			twu_l2tlb_ref_pgflt		 	;
-logic	[3:0][5:0]		twu_l2tlb_ref_pgflt_id	 	;
-logic	[3:0][2:0]		twu_l2tlb_ref_pgflt_type 	;
-logic	[3:0]			twu_l2tlb_ref_acc_err	 	;
-logic	[3:0][2:0]		twu_l2tlb_ref_acc_err_type	;
-logic	[3:0][5:0]		twu_l2tlb_ref_acc_err_id	;
+logic [3:0]                  xbar_twu_req              ;
+logic [PTE_LEVEL-2:0]        xbar_twu_hit_level        ;
+logic [PPN_WIDTH-1:0]        xbar_twu_ppn              ;
+logic [VPN_WIDTH-1:0]        xbar_twu_vpn              ;
+logic [TYPE_WIDTH-1:0]       xbar_twu_type             ;
+logic [ID_WIDTH-1:0]         xbar_twu_id               ;
+logic [3:0]                  refill_arb_twu_grant      ;
+logic [VPN_WIDTH-1:0]        mbuf_twu_vpn              ;
+logic [TYPE_WIDTH-1:0]       mbuf_twu_type             ;
+logic [ID_WIDTH-1:0]         mbuf_twu_id               ;
+logic [PTE_LEVEL-1:0]        mbuf_twu_lvl              ;
+logic [63:0]                 mbuf_twu_data             ;
+logic [3:0]                  mbuf_twu_data_vld         ;
+logic [3:0]                  mbuf_grant                ;
+logic [3:0]                  twu_mbuf_req              ;
+logic [3:0][PADDR_WIDTH-1:0] twu_mbuf_paddr            ;
+logic [3:0][VPN_WIDTH-1:0]   twu_mbuf_vpn              ;
+logic [3:0][TYPE_WIDTH-1:0]  twu_mbuf_type             ;
+logic [3:0][ID_WIDTH-1:0]    twu_mbuf_id               ;
+logic [3:0][PTE_LEVEL-1:0]   twu_mbuf_lvl              ;
+logic [3:0][3:0]             twu_mbuf_twu_idx          ;
+logic [3:0]                  twu_mbuf_mask             ;
+logic [3:0]                  twu_arb_ref_req           ;
+logic [3:0][DATA_WIDTH-1:0]  twu_arb_ref_data_din      ;
+logic [3:0][TAG_WIDTH-1:0]   twu_arb_ref_tag_din       ;
+logic [3:0][PGS_WIDTH-1:0]   twu_arb_ref_pgs           ;
+logic [3:0][TYPE_WIDTH-1:0]  twu_arb_ref_type          ;
+logic [3:0][ID_WIDTH-1:0]    twu_arb_ref_id            ;
+logic [3:0]                  twu_l2tlb_ref_pgflt       ;
+logic [3:0][ID_WIDTH-1:0]    twu_l2tlb_ref_pgflt_id    ;
+logic [3:0][TYPE_WIDTH-1:0]  twu_l2tlb_ref_pgflt_type  ;
+logic [3:0]                  twu_l2tlb_ref_acc_err     ;
+logic [3:0][TYPE_WIDTH-1:0]  twu_l2tlb_ref_acc_err_type;
+logic [3:0][ID_WIDTH-1:0]    twu_l2tlb_ref_acc_err_id  ;
 //logic	[3:0]			mbuf_twu_have           	;
-logic	[4:0]			acc_err_twu_grant			;
-logic	[3:0]			pgflt_twu_grant				;
-logic					mbuf_entry_on_vld			;
-logic					fst_twu_itlb_sel			;
-logic					scd_twu_itlb_sel			;
-logic					thd_twu_itlb_sel			;
-logic					fth_twu_itlb_sel			;
-logic					ref_itlb_sel				;
-logic	[3:0]			refill_arb_grant			;	
-logic					abort_flop					;
-logic   [3:0]			twu_mask					;
-logic   				mbuf_bus_error				;
-logic   [2:0]			mbuf_bus_error_type			;
-logic	[5:0]			mbuf_bus_error_id			;
-logic   [3:0]           twu_pgflt_sel               ;
-logic   [4:0]           twu_acc_err_sel             ;
-logic   [3:0]           twu_ref_sel                 ;
-logic   [3:0][2:0]      twu_data_ready              ;
-logic					pgflt_vld					;
-logic					acc_err_vld					;
-logic					ref_vld						;
-logic					pgflt_grant					;
-logic					acc_err_rant				;
-logic					ref_rant					;
-logic                   l2tlb_miss                  ;
-logic                   l2tlb_miss_cnt              ;
+logic [4:0]                acc_err_twu_grant  ;
+logic [3:0]                pgflt_twu_grant    ;
+logic                      mbuf_entry_on_vld  ;
+logic                      fst_twu_itlb_sel   ;
+logic                      scd_twu_itlb_sel   ;
+logic                      thd_twu_itlb_sel   ;
+logic                      fth_twu_itlb_sel   ;
+logic                      ref_itlb_sel       ;
+logic [3:0]                refill_arb_grant   ;
+logic                      abort_flop         ;
+logic [3:0]                twu_mask           ;
+logic                      mbuf_bus_error     ;
+logic [TYPE_WIDTH-1:0]     mbuf_bus_error_type;
+logic [ID_WIDTH-1:0]       mbuf_bus_error_id  ;
+logic [3:0]                twu_pgflt_sel      ;
+logic [4:0]                twu_acc_err_sel    ;
+logic [3:0]                twu_ref_sel        ;
+logic [3:0][PTE_LEVEL-1:0] twu_data_ready     ;
+logic                      pgflt_vld          ;
+logic                      acc_err_vld        ;
+logic                      ref_vld            ;
+logic                      pgflt_grant        ;
+logic                      acc_err_rant       ;
+logic                      ref_rant           ;
+logic                      l2tlb_miss         ;
+logic                      l2tlb_miss_cnt     ;
 
-
-parameter VADDR_WIDTH = 39;              // VADDR
-parameter PADDR_WIDTH = 40;              // PADDR
-parameter VPN_WIDTH   = VADDR_WIDTH-12;  // VPN
-parameter PPN_WIDTH   = PADDR_WIDTH-12;  // PPN
-parameter FLG_WIDTH   = 14;              // PPN
-parameter ASID_WIDTH  = 16;              // PPN
-parameter PGS_WIDTH   = 3;               // Page Size
-parameter PTE_LEVEL   = 3;               // Page Table Label
-parameter ID_WIDTH    = 6;
-
-
-// VPN width per level
-parameter VPN_PERLEL = VPN_WIDTH/PTE_LEVEL;
-
-// Valid + VPN + ASID + PageSize + Global
-parameter TAG_WIDTH  = 1+VPN_WIDTH+ASID_WIDTH+PGS_WIDTH+1;  
-parameter DATA_WIDTH = PPN_WIDTH+FLG_WIDTH;				
 
 assign ptw_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
@@ -254,7 +280,23 @@ end
 
 
 
-PDE_cache	u_PDE_cache(
+PDE_cache #(
+.VADDR_WIDTH                         (VADDR_WIDTH        ),
+.PADDR_WIDTH                         (PADDR_WIDTH        ),
+.VPN_WIDTH                           (VPN_WIDTH          ),
+.PPN_WIDTH                           (PPN_WIDTH          ),
+.FLG_WIDTH                           (FLG_WIDTH          ),
+.ASID_WIDTH                          (ASID_WIDTH         ),
+.PGS_WIDTH                           (PGS_WIDTH          ),
+.PTE_LEVEL                           (PTE_LEVEL          ),
+.ID_WIDTH                            (ID_WIDTH           ),
+.TYPE_WIDTH                          (TYPE_WIDTH         ),
+.L1PDE_ENTRY_NUM                     (L1PDE_ENTRY_NUM    ),
+.L2PDE_ENTRY_NUM                     (L2PDE_ENTRY_NUM    ),
+.VPN_PERLEL                          (VPN_PERLEL         ),
+.TAG_WIDTH                           (TAG_WIDTH          ),
+.DATA_WIDTH                          (DATA_WIDTH         )
+) u_PDE_cache(
 .forever_cpuclk						(forever_cpuclk		),
 .cpurst_b							(cpurst_b			),
 .cp0_mmu_icg_en                     (cp0_mmu_icg_en     ),
@@ -287,7 +329,21 @@ PDE_cache	u_PDE_cache(
 .pde_cache_ready                    (pde_cache_ready    )
 );
 
-one_to_four_xbar  u_one_to_four_xbar(
+one_to_four_xbar #(
+.VADDR_WIDTH                         (VADDR_WIDTH        ),
+.PADDR_WIDTH                         (PADDR_WIDTH        ),
+.VPN_WIDTH                           (VPN_WIDTH          ),
+.PPN_WIDTH                           (PPN_WIDTH          ),
+.FLG_WIDTH                           (FLG_WIDTH          ),
+.ASID_WIDTH                          (ASID_WIDTH         ),
+.PGS_WIDTH                           (PGS_WIDTH          ),
+.PTE_LEVEL                           (PTE_LEVEL          ),
+.ID_WIDTH                            (ID_WIDTH           ),
+.TYPE_WIDTH                          (TYPE_WIDTH         ),
+.VPN_PERLEL                          (VPN_PERLEL         ),
+.TAG_WIDTH                           (TAG_WIDTH          ),
+.DATA_WIDTH                          (DATA_WIDTH         )
+) u_one_to_four_xbar(
 .forever_cpuclk						(forever_cpuclk		),
 .cpurst_b							(cpurst_b			),
 									
@@ -314,7 +370,21 @@ one_to_four_xbar  u_one_to_four_xbar(
 );
 
 
-twu twu_one(
+twu #(
+.VADDR_WIDTH                         (VADDR_WIDTH        ),
+.PADDR_WIDTH                         (PADDR_WIDTH        ),
+.VPN_WIDTH                           (VPN_WIDTH          ),
+.PPN_WIDTH                           (PPN_WIDTH          ),
+.FLG_WIDTH                           (FLG_WIDTH          ),
+.ASID_WIDTH                          (ASID_WIDTH         ),
+.PGS_WIDTH                           (PGS_WIDTH          ),
+.PTE_LEVEL                           (PTE_LEVEL          ),
+.ID_WIDTH                            (ID_WIDTH           ),
+.TYPE_WIDTH                          (TYPE_WIDTH         ),
+.VPN_PERLEL                          (VPN_PERLEL         ),
+.TAG_WIDTH                           (TAG_WIDTH          ),
+.RDATA_WIDTH                         (DATA_WIDTH         )
+) twu_one(
 .forever_cpuclk						(forever_cpuclk					),
 .cpurst_b							(cpurst_b						),
 .twu_idx							(4'b0001						),
@@ -348,8 +418,12 @@ twu twu_one(
 .mbuf_twu_data_vld					(mbuf_twu_data_vld[0]			),
 .mbuf_grant							(mbuf_grant[0]					),
 										
-.sysmap_mmu_flg						(sysmap_mmu_flg3				),
-.sysmap_mmu_hit						(sysmap_mmu_hit3				),
+.sysmap_mmu_flgx1					(sysmap_mmu_flg3				),
+.sysmap_mmu_flgx2					(sysmap_mmu_flg5				),
+.sysmap_mmu_flgx3					(sysmap_mmu_flg6				),
+.sysmap_mmu_hitx1					(sysmap_mmu_hit3				),
+.sysmap_mmu_hitx2					(sysmap_mmu_hit5				),
+.sysmap_mmu_hitx3					(sysmap_mmu_hit6				),
 .pmp_mmu_flg						(pmp_mmu_flg3					),
 										
 .tlboper_ptw_abort					(tlboper_ptw_abort				),
@@ -365,7 +439,9 @@ twu twu_one(
 										
 .mmu_pmp_pa							(mmu_pmp_pa3					),
 .mmu_pmp_fecth						(mmu_pmp_fecth3					),
-.mmu_sysmap_pa						(mmu_sysmap_pa3					),
+.mmu_sysmap_pax1					(mmu_sysmap_pa3					),
+.mmu_sysmap_pax2					(mmu_sysmap_pa5					),
+.mmu_sysmap_pax3					(mmu_sysmap_pa6					),
 										
 .twu_arb_ref_req					(twu_arb_ref_req[0]				),
 .twu_arb_ref_data_din				(twu_arb_ref_data_din[0]		),
@@ -383,14 +459,28 @@ twu twu_one(
                                      
 .twu_mask							(twu_mask[0]					),
 //.twu_idle							(twu_idle[0]					),
-.twu_data_ready                     (twu_data_ready[0][2:0]     	),
+.twu_data_ready                     (twu_data_ready[0][PTE_LEVEL-1:0]     	),
 //.mbuf_twu_have                      (mbuf_twu_have[0]           	),
 .acc_err_twu_grant                  (acc_err_twu_grant[0]			),
 .pgflt_twu_grant                    (pgflt_twu_grant[0]  			)
 );
 
 
-twu twu_two(
+twu #(
+.VADDR_WIDTH                         (VADDR_WIDTH        ),
+.PADDR_WIDTH                         (PADDR_WIDTH        ),
+.VPN_WIDTH                           (VPN_WIDTH          ),
+.PPN_WIDTH                           (PPN_WIDTH          ),
+.FLG_WIDTH                           (FLG_WIDTH          ),
+.ASID_WIDTH                          (ASID_WIDTH         ),
+.PGS_WIDTH                           (PGS_WIDTH          ),
+.PTE_LEVEL                           (PTE_LEVEL          ),
+.ID_WIDTH                            (ID_WIDTH           ),
+.TYPE_WIDTH                          (TYPE_WIDTH         ),
+.VPN_PERLEL                          (VPN_PERLEL         ),
+.TAG_WIDTH                           (TAG_WIDTH          ),
+.RDATA_WIDTH                         (DATA_WIDTH         )
+) twu_two(
 .forever_cpuclk						(forever_cpuclk					),
 .cpurst_b							(cpurst_b						),
 .twu_idx							(4'b0010						),
@@ -423,8 +513,12 @@ twu twu_two(
 .mbuf_twu_data_vld					(mbuf_twu_data_vld[1]			),
 .mbuf_grant							(mbuf_grant[1]					),
 										
-.sysmap_mmu_flg						(sysmap_mmu_flg5				),
-.sysmap_mmu_hit						(sysmap_mmu_hit5				),
+.sysmap_mmu_flgx1					(sysmap_mmu_flg7				),
+.sysmap_mmu_flgx2					(sysmap_mmu_flg8				),
+.sysmap_mmu_flgx3					(sysmap_mmu_flg9				),
+.sysmap_mmu_hitx1					(sysmap_mmu_hit7				),
+.sysmap_mmu_hitx2					(sysmap_mmu_hit8				),
+.sysmap_mmu_hitx3					(sysmap_mmu_hit9				),
 .pmp_mmu_flg						(pmp_mmu_flg5					),
 										
 .tlboper_ptw_abort					(tlboper_ptw_abort				),
@@ -440,7 +534,9 @@ twu twu_two(
 										
 .mmu_pmp_pa							(mmu_pmp_pa5					),
 .mmu_pmp_fecth						(mmu_pmp_fecth5					),
-.mmu_sysmap_pa						(mmu_sysmap_pa5					),
+.mmu_sysmap_pax1					(mmu_sysmap_pa7					),
+.mmu_sysmap_pax2					(mmu_sysmap_pa8					),
+.mmu_sysmap_pax3					(mmu_sysmap_pa9					),
 										
 .twu_arb_ref_req					(twu_arb_ref_req[1]				),
 .twu_arb_ref_data_din				(twu_arb_ref_data_din[1]		),
@@ -458,7 +554,7 @@ twu twu_two(
                                      
 .twu_mask							(twu_mask[1]					),
 //.twu_idle							(twu_idle[1]					),
-.twu_data_ready                     (twu_data_ready[1][2:0]     	),
+.twu_data_ready                     (twu_data_ready[1][PTE_LEVEL-1:0]     	),
 //.mbuf_twu_have                      (mbuf_twu_have[1]           	),
 .acc_err_twu_grant                  (acc_err_twu_grant[1]       	),
 .pgflt_twu_grant                    (pgflt_twu_grant[1]         	)
@@ -467,7 +563,21 @@ twu twu_two(
 );
 
 
-twu twu_three(
+twu #(
+.VADDR_WIDTH                         (VADDR_WIDTH        ),
+.PADDR_WIDTH                         (PADDR_WIDTH        ),
+.VPN_WIDTH                           (VPN_WIDTH          ),
+.PPN_WIDTH                           (PPN_WIDTH          ),
+.FLG_WIDTH                           (FLG_WIDTH          ),
+.ASID_WIDTH                          (ASID_WIDTH         ),
+.PGS_WIDTH                           (PGS_WIDTH          ),
+.PTE_LEVEL                           (PTE_LEVEL          ),
+.ID_WIDTH                            (ID_WIDTH           ),
+.TYPE_WIDTH                          (TYPE_WIDTH         ),
+.VPN_PERLEL                          (VPN_PERLEL         ),
+.TAG_WIDTH                           (TAG_WIDTH          ),
+.RDATA_WIDTH                         (DATA_WIDTH         )
+) twu_three(
 .forever_cpuclk						(forever_cpuclk					),
 .cpurst_b							(cpurst_b						),
 .twu_idx							(4'b0100						),
@@ -500,8 +610,12 @@ twu twu_three(
 .mbuf_twu_data_vld					(mbuf_twu_data_vld[2]			),
 .mbuf_grant							(mbuf_grant[2]					),
 										
-.sysmap_mmu_flg						(sysmap_mmu_flg6				),
-.sysmap_mmu_hit						(sysmap_mmu_hit6				),
+.sysmap_mmu_flgx1					(sysmap_mmu_flg10				),
+.sysmap_mmu_flgx2					(sysmap_mmu_flg11				),
+.sysmap_mmu_flgx3					(sysmap_mmu_flg12				),
+.sysmap_mmu_hitx1					(sysmap_mmu_hit10				),
+.sysmap_mmu_hitx2					(sysmap_mmu_hit11				),
+.sysmap_mmu_hitx3					(sysmap_mmu_hit12				),
 .pmp_mmu_flg						(pmp_mmu_flg6					),
 										
 .tlboper_ptw_abort					(tlboper_ptw_abort				),
@@ -517,7 +631,9 @@ twu twu_three(
 										
 .mmu_pmp_pa							(mmu_pmp_pa6					),
 .mmu_pmp_fecth						(mmu_pmp_fecth6					),
-.mmu_sysmap_pa						(mmu_sysmap_pa6					),
+.mmu_sysmap_pax1					(mmu_sysmap_pa10					),
+.mmu_sysmap_pax2					(mmu_sysmap_pa11					),
+.mmu_sysmap_pax3					(mmu_sysmap_pa12					),
 										
 .twu_arb_ref_req					(twu_arb_ref_req[2]				),
 .twu_arb_ref_data_din				(twu_arb_ref_data_din[2]		),
@@ -535,7 +651,7 @@ twu twu_three(
                                      
 .twu_mask							(twu_mask[2]					),
 //.twu_idle							(twu_idle[2]					),
-.twu_data_ready                     (twu_data_ready[2][2:0]     	),
+.twu_data_ready                     (twu_data_ready[2][PTE_LEVEL-1:0]     	),
 //.mbuf_twu_have                      (mbuf_twu_have[2]           	),
 
 .acc_err_twu_grant                  (acc_err_twu_grant[2]           ),
@@ -543,7 +659,21 @@ twu twu_three(
 );
 
 
-twu twu_four(
+twu #(
+.VADDR_WIDTH                         (VADDR_WIDTH        ),
+.PADDR_WIDTH                         (PADDR_WIDTH        ),
+.VPN_WIDTH                           (VPN_WIDTH          ),
+.PPN_WIDTH                           (PPN_WIDTH          ),
+.FLG_WIDTH                           (FLG_WIDTH          ),
+.ASID_WIDTH                          (ASID_WIDTH         ),
+.PGS_WIDTH                           (PGS_WIDTH          ),
+.PTE_LEVEL                           (PTE_LEVEL          ),
+.ID_WIDTH                            (ID_WIDTH           ),
+.TYPE_WIDTH                          (TYPE_WIDTH         ),
+.VPN_PERLEL                          (VPN_PERLEL         ),
+.TAG_WIDTH                           (TAG_WIDTH          ),
+.RDATA_WIDTH                         (DATA_WIDTH         )
+) twu_four(
 .forever_cpuclk						(forever_cpuclk					),
 .cpurst_b							(cpurst_b						),
 .twu_idx							(4'b1000						),
@@ -576,8 +706,12 @@ twu twu_four(
 .mbuf_twu_data_vld					(mbuf_twu_data_vld[3]			),
 .mbuf_grant							(mbuf_grant[3]					),
 										
-.sysmap_mmu_flg						(sysmap_mmu_flg7				),
-.sysmap_mmu_hit						(sysmap_mmu_hit7				),
+.sysmap_mmu_flgx1					(sysmap_mmu_flg13				),
+.sysmap_mmu_flgx2					(sysmap_mmu_flg14				),
+.sysmap_mmu_flgx3					(sysmap_mmu_flg15				),
+.sysmap_mmu_hitx1					(sysmap_mmu_hit13				),
+.sysmap_mmu_hitx2					(sysmap_mmu_hit14				),
+.sysmap_mmu_hitx3					(sysmap_mmu_hit15				),
 .pmp_mmu_flg						(pmp_mmu_flg7					),
 										
 .tlboper_ptw_abort					(tlboper_ptw_abort				),
@@ -593,7 +727,9 @@ twu twu_four(
 										
 .mmu_pmp_pa							(mmu_pmp_pa7					),
 .mmu_pmp_fecth						(mmu_pmp_fecth7					),
-.mmu_sysmap_pa						(mmu_sysmap_pa7					),
+.mmu_sysmap_pax1					(mmu_sysmap_pa13				),
+.mmu_sysmap_pax2					(mmu_sysmap_pa14				),
+.mmu_sysmap_pax3					(mmu_sysmap_pa15				),
 										
 .twu_arb_ref_req					(twu_arb_ref_req[3]				),
 .twu_arb_ref_data_din				(twu_arb_ref_data_din[3]		),
@@ -611,7 +747,7 @@ twu twu_four(
                                      
 .twu_mask							(twu_mask[3]					),
 //.twu_idle							(twu_idle[3]					),
-.twu_data_ready                     (twu_data_ready[3][2:0]     	),
+.twu_data_ready                     (twu_data_ready[3][PTE_LEVEL-1:0]     	),
 //.mbuf_twu_have                      (mbuf_twu_have[3]           	),
 
 .acc_err_twu_grant                  (acc_err_twu_grant[3]           ),
@@ -620,7 +756,21 @@ twu twu_four(
 );
 
 
-ptw_mbuf u_ptw_mbuf(
+ptw_mbuf #(
+.VADDR_WIDTH                         (VADDR_WIDTH        ),
+.PADDR_WIDTH                         (PADDR_WIDTH        ),
+.VPN_WIDTH                           (VPN_WIDTH          ),
+.PPN_WIDTH                           (PPN_WIDTH          ),
+.FLG_WIDTH                           (FLG_WIDTH          ),
+.ASID_WIDTH                          (ASID_WIDTH         ),
+.PGS_WIDTH                           (PGS_WIDTH          ),
+.PTE_LEVEL                           (PTE_LEVEL          ),
+.ID_WIDTH                            (ID_WIDTH           ),
+.TYPE_WIDTH                          (TYPE_WIDTH         ),
+.VPN_PERLEL                          (VPN_PERLEL         ),
+.TAG_WIDTH                           (TAG_WIDTH          ),
+.RDATA_WIDTH                         (DATA_WIDTH         )
+) u_ptw_mbuf(
 .forever_cpuclk						(forever_cpuclk				),
 .cpurst_b							(cpurst_b					),
 .cp0_mmu_icg_en                     (cp0_mmu_icg_en             ),
@@ -689,34 +839,34 @@ assign twu_pgflt_sel[0] = twu_l2tlb_ref_pgflt[0] & pgflt_grant;
 
 assign pgflt_twu_grant[3:0] = twu_pgflt_sel[3:0];
 
-logic [ID_WIDTH-1:0]  ptw_l2tlb_pgflt_id;
-logic [2:0]	      ptw_l2tlb_pgflt_type;
+logic [ID_WIDTH-1:0]   ptw_l2tlb_pgflt_id  ;
+logic [TYPE_WIDTH-1:0] ptw_l2tlb_pgflt_type;
 
 always_comb begin
 	case(pgflt_twu_grant[3:0])
 		4'b0001	: begin		
 			//ptw_l2tlb_ref_pgflt = 1'b1;
-			ptw_l2tlb_pgflt_type[2:0] = twu_l2tlb_ref_pgflt_type[0][2:0];
+			ptw_l2tlb_pgflt_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_pgflt_type[0][TYPE_WIDTH-1:0];
 			ptw_l2tlb_pgflt_id[ID_WIDTH-1:0] = twu_l2tlb_ref_pgflt_id[0][ID_WIDTH-1:0];
 		end
 		4'b0010	: begin		
 			//ptw_l2tlb_ref_pgflt = 1'b1;
-			ptw_l2tlb_pgflt_type[2:0] = twu_l2tlb_ref_pgflt_type[1][2:0];
+			ptw_l2tlb_pgflt_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_pgflt_type[1][TYPE_WIDTH-1:0];
 			ptw_l2tlb_pgflt_id[ID_WIDTH-1:0] = twu_l2tlb_ref_pgflt_id[1][ID_WIDTH-1:0];
 		end
 		4'b0100	: begin		
 			//ptw_l2tlb_ref_pgflt = 1'b1;
-			ptw_l2tlb_pgflt_type[2:0] = twu_l2tlb_ref_pgflt_type[2][2:0];
+			ptw_l2tlb_pgflt_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_pgflt_type[2][TYPE_WIDTH-1:0];
 			ptw_l2tlb_pgflt_id[ID_WIDTH-1:0] = twu_l2tlb_ref_pgflt_id[2][ID_WIDTH-1:0];
 		end
 		4'b1000	: begin		
 			//ptw_l2tlb_ref_pgflt = 1'b1;
-			ptw_l2tlb_pgflt_type[2:0] = twu_l2tlb_ref_pgflt_type[3][2:0];
+			ptw_l2tlb_pgflt_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_pgflt_type[3][TYPE_WIDTH-1:0];
 			ptw_l2tlb_pgflt_id[ID_WIDTH-1:0] = twu_l2tlb_ref_pgflt_id[3][ID_WIDTH-1:0];
 		end
 		default 	: begin
 			//ptw_l2tlb_ref_pgflt = 1'b0;
-			ptw_l2tlb_pgflt_type[2:0] = 3'b0;
+			ptw_l2tlb_pgflt_type[TYPE_WIDTH-1:0] = {TYPE_WIDTH{1'b0}};
 			ptw_l2tlb_pgflt_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
 		end
 	endcase
@@ -736,39 +886,39 @@ assign twu_acc_err_sel[4] = mbuf_bus_error & acc_err_grant;
 
 assign acc_err_twu_grant[4:0] = twu_acc_err_sel[4:0];
 
-logic [ID_WIDTH-1:0]  ptw_l2tlb_acc_err_id;
-logic [2:0]	      ptw_l2tlb_acc_err_type;
+logic [ID_WIDTH-1:0]   ptw_l2tlb_acc_err_id  ;
+logic [TYPE_WIDTH-1:0] ptw_l2tlb_acc_err_type;
 
 always_comb begin
 	case(acc_err_twu_grant[4:0])
 		5'b00001	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
-			ptw_l2tlb_acc_err_type[2:0] = twu_l2tlb_ref_acc_err_type[0][2:0];
+			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[0][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[0][ID_WIDTH-1:0];
 		end
 		5'b00010	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
-			ptw_l2tlb_acc_err_type[2:0] = twu_l2tlb_ref_acc_err_type[1][2:0];
+			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[1][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[1][ID_WIDTH-1:0];
 		end
 		5'b00100	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
-			ptw_l2tlb_acc_err_type[2:0] = twu_l2tlb_ref_acc_err_type[2][2:0];
+			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[2][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[2][ID_WIDTH-1:0];
 		end
 		5'b01000	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
-			ptw_l2tlb_acc_err_type[2:0] = twu_l2tlb_ref_acc_err_type[3][2:0];
+			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[3][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[3][ID_WIDTH-1:0];
 		end
 		5'b10000	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
-			ptw_l2tlb_acc_err_type[2:0] = mbuf_bus_error_type[2:0];
+			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = mbuf_bus_error_type[TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = mbuf_bus_error_id[ID_WIDTH-1:0];
 		end		
 		default 	: begin
 			//ptw_l2tlb_ref_acc_err = 1'b0;
-			ptw_l2tlb_acc_err_type[2:0] = 3'b0;
+			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = {TYPE_WIDTH{1'b0}};
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
 		end
 	endcase
@@ -782,10 +932,10 @@ end
 //==============================================================================
 assign ptw_arb_req = (|twu_arb_ref_req[3:0]) & (!arb_ptw_mask) & (!tlboper_ptw_abort) & ref_grant;
 
-assign fst_twu_itlb_sel = twu_arb_ref_req[0] & twu_arb_ref_type[0][2:0] == 3'b011;
-assign scd_twu_itlb_sel = twu_arb_ref_req[1] & twu_arb_ref_type[1][2:0] == 3'b011;
-assign thd_twu_itlb_sel = twu_arb_ref_req[2] & twu_arb_ref_type[2][2:0] == 3'b011;
-assign fth_twu_itlb_sel = twu_arb_ref_req[3] & twu_arb_ref_type[3][2:0] == 3'b011;
+assign fst_twu_itlb_sel = twu_arb_ref_req[0] & twu_arb_ref_type[0][TYPE_WIDTH-1:0] == 3'b011;
+assign scd_twu_itlb_sel = twu_arb_ref_req[1] & twu_arb_ref_type[1][TYPE_WIDTH-1:0] == 3'b011;
+assign thd_twu_itlb_sel = twu_arb_ref_req[2] & twu_arb_ref_type[2][TYPE_WIDTH-1:0] == 3'b011;
+assign fth_twu_itlb_sel = twu_arb_ref_req[3] & twu_arb_ref_type[3][TYPE_WIDTH-1:0] == 3'b011;
 
 assign ref_itlb_sel = (fst_twu_itlb_sel | scd_twu_itlb_sel | thd_twu_itlb_sel | fth_twu_itlb_sel) & ref_grant;
 
@@ -808,56 +958,56 @@ end
 
 assign refill_arb_twu_grant[3:0] = refill_arb_grant[3:0] & {4{arb_ptw_grant}};
 
-logic [2:0] ptw_arb_ref_type;
-logic [ID_WIDTH-1:0] ptw_arb_ref_id;
+logic [TYPE_WIDTH-1:0] ptw_arb_ref_type;
+logic [ID_WIDTH-1:0]   ptw_arb_ref_id  ;
 
 always_comb begin
 	case(refill_arb_twu_grant[3:0])
 		4'b0001	: begin
 			ptw_arb_ref_data_din[DATA_WIDTH-1:0] = twu_arb_ref_data_din[0][DATA_WIDTH-1:0];
 			ptw_arb_ref_tag_din[TAG_WIDTH-1:0] = twu_arb_ref_tag_din[0][TAG_WIDTH-1:0];
-			ptw_arb_ref_pgs[2:0] = twu_arb_ref_pgs[0][2:0];
-			ptw_arb_ref_type[2:0] = twu_arb_ref_type[0][2:0];
+			ptw_arb_ref_pgs[PGS_WIDTH-1:0] = twu_arb_ref_pgs[0][PGS_WIDTH-1:0];
+			ptw_arb_ref_type[TYPE_WIDTH-1:0] = twu_arb_ref_type[0][TYPE_WIDTH-1:0];
 			ptw_arb_ref_id[ID_WIDTH-1:0] = twu_arb_ref_id[0][ID_WIDTH-1:0];
 		end
 		4'b0010	: begin
 			ptw_arb_ref_data_din[DATA_WIDTH-1:0] = twu_arb_ref_data_din[1][DATA_WIDTH-1:0];
 			ptw_arb_ref_tag_din[TAG_WIDTH-1:0] = twu_arb_ref_tag_din[1][TAG_WIDTH-1:0];
-			ptw_arb_ref_pgs[2:0] = twu_arb_ref_pgs[1][2:0];
-			ptw_arb_ref_type[2:0] = twu_arb_ref_type[1][2:0];
+			ptw_arb_ref_pgs[PGS_WIDTH-1:0] = twu_arb_ref_pgs[1][PGS_WIDTH-1:0];
+			ptw_arb_ref_type[TYPE_WIDTH-1:0] = twu_arb_ref_type[1][TYPE_WIDTH-1:0];
 			ptw_arb_ref_id[ID_WIDTH-1:0] = twu_arb_ref_id[1][ID_WIDTH-1:0];
 		end	
 		4'b0100	: begin
 			ptw_arb_ref_data_din[DATA_WIDTH-1:0] = twu_arb_ref_data_din[2][DATA_WIDTH-1:0];
 			ptw_arb_ref_tag_din[TAG_WIDTH-1:0] = twu_arb_ref_tag_din[2][TAG_WIDTH-1:0];
-			ptw_arb_ref_pgs[2:0] = twu_arb_ref_pgs[2][2:0];
-			ptw_arb_ref_type[2:0] = twu_arb_ref_type[2][2:0];
+			ptw_arb_ref_pgs[PGS_WIDTH-1:0] = twu_arb_ref_pgs[2][PGS_WIDTH-1:0];
+			ptw_arb_ref_type[TYPE_WIDTH-1:0] = twu_arb_ref_type[2][TYPE_WIDTH-1:0];
 			ptw_arb_ref_id[ID_WIDTH-1:0] = twu_arb_ref_id[2][ID_WIDTH-1:0];
 		end
 		4'b1000	: begin
 			ptw_arb_ref_data_din[DATA_WIDTH-1:0] = twu_arb_ref_data_din[3][DATA_WIDTH-1:0];
 			ptw_arb_ref_tag_din[TAG_WIDTH-1:0] = twu_arb_ref_tag_din[3][TAG_WIDTH-1:0];
-			ptw_arb_ref_pgs[2:0] = twu_arb_ref_pgs[3][2:0];
-			ptw_arb_ref_type[2:0] = twu_arb_ref_type[3][2:0];
+			ptw_arb_ref_pgs[PGS_WIDTH-1:0] = twu_arb_ref_pgs[3][PGS_WIDTH-1:0];
+			ptw_arb_ref_type[TYPE_WIDTH-1:0] = twu_arb_ref_type[3][TYPE_WIDTH-1:0];
 			ptw_arb_ref_id[ID_WIDTH-1:0] = twu_arb_ref_id[3][ID_WIDTH-1:0];
 		end
 		default	: begin
 			ptw_arb_ref_data_din[DATA_WIDTH-1:0] = {DATA_WIDTH{1'b0}};
 			ptw_arb_ref_tag_din[TAG_WIDTH-1:0] = {TAG_WIDTH{1'b0}};
-			ptw_arb_ref_pgs[2:0] = 3'b0;
-			ptw_arb_ref_type[2:0] = 3'b0;
+			ptw_arb_ref_pgs[PGS_WIDTH-1:0] = {PGS_WIDTH{1'b0}};
+			ptw_arb_ref_type[TYPE_WIDTH-1:0] = {TYPE_WIDTH{1'b0}};
 			ptw_arb_ref_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
 		end
 	endcase
 end
 
-//logic [2:0] ptw_l2tlb_ref_type;
+//logic [TYPE_WIDTH-1:0] ptw_l2tlb_ref_type;
 //logic [ID_WIDTH-1:0] ptw_l2tlb_ref_id;
 //logic                  ptw_rsp_cmplt_q;
 //logic                  ptw_rsp_data_vld_q;
 //logic                  ptw_rsp_pgflt_q;
 //logic                  ptw_rsp_acc_err_q;
-//logic [2:0]            ptw_rsp_type_q;
+//logic [TYPE_WIDTH-1:0] ptw_rsp_type_q;
 //logic [ID_WIDTH-1:0]   ptw_rsp_id_q;
 //logic [41:0]           ptw_rsp_data_q;
 //logic [47:0]           ptw_rsp_tag_q;
@@ -865,7 +1015,7 @@ end
 //logic                  ptw_lsu_req_dbg_q;
 //logic [39:0]           ptw_lsu_addr_dbg_q;
 //
-//assign ptw_l2tlb_ref_type[2:0] = ptw_arb_ref_type[2:0];
+//assign ptw_l2tlb_ref_type[TYPE_WIDTH-1:0] = ptw_arb_ref_type[TYPE_WIDTH-1:0];
 //assign ptw_l2tlb_ref_id[ID_WIDTH-1:0] = ptw_arb_ref_id[ID_WIDTH-1:0];
 //
 //// Publish a registered PTW response bundle so type/id/tag/data stay aligned
@@ -890,7 +1040,7 @@ end
 //		if(acc_err_grant) begin
 //			ptw_rsp_cmplt_q   <= 1'b1;
 //			ptw_rsp_acc_err_q <= 1'b1;
-//			ptw_rsp_type_q    <= ptw_l2tlb_acc_err_type[2:0];
+//			ptw_rsp_type_q    <= ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0];
 //			ptw_rsp_id_q      <= ptw_l2tlb_acc_err_id[ID_WIDTH-1:0];
 //			ptw_rsp_data_q    <= 42'b0;
 //			ptw_rsp_tag_q     <= 48'b0;
@@ -898,7 +1048,7 @@ end
 //		end else if(pgflt_grant) begin
 //			ptw_rsp_cmplt_q <= 1'b1;
 //			ptw_rsp_pgflt_q <= 1'b1;
-//			ptw_rsp_type_q  <= ptw_l2tlb_pgflt_type[2:0];
+//			ptw_rsp_type_q  <= ptw_l2tlb_pgflt_type[TYPE_WIDTH-1:0];
 //			ptw_rsp_id_q    <= ptw_l2tlb_pgflt_id[ID_WIDTH-1:0];
 //			ptw_rsp_data_q  <= 42'b0;
 //			ptw_rsp_tag_q   <= 48'b0;
@@ -906,7 +1056,7 @@ end
 //		end else if(arb_ptw_grant & (|refill_arb_grant[3:0]) & ref_grant) begin
 //			ptw_rsp_cmplt_q    <= 1'b1;
 //			ptw_rsp_data_vld_q <= 1'b1;
-//			ptw_rsp_type_q     <= ptw_l2tlb_ref_type[2:0];
+//			ptw_rsp_type_q     <= ptw_l2tlb_ref_type[TYPE_WIDTH-1:0];
 //			ptw_rsp_id_q       <= ptw_l2tlb_ref_id[ID_WIDTH-1:0];
 //			ptw_rsp_data_q     <= ptw_arb_ref_data_din[DATA_WIDTH-1:0];
 //			ptw_rsp_tag_q      <= ptw_arb_ref_tag_din[TAG_WIDTH-1:0];
@@ -916,34 +1066,34 @@ end
 //end
 //
 
-logic [2:0] ptw_l2tlb_ref_type;
-logic [ID_WIDTH-1:0] ptw_l2tlb_ref_id;
+logic [TYPE_WIDTH-1:0] ptw_l2tlb_ref_type;
+logic [ID_WIDTH-1:0]   ptw_l2tlb_ref_id  ;
 
-assign ptw_l2tlb_ref_type[2:0] = ptw_arb_ref_type[2:0];
+assign ptw_l2tlb_ref_type[TYPE_WIDTH-1:0] = ptw_arb_ref_type[TYPE_WIDTH-1:0];
 assign ptw_l2tlb_ref_id[ID_WIDTH-1:0] = ptw_arb_ref_id[ID_WIDTH-1:0];
 		
 always_comb begin
 	case({pgflt_grant,acc_err_grant,ref_grant})
 		3'b100 :begin
 				ptw_l2tlb_id[ID_WIDTH-1:0] = ptw_l2tlb_pgflt_id[ID_WIDTH-1:0];
-				ptw_l2tlb_type[2:0] = ptw_l2tlb_pgflt_type[2:0];
+				ptw_l2tlb_type[TYPE_WIDTH-1:0] = ptw_l2tlb_pgflt_type[TYPE_WIDTH-1:0];
 				end
 		3'b010 :begin
 				ptw_l2tlb_id[ID_WIDTH-1:0] = ptw_l2tlb_acc_err_id[ID_WIDTH-1:0];
-				ptw_l2tlb_type[2:0] = ptw_l2tlb_acc_err_type[2:0];
+				ptw_l2tlb_type[TYPE_WIDTH-1:0] = ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0];
 				end
 		3'b001 :begin
 				ptw_l2tlb_id[ID_WIDTH-1:0] = ptw_l2tlb_ref_id[ID_WIDTH-1:0];
-				ptw_l2tlb_type[2:0] = ptw_l2tlb_ref_type[2:0];
+				ptw_l2tlb_type[TYPE_WIDTH-1:0] = ptw_l2tlb_ref_type[TYPE_WIDTH-1:0];
 				end
 		default:begin
 				ptw_l2tlb_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
-				ptw_l2tlb_type[2:0] = 3'b0;
+				ptw_l2tlb_type[TYPE_WIDTH-1:0] = {TYPE_WIDTH{1'b0}};
 				end
 	endcase
 end
 
-assign ptw_l2tlb_flg = ptw_arb_ref_data_din[13:0];
+assign ptw_l2tlb_flg = ptw_arb_ref_data_din[FLG_WIDTH-1:0];
 assign ptw_l1tlb_id = ptw_l2tlb_id;
 
 assign ptw_l2tlb_ref_data_vld = arb_ptw_grant;
@@ -953,28 +1103,28 @@ assign ptw_l2tlb_ref_acc_err = acc_err_grant;
 assign ptw_l2tlb_cmplt = ptw_l2tlb_ref_data_vld | ptw_l2tlb_ref_pgflt | ptw_l2tlb_ref_acc_err;
 
 //to l1tlb
-assign ptw_l1dtlb_ref_pa_vld = arb_ptw_grant & (ptw_arb_ref_type[2:0] == 3'b010 | ptw_arb_ref_type[2:0] == 3'b110);
-assign ptw_l1dtlb_cmplt = ptw_l2tlb_cmplt & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110);
+assign ptw_l1dtlb_ref_pa_vld = arb_ptw_grant & (ptw_arb_ref_type[TYPE_WIDTH-1:0] == 3'b010 | ptw_arb_ref_type[TYPE_WIDTH-1:0] == 3'b110);
+assign ptw_l1dtlb_cmplt = ptw_l2tlb_cmplt & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b010 | ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b110);
 assign ptw_l1dtlb_ref_vpn = ptw_arb_ref_tag_din[46:20];
 assign ptw_l1dtlb_ref_pgs = ptw_arb_ref_pgs[2:0];
 assign ptw_l1dtlb_ref_ppn = ptw_arb_ref_data_din[41:14];
-assign ptw_l1dtlb_ref_flg = ptw_arb_ref_data_din[13:0];
-assign ptw_l1dtlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110);
-assign ptw_l1dtlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110);
+assign ptw_l1dtlb_ref_flg = ptw_arb_ref_data_din[FLG_WIDTH-1:0];
+assign ptw_l1dtlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b010 | ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b110);
+assign ptw_l1dtlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b010 | ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b110);
 
-assign ptw_l1itlb_ref_pa_vld = arb_ptw_grant & (ptw_l2tlb_type[2:0] == 3'b011);
-assign ptw_l1itlb_cmplt = ptw_l2tlb_cmplt & (ptw_l2tlb_type[2:0] == 3'b011);
+assign ptw_l1itlb_ref_pa_vld = arb_ptw_grant & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011);
+assign ptw_l1itlb_cmplt = ptw_l2tlb_cmplt & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011);
 assign ptw_l1itlb_ref_vpn = ptw_arb_ref_tag_din[46:20];
 assign ptw_l1itlb_ref_pgs = ptw_arb_ref_pgs[2:0];
 assign ptw_l1itlb_ref_ppn = ptw_arb_ref_data_din[41:14];
-assign ptw_l1itlb_ref_flg = ptw_arb_ref_data_din[13:0];
-assign ptw_l1itlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[2:0] == 3'b011);
-assign ptw_l1itlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[2:0] == 3'b011);
+assign ptw_l1itlb_ref_flg = ptw_arb_ref_data_din[FLG_WIDTH-1:0];
+assign ptw_l1itlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011);
+assign ptw_l1itlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011);
 
 
 assign ptw_arb_vpn[VPN_WIDTH-1:0] = ptw_arb_ref_tag_din[46:20];
 
-assign l2tlb_miss_cnt = ptw_l2tlb_ref_data_vld & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110 | ptw_l2tlb_type[2:0] == 3'b011 ) & hpcp_mmu_cnt_en;
+assign l2tlb_miss_cnt = ptw_l2tlb_ref_data_vld & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b010 | ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b110 | ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011 ) & hpcp_mmu_cnt_en;
 
 always_ff@(posedge ptw_clk or negedge cpurst_b) begin
 	if(!cpurst_b)
@@ -988,8 +1138,8 @@ end
 assign mmu_hpcp_jtlb_miss = l2tlb_miss;
 
 
-logic ptw_lsu_req_dbg_q;
-logic [39:0] ptw_lsu_addr_dbg_q;
+logic                   ptw_lsu_req_dbg_q ;
+logic [PADDR_WIDTH-1:0] ptw_lsu_addr_dbg_q;
 
 // PTW->LSU request trace for run_check log parsing.
 // Emit once per new request (req rising edge or address change while req high).
@@ -1068,7 +1218,7 @@ end
 // synopsys translate_on
 
 //assign ptw_l2tlb_id = ptw_rsp_id_q;
-//assign ptw_l2tlb_type[2:0] = ptw_rsp_type_q[2:0];
+//assign ptw_l2tlb_type[TYPE_WIDTH-1:0] = ptw_rsp_type_q[TYPE_WIDTH-1:0];
 //assign ptw_l2tlb_flg = ptw_rsp_data_q[13:0];
 //assign ptw_l1tlb_id = ptw_rsp_id_q;
 
@@ -1080,17 +1230,17 @@ end
 //
 ////to l1tlb
 //assign ptw_l1dtlb_ref_pa_vld = ptw_rsp_data_vld_q
-//                            & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//                            & (ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b010 | ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b110);
 //assign ptw_l1dtlb_cmplt = ptw_rsp_cmplt_q
-//                       & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//                       & (ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b010 | ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b110);
 //assign ptw_l1dtlb_ref_vpn = ptw_rsp_tag_q[46:20];
 //assign ptw_l1dtlb_ref_pgs = ptw_rsp_pgs_q[2:0];
 //assign ptw_l1dtlb_ref_ppn = ptw_rsp_data_q[41:14];
 //assign ptw_l1dtlb_ref_flg = ptw_rsp_data_q[13:0];
 //assign ptw_l1dtlb_ref_acc_err = ptw_rsp_acc_err_q
-//                             & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//                             & (ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b010 | ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b110);
 //assign ptw_l1dtlb_pgflt  = ptw_rsp_pgflt_q
-//                        & (ptw_rsp_type_q[2:0] == 3'b010 | ptw_rsp_type_q[2:0] == 3'b110);
+//                        & (ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b010 | ptw_rsp_type_q[TYPE_WIDTH-1:0] == 3'b110);
 //
 //assign ptw_l1itlb_ref_pa_vld = ptw_rsp_data_vld_q & (ptw_rsp_type_q[2:0] == 3'b011);
 //assign ptw_l1itlb_cmplt = ptw_rsp_cmplt_q & (ptw_rsp_type_q[2:0] == 3'b011);
@@ -1104,7 +1254,7 @@ end
 //
 //assign ptw_arb_vpn[VPN_WIDTH-1:0] = ptw_arb_ref_tag_din[46:20];
 //
-//assign l2tlb_miss_cnt = ptw_l2tlb_ref_data_vld & (ptw_l2tlb_type[2:0] == 3'b010 | ptw_l2tlb_type[2:0] == 3'b110 | ptw_l2tlb_type[2:0] == 3'b011 ) & hpcp_mmu_cnt_en;
+//assign l2tlb_miss_cnt = ptw_l2tlb_ref_data_vld & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b010 | ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b110 | ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011 ) & hpcp_mmu_cnt_en;
 //
 //always_ff@(posedge ptw_clk or negedge cpurst_b) begin
 //	if(!cpurst_b)

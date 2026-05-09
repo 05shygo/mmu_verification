@@ -91,15 +91,15 @@ name.
 | L1DTLB_SVA_A059 | implemented | hit_rd `a_tlb_hit_not_expt_hit_same_req`. |
 | L1DTLB_SVA_A060 | partial | top flush side-effect guard, expt CAM flush guard, mb_entry race assertions. |
 | L1DTLB_SVA_A061 | implemented | top `a_regs_utlb_clr_clears_entries`, `a_tlboper_utlb_clr_clears_entries`. |
-| L1DTLB_SVA_A062 | planned | Needs per-entry VPN probe or targeted local bind to prove low-8 VA invalidation precisely. |
+| L1DTLB_SVA_A062 | implemented | `mmu_dut_probes_if.sv` exposes per-entry VPN and `mmu_l1dtlb_sva.sv` checks low-8 VA invalidate clears matching valid entries while preserving nonmatching entries. |
 | L1DTLB_SVA_A063 | partial | Directed invalidate-hit scenario and entry clear assertions; no exact same-cycle old-hit boundary SVA. |
-| L1DTLB_SVA_A064 | planned | Needs selected-entry conflict probe for invalidate+install same-entry priority. |
+| L1DTLB_SVA_A064 | implemented | `a_clear_wins_install_same_entry` checks clear-over-install priority for the selected entry; C020 cover/SB counters record invalidate or full-clear overlap with install. |
 | L1DTLB_SVA_A065 | implemented | mb_entry WFG/WFC/WFI flush race assertions. |
 | L1DTLB_SVA_A066 | implemented | top/install PLRU onehot/update assertions. |
 | L1DTLB_SVA_A067 | partial | Translation SB, spec SB, and SVA cover most observable boundaries; no single monolithic SVA. |
 | L1DTLB_SVA_A068 | implemented | top/hit_rd single-hit assertions. |
 | L1DTLB_SVA_A069 | partial | access-fault payload known; full T1 PMP ownership is scoreboard. |
-| L1DTLB_SVA_A070 | partial | abort/CAM/full/flush negative side effects checked; no-response reason annotation still planned. |
+| L1DTLB_SVA_A070 | partial | abort/CAM/full/flush negative side effects checked; spec SB now records MB-CAM, abort and flush legal no-response counters, with full reason taxonomy still partial. |
 | L1DTLB_SVA_A071 | implemented | `a_hpc_miss_only_on_real_miss`, miss cover. |
 
 ## 3.9 Cover Property Matrix
@@ -111,7 +111,7 @@ name.
 | L1DTLB_SVA_C003 | implemented | `cp_l1dtlb_c003_hit_miss`. |
 | L1DTLB_SVA_C004 | implemented | top/allocator same-VPN dedup covers. |
 | L1DTLB_SVA_C005 | implemented | allocator dual-diff two-free cover. |
-| L1DTLB_SVA_C006 | partial | allocator one-free cover; pipe0 older/pipe1 older split not yet covered. |
+| L1DTLB_SVA_C006 | partial | allocator one-free cover now includes port0-wins and port1-wins split; exact wraparound IID-age oracle remains RTL-local/formal. |
 | L1DTLB_SVA_C007 | implemented | MB full cover plus scoreboard counter. |
 | L1DTLB_SVA_C008 | partial | hit-under-miss and wakeup covers exist; exception wakeup covered in expt CAM. |
 | L1DTLB_SVA_C009 | partial | abort cover exists; hit/miss/expt-hit sub-bins not split. |
@@ -123,14 +123,14 @@ name.
 | L1DTLB_SVA_C015 | implemented | WFI install/hold/priority covers. |
 | L1DTLB_SVA_C016 | implemented | fault write and dual fault write covers. |
 | L1DTLB_SVA_C017 | implemented | stale/ABT refill cover. |
-| L1DTLB_SVA_C018 | partial | install release cover; same-cycle/next-cycle visibility split planned. |
+| L1DTLB_SVA_C018 | partial | install release cover plus `DTLB_INSTALL_VISIBILITY_001` and spec-SB `install_visible_next` gate cover next-cycle visibility; exact same-cycle negative boundary remains cover/SVA-owned. |
 | L1DTLB_SVA_C019 | implemented | expt page/access replay covers and fault-hold assertion. |
-| L1DTLB_SVA_C020 | partial | clear/flush/race covers exist; low-8 VA and install conflict split planned. |
+| L1DTLB_SVA_C020 | partial | clear/flush/race covers now include low-8 VA alias clear and clear/install overlap bins; full flush-race closure still depends on regression cover results. |
 | L1DTLB_SVA_C021 | implemented | T1/T0 overlap cover. |
 | L1DTLB_SVA_C022 | implemented | 4K/2M/1G refill page-size covers. |
 | L1DTLB_SVA_C023 | implemented | multi-hit diagnostic cover. |
 | L1DTLB_SVA_C024 | implemented | PLRU refill cover plus onehot assertions. |
-| L1DTLB_SVA_C025 | partial | HPC/miss/wakeup/whitebox events covered separately; no-response reason bins planned. |
+| L1DTLB_SVA_C025 | partial | HPC/miss/wakeup/whitebox events covered separately; spec SB now records legal no-response counters for MB CAM, abort and flush classes, with complete reason bins still partial. |
 | L1DTLB_SVA_C026 | partial | vabuf change cover exists; equivalence proof remains formal/scoreboard. |
 | L1DTLB_SVA_C027 | implemented | phase9 retarget code and wrapper suite count; not a DUT SVA. |
 
@@ -183,7 +183,7 @@ name.
 | L1DTLB_TS_INSTALL_ARB_WFI_PTW_L2 | implemented | install priority assertions and cover. |
 | L1DTLB_TS_INSTALL_MULTI_WFI_LOWEST | implemented | lowest-WFI install assertion. |
 | L1DTLB_TS_INSTALL_WFI_DATA_HOLD | implemented | WFI data stable and install payload match assertions. |
-| L1DTLB_TS_INSTALL_VISIBILITY_RELEASE | partial | install release cover; next-cycle visibility split pending. |
+| L1DTLB_TS_INSTALL_VISIBILITY_RELEASE | partial | `DTLB_INSTALL_VISIBILITY_001` dispatches a dedicated refill/retry scenario and spec SB gates on observed next-cycle install visibility; exact same-cycle negative split remains cover-focused. |
 | L1DTLB_TS_EXPT_FAULT_REFILL_WRITE | partial | expt write assertions; no-TLB-write under all mixed collisions partial. |
 | L1DTLB_TS_EXPT_DUAL_FAULT_WRITE | implemented | dual fault write cover and same-eid negative assertion. |
 | L1DTLB_TS_EXPT_REPLAY_CONSUME | partial | expt consume/wakeup assertions; MB release exactness partial. |
@@ -192,14 +192,14 @@ name.
 | L1DTLB_TS_EXPT_ACCESS_FAULT_SOURCE_PARITY | partial | L2 page-only assertion; PTW/PMP source parity still partial. |
 | L1DTLB_TS_INV_TLBOPER_CLR | implemented | top clear entry assertion. |
 | L1DTLB_TS_INV_REGS_CLR | implemented | top regs clear entry assertion. |
-| L1DTLB_TS_INV_VA8_ALIAS | planned | Needs per-entry VPN probe/bind assertion. |
+| L1DTLB_TS_INV_VA8_ALIAS | implemented | `DTLB_INV_VA8_alias_001` fills same-low-8 VPN aliases; per-entry VPN probes, SVA and spec-SB counters check conservative alias clear. |
 | L1DTLB_TS_INV_HIT_SAME_CYCLE | partial | directed wrapper/scenario; no exact boundary assertion. |
-| L1DTLB_TS_INV_INSTALL_SAME_ENTRY | planned | Needs selected-entry conflict probe/assertion. |
+| L1DTLB_TS_INV_INSTALL_SAME_ENTRY | implemented | `DTLB_INV_INSTALL_SAME_ENTRY_001` drives clear/install overlap; SVA checks selected-entry clear priority and spec SB gates on the overlap counter. |
 | L1DTLB_TS_FLUSH_RTU_CLEAR_SCOPE | partial | flush side-effect guards and MB/expt CAM flush assertions. |
 | L1DTLB_TS_FLUSH_MB_RACE_MATRIX | implemented | mb_entry race assertions and cover. |
 | L1DTLB_TS_PLRU_WHITEBOX_ONLY | implemented | PLRU onehot/update assertions and cover. |
 | L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY | partial | translation SB + spec SB + SVA; no-response reason taxonomy pending. |
-| L1DTLB_TS_OBS_LEGAL_NO_RESPONSE | partial | abort/CAM/full/flush negative checks; monitor reason annotation pending. |
+| L1DTLB_TS_OBS_LEGAL_NO_RESPONSE | partial | abort/CAM/full/flush negative checks plus spec-SB legal-no-response counters exist; transaction-level reason annotation remains pending. |
 | L1DTLB_TS_OBS_HPC_MISS_EVENT | implemented | HPC miss event assertion and cover. |
 | L1DTLB_TS_OBS_WRAPPER_RETARGET | implemented | phase9 retarget and 71 wrapper suite. |
 | L1DTLB_TS_OBS_SVA_COVER_CLOSURE | partial | C-cover points expanded; closure requires regression results. |

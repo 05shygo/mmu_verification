@@ -23,6 +23,7 @@ module mmu_l1dtlb_sva #(
     input logic rtu_yy_xx_flush,
     input logic tlboper_utlb_clr,
     input logic tlboper_utlb_inv_va_req,
+    input logic [VPN_WIDTH-1:0] lsu_mmu_tlb_va,
 
     input logic lsu_mmu_va0_vld,
     input logic [63:0] lsu_mmu_va0,
@@ -62,6 +63,7 @@ module mmu_l1dtlb_sva #(
     input logic [MB_DEPTH-1:0]                 mb_entry_store,
 
     input logic [NUM_ENTRY-1:0]                entry_vld,
+    input logic [NUM_ENTRY-1:0][VPN_WIDTH-1:0] l1dtlb_ent_vpn,
     input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,
     input logic [NUM_ENTRY-1:0][2:0]           l1dtlb_ent_pgs,
     input logic [NUM_ENTRY-1:0]                entry_hit0,
@@ -147,6 +149,13 @@ module mmu_l1dtlb_sva #(
 
   function automatic bit legal_pgs(input logic [2:0] pgs);
     legal_pgs = (pgs == 3'b001) || (pgs == 3'b010) || (pgs == 3'b100);
+  endfunction
+
+  function automatic logic [NUM_ENTRY-1:0] va8_match_vec(input logic [7:0] vpn8);
+    va8_match_vec = '0;
+    for (int i = 0; i < NUM_ENTRY; i++) begin
+      va8_match_vec[i] = (l1dtlb_ent_vpn[i][7:0] == vpn8);
+    end
   endfunction
 
   // A001/A061: reset and full-entry clear visible state.
@@ -238,8 +247,32 @@ module mmu_l1dtlb_sva #(
     for (ent_i = 0; ent_i < NUM_ENTRY; ent_i++) begin : gen_l1dtlb_entry_sva
       a_valid_entry_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
         entry_vld[ent_i] |-> (!$isunknown(entry_ppn[ent_i])
+                           && !$isunknown(l1dtlb_ent_vpn[ent_i])
                            && !$isunknown(l1dtlb_ent_pgs[ent_i])
                            && legal_pgs(l1dtlb_ent_pgs[ent_i])));
+
+      a_va8_inv_clears_matching_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+        (tlboper_utlb_inv_va_req
+         && entry_vld[ent_i]
+         && (l1dtlb_ent_vpn[ent_i][7:0] == lsu_mmu_tlb_va[7:0]))
+        |=> !entry_vld[ent_i]);
+
+      a_va8_inv_preserves_nonmatching_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+        (tlboper_utlb_inv_va_req
+         && entry_vld[ent_i]
+         && (l1dtlb_ent_vpn[ent_i][7:0] != lsu_mmu_tlb_va[7:0])
+         && !regs_utlb_clr
+         && !tlboper_utlb_clr
+         && !entry_upd[ent_i])
+        |=> entry_vld[ent_i]);
+
+      a_clear_wins_install_same_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+        (((regs_utlb_clr || tlboper_utlb_clr)
+          || (tlboper_utlb_inv_va_req
+              && entry_vld[ent_i]
+              && (l1dtlb_ent_vpn[ent_i][7:0] == lsu_mmu_tlb_va[7:0])))
+         && entry_upd[ent_i])
+        |=> !entry_vld[ent_i]);
     end
   endgenerate
 
@@ -386,6 +419,16 @@ module mmu_l1dtlb_sva #(
   cp_l1dtlb_c020_clear: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     regs_utlb_clr || tlboper_utlb_clr || tlboper_utlb_inv_va_req || rtu_yy_xx_flush);
 
+  cp_l1dtlb_c020_va8_alias_clear: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    tlboper_utlb_inv_va_req
+    && (|entry_vld)
+    && (|({16{1'b1}} & entry_vld & va8_match_vec(lsu_mmu_tlb_va[7:0]))));
+
+  cp_l1dtlb_c020_inv_install_same_entry: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (|entry_upd)
+    && ((tlboper_utlb_inv_va_req && (|(entry_upd & entry_vld & va8_match_vec(lsu_mmu_tlb_va[7:0]))))
+        || regs_utlb_clr || tlboper_utlb_clr));
+
   cp_l1dtlb_c021_t1_t0_overlap: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     (mmu_lsu_access_fault0 && (mmu_lsu_pa0_vld || mmu_lsu_page_fault0))
     || (mmu_lsu_access_fault1 && (mmu_lsu_pa1_vld || mmu_lsu_page_fault1)));
@@ -470,6 +513,14 @@ module mmu_l1dtlb_allocator_sva #(
 
   cp_l1dtlb_c006_dual_diff_one_free: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     req0_vld && req1_vld && (req0_vpn != req1_vpn) && (free_count(mb_vld) == 1));
+
+  cp_l1dtlb_c006_one_free_port0_wins: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    req0_vld && req1_vld && (req0_vpn != req1_vpn) && (free_count(mb_vld) == 1)
+    && gnt0 && !gnt1);
+
+  cp_l1dtlb_c006_one_free_port1_wins: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    req0_vld && req1_vld && (req0_vpn != req1_vpn) && (free_count(mb_vld) == 1)
+    && !gnt0 && gnt1);
 
 endmodule
 

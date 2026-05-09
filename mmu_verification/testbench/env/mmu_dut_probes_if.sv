@@ -20,6 +20,7 @@ interface mmu_dut_probes_if (
   wire [7:0]   l1d_mb_vld;       // MB_DEPTH=8
   wire [2:0]   l1d_mb_st0;       // mb_entry_state[0]
   wire [15:0]  l1d_entry_vld;
+  wire [15:0][26:0] l1d_entry_vpn;
   wire [7:0][2:0]  l1d_mb_state;
   wire [7:0][26:0] l1d_mb_vpn;
   wire [7:0][6:0]  l1d_mb_iid;
@@ -36,6 +37,7 @@ interface mmu_dut_probes_if (
   wire         l1d_p0_addr_hit;
   wire         l1d_p0_hit_vld;
   wire         l1d_p0_miss_vld;
+  wire         l1d_p0_mb_hit;
   wire         l1d_p0_pre_sel;
   wire         l1d_p0_expt_match;
   wire [27:0]  l1d_p0_entry_pa;
@@ -45,6 +47,7 @@ interface mmu_dut_probes_if (
   wire         l1d_p1_addr_hit;
   wire         l1d_p1_hit_vld;
   wire         l1d_p1_miss_vld;
+  wire         l1d_p1_mb_hit;
   wire         l1d_p1_pre_sel;
   wire         l1d_p1_expt_match;
   wire [27:0]  l1d_p1_entry_pa;
@@ -191,19 +194,20 @@ interface mmu_dut_probes_if (
   wire         rtu_yy_xx_flush;
   wire         tlboper_utlb_clr;
   wire         tlboper_utlb_inv_va_req;
+  wire [26:0]  tlboper_utlb_inv_va;
 
   // Monitor clocking
   clocking mon_cb @(posedge clk_i);
     default input #1step;
     input l1i_entry_vld, l1i_ref_fsm, l1i_credit_cnt;
     input l1d_mb_vld, l1d_mb_st0;
-    input l1d_entry_vld, l1d_mb_state, l1d_mb_vpn, l1d_mb_iid;
+    input l1d_entry_vld, l1d_entry_vpn, l1d_mb_state, l1d_mb_vpn, l1d_mb_iid;
     input l1d_mb_ready, l1d_mb_wfc, l1d_mb_wfi, l1d_mb_store;
     input l1d_sched_credit_cnt, l1d_l2_req_vld, l1d_l2_req_vpn;
     input l1d_l2_req_eid, l1d_l2_req_is_load;
-    input l1d_p0_req_vpn, l1d_p0_addr_hit, l1d_p0_hit_vld, l1d_p0_miss_vld;
+    input l1d_p0_req_vpn, l1d_p0_addr_hit, l1d_p0_hit_vld, l1d_p0_miss_vld, l1d_p0_mb_hit;
     input l1d_p0_pre_sel, l1d_p0_expt_match, l1d_p0_entry_pa, l1d_p0_off_pa, l1d_p0_fin_pa;
-    input l1d_p1_req_vpn, l1d_p1_addr_hit, l1d_p1_hit_vld, l1d_p1_miss_vld;
+    input l1d_p1_req_vpn, l1d_p1_addr_hit, l1d_p1_hit_vld, l1d_p1_miss_vld, l1d_p1_mb_hit;
     input l1d_p1_pre_sel, l1d_p1_expt_match, l1d_p1_entry_pa, l1d_p1_off_pa, l1d_p1_fin_pa;
     input l1d_refill_vld, l1d_refill_src, l1d_refill_idx, l1d_refill_vpn, l1d_refill_ppn;
     input l1d_refill_pgs, l1d_entry_upd, l1d_refill_iid0, l1d_refill_iid1, l1d_refill_iid_sel;
@@ -241,6 +245,7 @@ interface mmu_dut_probes_if (
     input p13_twu_crs2_1g_vec, p13_twu_crs2_2m_vec, p13_twu_crs2_chk_vec;
     input p13_csr_refill_req_vec, p13_csr_refill_pgs_vec, p13_csr_refill_data_vec;
     input tlbiva_cur_st, rtu_yy_xx_flush, tlboper_utlb_clr, tlboper_utlb_inv_va_req;
+    input tlboper_utlb_inv_va;
   endclocking
 
 endinterface : mmu_dut_probes_if

@@ -471,9 +471,15 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif.driver_cb.lsu_mmu_abort1 <= 1'b0;
   endtask
 
-  protected task raw_inv(lsu_inv_kind_e kind, va_t va = 39'h0, asid_t asid = 16'h0);
+  protected task raw_inv_pulse(
+    lsu_inv_kind_e kind,
+    va_t va = 39'h0,
+    asid_t asid = 16'h0,
+    bit wait_done = 1'b1,
+    bit wait_not_busy = 1'b1
+  );
     raw_idle();
-    if (m_lsu_vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)
+    if (wait_not_busy && (m_lsu_vif.driver_cb.mmu_lsu_tlb_busy === 1'b1))
       @(m_lsu_vif.driver_cb iff m_lsu_vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_tlb_va <= va[38:12];
@@ -489,17 +495,23 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif.driver_cb.lsu_mmu_tlb_va_all_inv <= 1'b0;
     m_lsu_vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
     m_lsu_vif.driver_cb.lsu_mmu_tlb_va_asid_inv <= 1'b0;
-    fork
-      begin
-        @(m_lsu_vif.driver_cb iff m_lsu_vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
-      end
-      begin
-        repeat (1024) @(m_lsu_vif.driver_cb);
-        `uvm_warning(get_type_name(), "raw_inv timed out waiting for mmu_lsu_tlb_inv_done")
-      end
-    join_any
-    disable fork;
+    if (wait_done) begin
+      fork
+        begin
+          @(m_lsu_vif.driver_cb iff m_lsu_vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
+        end
+        begin
+          repeat (1024) @(m_lsu_vif.driver_cb);
+          `uvm_warning(get_type_name(), "raw_inv timed out waiting for mmu_lsu_tlb_inv_done")
+        end
+      join_any
+      disable fork;
+    end
     wait_lsu_cycles(2);
+  endtask
+
+  protected task raw_inv(lsu_inv_kind_e kind, va_t va = 39'h0, asid_t asid = 16'h0);
+    raw_inv_pulse(kind, va, asid, 1'b1, 1'b1);
   endtask
 
   protected task raw_stamo(bit [27:0] pa);
@@ -649,6 +661,35 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     fill_page(1);
   endtask
 
+  protected task scenario_inv_va8_alias();
+    do_bringup(320, 39'h10_0000);
+    fill_page(0);
+    fill_page(256);
+    fill_page(1);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_va8_alias_prefill", 524288, 8);
+    raw_inv(INV_VA_ALL, va_page(0), m_asid);
+    raw_pipe0(va_page(0), 7'd12);
+    wait_lsu_cycles(24);
+    raw_pipe0(va_page(256), 7'd13);
+    wait_lsu_cycles(24);
+    raw_pipe0(va_page(1), 7'd14);
+    wait_lsu_cycles(40);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_va8_alias_done", 524288, 8);
+  endtask
+
+  protected task scenario_inv_install_same_entry();
+    do_bringup(96, 39'h10_0000);
+    configure_ptw_delay(24, 48);
+    fill_page(2);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_install_seed", 524288, 8);
+    raw_pipe0(va_page(44), 7'd15);
+    wait_lsu_cycles(3);
+    raw_inv_pulse(INV_ALL, 39'h0, m_asid, 1'b0, 1'b0);
+    wait_lsu_cycles(260);
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_install_done", 524288, 16);
+  endtask
+
   protected task scenario_credit();
     do_bringup(96, 39'h10_0000);
     configure_ptw_delay(32, 96);
@@ -674,6 +715,22 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_sched", 524288, 16);
   endtask
 
+  protected task scenario_alloc_race();
+    do_bringup(128, 39'h10_0000);
+    configure_ptw_delay(56, 96);
+    for (int unsigned i = 0; i < 7; i++) begin
+      bit [6:0] iid;
+      iid = i + 1;
+      raw_pipe0(va_page(i + 60), iid);
+      wait_lsu_cycles(1);
+    end
+    wait_lsu_cycles(8);
+    raw_pipe01(va_page(80), va_page(81), 7'd2, 7'd9, 1'b0, 1'b1);
+    wait_lsu_cycles(220);
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_alloc_race", 524288, 16);
+  endtask
+
   protected task scenario_refill();
     do_bringup(96, 39'h10_0000);
     configure_ptw_delay(6, 16);
@@ -684,6 +741,17 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     fill_page(44);
     fill_page(45);
     configure_ptw_delay(1, 4);
+  endtask
+
+  protected task scenario_install_visibility();
+    do_bringup(96, 39'h10_0000);
+    configure_ptw_delay(8, 18);
+    raw_pipe0(va_page(44), 7'd4);
+    wait_lsu_cycles(140);
+    raw_pipe0(va_page(44), 7'd4);
+    wait_lsu_cycles(40);
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_install_visibility", 524288, 16);
   endtask
 
   protected task scenario_fault_refill();
@@ -829,10 +897,27 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_BUSY_WAKEUP:      scenario_busy_wakeup();
       L1DTLB_SCN_ABORT:            scenario_abort();
       L1DTLB_SCN_PERMISSION:       scenario_permission();
-      L1DTLB_SCN_INVALIDATE:       scenario_invalidate();
+      L1DTLB_SCN_INVALIDATE: begin
+        if (tc_id == "DTLB_INV_VA8_alias_001")
+          scenario_inv_va8_alias();
+        else if (tc_id == "DTLB_INV_INSTALL_SAME_ENTRY_001")
+          scenario_inv_install_same_entry();
+        else
+          scenario_invalidate();
+      end
       L1DTLB_SCN_CREDIT:           scenario_credit();
-      L1DTLB_SCN_SCHED:            scenario_sched();
-      L1DTLB_SCN_REFILL:           scenario_refill();
+      L1DTLB_SCN_SCHED: begin
+        if (tc_id == "DTLB_ALLOC_RACE_001")
+          scenario_alloc_race();
+        else
+          scenario_sched();
+      end
+      L1DTLB_SCN_REFILL: begin
+        if (tc_id == "DTLB_INSTALL_VISIBILITY_001")
+          scenario_install_visibility();
+        else
+          scenario_refill();
+      end
       L1DTLB_SCN_FAULT_REFILL:     scenario_fault_refill();
       L1DTLB_SCN_HUGE:             scenario_huge();
       L1DTLB_SCN_STAMO:            scenario_stamo();

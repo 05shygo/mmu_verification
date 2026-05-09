@@ -1012,3 +1012,181 @@
         | L1DTLB_TS_OBS_HPC_MISS_EVENT | AUD-063 | miss统计/HPC事件守护 | hit、direct map、STAMO bypass、exception replay、abort miss、真实TLB/expt miss | miss/HPC事件不在非真实miss路径误拉高；真实进入miss处理时允许1-cycle事件 | add cover/check in observability or perf wrapper | `mmu_hpcp_dutlb_miss`等事件级采样 |
         | L1DTLB_TS_OBS_WRAPPER_RETARGET | AUD-044 | 共享generic vseq retarget闭环 | 原先只映射到`mmu_ptw_thrash_vseq`或`mmu_concurrent_3pipe_vseq`的wrapper进入回归 | wrapper必须被retarget为L1DTLB-directed stimulus，或明确标记为traceability shell，不能声称已完全覆盖directed requirement | `test_mmu_l1dtlb_dtlb_ref_model_observability_001` plus regression checklist | regression report标明directed/traceability shell状态 |
         | L1DTLB_TS_OBS_SVA_COVER_CLOSURE | AUD-001..AUD-064 | SVA cover closure | 跑包含所有L1DTLB directed wrappers的regression | 3.9 cover矩阵C001-C027应能证明关键场景被采样；未命中的cover反向生成directed test缺口 | all `l1dtlb_tests_suite.svh` wrappers | cover property report和AUD/Scenario traceability矩阵 |
+
+#### 3.10.9 Current UVM Implementation Landing Status
+        | Item | Implementation |
+        | --- | --- |
+        | `L1DTLB_SVA_A062` / `L1DTLB_TS_INV_VA8_ALIAS` | Implemented by per-entry VPN probe `l1d_entry_vpn`, `a_va8_inv_clears_matching_entry`, `a_va8_inv_preserves_nonmatching_entry`, `cp_l1dtlb_c020_va8_alias_clear`, `DTLB_INV_VA8_alias_001`, and the spec-SB `va8_inv` gate. |
+        | `L1DTLB_SVA_A064` / `L1DTLB_TS_INV_INSTALL_SAME_ENTRY` | Implemented by `a_clear_wins_install_same_entry`, `cp_l1dtlb_c020_inv_install_same_entry`, `DTLB_INV_INSTALL_SAME_ENTRY_001`, and the spec-SB clear/install-overlap gate. |
+        | `L1DTLB_SVA_C006` / `DTLB_ALLOC_RACE_001` | Strengthened with one-free port0-wins and port1-wins allocator covers plus a dedicated alloc-race vseq dispatch; exact circular IID-age proof remains formal/RTL-local. |
+        | `L1DTLB_SVA_C018` / `DTLB_INSTALL_VISIBILITY_001` | Strengthened with a dedicated install-visibility vseq dispatch and spec-SB `install_visible_next` event gate. |
+        | `L1DTLB_TS_OBS_LEGAL_NO_RESPONSE` | Strengthened with MB-CAM, abort and flush legal-no-response counters in `mmu_l1dtlb_spec_sb.svh`; full transaction-level reason annotation remains future work. |
+
+### 3.11 L1DTLB Reference Model和Scoreboard实现需求
+        本节把第1章功能描述、第2章Q&A澄清和第3章audit/test scenario整理成UVM实现层面的文字需求，用于后续审核或补充`mmu_ref_model.svh`、`mmu_translation_sb.svh`、`mmu_credit_sb.svh`、`mmu_l1dtlb_spec_sb.svh`、`mmu_dut_probes_if.sv`、LSU/L2TLB/PTW/PMP/sysmap monitor以及相关covergroup/SVA。
+        本节不是要求把所有RTL内部细节都做成主scoreboard的pass/fail oracle。主原则是：凡是由spec和外部接口能够推导的architectural或micro-architectural可见行为，必须进入reference model或scoreboard；凡是当前spec明确作为黑盒的行为，尤其是PLRU exact victim，只能进入white-box assertion/coverage/debug，不得作为主translation correctness的失败依据。
+
+#### 3.11.1 总体分工
+        L1DTLB reference model负责维护“按spec可推导的L1DTLB状态”和预测下一拍/当前拍应出现的可见结果。它至少需要包含TLB entry shadow、miss buffer shadow、exception array shadow、credit shadow、per-pipe T0/T1流水token、direct-map/sysmap/PMP相关输入镜像，以及reset/flush/invalidate对这些状态的影响。
+
+        L1DTLB scoreboard负责把reference model的期望和DUT采样结果比较。比较对象分为三类：
+            1. 逐pipe逐拍精确比较：pa_vld、PA、属性、page_fault、access_fault、L1DTLB->L2TLB request valid/VPN/type/eid、credit、busy、TLB entry valid清理后的可见命中结果。
+            2. 事件级比较：wakeup广播、miss/HPC事件、合法无响应请求的生命周期、directed scenario是否真正触发目标场景。
+            3. white-box辅助检查：MB FSM派生信号、exception array写入id、install source、PLRU victim onehot、entry_upd onehot等。这些可以帮助定位问题，但只有已经写入spec且不属于黑盒的部分才能升级为主pass/fail。
+
+        现有UVM组件的建议职责划分如下：
+            `mmu_ref_model.svh`继续负责页表级Sv39翻译、权限、PMP/sysmap/CSR镜像和direct-map结果；需要补充或暴露L1DTLB可复用的permission、PA拼接、属性生成函数，避免translation scoreboard和L1DTLB scoreboard各自实现一套不一致规则。
+            `mmu_translation_sb.svh`负责LSU/IFU最终translation结果比较。对L1DTLB部分，它必须正确处理DTLB hit、direct map、STAMO pipe1 bypass、exception array replay、T0 page fault和T1 access fault归属。
+            `mmu_l1dtlb_spec_sb.svh`负责L1DTLB micro-architecture protocol检查：MB/exception/credit/install/invalidate/flush/wakeup/busy等按cycle或事件的检查。
+            `mmu_credit_sb.svh`可继续承担跨L1/L2 request queue容量守恒检查，但L1DTLB scheduler自己的credit_cnt边界和同拍return+fire规则应在L1DTLB spec scoreboard中有明确检查或与credit scoreboard共享同一个credit shadow。
+            `mmu_dut_probes_if.sv`只作为可观测性补充。主scoreboard不能因为某个内部probe和reference model不同就绕过外部接口错误；也不能用PLRU victim probe替代translation正确性判断。
+
+#### 3.11.2 Reference Model必须建模的数据结构
+        L1DTLB entry shadow：
+            每个entry至少保存valid、VPN[26:0]、PPN[27:0]、page size[2:0]、flag[13:0]。page size one-hot语义为4K=001、2M=010、1G=100。
+            flag[13:0]需要按spec解释为V/R/W/X/U/A/D/RSW/sec/share/bufferable/cacheable/SO等字段，并用于预测page fault、PA、cacheable、bufferable、shareable、secure、strong-order等输出。
+            L1DTLB entry不保存ASID和global bit；SATP变化、ASID相关TLBI或全局TLB操作对L1DTLB按全清或spec指定清理建模。
+            如果同一VA多个entry同时命中，主scoreboard不应假设architectural非法；可建立white-box invariant检查multi-hit风险。若要比较RTL当前最高index优先行为，必须先把该行为明确纳入spec。
+
+        Miss buffer shadow：
+            深度按spec为8。每个entry保存valid、state、issued/sent、VPN[26:0]、IID[6:0]、store/load type、refill返回后需要install的PPN、flag、page size，以及是否已经处于WFI/PGFLT/ACFLT/ABT。
+            state集合为IDLE、WFG、WFC、WFI、PGFLT、ACFLT、ABT。valid等价于state!=IDLE；wfi等价于state==WFI；wfc对WFC和ABT均有效；ready基本对应WFG但需考虑flush同拍屏蔽；issued/sent是latch，不是简单状态译码。
+            MB CAM固定按完整4K VPN[26:0]比较，不按最终page size放宽比较。一个MB entry可以代表多个等待同一4K page的LSU请求，但不记录多个IID/pipe；后续请求依赖wakeup后replay并命中TLB或exception array。
+
+        Exception array shadow：
+            深度必须等于MB深度，entry id直接等于refill携带的MB id。每个entry保存valid、IID、完整4K VPN、page fault标志、access fault标志，并与对应MB entry生命周期绑定。
+            只有PTW/L2TLB fault refill写exception array。L2TLB可以返回normal或page fault；PTW可以返回normal、page fault或access fault。fault refill一定不写TLB。
+            exception array匹配key为IID+完整4K VPN，不包含pipe、ASID、load/store type。命中后对应exception entry和MB entry同拍释放；abort请求即使命中exception array也不得消费entry。
+
+        Credit shadow：
+            初始值为L2TLB request queue中DTLB专用entry数量，当前spec为8。最小值0，最大值CREDIT_MAX。
+            L1DTLB每发出一个L2TLB request消耗1个credit；L2TLB归还credit增加1个credit；同拍return+fire时计数保持不变。credit=0但同拍return时允许fire，且该fire消耗同拍归还的credit。
+            reference model需要逐拍维护credit，禁止underflow/overflow，禁止无credit且无同拍return时发request。
+
+        Per-pipe T0/T1 token：
+            每个pipe维护当前T0 request token和上一拍进入T1/PMP或exception access-fault路径的token。token至少记录pipe、cycle、VA/VPN、IID、abort、store/load/AMO/STAMO类型、effective mode、是否direct map、是否TLB hit、是否page fault、是否需要PMP check、预期PA/属性。
+            MMU对外响应不携带IID，scoreboard不得从响应端恢复IID。pa_vld/PA/attr/page_fault归属当前pipe当前T0 token；access_fault归属当前pipe上一拍T1 token。
+
+#### 3.11.3 Lookup、权限、PA和属性预测
+        每个有效LSU VA请求在T0进行TLB entry CAM和exception array CAM。普通pipe0/pipe1 DTLB lookup基本对称，但pipe来源和类型语义不同：pipe0主要服务load/LDAMO，pipe1主要服务store/STAMO。
+
+        TLB hit预测：
+            4K entry比较VPN[26:0]，2M entry比较VPN[26:9]，1G entry比较VPN[26:18]。
+            命中后按page size拼接PA：4K使用entry PPN和VA[11:0]；2M使用entry PPN高位和VA[20:0]；1G使用entry PPN高位和VA[29:0]。scoreboard需要检查返回PA和属性来自命中entry或direct-map/sysmap路径。
+            hit且没有page fault时，pa_vld、PA和属性在T0返回，同时启动下一拍PMP check token。PMP失败时access_fault在T1输出，不要求与同拍pa_vld配对。
+
+        Page fault预测：
+            MMU关闭或effective M-mode direct map时，不按PTE产生page fault。
+            普通L1DTLB hit需要检查VA illegal、V/R/W/X/U、当前/effective privilege、MXR、SUM、A/D、W=1且R=0非法组合等规则。load可由MXR允许X-only页作为可读；store和AMO需要W和D；load不要求D；A对load/store/AMO都要求为1。
+            page_fault为T0 1-cycle pulse，且有效page fault事件必须与同pipe当前T0的pa_vld同拍。对同一请求page_fault和access_fault互斥；但同一pipe同一cycle的裸page_fault和access_fault可能属于不同流水token，不能直接报互斥错误。
+
+        PMP access fault预测：
+            TLB hit或direct-map且无page fault时建立T1 PMP token。load/read检查PMP read许可，store检查PMP write许可，atomic/LDAMO可能同时有read/write语义。effective M-mode在PMP entry未lock时可绕过deny；lock时M-mode也可能access fault。
+            PMP access fault在T1以1-cycle pulse返回。scoreboard必须允许同一cycle当前T0又有新的pa_vld或page_fault，因为它们属于不同请求。
+
+        Direct map/sysmap预测：
+            当MMU关闭、SATP bare或effective privilege为M-mode时，L1DTLB不查TLB、不分配MB、不产生PTE page fault，PA按VA直通，属性来自sysmap，仍然进入PMP check并可能在T1产生access_fault。
+            direct-map路径需要检查没有TLB/MB/L2 request/exception array副作用。MPRV=1且MPP为S/U时不能误当M-mode bypass，应按effective privilege走普通DTLB规则。
+
+        STAMO预测：
+            STAMO只支持pipe1/store pipe bypass，PA和属性来自LM/STAMO保存路径。STAMO不重新做TLB lookup、不做PTE permission check、不产生新TLB miss、不分配MB、不发L2 request、不写exception array、不重新做PMP check。
+            pipe0不得产生STAMO bypass效果。pipe0普通请求和pipe1 STAMO同拍时，scoreboard需要分别按各自路径比较，不能串扰。
+
+#### 3.11.4 Miss Buffer、L2 Request和合法无响应
+        T0 TLB miss且exception array miss后，miss_vld进入T1；T1对MB做完整4K VPN CAM。若MB CAM hit，本次请求不分配新MB entry，不产生response或wakeup，属于合法无响应，后续依赖已有miss完成后的wakeup和LSU replay。
+
+        MB分配规则必须建模：
+            双pipe同拍miss且同一4K page、MB空位>=1时，只给pipe0分配entry，pipe1不分配。
+            双pipe同拍miss且不同4K page、MB空位>=2时，两个最低空闲entry分别分配给两pipe。
+            双pipe同拍miss且不同4K page、MB仅1个空位时，使用IID年龄比较选择更老请求。IID为7-bit循环编号，比较时按bit6和低6位规则处理回绕；pipe0/pipe1同拍IID不应相同。
+            单pipe miss且MB有空位时分配一个entry；MB无空位时drop本次miss，依赖busy和后续wakeup replay。
+            abort请求不分配MB，不消费exception entry；但abort不屏蔽TLB hit响应、page_fault、PMP check或PLRU read-hit更新。
+
+        L2 request发送规则必须逐拍建模：
+            每拍最多发送一个L1DTLB->L2TLB request，包括MB旧entry发送和当前新miss bypass发送的总和。
+            当MB中已有未发送entry时，优先发送MB旧entry；没有未发送entry且当前有可分配miss时，允许allocate+bypass同拍发往L2TLB。
+            bypass request也必须先分配MB entry；如果同拍发出，entry下一拍进入WFC，否则进入WFG。
+            request payload只检查接口真实携带字段：valid、VPN[26:0]、EID、is_load/access type。不要把iid、pipe id、asid或page size预测当成L1DTLB->L2TLB request接口字段。
+
+        合法无响应分类必须在scoreboard中显式记录reason：
+            MB CAM hit等待已有refill、MB full未分配、busy下miss等待replay、abort屏蔽状态后果、flush kill请求、TLB miss但请求被同拍优先级丢弃，均不能被简单判为漏响应。
+            对合法无响应请求，scoreboard仍需检查没有非法副作用：不得错误分配MB、不得错误发L2 request、不得错误消费exception array、不得错误写TLB或产生fault；后续应由wakeup/replay或flush终止生命周期。
+
+#### 3.11.5 Refill、Install和Exception Array生命周期
+        Normal refill处理：
+            PTW normal refill和L2TLB normal refill只有在refill id对应MB entry处于WFC时才有效。若entry已IDLE、PGFLT/ACFLT或其他不允许完成的状态，则视为stale response，不得写TLB、不得写exception array、不得wakeup。ABT是特殊状态，late refill只用于drain回IDLE。
+            每拍最多install一个TLB entry。固定优先级为WFI entry > PTW normal refill > L2TLB normal refill。多个WFI同时存在时选择最低entry编号。
+            未获install grant的normal refill需要把VPN、PPN、flag、page size锁存在对应MB entry并进入WFI；WFI期间这些字段必须保持稳定，直到后续install或flush清除。
+            TLB install和对应MB释放在同一个时钟沿完成。写入沿之前同一组合周期不能命中新entry；下一可见cycle才允许命中。
+
+        Fault refill处理：
+            refill携带page fault或access fault时一定不写TLB。fault entry并行写exception array，对应MB entry进入PGFLT或ACFLT并保持valid，等待后续LSU replay命中exception array。
+            PTW和L2TLB同拍都返回fault时，允许同拍写两个不同exception array entry。scoreboard需要检查EID在范围内、两个fault互不覆盖、page/access fault标志互斥。
+            L2TLB refill不应作为access fault来源；若接口或probe显示L2 path access fault，需要作为negative check或spec violation处理。PTW access fault和PMP access fault最终对LSU均表现为T1 access_fault，但PTW access fault必须先经exception array挂起并由replay触发。
+
+        Exception replay处理：
+            后续LSU请求按IID+完整4K VPN命中exception array时，pa_vld必须在T0拉高。若entry为page fault，page_fault也在T0拉高；若entry为access fault，则T0只建立access-fault pending token，T1拉高access_fault。
+            exception array hit必须禁止该请求分配新MB entry。命中后exception entry和对应MB entry同拍释放，并产生wakeup广播。
+            同一pipe同一请求同时TLB hit和exception array hit应视为design/spec violation。合法场景下双pipe不会同拍消费同一个exception entry，因为匹配key包含IID且同拍pipe IID不相同。
+
+#### 3.11.6 Flush、Invalidate、Reset和PLRU边界
+        Reset建模：
+            reset释放后，TLB entry valid全0；MB state全IDLE、valid/issued/sent/wfi/wfc/ready均为0；exception array valid全0；credit=CREDIT_MAX；PLRU状态作为黑盒，不进入主模型。
+
+        TLB entry清理建模：
+            regs_utlb_clr、tlboper_utlb_clr和ctc_inv_va_hit_clr任意一个有效时，对命中的entry清valid。regs_utlb_clr和tlboper_utlb_clr按全清TLB entry建模，不清MB和exception array。
+            VA定点失效按VPN[7:0]相同的保守清理建模。若scoreboard逐拍预测hit/miss和refill次数，必须把低8bit alias误清纳入模型；只做最终功能检查时，至少要保证目标VA旧翻译后续不能继续命中。
+            invalidate与TLB hit同拍时，本拍允许返回旧entry结果；下一拍起该entry不得作为valid hit。invalidate与install同entry同拍时，clear优先，时钟沿后entry final valid=0。
+
+        RTU flush建模：
+            RTU flush清空MB和exception array。对TLB entry是否清理只按regs_utlb_clr/tlboper_utlb_clr/VA invalidate等对应控制建模，不把RTU flush无条件当作TLB全清。
+            WFG+flush无grant回IDLE；WFG+flush+grant进入ABT；WFC+flush+refill回IDLE但禁止install/expt/wakeup；WFC+flush无refill进入ABT；WFI+flush回IDLE。ABT+late refill只释放entry，不写TLB、不写exception array、不wakeup。
+
+        PLRU建模边界：
+            主reference model不精确预测PLRU victim、hit更新、install更新或invalidate后的PLRU状态。主scoreboard只检查已可观测install进入L1DTLB的entry在后续hit时返回正确PA/属性/fault，或被clear后不再命中。
+            PLRU相关检查只能放入white-box SVA/coverage：victim onehot/onehot0、index范围、更新输入非X、replacement pressure覆盖等。不得因为黑盒PLRU exact victim与reference model不同而报translation failure。
+
+#### 3.11.7 Scoreboard逐项检查清单
+        LSU响应检查：
+            对pipe0/pipe1分别建立T0/T1队列。T0检查pa_vld、PA、attr、page_fault；T1检查access_fault。page_fault必须与同一T0 token的pa_vld配对；access_fault必须与上一拍有效T1 token配对。
+            同一cycle同一pipe的page_fault和access_fault同时为高时，不立即报同一请求双异常；必须先按T0/T1 token归属判断。只有同一token同时产生page fault和access fault才报错。
+            属性比较需要覆盖sec、share、bufferable、cacheable、SO等L1DTLB输出语义，load/store访问同一translation时属性不应因store标识而改变。
+
+        L2 request和credit检查：
+            每拍最多一个L1DTLB->L2TLB request；payload无X；EID范围合法；VPN等于被发送MB/bypass miss的完整4K VPN；is_load/access type与LSU request类型一致。
+            credit shadow和DUT credit逐拍一致，或至少检查边界、同拍return+fire守恒、credit=0无return禁止fire。若DUT内部credit probe不可用，仍需用外部request/return事件建立近似守恒检查并报告不可精确覆盖的风险。
+
+        Busy/wakeup检查：
+            busy逐拍等于任意MB entry valid。busy不是LSU VA请求ready，busy=1时hit-under-miss仍需正常返回hit响应。
+            wakeup是12-bit广播提示，只允许全0或全1。触发源只包括TLB install和exception array hit/replay完成；MB CAM hit、MB full本身、RTU flush drain、ABT late refill不应产生wakeup。
+            wakeup不携带pipe或IID，不得作为某条请求完成信号逐请求匹配；只能作为事件级提示，并结合后续LSU replay观察生命周期闭环。
+
+        MB/exception/install检查：
+            分配数量、最低空闲entry选择、同4K去重、IID年龄仲裁、MB CAM hit不再分配、MB full drop等必须与spec一致。
+            MB FSM派生信号、WFI最低编号优先、install优先级、WFI data hold、fault refill不写TLB、exception id映射、exception replay释放等需要覆盖到directed测试和scoreboard/SVA检查。
+            stale/late refill必须被识别，禁止污染TLB或exception array。
+
+        Invalidate/flush/reset检查：
+            reset后初始状态、全清、VA8 alias清理、invalidate+hit、invalidate+install、flush+grant/refill/install race都需要有检查和coverage。
+            清理动作如果影响后续hit/miss预测，reference model必须同步更新shadow状态，避免scoreboard用旧translation误报或漏报。
+
+        Scenario gate和回归闭环：
+            每个L1DTLB directed wrapper需要通过`L1DTLB_TC_ID`/`L1DTLB_SCENARIO_ID`或等价机制告诉scoreboard本用例目标。scoreboard final_phase需要报告目标事件是否真实发生，防止wrapper只是跑了generic vseq却没有触发需求场景。
+            3.7 audit ID、3.9 SVA ID、3.10 scenario ID和UVM test name应建立traceability矩阵。未命中的cover property需要反向生成新的directed test或标记为不可达/需澄清。
+
+#### 3.11.8 Monitor、Probe和UVM落地项
+        LSU monitor需要采样每个pipe的VA、va_vld、iid、abort、store/load/AMO/STAMO标识、effective mode相关输入、pa_vld、PA、属性、page_fault、access_fault、tlb_busy、tlb_wakeup，并形成能区分T0响应和T1 fault的transaction或cycle event。
+
+        L2TLB/PTW monitor需要采样L1DTLB发出的request、credit return、L2 normal/page-fault refill、PTW normal/page-fault/access-fault refill、refill id、VPN、PPN、flag、page size和type。refill id必须能关联到MB shadow entry。
+
+        CP0/sysmap/PMP monitor需要把SATP、MMU enable、privilege、MPRV/MPP、MXR、SUM、TLB invalidate、sysmap region和PMP配置同步到reference model。translation比较前必须同步这些shadow状态，避免同拍CSR/PMP更新造成非确定性误报。
+
+        `mmu_dut_probes_if.sv`建议至少保留并审查以下L1DTLB probes：MB valid/state/VPN/IID/store/ready/wfc/wfi、entry valid、L2 request valid/VPN/EID/type、scheduler credit、per-pipe hit/miss/expt_match、refill valid/source/index/VPN/PPN/page size、entry_upd、exception write valid/EID/IID/VPN/fault、RTU flush和utlb clear/inv_va控制。若主scoreboard需要独立预测但接口缺少必要事件，应优先补monitor transaction；内部probe只能作为辅助或white-box检查。
+
+        UVM中需要完成的工作项：
+            1. 在reference model中补齐L1DTLB entry/MB/exception/credit/per-pipe token shadow，或在`mmu_l1dtlb_spec_sb.svh`内建立专用L1DTLB reference sub-model，并复用`mmu_ref_model.svh`的权限、PA、属性函数。
+            2. 修改translation scoreboard，使L1DTLB fault replay、T0/T1重叠、STAMO pipe1 bypass、direct-map/PMP T1 access fault不再依赖宽泛waive，而是由明确token和exception shadow解释。
+            3. 强化credit scoreboard或L1DTLB spec scoreboard，覆盖CREDIT_MAX、credit=0+return、return+fire守恒、request payload和每拍最多一个request。
+            4. 强化L1DTLB spec scoreboard，加入MB分配/去重/full、install仲裁、WFI data hold、fault refill、exception replay、flush race、invalidate race、wakeup源和busy逐拍检查。
+            5. 给所有新增检查增加可控开关和诊断打印：失败信息应包含cycle、pipe、IID、VA/VPN、expected/actual PA、fault类型、MB id、refill source和scenario id。
+            6. 对PLRU exact victim保持white-box-only，不接入主translation pass/fail；若未来要精确检查replacement，必须先把victim选择和更新优先级补进spec。

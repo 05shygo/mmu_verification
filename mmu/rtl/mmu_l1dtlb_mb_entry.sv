@@ -94,7 +94,6 @@ logic                   fault_hold_r;
 //! Control Signals
 //!************************************************
 logic entry_clk_en;
-logic inv_hit;
 logic abort_this_cyc;
 
 //!************************************************
@@ -113,10 +112,9 @@ gated_clk_cell x_mb_entry_gateclk (
 //!************************************************
 //! Invalidation / Abort Logic
 //!************************************************
-// Abort if flush/global clear occurs OR if a TLB invalidation targets this VPN
-// while active.
-assign inv_hit = tlboper_utlb_inv_va_req && (lsu_mmu_tlb_va == vpn_r) && (state_r != STATE_IDLE);
-assign abort_this_cyc = rtu_yy_xx_flush || tlboper_utlb_clr || inv_hit;
+// Only an RTU pipeline flush aborts pending refill state. TLB clear/invalidate
+// operations target already-installed TLB entries, not in-flight refill data.
+assign abort_this_cyc = rtu_yy_xx_flush;
 
 //!************************************************
 //! State Machine

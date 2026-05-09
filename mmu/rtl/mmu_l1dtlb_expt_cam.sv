@@ -141,7 +141,7 @@ module mmu_l1dtlb_expt_cam #(
         ent[k].acflt <= 1'b0;
       end
     end
-    else if (rtu_yy_xx_flush || tlboper_utlb_clr || tlboper_utlb_inv_va_req) begin
+    else if (rtu_yy_xx_flush) begin
       for (k = 0; k < CAM_DEPTH; k++) begin
         ent[k].vld <= 1'b0;
       end

@@ -41,6 +41,7 @@ output logic 			PDE_xbar_req,
 			
 //input  logic 			twu_cache_stop,
 input  logic 			tlboper_ptw_abort,
+input  logic			pmp_regs_update,
 input  logic			xbar_pde_ready,
 output logic            pde_cache_ready
 );
@@ -149,7 +150,7 @@ logic [15:0] L1PDE_entry_before_upd_hit;
 //logic [26:0] L2PDE_entry_before_upd_vpn;
 logic [15:0] L2PDE_entry_before_upd_hit;
 logic pde_cache_clear;
-assign pde_cache_clear = regs_ptw_clr | tlboper_ptw_abort;
+assign pde_cache_clear = regs_ptw_clr | tlboper_ptw_abort | pmp_regs_update;
 
 generate
 	for(genvar L1PDE_ent = 0;L1PDE_ent <= 15;L1PDE_ent = L1PDE_ent + 1)begin:u_L1PDE_ent_0_15

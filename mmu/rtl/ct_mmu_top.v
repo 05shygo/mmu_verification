@@ -192,6 +192,14 @@ module ct_mmu_top(
     logic [4 :0]  sysmap_mmu_flg5;
     logic [4 :0]  sysmap_mmu_flg6;
     logic [4 :0]  sysmap_mmu_flg7;
+    logic [4 :0]  sysmap_mmu_flg8;
+    logic [4 :0]  sysmap_mmu_flg9;
+    logic [4 :0]  sysmap_mmu_flg10;
+    logic [4 :0]  sysmap_mmu_flg11;
+    logic [4 :0]  sysmap_mmu_flg12;
+    logic [4 :0]  sysmap_mmu_flg13;
+    logic [4 :0]  sysmap_mmu_flg14;
+    logic [4 :0]  sysmap_mmu_flg15;
 
 
 
@@ -202,8 +210,15 @@ module ct_mmu_top(
     logic [7 :0]  sysmap_mmu_hit4;
     logic [7 :0]  sysmap_mmu_hit5;
     logic [7 :0]  sysmap_mmu_hit6;
-
     logic [7 :0]  sysmap_mmu_hit7;
+    logic [7 :0]  sysmap_mmu_hit8;
+    logic [7 :0]  sysmap_mmu_hit9;
+    logic [7 :0]  sysmap_mmu_hit10;
+    logic [7 :0]  sysmap_mmu_hit11;
+    logic [7 :0]  sysmap_mmu_hit12;
+    logic [7 :0]  sysmap_mmu_hit13;
+    logic [7 :0]  sysmap_mmu_hit14;
+    logic [7 :0]  sysmap_mmu_hit15;
     // &Regs; @30
     // &Wires; @31
     //==========================================================
@@ -369,7 +384,7 @@ module ct_mmu_top(
 
     // Sysmap Internal Wires
     logic [27:0] mmu_sysmap_pa0, mmu_sysmap_pa1, mmu_sysmap_pa2, mmu_sysmap_pa3, mmu_sysmap_pa4, mmu_sysmap_pa5, mmu_sysmap_pa6,mmu_sysmap_pa7;
-    
+    logic [27:0] mmu_sysmap_pa8, mmu_sysmap_pa9, mmu_sysmap_pa10, mmu_sysmap_pa11, mmu_sysmap_pa12, mmu_sysmap_pa13, mmu_sysmap_pa14, mmu_sysmap_pa15;
     // Debug & Ctrl
     logic [1:0]  iutlb_top_ref_cur_st;
     logic [2:0]  dutlb_top_ref_cur_st;

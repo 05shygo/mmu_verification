@@ -1,15 +1,18 @@
-1.l1dtlb function description
-    signal description
+# L1DTLB Function Description and UVM Audit Basis
+
+## 1. L1DTLB Functional Specification
+
+### 1.1 Signal Interface
     lsu有两个能完成VA到PA转换的端口与MMU连接，每一拍lsu可以同时有两个VA转换的请求到l1dtlb。lsu把VA，va_vld，iid，vabuf信号，是否是store指令的标识信号，以及abort信号发给mmu
         vabuf信号未使用
         lsu__abort0/1 的本质：LSU 在同一拍仍然把 VA/ID 发给 MMU，但告诉 MMU“这次 AG 请求不要产生有状态后果”。它主要防止一个已经要 stall、restart、异常或 flush 的 load/store 去触发 DTLB miss/refill、匹配旧 refill 异常，或把错误异常算到这条指令上。
             lsu__abort0/1为1时，这个请求不会进入miss buffer（不启动refill流程），也不会触发异常信号的上报（不释放异常阵列的entry）
-    mmu回给lsu的weakup信号和busy信号
+### 1.2 LSU Wakeup and Busy Signals
         weakup：当l1dtlb要进行回填时（把页面的数据写入tlb entry中）或lsu发来的请求在异常阵列中hit时，拉高weakup信号
         busy:当l1dtlb的miss buffer任意miss buffer entry valid时，拉高。意味着只要有miss正在refill，busy信号就拉高
     
     
-    pipeline description
+### 1.3 Pipeline Behavior
     TO时，LSU发地址转换请求到MMU，mmu将lsu发来的va同时在tlb和异常请求寄存阵列异常请求寄存阵列中进行cam比较（lsu的两个端口同时进行）。
         如果在tlb中命中，当拍返回pa_vld,以及pa和对应的属性给lsu（T0返回）
         如果发现page fault，当拍返回pa_vld信号，并当拍拉高page_fault信号（T0返回）
@@ -23,6 +26,7 @@
                 如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer空位≥2，那么两条 miss 同拍写入不同MB entry。（T1分配）
                 如果lsu的两端口都需要分配miss buffer entry，且不在同一个4k page，且miss buffer仅 1 空位，那么iid更老的一个miss请求写入MB entry，另一个不分配MB entry（T1时分配miss buffer entry）
                 如果lsu的两端口中只有一个端口需要分配miss buffer entry，那么在miss buffer有空位的情况下，分配一个miss buffer entry；如果miss buffer没空位，那么不分配miss buffer entry。
+### 1.4 L2TLB Request and Credit
     l1dtlb需要把miss的请求发送到l2tlb走refill流程。
         l1dtlb内部会维护一个credit计数器，计数器初始化为l2tlb的request queue entry的数量。
             当credit计数器的值大于0时，能发请求到l2tlb request queue。
@@ -34,6 +38,7 @@
         在有miss请求未发送到l2tlb（有判定需要分配miss buffer entry的miss请求或miss buffer中有未发送的请求），且l1dtlb满足发请求给l2tlb（credit满足上面所说的情况）的时侯，一拍发送一个请求到l2tlb的request queue。
             当miss buffer中有未发送的请求时，优先发miss buffer中的请求；
             当miss buffer中没有未发送给l2tlb的请求时，如果有被判定需要分配miss buffer entry的miss请求，那么这个要被分配miss buffer entry的请求走bypass，直接发送到l2tlb request queue。
+### 1.5 Refill and TLB Install
     当ptw或l2tlb refill完成时，需要把数据写进l1dtlb。
         每一拍只能写入一个tlb entry。
         如果miss buffer中有正在等待写入tlb的请求，优先选择miss buffer中有正在等待写入tlb的请求。
@@ -44,7 +49,7 @@
                 而对应的l2tlb refill的请求，会把需要回填进tlb的内容锁存，并且对应的miss buffer entry的状态机进入wfi（wait for install）状态，也就是等待写入tlb的状态
         如果miss buffer中没有正在等待写入tlb的请求，且没有ptw refill的请求，那么选择l2tlb refill的请求，将其写入tlb
 
-    异常阵列description
+### 1.6 Exception Array
     只有当ptw或l2tlb refill的pa带着fault信号时（page fault或access fault），分配异常阵列的entry。
         能够进入异常阵列的请求一定存在于miss buffer中。那么异常阵列的entry数量应该与miss buffer保持一致。
         写入异常阵列是通过refill带着的id来索引。
@@ -52,7 +57,7 @@
         当异常阵列的清除信号到来时，要按情况清理entry
             当rtu的冲刷信号有效时，那么清空异常阵列（rtu的冲刷信号到来时，会把miss buffer清空，异常阵列也就没有必要保留了）
         
-    tlb description
+### 1.7 TLB Entry, Match, and Invalidate
         l1dtlb是full associative
         当lsu有地址转化请求进入mmu时，与l1dtlb的所有entry进行比较
             比较时，按照tlb中存储的page size比较vpn
@@ -85,7 +90,7 @@
 
 
     
-    miss buffer description
+### 1.8 Miss Buffer and Refill FSM
         当异常阵列的清除信号到来时，要按情况清理entry
             当rtu的冲刷信号有效时，那么清空miss buffer
         miss buffer是full associative
@@ -135,13 +140,14 @@
 
 
 
-2.l1dtlb spec待澄清问题
-    说明
+## 2. L1DTLB Spec Clarification Q&A
+
+### 2.0 Q&A Scope
         本节所有条目都是待回答问题，不代表已经确认的设计行为。
         这些问题的目标是把l1dtlb_function_description.txt补充到足够清晰，使后续可以只基于spec审核UVM中的l1dtlb scoreboard和reference model，而不是参考RTL实现。
         建议回答时尽量给出：是否成立、精确时序、优先级、同拍冲突处理、对外可观测信号，以及reference model/scoreboard应该如何建模。
 
-    接口与基本信号语义
+### 2.1 接口与基本信号语义
         Q-L1DTLB-001: lsu发给mmu的两个请求端口是否完全对称？如果不对称，请明确pipe0和pipe1在支持的请求类型、STAMO、abort、fault、PMP检查、miss分配、wakeup/busy语义上的差异。
         人类工程师对Q-L1DTLB-001的回答：不是完全对称。更准确地说：DTLB 读命中路径基本对称，但两个端口的来源、语义不是完全对称。普通 DTLB 查表、hit 判断、PA 返回、page fault/access fault/PMA/PMP 等逻辑，大体是同一套模板。可以理解成两个 DTLB read port。
                                       port0 主要服务 load 类请求，port1 主要服务 store 类请求。port0 不是纯 load，因为 ldamo 会让 st_inst0 拉高，用于类似原子操作的权限类型判断。
@@ -235,7 +241,7 @@
                                       3.L1 DTLB miss，miss buffer 已有有效 entry：MMU 仍然可以分配或 merge 这个 miss，但 LSU 应把该指令挂成 tlb_busy，等 refill/wakeup 后再发。
                                       4.L1 DTLB miss，miss buffer 满：不能分配，只能等 wakeup 后重试。
 
-    T0/T1流水线与对外时序
+### 2.2 T0/T1流水线与对外时序
         Q-L1DTLB-014: T0、T1的边界需要精确定义。哪些信号在T0组合返回，哪些信号在T1寄存返回？请列出pa_vld、pa、attr、page_fault、access_fault、pmp_check_req、miss_vld、miss buffer分配的周期。
         人类工程师对Q-L1DTLB-0014的回答：pa_vld、pa、attr、page_fault均在T0组合逻辑返回。
                                        pmp_check_req在T0时，根据hit的结果和page fault的结果决定。当tlb hit并且没有page fault，或者关闭了dtlb并且没有page fault的时候，会拉高pmp check信号，拉高pmp check信号时，会把当前的pa寄存一排，在拉高pmp check信号的下一拍会进行pmp检查，如果pmp检查没通过，那么就在检查的这一拍拉高access fault信号。
@@ -273,7 +279,7 @@
             如果同一拍同一pipe同时看到page_fault和access_fault，不能当作同一请求双异常；page_fault归当前T0请求，access_fault归上一拍T1请求。
             对exception array access fault，T1相对于exception array hit检测周期；scoreboard应把该请求在命中exception array的周期压入该pipe的access-fault pending槽，下一拍期望access_fault pulse。
 
-    双端口并发和仲裁
+### 2.3 双端口并发和仲裁
         Q-L1DTLB-021: pipe0和pipe1同拍都TLB hit时，是否都能同拍返回pa_vld/pa/attr？如果两个pipe命中同一个entry，PLRU如何更新？
         回答：pipe0和pipe1同拍都TLB hit时，都能同拍返回pa_vld/pa/attr。如果两个pipe命中同一个entry，PLRU正常更新。
 
@@ -295,7 +301,7 @@
         Q-L1DTLB-027: 双pipe同拍都需要分配miss buffer且都有空位时，entry选择规则是什么？是固定最低空闲entry、按pipe顺序、还是其他策略？
         回答：双pipe同拍都需要分配miss buffer且都有空位时，会选择miss buffer中的两个最低空闲entry
 
-    TLB hit、权限、属性和特殊模式
+### 2.4 TLB Hit、权限、属性和特殊模式
         Q-L1DTLB-028: l1dtlb entry中需要保存哪些字段？请明确VPN、PPN、page size、权限位、cache属性、global/user/dirty/accessed等属性是否在L1DTLB中存在并由scoreboard建模。
         回答：l1dtlb entry中实际保存这些字段：valid；VPN[26:0]；PPN[27:0]；page size[2:0]：one-hot，001=4K、010=2M、100=1G；flag[13:0]，flag[13:0] 基本对应：flg[0] V，flg[1] R，flg[2] W，flg[3] X，flg[4] U，flg[5] A，flg[6] D，flg[7:8]  RSW / 保留软件位，flg[9]  sec，flg[10] share，flg[11] bufferable，flg[12] cacheable，flg[13] strong-order / SO。这些 flag 在refill的时候回填进tlb。L1 DTLB hit 后会用这些位做权限检查和 cache 属性输出，比如 U/A/D/R/W/X page fault 判断、ca/buf/sh/sec/so 输出。
             global(G) L1 DTLB entry 中没有作为 flag 保存，ASID     L1 DTLB entry 中也没有。
@@ -343,7 +349,7 @@
         Q-L1DTLB-034: PMP access fault是只在TLB hit后由PMP模块产生，还是PTW/L2TLB refill也可能携带access fault？两类access fault在输出时序上是否一致？
         回答：PMP access fault既可由TLB hit后由PMP模块产生，也可以在PTW/L2TLB refill时携带。两类access fault在输出时序上一致，但是PTW/L2TLB refill时携带的access fault是在exception array中挂起，后续lsu发来的请求在exception array中hit之后才会上报，上报时序跟PMP检查的access fault一致。
 
-    miss buffer分配、去重和请求重试
+### 2.5 Miss Buffer分配、去重和请求重试
         Q-L1DTLB-035: miss buffer CAM比较固定按4K VPN比较。对于2M/1G page的miss，去重仍然按完整4K VPN，还是按最终page size相关的VPN比较？
         人类工程师对Q-L1DTLB-0035的回答：miss buffer CAM比较固定按4K VPN比较。对于2M/1G page的miss，去重仍然按完整4K VPN比较。
 
@@ -366,7 +372,7 @@
         Q-L1DTLB-041: PGFLT/ACFLT状态的entry在没有后续LSU请求命中exception array时是否可能一直保持？是否有flush、timeout或其他清除条件？
         回答：PGFLT/ACFLT状态的entry在没有后续LSU请求命中exception array时一直保持。当rtu发来flush信号时，释放这个entry，回到idle状态，valid拉低。
 
-    L2TLB request和credit
+### 2.6 L2TLB Request和Credit
         Q-L1DTLB-042: credit计数器初始值是多少？它等于L2TLB request queue中DTLB专用entry数量，还是总entry数量？
         回答：credit计数器初始值是L2TLB request queue中DTLB专用entry数量。
 
@@ -393,7 +399,7 @@
               L1DTLB->L2TLB request接口本身不携带iid、pipe id、asid或page size预测，因此reference model不应把这些字段作为该request的精确接口字段检查。
               page size、PPN、permission/cache flag是refill返回结果，应该在refill进入L1DTLB时更新到对应MB entry或TLB entry中。
 
-    refill、install和TLB写入
+### 2.7 Refill、Install和TLB写入
         Q-L1DTLB-049: PTW refill和L2TLB refill的语义差异是什么？两者是否都可能返回正常翻译、page fault和access fault？
         回答：L2TLB refill是l1发到下游的请求在l2tlb中hit，那么由l2tlb返回对应的数据给l1。PTW refill是指l1发到下游的请求在l2tlb中也miss了，走ptw通道去拿回页表数据。
               L2TLB refill会返回正常翻译、page fault，但不会返回access fault，因为l2tlb没有做pmp的检查。
@@ -425,7 +431,7 @@
         Q-L1DTLB-057: TLB写入后，原miss buffer entry是在同拍释放还是下一拍释放？LSU能否在同拍新请求命中刚写入的TLB entry？
         回答：TLB 写入和原 miss buffer entry 释放是在同一个时钟沿完成的。LSU 不能在 refill/写入发生前的同一组合周期命中刚写入 entry；但写入沿之后的下一可见周期可以命中。
 
-    exception array
+### 2.8 Exception Array
         Q-L1DTLB-058: exception array entry数量是否必须等于miss buffer深度？如果不等，满阵列时fault refill如何处理？
         回答：exception array entry数量必须等于miss buffer深度。
 
@@ -452,7 +458,7 @@
         Q-L1DTLB-064: RTU flush清空exception array时，对应miss buffer entry是否也全部清空？如果有refill随后返回，如何避免旧fault再次被消费？
         回答：RTU flush清空exception array时，对应miss buffer entry也全部清空。正是因为RTU flush会清空miss buffer entry，而miss buffer entry又和exception array高度绑定，才需要在RTU flush到来时清空exception array。
 
-    flush、invalidate、reset和entry清理
+### 2.9 Flush、Invalidate、Reset和Entry清理
         Q-L1DTLB-065: regs_utlb_clr、tlboper_utlb_clr、ctc_inv_va_hit_clr同时发生时，清理优先级是什么？是否都只影响TLB entry valid，不影响miss buffer和exception array？
         回答：没有三者之间的清理优先级。对于任何一个entry来说，只要任意一个为 1，该 entry 的 valid 就被清 0。它们都只影响TLB entry valid，不影响miss buffer和exception array。
 
@@ -489,8 +495,8 @@
                 2. request 是否已发出决定 IDLE 还是 ABT：没发出可直接 IDLE；已发出必须 ABT 等返回，避免旧 refill id 后续污染新请求。
                 3. late refill 只做资源回收：ABT + refill_vld -> IDLE，不写 TLB、不写 exception array、不 wakeup。
 
-    PLRU和替换策略
-    PLRU在UVM验证中暂时当成黑盒
+### 2.10 PLRU和替换策略
+#### 2.10.1 PLRU在UVM验证中暂时当成黑盒
         Q-L1DTLB-073: PLRU victim选择在所有TLB entry中进行，还是按bank/way分组？NUM_ENTRY、bank数量和每组entry数量需要明确。
         Q-L1DTLB-074: TLB hit是否更新PLRU？如果更新，pipe0/pipe1同拍hit不同entry时如何串行化更新？
         Q-L1DTLB-075: TLB install是否更新PLRU？如果install和hit同拍发生，PLRU更新优先级是什么？
@@ -500,7 +506,7 @@
             如果测试需要验证替换策略，应单独建立white-box assertion或coverage，通过RTL内部PLRU/victim观测点检查，不能把PLRU精确预测混入主translation scoreboard。
             在黑盒口径下，随机替换导致的“hit还是miss”不作为主scoreboard强判条件；主scoreboard应允许L1DTLB miss后由L2TLB/PTW重新给出同一architectural translation。
 
-    UVM reference model和scoreboard口径
+### 2.11 UVM Reference Model和Scoreboard口径
     所有和UVM有关的内容我都不太懂，需要AI根据spec的内容来协助我决策。
         Q-L1DTLB-077: 后续审核UVM时，l1dtlb reference model允许建模哪些内部结构？TLB、miss buffer、exception array、credit、PLRU是否都属于spec可见模型？
         AI基于当前spec给出的UVM建模决策：reference model应建模TLB entry、miss buffer、exception array、credit counter和per-pipe T0/T1流水。
@@ -532,3 +538,238 @@
             miss统计/HPC类信号建议事件级检查，确认只在真实miss场景计数，不作为translation correctness的核心oracle。
         Q-L1DTLB-082: l1dtlb相关覆盖点应覆盖哪些spec行为？请确认是否需要覆盖双pipe并发、同VPN去重、MB full、credit边界、WFI仲裁、fault replay、flush/refill race、invalidate/install race等场景。
         AI基于当前spec给出的UVM建模决策：l1dtlb覆盖点至少应覆盖以下场景：双pipe同拍hit、hit+miss、双miss同4K去重、双miss不同4K双分配、双miss不同4K但仅一个空位按iid年龄选择、MB hit不再分配、MB full drop并等待wakeup replay、credit>0发送、credit=0且同拍return发送、MB旧请求优先于bypass、bypass allocate+issue同拍进入WFC、WFI > PTW > L2TLB install仲裁、多个WFI最低entry优先、PTW/L2TLB fault写exception array、fault replay释放entry、ABT late refill drain、RTU flush与grant/refill/install race、invalidate与hit同拍、invalidate与install同拍clear优先、MMU off/M-mode direct map、STAMO pipe1 bypass、page fault T0和access fault T1重叠归属。
+
+
+## 3. L1DTLB Requirement-Driven Test Audit Table Format
+
+### 3.1 Scope
+        当前阶段从l1dtlb_function_description.md中的功能描述和requirement出发，反向审核verification plan和UVM中已有l1dtlb测试点是否覆盖正确、是否漏测、是否误测、是否重复测，以及是否暴露出TB建模缺口。
+        表格主键必须是L1DTLB function item / requirement item，而不是coverage item。
+        如果从coverage item出发，只能审核已有coverage是否合理；本阶段的目标是从spec出发检查verification plan和UVM是否完整、客观、与spec一致。
+        当前阶段只决定测试点应保留、删除、修改、拆分、合并或新增，不进入reference model和scoreboard实现设计。
+        因此表格不使用scoreboard reference列，避免把测试点审核和scoreboard建模混在一起。
+        如果某个测试点后续确实需要scoreboard/reference model支持，只在Action Notes中标记“后续需要scoreboard支持”，不在本阶段展开实现方案。
+
+### 3.2 推荐表格字段
+        | Audit ID | L1DTLB Function / Requirement Item | Spec Source | Required Scenario / Condition | Expected Behavior | Related Verification Plan Item | Related UVM Test / Sequence | Observable Check | Current Status | Gap Type | Action | Action Notes |
+        | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB-AUD-001 | 待审核的l1dtlb功能项或requirement名称 | 本文档中的章节、Q编号或关键描述 | 触发该requirement所需的场景、输入组合或时序条件 | 根据spec应验证的行为，不写RTL实现细节 | verification plan中的功能点、测试点或用例编号；没有则写N/A | 当前UVM中已有test/sequence名称；没有则写N/A | 当前阶段可从接口、log、coverage或test intent中观察到的检查点 | keep / modify / add / delete / split / merge / unclear | no_gap / missing_test / wrong_expected / duplicate / weak_check / tb_model_gap / spec_gap | 保留 / 修改 / 新增 / 删除 / 拆分 / 合并 / 待澄清 | 简要说明原因、缺口、建议改动和后续依赖 |
+
+### 3.3 字段填写规则
+        Audit ID：使用稳定编号，例如L1DTLB-AUD-001、L1DTLB-AUD-002。一个审核行只覆盖一个明确function/requirement，避免一行同时包含多个独立功能要求。
+        L1DTLB Function / Requirement Item：写从spec抽取出来的功能项或需求项，例如“双pipe同拍hit”、“MB full drop并等待wakeup replay”、“ABT late refill drain”。这是表格主键，不使用coverage item作为主键。
+        Spec Source：引用本文件中的原始依据，例如“pipeline description / Q-L1DTLB-023 / Q-L1DTLB-082”。如果spec依据不足，写“spec gap”。
+        Required Scenario / Condition：写触发该requirement的最小条件，例如“pipe0/pipe1同拍miss且同4K VPN，MB至少1个空位”。
+        Expected Behavior：只写按spec应发生什么，例如“pipe0分配MB，pipe1不分配”、“fault refill不写TLB，写exception array并等待replay”。
+        Related Verification Plan Item：填写现有verification plan中的条目编号、章节或测试名；如果未找到对应项，写N/A。
+        Related UVM Test / Sequence：填写当前UVM中已有的test、vseq或sequence；如果没有，写N/A。
+        Observable Check：当前测试点审核阶段只写可观察/可判断的检查方向，例如“test是否制造该并发场景”、“coverage是否采到该组合”、“log是否能区分pipe0/pipe1”。不写scoreboard内部算法。
+        Current Status：只允许使用keep、modify、add、delete、split、merge、unclear。
+        Gap Type：记录缺口类型。no_gap表示无缺口；missing_test表示spec有要求但plan/UVM没有测试；wrong_expected表示现有测试期望与spec冲突；duplicate表示重复测试；weak_check表示测试刺激存在但检查不足；tb_model_gap表示测试需要TB能力但当前TB看起来不支持；spec_gap表示spec还不足以判断。
+        Action：写下一步动作，例如“保留现有测试”、“修改stimulus以覆盖同拍credit return”、“新增directed test”、“删除与spec冲突的测试”、“拆成两个独立测试点”。
+        Action Notes：写简短理由。若需要后续scoreboard/reference model支持，只标记依赖，不在本表中设计实现。
+
+### 3.4 Current Status含义
+        keep：该requirement已有测试覆盖，现有测试点与spec一致，覆盖目标清晰，可以保留。
+        modify：该requirement已有测试覆盖方向，但stimulus、期望行为、命名、覆盖条件或检查点需要调整。
+        add：spec要求该行为应被测试，但verification plan或UVM中未找到对应测试点。
+        delete：现有测试点与spec冲突、重复无价值，或测试了不应作为l1dtlb目标的行为。
+        split：一个现有测试点混合了多个独立spec行为，建议拆分。
+        merge：多个测试点覆盖同一spec行为且无必要区分，建议合并。
+        unclear：无法仅凭当前spec或现有测试说明判断，需要补充信息。
+
+### 3.5 Gap Type含义
+        no_gap：未发现测试点缺口。
+        missing_test：漏测，spec中存在requirement，但verification plan和UVM没有对应测试点。
+        wrong_expected：误测，现有测试点的expected behavior与spec不一致。
+        duplicate：重复测，多个测试点覆盖同一requirement且没有必要区分。
+        weak_check：弱检查，stimulus可能覆盖到了场景，但没有足够可观察检查来证明行为正确。
+        tb_model_gap：TB建模缺口，测试该requirement需要monitor、coverage、agent、sequence控制或检查能力，但当前TB可能缺失。
+        spec_gap：spec缺口，当前spec不足以决定测试点该如何设计或判定。
+
+### 3.6 Action取值建议
+        保留现有测试
+        修改测试目标或expected behavior
+        修改stimulus/sequence
+        修改coverage item
+        新增directed test
+        新增random/constrained-random覆盖
+        删除测试点
+        拆分测试点
+        合并测试点
+        标记为后续scoreboard/reference model阶段处理
+
+### 3.7 已完成审核表
+        审核依据包括本文档第1章功能描述、第2章Q&A澄清、doc/MMU_VerificationPlan_final.md、doc/section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md，以及当前UVM中的l1dtlb_tests、phase9 common sequence、lsu sequence、mmu vseq、translation scoreboard、credit scoreboard和coverage/probe。
+        当前审核共形成64条requirement-driven记录：keep 2条，modify 12条，add 47条，delete 1条，split 2条，unclear 0条。
+
+#### 3.7.1 本轮新增/修正定位
+
+本轮新增内容位于3.7审核表末尾，新增Audit ID为`L1DTLB-AUD-056`到`L1DTLB-AUD-064`；对应的plan-only测试点索引位于3.8第二张表末尾。
+
+新增审核项如下：
+- `L1DTLB-AUD-056`：MB entry状态派生信号一致性，新增`DTLB_MB_STATE_SIGNAL_001`。
+- `L1DTLB-AUD-057`：WFI refill数据保持，新增`DTLB_WFI_DATA_HOLD_001`。
+- `L1DTLB-AUD-058`：exception array容量和MB id映射，新增`DTLB_EXPT_ID_MAP_001`。
+- `L1DTLB-AUD-059`：PGFLT/ACFLT保持与flush释放，新增`DTLB_MB_FAULT_HOLD_001`。
+- `L1DTLB-AUD-060`：非WFC refill返回按stale/late处理，新增`DTLB_REFILL_STALE_ID_001`。
+- `L1DTLB-AUD-061`：TLB install可见性和MB释放时序，新增`DTLB_INSTALL_VISIBILITY_001`。
+- `L1DTLB-AUD-062`：access fault来源一致性，新增`DTLB_ACCESS_FAULT_SOURCE_PARITY_001`。
+- `L1DTLB-AUD-063`：reference model观测边界和逐拍比较规则，新增`DTLB_REF_MODEL_OBSERVABILITY_001`。
+- `L1DTLB-AUD-064`：RTU flush与MB FSM同拍race矩阵，新增`DTLB_MB_FLUSH_RACE_MATRIX_001`。
+
+本轮同时修正/强化的已有审核项如下：
+- `L1DTLB-AUD-006`：补充双pipe双miss时选择两个最低空闲MB entry，新增`DTLB_ALLOC_TWO_LOWEST_FREE_001`。
+- `L1DTLB-AUD-029`：将“双pipe同拍命中同一个exception entry”改为负向约束，不再保留port0 priority消费期望，新增`DTLB_EXPT_DUAL_SAME_ENTRY_NEG_001`。
+- `L1DTLB-AUD-039`/`L1DTLB-AUD-040`：修正STAMO方向，明确STAMO是pipe1/store pipe bypass，pipe0为negative场景，新增`DTLB_STAMO_PIPE1_BYPASS_001`和`DTLB_STAMO_PIPE0_NEG_001`。
+
+#### 3.7.2 审核明细表
+
+        | Audit ID | L1DTLB Function / Requirement Item | Spec Source | Required Scenario / Condition | Expected Behavior | Related Verification Plan Item | Related UVM Test / Sequence | Observable Check | Current Status | Gap Type | Action | Action Notes |
+        | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB-AUD-001 | pipe0 basic hit | 1.3, Q-L1DTLB-021 | pipe0 VA命中有效4K L1DTLB entry | T0返回pa_vld、PA和属性，不分配miss buffer | F2.1, F2.4, DTLB_HIT_001 | test_mmu_l1dtlb_dtlb_hit_001 / lsu_pipe0_only_seq | LSU monitor和translation_sb比较PA/fault | keep | no_gap | 保留现有测试 | 当前smoke覆盖有价值，可作为pipe0 hit baseline保留。 |
+        | L1DTLB-AUD-002 | pipe1 basic hit | 1.3, Q-L1DTLB-001, Q-L1DTLB-021 | pipe1 VA命中有效4K L1DTLB entry | T0独立返回pa_vld、PA和属性 | F2.1, F2.4, DTLB_HIT_002 | test_mmu_l1dtlb_dtlb_hit_002 / lsu_pipe1_only_seq | LSU monitor和translation_sb比较PA/fault | keep | no_gap | 保留现有测试 | pipe1端口与pipe0不完全对称，保留单独smoke。 |
+        | L1DTLB-AUD-003 | pipe0和pipe1同拍hit | 1.3, Q-L1DTLB-021, Q-L1DTLB-082 | pipe0和pipe1同一cycle同时valid，覆盖同entry和不同entry | 两个端口同拍返回T0 hit结果 | F2.1, DTLB_CONCURRENT_001 | wrapper使用mmu_concurrent_3pipe_vseq；lsu_01_concurrent_seq为空 | 观察同拍请求、两个端口hit vector和PA response | modify | weak_check | 修改stimulus/coverage | 现有vseq偏随机交错，不保证同拍同VPN或不同VPN hit，需要directed pipe01 sequence或coverage gate。 |
+        | L1DTLB-AUD-004 | 同拍一个pipe hit、一个pipe miss | Q-L1DTLB-022, Q-L1DTLB-082 | 一个pipe hit，另一个pipe miss并需要MB allocation | hit response不被miss路径阻塞；miss按规则分配和发L2请求 | TC-GAP-DTLB-011, DTLB_CONCURRENT_002 | mmu_concurrent_3pipe_vseq | cross entry_hit和dutlb_miss_vld，并观察LSU response | add | missing_test | 新增directed test | 当前random可能覆盖但没有命名检查，建议新增DTLB_HIT_MISS_CONCURRENT_001。 |
+        | L1DTLB-AUD-005 | 双pipe同4K page miss去重 | 1.3, Q-L1DTLB-023, Q-L1DTLB-035 | pipe0和pipe1同拍miss同一个完整27-bit 4K VPN，MB至少一个空位 | 只为pipe0分配一个MB entry，pipe1不再分配第二个entry | F2.3, DTLB_ALLOC_001 | mmu_ptw_thrash_vseq | MB allocation count、allocated VPN、pipe0/pipe1 miss probe | add | missing_test | 新增directed test | 压力vseq不能证明同4K去重规则。 |
+        | L1DTLB-AUD-006 | 双pipe不同4K page miss且有两个free MB | 1.3, Q-L1DTLB-027 | pipe0和pipe1 miss不同完整27-bit VPN，至少两个MB entry空闲 | 两个miss在T1分配到miss buffer中的两个最低空闲entry | F2.3, DTLB_ALLOC_001, DTLB_ALLOC_TWO_LOWEST_FREE_001 | mmu_ptw_thrash_vseq | 同cycle两个allocation事件、allocated MB id和MB valid delta为2 | add | missing_test | 新增directed test | 需要证明dual allocation和最低空闲entry选择，而不是只做MB压力。 |
+        | L1DTLB-AUD-007 | 双pipe不同4K page miss但只剩一个free MB | 1.3, Q-L1DTLB-005, Q-L1DTLB-024 | 仅一个MB entry空闲，两个pipe miss不同VPN，IID年龄含wrap边界 | older IID赢得allocation，younger request不分配 | F2.16, TC-GAP-DTLB-003 | N/A | allocated entry IID/VPN和未分配pipe的drop/no-response行为 | add | missing_test | 新增directed test | 现有random没有强制old-vs-young或IID wrap边界。 |
+        | L1DTLB-AUD-008 | MB full drop/retry | 1.3, Q-L1DTLB-037, Q-L1DTLB-080 | 8个MB entry全valid，新TLB/expt-CAM miss到达 | 不分配新MB entry，LSU依靠busy/wakeup/replay协议重试 | F2.3, DTLB_MB_001, DTLB_MB_002, TC-GAP-DTLB-003 | mmu_ptw_thrash_vseq | MB full=8 bin、无allocation、LSU drop/retry观察 | modify | weak_check | 修改coverage和directed stimulus | 当前whitebox cg_l1dtlb没有MB full=8 bin，需要精确full场景和coverage。 |
+        | L1DTLB-AUD-009 | mmu_lsu_tlb_busy语义 | 1.2, Q-L1DTLB-012, Q-L1DTLB-013 | 任意MB entry valid，包括occupancy=1 | mmu_lsu_tlb_busy拉高；它不是MB full指示，也不全局阻止LSU发请求 | Row 15, F2.18, PTW-031, TC-GAP-DTLB-007 | 未看到独立l1dtlb wrapper，plan中有mb_full seq描述 | cross tlb_busy和MB occupancy 1..8以及LSU request | modify | wrong_expected | 修改plan/test intent | 将“busy只在full时拉高”或“mb_full seq”类期望改为“任意MB valid即busy”，新增DTLB_BUSY_ANY_INFLIGHT_001。 |
+        | L1DTLB-AUD-010 | wakeup broadcast语义 | 1.2, Q-L1DTLB-010, Q-L1DTLB-011 | TLB install或exception array replay completion发生 | mmu_lsu_tlb_wakeup[11:0]为broadcast，只有12'hfff或12'h000，不是per pipe、per IID或per entry | Row 15, F2.17, F4.23, TC-GAP-DTLB-006 | 未看到已实现L1DTLB wrapper | LSU monitor采样tlb_wakeup；top probe观察install/expt事件 | add | missing_test | 新增directed test | 分别增加install-wakeup和expt-wakeup测试，不检查onehot/per-entry语义。 |
+        | L1DTLB-AUD-011 | abort hit response允许返回 | 1.1, Q-L1DTLB-003, Q-L1DTLB-004 | va_vld=1、abort=1且TLB hit | DTLB可以仍返回T0 PA/attr，LSU自行丢弃；abort不等价于所有输出清零 | DTLB_ABORT_001 | lsu_abort_seq | 观察hit+abort response，而不仅是无污染 | split | weak_check | 拆分测试点 | abort测试应拆为hit+abort、miss+abort、expt+abort三类独立期望。 |
+        | L1DTLB-AUD-012 | abort miss不分配、不refill | 1.1, Q-L1DTLB-004 | abort=1且该请求本来会miss | 不分配MB，不发L2 request，不进入stateful refill flow | DTLB_ABORT_001, TC-BUG-WFG-ABT-001 | lsu_abort_seq | MB valid delta和L2 request probe | modify | weak_check | 修改stimulus/check | 现有sequence会驱动abort，但不保证miss/no-allocation被观测。 |
+        | L1DTLB-AUD-013 | abort不消费exception array | 1.1, Q-L1DTLB-004 | aborted request命中pending expt-CAM entry | 不向该aborted request报告page/access fault，expt entry不因abort释放 | DTLB_ABORT_001, v7.4 expt lifecycle plan | 无directed wrapper | expt-CAM write/match/clear probe和LSU fault signal | add | missing_test | 新增directed test | 这是独立abort语义，不应隐藏在普通abort smoke中。 |
+        | L1DTLB-AUD-014 | vabuf无功能影响 | 1.1, Q-L1DTLB-002 | 相同VA/IID/type下改变vabuf | PA/fault/attribute和allocation行为不变 | N/A | 无directed wrapper | 比较不同vabuf下LSU req/rsp | add | missing_test | 新增低优先级directed或random cover | monitor记录vabuf，但当前没有锁定no-effect contract。 |
+        | L1DTLB-AUD-015 | T0/T1 response timing和fault pulse宽度 | 1.3, Q-L1DTLB-007, Q-L1DTLB-008, Q-L1DTLB-014, Q-L1DTLB-015, Q-L1DTLB-018, Q-L1DTLB-019 | hit、page fault、PMP access fault、expt replay page/access fault | pa_vld/PA/page_fault按spec在T0，access_fault按spec在T1；page/access fault为1-cycle pulse，同一request互斥 | F2.7-F2.9, DTLB_PERM_*, PMP tests | translation_sb, LSU covergroups | per-pipe temporal SVA/coverage、pulse width、request ownership | add | weak_check | 新增SVA/coverage | 现有scoreboard检查结果，但没有完整assert pulse width和T0/T1归属。 |
+        | L1DTLB-AUD-016 | load访问R=0触发page fault | Q-L1DTLB-006, Q-L1DTLB-031 | load访问R=0且不能被MXR放行的leaf PTE | T0返回pa_vld和page_fault，该request不进入PMP检查 | F2.7, DTLB_PERM_LD_001 | wrapper使用lsu_st_ld_mix_seq和正常mapping | directed PTE setup和LSU fault response | modify | weak_check | 修改stimulus | 当前sequence没有构造R=0 PTE。 |
+        | L1DTLB-AUD-017 | load MXR行为 | Q-L1DTLB-006, Q-L1DTLB-031 | load访问X=1/R=0 page，分别设置MXR=0和MXR=1 | MXR=0 fault；MXR=1在其他检查通过时允许读 | F2.7, DTLB_PERM_LD_002 | lsu_st_ld_mix_seq | CP0 MXR设置、directed PTE和LSU response | modify | weak_check | 修改stimulus | 当前wrapper没有控制MXR或X-only mapping。 |
+        | L1DTLB-AUD-018 | store访问W=0和D=0 page fault | Q-L1DTLB-006, Q-L1DTLB-031 | store访问W=0 page；store访问D=0 page | page fault；L1DTLB测试不应期待硬件D-bit update/writeback | F2.8, DTLB_PERM_ST_001, DTLB_PERM_ST_002 | lsu_st_ld_mix_seq | directed PTE setup、PTE不变、page_fault pulse | modify | wrong_expected | 修改expected behavior | 将“store触发D-bit update”改为“D=0 store page fault/trap-only”，wrapper需要directed PTE控制。 |
+        | L1DTLB-AUD-019 | store flag影响L2 request/PMP type | Q-L1DTLB-006, Q-L1DTLB-048 | load miss和store miss发送到L2/PTW/PMP | request type反映load/store，store路径使用写相关PMP/permission检查 | F2.10, F3.5/TC-BUG-006 adjacent | 无L1DTLB-directed wrapper | L1D到L2 request type probe或L2 acc_type coverage | add | missing_test | 新增directed test/coverage | 当前permission wrapper只做pipe0随机流量，不能证明request type传播。 |
+        | L1DTLB-AUD-020 | MB CAM hit不分配、不wakeup | Q-L1DTLB-035, Q-L1DTLB-036, Q-L1DTLB-038 | 第二个请求访问已有pending MB entry的完整27-bit 4K VPN | 不新增MB entry，不立即wakeup；后续只能在refill/replay后成功 | F2.3, DTLB_MB_* | mmu_ptw_thrash_vseq | MB valid count、wakeup、后续replay response | add | missing_test | 新增directed test | 该场景不同于同拍dual-miss dedup，需要单独测试。 |
+        | L1DTLB-AUD-021 | credit counter边界 | 1.4, Q-L1DTLB-042, Q-L1DTLB-043, Q-L1DTLB-044 | credit到0，同时发生credit return和request fire | credit初始/最大值为L2TLB request queue中DTLB专用entry数量，最小值为0；同拍return时可以fire request，return和fire同拍时credit计数保持稳定；scoreboard检查credit守恒 | F2.3, F2.10, DTLB_CREDIT_001, DTLB_CREDIT_002, DTLB_CREDIT_BOUND_001 | mmu_concurrent_3pipe_vseq；mmu_credit_sb仅做外部近似跟踪 | exact scheduler credit probe或SVA | modify | weak_check | 修改test/check | 现有credit测试不强制也不检查内部credit边界；DTLB_CREDIT_002当前更接近随机fairness/pressure，仍缺credit=0同拍return的directed check。 |
+        | L1DTLB-AUD-022 | 每cycle最多一个L2 request和scheduler priority | 1.4, Q-L1DTLB-045, Q-L1DTLB-046 | 存在old unsent MB entry，同时新miss可走bypass | 最多发送一个request；old unsent MB优先于current bypass request | F2.10, F2.19, DTLB_SCHED_001 | mmu_concurrent_3pipe_vseq | L2 request valid/type/id和MB sent state | add | missing_test | 新增directed test | 当前sched测试名实际映射generic vseq，不能证明priority。 |
+        | L1DTLB-AUD-023 | bypass allocate+issue路径 | 1.4, 1.8, Q-L1DTLB-047 | 新miss同cycle分配并发往L2 | 该entry下一cycle进入WFC，而不是WFG | F2.3a, TC-BUG-BYPASS-001 | 未看到L1DTLB wrapper | MB state transition coverage/SVA | add | missing_test | 新增directed test或SVA | verification plan有目标，但当前l1dtlb_tests未实现。 |
+        | L1DTLB-AUD-024 | install arbitration优先级WFI大于PTW大于L2 | 1.5, Q-L1DTLB-050 | WFI candidate、PTW refill和L2 refill同cycle竞争 | 只写一个TLB entry，优先级为WFI、PTW、L2 | F2.15, TC-GAP-DTLB-002, DTLB_REFILL_001, DTLB_REFILL_002, DTLB_INSTALL_ARB_001 | mmu_ptw_thrash_vseq, mmu_concurrent_3pipe_vseq | install select probe如sel_wfi/sel_ptw/sel_jtlb和entry update | add | missing_test | 新增directed test/SVA | 现有refill测试是压力测试，不能证明arbitration priority；DTLB_REFILL_002当前只是generic concurrent pressure。 |
+        | L1DTLB-AUD-025 | 多个WFI entry选择规则 | 1.5, Q-L1DTLB-051 | 两个或更多MB entry同时处于WFI | 选择最低entry编号的WFI entry进行install；每拍仍只允许一个TLB entry被写入 | TC-GAP-DTLB-001/002, DTLB_MB_FSM_WFI_001 | 无wrapper | MB WFI vector、selected install source、entry update id | add | missing_test | 新增directed test/SVA | 第2章已明确多WFI时最低entry编号优先，第三章应作为明确测试点跟踪。 |
+        | L1DTLB-AUD-026 | fault refill写exception array、不写TLB | 1.6, Q-L1DTLB-049, Q-L1DTLB-053 | PTW对WFC MB entry返回page/access fault，或L2 refill返回page fault | fault写入expt array；不为该fault install TLB entry；L2 refill不应作为access fault来源 | F2.20, DTLB_MB_PGFLT_001 | 无directed L1DTLB wrapper | expt write probe、无entry update、后续LSU fault replay | add | missing_test | 新增directed fault-refill test | translation scoreboard有expt-CAM shadow能力，但没有命名测试稳定制造该路径。 |
+        | L1DTLB-AUD-027 | PTW和L2同拍fault write | 1.6, Q-L1DTLB-054 | PTW和L2同cycle对不同MB ID返回fault | 两个exception entry都记录；若端口有限则检查spec-defined priority | F2.20/v7.4 expt lifecycle | 无wrapper | l1d_expt_wr0_vld和l1d_expt_wr1_vld probe | add | missing_test | 新增directed test/SVA | plan提到lifecycle，但未看到已实现测试。 |
+        | L1DTLB-AUD-028 | exception array replay和consume | 1.3, 1.6, Q-L1DTLB-059, Q-L1DTLB-060, Q-L1DTLB-061, Q-L1DTLB-062, Q-L1DTLB-063, Q-L1DTLB-064 | LSU replay匹配IID和完整4K VPN的fault entry | expt entry和匹配MB entry同拍释放；page fault为T0，access fault为T1；expt hit禁止新分配MB | v7.4 expt lifecycle, DTLB_MB_PGFLT_001 | translation_sb expt-CAM shadow；无wrapper | expt match/clear、MB valid drop、LSU fault response | add | weak_check | 新增directed test | scoreboard有部分建模，但coverage/test intent应显式驱动并观察lifecycle。 |
+        | L1DTLB-AUD-029 | 双pipe同拍命中同一个exception entry负向约束 | Q-L1DTLB-026, Q-L1DTLB-082 | 两个pipe同cycle访问相同VPN但IID不同，或构造非法同IID观察 | 合法同拍pipe0/pipe1 IID不可能相同；由于expt match需要VPN+IID，两个pipe不应同时命中同一个expt entry；若出现应作为SVA/diagnostic失败，不做port0 priority消费期望 | DTLB_EXPT_DUAL_SAME_ENTRY_NEG_001 | 无wrapper/SVA文件观察到 | expt match0/1、IID/VPN compare和clear count | add | missing_test | 新增负向SVA/diagnostic test | 第2章明确同拍pipe IID不可能相同，原port0 priority期望应修正。 |
+        | L1DTLB-AUD-030 | ABT late refill drain | 1.7, 1.8, Q-L1DTLB-056, Q-L1DTLB-072 | RTU flush/abort使MB entry进入ABT，之后PTW/L2 late refill到达 | 不install TLB，不写expt array；entry drain到IDLE | F2.3b, F2.20, TC-BUG-WFG-ABT-001, DTLB_MB_ABT_LATE_REFILL_001 | 无L1DTLB wrapper | MB state、refill valid、entry update/expt write absence | add | missing_test | 新增directed race test | mmu_sfence_during_walk_vseq不够定向。 |
+        | L1DTLB-AUD-031 | RTU flush清MB和exception array | 1.6, 1.8, Q-L1DTLB-064, Q-L1DTLB-072 | RTU flush时MB/expt entry valid | MB和expt array清空；late refill不能复活旧fault/install | F10.11, DTLB_INV_004 adjacent | mmu_sfence_during_walk_vseq, mmu_reset_midtransaction_vseq elsewhere | MB valid vector、expt probe、late refill no-effect | add | missing_test | 新增L1DTLB-directed flush race | 当前random flush/stress不专门检查L1DTLB MB/expt cleanup。 |
+        | L1DTLB-AUD-032 | L1DTLB全相联match支持4K/2M/1G | 1.7, Q-L1DTLB-028, Q-L1DTLB-029, Q-L1DTLB-030, Q-L1DTLB-082 | 构造4K、2M、1G translation entry并访问匹配VA | 按page-size-specific VPN bits匹配并返回正确PA/attribute/fault；duplicate multi-hit另行澄清 | F2.4-F2.6 | 未看到l1dtlb_tests huge-page wrapper | LSU response和refill page-size probe | add | missing_test | 新增huge-page L1DTLB测试 | plan列出DTLB huge功能，但当前l1dtlb suite没有huge-page wrapper。 |
+        | L1DTLB-AUD-033 | 多个TLB entry同时匹配同一VA | Q-L1DTLB-030 | 构造overlap/stale entries使同一VA可能命中多个entry | 架构上允许translation cache multi-hit，不应报illegal/page fault；若检查RTL微架构mux，则当前RTL为最高index命中优先；也可增加“不应产生multi-hit”的micro-arch invariant coverage | GAP-X3.7, DTLB_DUAL_HIT_MUX_001 | 无wrapper | hit vector、PA mux output、multi-hit invariant probe | add | missing_test | 新增whitebox/micro-arch diagnostic test | 第2章已明确Q-L1DTLB-030答案；该项不再是spec_gap，但不应作为普通black-box architectural pass/fail。 |
+        | L1DTLB-AUD-034 | invalidate all只清L1DTLB entry | 1.7, Q-L1DTLB-065, Q-L1DTLB-066 | tlboper_utlb_clr asserted | L1DTLB entries invalidated；该信号本身不清MB/expt entries | F2.13, DTLB_INV_001 | tlb_inv_all_seq | entry-valid probe和MB/expt no-clear check | modify | weak_check | 修改check | 现有测试驱动invalidate，但应区分entry clear和MB/expt lifecycle。 |
+        | L1DTLB-AUD-035 | SATP/ASID相关L1 clear | 1.7, Q-L1DTLB-067 | SATP变化或ASID invalidate影响L1DTLB | 因L1DTLB不存ASID，ASID相关L1 invalidation应保守full clear所有L1DTLB entry | F2.13, DTLB_INV_003, CROSSASID_001 | tlb_inv_asid_seq | 操作后的entry-valid vector和后续refill/miss | modify | wrong_expected | 修改expected behavior | 不应期待ASID-selective L1DTLB invalidation；L2TLB可以另有ASID语义。 |
+        | L1DTLB-AUD-036 | VA invalidate按VPN低8位保守清除 | 1.7, Q-L1DTLB-068 | 两个entry的VPN不同但VPN[7:0]相同，对其中一个VA执行invalidate | 可能保守清除两者；至少target VA必须失效 | F2.13, DTLB_INV_002 | tlb_inv_va_seq | entry valid vector和后续hit/miss/refill | add | missing_test | 新增directed test | 现有VA invalidate测试不能证明低8位保守清除行为。 |
+        | L1DTLB-AUD-037 | invalidate和hit同cycle | Q-L1DTLB-069, Q-L1DTLB-082 | LSU hit request和matching invalidate同cycle发生 | 本拍仍可返回旧entry的hit结果；invalidate清valid的效果从下一拍开始体现，后续不能再命中该entry | DTLB_INV_004, DTLB_INV_HIT_SAME_CYCLE_001 | mmu_sfence_during_walk_vseq | 同cycle LSU response、entry clear、下一拍follow-up miss/refill | add | missing_test | 新增directed check | 第2章已明确old-hit同拍允许返回，下一拍起entry失效；现有random race不能替代精确检查。 |
+        | L1DTLB-AUD-038 | invalidate和install同entry同cycle | Q-L1DTLB-070, Q-L1DTLB-082 | install选择的entry同cycle也被invalidate清除 | 最终valid为0，clear优先级高于install/update；该entry后续不能作为有效翻译命中 | DTLB_INV_004, DTLB_REFILL_*, DTLB_INV_INSTALL_SAME_ENTRY_001 | 无directed wrapper | entry update/clear同拍、cycle后valid、follow-up miss/refill | add | missing_test | 新增directed race test/SVA | 第2章已明确clear优先于install，第三章应作为明确测试点而非spec_gap。 |
+        | L1DTLB-AUD-039 | STAMO pipe1 bypass行为 | Q-L1DTLB-001, Q-L1DTLB-032 | STAMO在store pipe/pipe1支持路径上发生 | STAMO使用LM保存的PA和属性旁路，不重新查TLB、不做新的PTE/PMP检查、不产生TLB miss，也不制造MB/refill污染 | F2.14, DTLB_STAMO_001, DTLB_STAMO_PIPE1_BYPASS_001 | lsu_stamo_seq | LSU STAMO monitor、translation_sb STAMO handling、MB valid no-change、PA/attr source | modify | wrong_expected | 修改stimulus/check | 原“pipe0 bypass”表述与第2章相反；应修正为pipe1/store pipe专用bypass，并补no-pollution和PA-source检查。 |
+        | L1DTLB-AUD-040 | STAMO pipe0 negative | Q-L1DTLB-001, Q-L1DTLB-032 | pipe0出现普通请求，同时环境中存在STAMO/LM旁路活动 | pipe0不支持STAMO bypass，相关STAMO bypass信号对pipe0无功能影响；pipe0请求仍按正常TLB/direct-map/fault路径处理 | F2.14, TC-GAP-DTLB-005, DTLB_STAMO_PIPE0_NEG_001 | 无wrapper | pipe0 PA source/fault response、MB/refill变化、STAMO signal tie-off | add | missing_test | 新增directed negative test | plan中的STAMO非对称测试应以pipe0不支持bypass为负向场景。 |
+        | L1DTLB-AUD-041 | MMU off或machine-mode direct map | Q-L1DTLB-033 | MMU disabled或machine mode下pipe0/pipe1请求 | PA直接生成，不进入refill flow，attribute/fault按direct-map规则 | F2.NEW.3, row 15 | 无L1DTLB wrapper | dutlb_xx_mmu_off、LSU PA/fault、无MB/L2 request | add | missing_test | 新增directed test | spec将该行为纳入L1DTLB范围，当前l1dtlb测试只用SV39 enabled bring-up。 |
+        | L1DTLB-AUD-042 | reset initial state | Q-L1DTLB-071 | reset release | TLB valid=0，MB/expt invalid，credit counter初始化为CREDIT_MAX，PLRU初值仅whitebox覆盖 | General reset/regression | 无L1DTLB-specific wrapper | reset后whitebox probe | add | missing_test | 新增smoke SVA/check | 当前测试依赖reset但没有显式审核L1DTLB初始状态。 |
+        | L1DTLB-AUD-043 | PLRU exact replacement policy | 2.10.1, Q-L1DTLB-073, Q-L1DTLB-074, Q-L1DTLB-075, Q-L1DTLB-076 | fill、hit、invalidate之后发生replacement | 主translation scoreboard不应预测精确PLRU victim；replacement fairness只放whitebox SVA/coverage | F2.2, DTLB_PLRU_001 | mmu_ptw_thrash_vseq；mmu_plru_sva.sv onehot0 | whitebox PLRU victim onehot/coverage | delete | wrong_expected | 删除black-box exact PLRU期望，保留whitebox检查 | 不保留假设exact LRU/PLRU victim的functional pass/fail测试；DTLB_PLRU_001如保留应改名或改作whitebox coverage。 |
+        | L1DTLB-AUD-044 | 现有MB pressure wrappers重复映射 | 3.5 duplicate criteria | DTLB_ALLOC_001、DTLB_MB_001、DTLB_MB_002、DTLB_REFILL_001、DTLB_PLRU_001都映射到mmu_ptw_thrash_vseq | 这些wrapper当前共享sequence，但它们代表的requirements并不等价 | Section 6.3 baseline TC | 多个wrapper使用mmu_ptw_thrash_vseq | wrapper metadata和实际coverage对比 | split | duplicate | 拆分或retarget wrappers | 可暂时保留为traceability shells，但每个wrapper后续应retarget到独立directed场景，否则只是重复smoke。 |
+        | L1DTLB-AUD-045 | MMU对外响应不携带IID | Q-L1DTLB-019, Q-L1DTLB-020 | 同一pipe连续两拍请求，T0/T1响应在相邻流水级返回 | scoreboard按pipe固定时序归属响应：pa_vld/page_fault属于当前T0请求，access_fault属于上一拍T1请求，不能依赖输出IID | DTLB_RESP_NO_IID_T01_001 | N/A | LSU monitor请求历史、每pipe T0/T1配对 | add | tb_model_gap | 新增scoreboard/coverage规则 | spec明确MMU输出不带IID，检查模型必须显式锁定按流水归属的规则。 |
+        | L1DTLB-AUD-046 | 同pipe T1 access fault与下一拍T0 page fault重叠 | Q-L1DTLB-009, Q-L1DTLB-019 | 第N拍请求A触发PMP检查，第N+1拍请求B在同pipe产生T0 page fault，同时A返回T1 access fault | 同cycle page_fault和access_fault可以同时为高，但属于不同请求；同一请求仍保持page/access fault互斥 | DTLB_FAULT_OVERLAP_PIPE_001 | N/A | 连续两拍请求的per-pipe temporal SVA/scoreboard历史 | add | missing_test | 新增directed overlap test | 现有fault测试未强制该合法重叠场景，容易把同拍端口信号误判为同一请求双异常。 |
+        | L1DTLB-AUD-047 | pa_vld表示终态结果而非仅表示成功PA | Q-L1DTLB-007, Q-L1DTLB-015, Q-L1DTLB-017 | 覆盖正常hit、MMU off/direct map、VA/page fault、exception replay等路径 | pa_vld表示DTLB本次查询已有终态结果；page fault应与T0 pa_vld配对，access fault是后续T1事件 | DTLB_PA_VLD_TERMINAL_001 | translation_sb已有部分行为 | LSU响应、fault配对coverage | add | weak_check | 新增语义覆盖/检查 | 防止后续把pa_vld误理解为“PA一定可用于真实访存”。 |
+        | L1DTLB-AUD-048 | page fault阻止同一请求进入PMP/access fault路径 | Q-L1DTLB-009, Q-L1DTLB-016 | TLB hit或direct-map请求产生page fault条件，同时构造若进入PMP会失败的条件 | 同一请求T0上报page fault，不发起PMP check，也不得再产生该请求的access fault | DTLB_PF_BLOCKS_PMP_001, DTLB_PMP_001 | DTLB_PERM_* wrapper已有但不够directed | PMP request probe、LSU page/access fault归属 | add | weak_check | 新增permission/PMP优先级directed test | 现有permission测试需要补directed PTE/PMP配置和no-PMP-after-page-fault检查。 |
+        | L1DTLB-AUD-049 | 同拍access_fault和pa_vld不一定属于同一请求 | Q-L1DTLB-017, Q-L1DTLB-019 | T1 PMP access fault返回时，同pipe新T0请求也返回pa_vld | checker不能把同拍access_fault和pa_vld强行绑定为同一请求；归属必须按LSU流水时序判断 | DTLB_ACCESS_FAULT_T1_PAIRING_001 | N/A | per-pipe响应配对SVA/scoreboard历史 | add | tb_model_gap | 新增scoreboard guard | 防止高密度请求下T0/T1事件同拍重叠导致误报。 |
+        | L1DTLB-AUD-050 | load/store/AMO类型传播 | Q-L1DTLB-006, Q-L1DTLB-031, Q-L1DTLB-048 | load、store、LDAMO/atomic类请求、STAMO相关请求经过L1DTLB hit/miss路径 | 请求类型影响PTE权限、L2/PTW access type和PMP读写检查；PA/cache属性不应仅因load/store类型改变 | DTLB_TYPE_PROP_LOAD_STORE_AMO_001 | DTLB_PERM_*, DTLB_STAMO_001 | L1D到L2 type probe、PMP request type、LSU fault/attribute比较 | add | missing_test | 新增type propagation directed test | 现有permission和STAMO wrapper不能证明类型一路传递到L2/PTW/PMP。 |
+        | L1DTLB-AUD-051 | L1DTLB entry字段建模完整性 | Q-L1DTLB-028, Q-L1DTLB-031 | 安装具有不同VPN、PPN、page size、permission bit、cache/security属性的entry | scoreboard/reference model应比较L1DTLB缓存的所有架构可见PA、权限和属性影响 | DTLB_ENTRY_FIELD_MODEL_001 | translation_sb已有部分模型 | refill/install probe、LSU PA/attribute/fault比较 | add | tb_model_gap | 新增模型覆盖清单 | 第2章已定义entry字段语义，第三章需要把模型完整性作为测试点跟踪。 |
+        | L1DTLB-AUD-052 | TLB hit与exception array hit不同pipe同拍发生 | Q-L1DTLB-025, Q-L1DTLB-082 | 一个pipe命中普通TLB entry，另一个pipe同cycle命中exception array entry | 普通hit响应、exception replay fault、MB/expt release和wakeup可同拍发生，且互不污染两个pipe响应 | DTLB_EXPT_HIT_WITH_TLB_HIT_001 | N/A | pipe hit vector、expt match/clear、MB valid drop、wakeup broadcast、LSU响应 | add | missing_test | 新增双pipe expt/hit directed test | 现有concurrent测试未稳定构造normal hit与expt replay混合同拍场景。 |
+        | L1DTLB-AUD-053 | 清理来源作用范围矩阵 | 1.6, 1.7, 1.8, Q-L1DTLB-064, Q-L1DTLB-065, Q-L1DTLB-066, Q-L1DTLB-067, Q-L1DTLB-068, Q-L1DTLB-072 | TLB entry、MB、expt entry均有live状态时，分别施加tlboper_utlb_clr、regs_utlb_clr、VA invalidate、RTU flush | TLB entry clear、VA低8位保守清理、SATP full clear、RTU清MB/expt的作用范围必须彼此区分 | DTLB_CLEANUP_SCOPE_MATRIX_001 | DTLB_INV_001..004, DTLB_MB_ABT_LATE_REFILL_001 | entry valid vector、MB valid vector、expt valid vector、late refill no-effect | add | weak_check | 新增矩阵coverage/check | 已有invalidate行分散，仍需一个矩阵测试防止把TLB entry invalidation和MB/expt cleanup混淆。 |
+        | L1DTLB-AUD-054 | reset初始状态显式检查 | Q-L1DTLB-071 | reset释放后、任何LSU请求前观察L1DTLB | TLB entry invalid、MB invalid、expt array invalid、scheduler credit初始化；PLRU初值如检查仅作为whitebox | DTLB_RESET_STATE_001 | N/A | reset后whitebox probe、无spurious output检查 | add | missing_test | 新增reset smoke SVA/check | 当前回归依赖reset，但没有命名的L1DTLB reset-state测试点。 |
+        | L1DTLB-AUD-055 | black-box测试不得假设精确PLRU victim | Q-L1DTLB-073, Q-L1DTLB-074, Q-L1DTLB-075, Q-L1DTLB-076, L1DTLB-AUD-043 | fill、hit、invalidate、refill后触发replacement | 功能测试只检查最终translation正确性，不预测精确victim entry；精确替换策略只放whitebox coverage/SVA | DTLB_PLRU_WHITEBOX_ONLY_001 | DTLB_PLRU_001 | PLRU onehot/fairness cover、无black-box victim scoreboard | modify | wrong_expected | 重定向PLRU测试意图 | 把PLRU约束补成独立测试点，避免后续wrapper重新引入exact-victim期望。 |
+        | L1DTLB-AUD-056 | MB entry状态派生信号一致性 | Q-L1DTLB-039, Q-L1DTLB-077, Q-L1DTLB-078 | MB entry在IDLE/WFG/WFC/WFI/PGFLT/ACFLT/ABT各状态转换，包括RTU flush同拍影响ready | entry_vld等价于state!=IDLE；entry_wfi等价于state==WFI；entry_wfc等价于state==WFC或ABT；ready基本对应WFG但受本拍rtu flush屏蔽 | DTLB_MB_STATE_SIGNAL_001 | 无wrapper | MB state、entry_vld、entry_wfi、entry_wfc、ready和rtu flush probe | add | missing_test | 新增whitebox SVA/coverage | 第2章明确状态信号等价关系，现有MB测试关注分配/压力但未显式检查派生状态信号。 |
+        | L1DTLB-AUD-057 | WFI refill数据保持 | Q-L1DTLB-052 | PTW/L2 normal refill返回但未获得install授权，MB entry进入WFI后等待后续install | WFI entry必须保持原miss VPN、refill PPN、flag和page size；后续被选中install时写入的数据与被latch的refill一致 | DTLB_WFI_DATA_HOLD_001 | 无wrapper | WFI entry vpn_r/ppn_r/flg_r/pgs_r、后续entry update data | add | missing_test | 新增directed test/SVA | Install arbitration已覆盖优先级，但仍需覆盖被抢占refill的数据保持。 |
+        | L1DTLB-AUD-058 | exception array容量和MB id映射 | Q-L1DTLB-058, Q-L1DTLB-059, Q-L1DTLB-077, Q-L1DTLB-078 | fault refill携带不同MB id返回，包括边界id和同拍双fault | exception array entry数量必须等于MB深度；fault写入直接使用refill携带的MB id；entry生命周期与对应MB entry严格绑定 | DTLB_EXPT_ID_MAP_001 | 无wrapper | expt write id/valid vector、MB id/state、replay clear id | add | missing_test | 新增directed id mapping test/SVA | 现有fault lifecycle覆盖写入和释放，但没有显式检查exception array容量、索引和MB绑定关系。 |
+        | L1DTLB-AUD-059 | PGFLT/ACFLT保持与flush释放 | Q-L1DTLB-040, Q-L1DTLB-041, Q-L1DTLB-062 | fault refill后MB entry进入PGFLT或ACFLT，期间没有后续LSU replay命中，或有同VPN新请求到达 | PGFLT/ACFLT entry保持valid等待原请求replay命中exception array；不因超时自动释放；exception hit禁止给该请求分配新MB；RTU flush可释放该entry | DTLB_MB_FAULT_HOLD_001 | DTLB_MB_PGFLT_001 | MB state/valid保持、expt valid保持、no-allocation、RTU flush clear | add | missing_test | 新增fault-hold directed test | 第2章明确PGFLT/ACFLT保留目的和清除条件，现有replay测试不证明无replay时的保持行为。 |
+        | L1DTLB-AUD-060 | 非WFC refill返回按stale/late处理 | Q-L1DTLB-055, Q-L1DTLB-056, Q-L1DTLB-072 | refill返回的MB id对应entry处于IDLE、PGFLT、ACFLT、ABT或被flush后的状态 | 只有对应entry处于WFC时refill才作为有效完成；IDLE/PGFLT/ACFLT等非WFC状态不得写TLB、不得写expt、不得wakeup；ABT仅允许late refill drain到IDLE | DTLB_REFILL_STALE_ID_001 | DTLB_MB_ABT_LATE_REFILL_001 | refill valid/id、MB state、entry update/expt write/wakeup absence | add | missing_test | 新增stale refill directed/SVA | 现有ABT late refill测试只覆盖特殊态，需要补全所有非WFC状态的过滤规则。 |
+        | L1DTLB-AUD-061 | TLB install可见性和MB释放时序 | Q-L1DTLB-057 | normal refill获得TLB install授权，同cycle或下一cycle有LSU访问同一VPN | TLB写入和原MB entry释放在同一时钟沿完成；写入前的同一组合周期不能命中新entry；写入沿后的下一可见周期可以命中 | DTLB_INSTALL_VISIBILITY_001 | DTLB_REFILL_001 | install event、MB valid drop、same-cycle lookup、next-cycle hit response | add | missing_test | 新增install visibility directed test/SVA | Install arbitration已有优先级测试，但缺少写入可见周期和MB释放时序检查。 |
+        | L1DTLB-AUD-062 | access fault来源一致性 | Q-L1DTLB-034, Q-L1DTLB-063, Q-L1DTLB-081 | 分别通过TLB-hit后PMP失败和PTW fault refill挂入exception array后replay产生access fault | 两类access fault对LSU的可观测输出时序一致，均按T1归属匹配；refill携带的access fault需先挂exception array，后续replay hit后上报 | DTLB_ACCESS_FAULT_SOURCE_PARITY_001 | DTLB_PMP_001, DTLB_MB_PGFLT_001 | access fault pulse、T1 request ownership、expt write/replay path | add | weak_check | 新增source parity directed test | 当前PMP和fault replay测试分散，需防止两种access fault来源在scoreboard中使用不同归属规则。 |
+        | L1DTLB-AUD-063 | reference model观测边界和逐拍比较规则 | Q-L1DTLB-077, Q-L1DTLB-078, Q-L1DTLB-079, Q-L1DTLB-081 | 对TLB entry、MB、exception array、credit、PLRU以及PA/fault/wakeup/busy等信号建立scoreboard规则 | 主scoreboard应建模TLB/MB/expt/credit/per-pipe T0/T1流水，pass/fail优先基于外部接口和spec可推导状态；PA/attr/page_fault/access_fault、L2 request和credit逐拍精确比较，wakeup/busy按事件或状态语义比较；PLRU精确victim不作black-box比较 | DTLB_REF_MODEL_OBSERVABILITY_001 | translation_sb已有部分模型 | scoreboard rule review、external event trace、whitebox-only probe清单 | add | tb_model_gap | 新增scoreboard建模边界清单 | 第2章给出了UVM建模决策，需要在审核表中形成明确测试/模型约束，避免checker过度依赖内部探针或漏做逐拍比较。 |
+        | L1DTLB-AUD-064 | RTU flush与MB FSM同拍race矩阵 | Q-L1DTLB-072, Q-L1DTLB-082 | WFG+flush+grant、WFC+flush+refill、WFI+flush等同拍race | flush/abort kill优先；WFG+flush+grant最终进入ABT等待late refill；WFC+flush+refill最终IDLE且不install/不写expt/不wakeup；WFI+flush最终IDLE且不install | DTLB_MB_FLUSH_RACE_MATRIX_001 | DTLB_MB_ABT_LATE_REFILL_001, DTLB_REFILL_002 | MB state transition、entry update/expt write/wakeup absence、late refill drain | add | missing_test | 新增flush race矩阵directed/SVA | 现有ABT late refill只覆盖一段race，需要把第2章列出的同拍grant/refill/install race做成矩阵测试点。 |
+
+### 3.8 已有L1DTLB测试点索引
+        本节用于回答“已有测试点是否都进入第三章审核”的traceability问题。当前mmu_verification/testbench/test/l1dtlb_tests目录下的23个已实现wrapper均已映射到3.7审核表；verification plan中尚未实现为wrapper的plan-only TC也列在第二张表中，便于后续决定是新增、修改、删除还是待澄清。
+
+        当前UVM wrapper测试点索引：
+
+        | Existing UVM TC-ID | Mapped Audit ID | Audit Decision |
+        | --- | --- | --- |
+        | DTLB_ABORT_001 | L1DTLB-AUD-011, L1DTLB-AUD-012, L1DTLB-AUD-013 | 拆分abort hit/miss/expt三类语义，并修改miss/no-allocation检查。 |
+        | DTLB_ALLOC_001 | L1DTLB-AUD-005, L1DTLB-AUD-006, L1DTLB-AUD-044 | 当前pressure用途不足，需retarget到dedup/dual allocation/最低空闲entry选择等directed场景。 |
+        | DTLB_CONCURRENT_001 | L1DTLB-AUD-003 | 修改为真正同拍pipe0/pipe1 hit directed test。 |
+        | DTLB_CONCURRENT_002 | L1DTLB-AUD-004 | 保留随机压力含义，但新增hit+miss同拍directed test。 |
+        | DTLB_CREDIT_001 | L1DTLB-AUD-021 | 修改为credit边界directed check。 |
+        | DTLB_CREDIT_002 | L1DTLB-AUD-021, L1DTLB-AUD-022 | 当前随机fairness/pressure保留为辅助，不能替代credit boundary和scheduler priority directed check。 |
+        | DTLB_HIT_001 | L1DTLB-AUD-001 | 保留。 |
+        | DTLB_HIT_002 | L1DTLB-AUD-002 | 保留。 |
+        | DTLB_INV_001 | L1DTLB-AUD-034 | 修改check，区分TLB entry clear和MB/expt lifecycle。 |
+        | DTLB_INV_002 | L1DTLB-AUD-036 | 增加VPN[7:0] alias conservative clear directed check。 |
+        | DTLB_INV_003 | L1DTLB-AUD-035 | 修改expected behavior为L1DTLB full clear。 |
+        | DTLB_INV_004 | L1DTLB-AUD-031, L1DTLB-AUD-037, L1DTLB-AUD-038 | 保留random race压力；需补充invalidate+hit和invalidate+install的directed精确检查。 |
+        | DTLB_MB_001 | L1DTLB-AUD-008, L1DTLB-AUD-020, L1DTLB-AUD-044 | 修改为MB full和MB CAM hit directed场景。 |
+        | DTLB_MB_002 | L1DTLB-AUD-008, L1DTLB-AUD-020, L1DTLB-AUD-044 | 当前与DTLB_MB_001重复，建议retarget或保留为随机压力shell。 |
+        | DTLB_PERM_LD_001 | L1DTLB-AUD-016 | 修改stimulus以构造R=0 PTE。 |
+        | DTLB_PERM_LD_002 | L1DTLB-AUD-017 | 修改stimulus以覆盖MXR和X-only page。 |
+        | DTLB_PERM_ST_001 | L1DTLB-AUD-018 | 修改stimulus以构造W=0 store page fault。 |
+        | DTLB_PERM_ST_002 | L1DTLB-AUD-018 | 修改错误期望，D=0 store应page fault/trap-only，不应期待硬件D-bit update。 |
+        | DTLB_PLRU_001 | L1DTLB-AUD-043, L1DTLB-AUD-044 | 删除black-box exact victim期望，保留whitebox coverage/SVA。 |
+        | DTLB_REFILL_001 | L1DTLB-AUD-024, L1DTLB-AUD-026, L1DTLB-AUD-061, L1DTLB-AUD-044 | 当前pressure用途不足，需补install arbitration、fault refill和install可见性directed场景。 |
+        | DTLB_REFILL_002 | L1DTLB-AUD-024, L1DTLB-AUD-031, L1DTLB-AUD-038, L1DTLB-AUD-064 | 当前generic concurrent pressure保留为辅助，不能替代refill/install/flush race directed check。 |
+        | DTLB_SCHED_001 | L1DTLB-AUD-022 | 修改为old MB priority over bypass和one-request-per-cycle directed check。 |
+        | DTLB_STAMO_001 | L1DTLB-AUD-039 | 修正为pipe1/store pipe bypass，补no-pollution和PA-source检查。 |
+
+        Verification plan中尚未形成当前UVM wrapper的L1DTLB相关TC索引：
+
+        | Plan-only TC-ID | Mapped Audit ID | Audit Decision |
+        | --- | --- | --- |
+        | DTLB_ALLOC_FULL_001 | L1DTLB-AUD-008 | 新增/细化MB full directed test。 |
+        | DTLB_ALLOC_RACE_001 | L1DTLB-AUD-007, L1DTLB-AUD-022, L1DTLB-AUD-023 | 拆到one-free IID arbitration、scheduler priority和bypass allocate+issue race。 |
+        | DTLB_ALLOC_TWO_LOWEST_FREE_001 | L1DTLB-AUD-006 | 新增双pipe双miss且有多个free时选择两个最低空闲MB entry的directed test/SVA。 |
+        | DTLB_BUSY_ANY_INFLIGHT_001 | L1DTLB-AUD-009 | 修改为任意MB valid即busy。 |
+        | DTLB_BUSY_RESTART_MODE_001 | L1DTLB-AUD-009, L1DTLB-AUD-010 | 作为busy/wakeup协同协议测试补充。 |
+        | DTLB_CREDIT_BOUND_001 | L1DTLB-AUD-021 | 新增/细化credit boundary directed test。 |
+        | DTLB_DUAL_HIT_MUX_001 | L1DTLB-AUD-033 | 新增多entry同VA命中时最高index优先mux诊断，或作为multi-hit invariant coverage。 |
+        | DTLB_EXPT_DUAL_SAME_ENTRY_NEG_001 | L1DTLB-AUD-029 | 新增双pipe同拍不应同时命中同一exception entry的负向SVA/diagnostic test。 |
+        | DTLB_HIT_MISS_CONCURRENT_001 | L1DTLB-AUD-004 | 新增hit+miss同拍directed test。 |
+        | DTLB_HUGE_001, DTLB_HUGE_002, DTLB_HUGE_003 | L1DTLB-AUD-032 | 新增4K/2M/1G page-size directed tests。 |
+        | DTLB_HUGE_MIX_001 | L1DTLB-AUD-032, L1DTLB-AUD-033 | 新增huge-page mix；multi-hit部分按最高index优先或micro-arch invariant覆盖处理。 |
+        | DTLB_INSTALL_ARB_001 | L1DTLB-AUD-024 | 新增install arbitration directed test/SVA。 |
+        | DTLB_INSTALL_ID_CHK_001 | L1DTLB-AUD-024 | 作为install arbitration的数据源ID一致性SVA/check。 |
+        | DTLB_INSTALL_VISIBILITY_001 | L1DTLB-AUD-061 | 新增TLB install后下一可见周期才能命中、MB同沿释放的directed test/SVA。 |
+        | DTLB_INV_VA8_alias_001 | L1DTLB-AUD-036 | 新增VPN[7:0] alias invalidate directed test。 |
+        | DTLB_MB_FSM_WFI_001 | L1DTLB-AUD-025 | 新增多WFI最低entry编号优先install directed test/SVA。 |
+        | DTLB_MB_STATE_SIGNAL_001 | L1DTLB-AUD-056 | 新增MB FSM状态与entry_vld/entry_wfi/entry_wfc/ready派生信号一致性SVA/coverage。 |
+        | DTLB_WFI_DATA_HOLD_001 | L1DTLB-AUD-057 | 新增WFI等待期间vpn/ppn/flag/page size refill数据保持检查。 |
+        | DTLB_INV_HIT_SAME_CYCLE_001 | L1DTLB-AUD-037 | 新增invalidate和hit同cycle时本拍old-hit、下一拍entry失效的directed test。 |
+        | DTLB_INV_INSTALL_SAME_ENTRY_001 | L1DTLB-AUD-038 | 新增invalidate和install同entry同cycle时clear优先、最终valid为0的directed test/SVA。 |
+        | DTLB_MB_PGFLT_001 | L1DTLB-AUD-026, L1DTLB-AUD-028, L1DTLB-AUD-059, L1DTLB-AUD-062 | 新增fault refill、fault hold、expt replay和access-fault来源一致性directed test。 |
+        | DTLB_EXPT_ID_MAP_001 | L1DTLB-AUD-058 | 新增exception array容量、MB id索引和生命周期绑定检查。 |
+        | DTLB_MB_FAULT_HOLD_001 | L1DTLB-AUD-059 | 新增PGFLT/ACFLT无replay时保持、RTU flush释放、expt hit禁止新MB分配检查。 |
+        | DTLB_MB_ABT_LATE_REFILL_001 | L1DTLB-AUD-030, L1DTLB-AUD-060, L1DTLB-AUD-064 | 新增ABT late refill drain，并扩展到非WFC stale refill和flush race矩阵。 |
+        | DTLB_REFILL_STALE_ID_001 | L1DTLB-AUD-060 | 新增IDLE/PGFLT/ACFLT/ABT等非WFC状态下refill返回不得污染TLB/expt/wakeup的directed test/SVA。 |
+        | DTLB_MB_FLUSH_RACE_MATRIX_001 | L1DTLB-AUD-064 | 新增WFG/WFC/WFI与flush/grant/refill/install同拍race矩阵测试。 |
+        | DTLB_PMP_001 | L1DTLB-AUD-015, L1DTLB-AUD-048, L1DTLB-AUD-062 | 归入PMP access fault T1 timing、page fault阻止PMP和access fault来源一致性检查。 |
+        | DTLB_ACCESS_FAULT_SOURCE_PARITY_001 | L1DTLB-AUD-062 | 新增PMP access fault与PTW fault-replay access fault输出时序一致性检查。 |
+        | DTLB_STAMO_PIPE1_BYPASS_001 | L1DTLB-AUD-039 | 新增/修正STAMO pipe1/store pipe bypass PA/attr source和no-pollution检查。 |
+        | DTLB_STAMO_PIPE0_NEG_001 | L1DTLB-AUD-040 | 新增pipe0不支持STAMO bypass的negative test。 |
+        | DTLB_SYSMAP_001 | L1DTLB-AUD-041 | 归入MMU off/M-mode/direct map/sysmap bypass测试。 |
+        | DTLB_WAKEUP_COMPLETE_BCAST_001 | L1DTLB-AUD-010 | 新增wakeup broadcast directed test。 |
+        | DTLB_WAKEUP_EXPT_001 | L1DTLB-AUD-010, L1DTLB-AUD-028 | 新增exception replay wakeup directed test。 |
+        | DTLB_WAKEUP_MULTI_RETRY_001 | L1DTLB-AUD-010 | 作为broadcast后多entry重试覆盖。 |
+        | DTLB_RESP_NO_IID_T01_001 | L1DTLB-AUD-045 | 新增无IID响应归属scoreboard/coverage检查。 |
+        | DTLB_FAULT_OVERLAP_PIPE_001 | L1DTLB-AUD-046 | 新增同pipe连续请求下T1 access fault与下一拍T0 page fault重叠测试。 |
+        | DTLB_PA_VLD_TERMINAL_001 | L1DTLB-AUD-047 | 新增pa_vld作为终态结果、非success-only PA valid的语义检查。 |
+        | DTLB_PF_BLOCKS_PMP_001 | L1DTLB-AUD-048 | 新增page fault阻止同一request发起PMP/access fault的优先级测试。 |
+        | DTLB_ACCESS_FAULT_T1_PAIRING_001 | L1DTLB-AUD-049 | 新增T1 access fault与同拍T0 pa_vld跨request归属检查。 |
+        | DTLB_TYPE_PROP_LOAD_STORE_AMO_001 | L1DTLB-AUD-050 | 新增load/store/AMO类型对permission、L2/PTW type和PMP type传播测试。 |
+        | DTLB_ENTRY_FIELD_MODEL_001 | L1DTLB-AUD-051 | 新增L1DTLB entry字段和scoreboard建模完整性检查。 |
+        | DTLB_EXPT_HIT_WITH_TLB_HIT_001 | L1DTLB-AUD-052 | 新增一pipe TLB hit、一pipe exception-array hit同拍并发测试。 |
+        | DTLB_CLEANUP_SCOPE_MATRIX_001 | L1DTLB-AUD-053 | 新增tlboper/regs/VA invalidate/RTU flush清理范围矩阵测试。 |
+        | DTLB_RESET_STATE_001 | L1DTLB-AUD-054 | 新增reset后L1DTLB初始状态显式检查。 |
+        | DTLB_PLRU_WHITEBOX_ONLY_001 | L1DTLB-AUD-055 | 将PLRU替换策略限定为whitebox coverage/SVA，避免black-box exact victim期望。 |
+        | DTLB_REF_MODEL_OBSERVABILITY_001 | L1DTLB-AUD-063 | 新增reference model观测边界、逐拍精确比较和whitebox-only probe清单。 |

@@ -138,6 +138,7 @@ logic [MBUF_ENTRY_NUM-1:0]                  mbuf_entry_on;
 logic [MBUF_ENTRY_NUM-1:0][VPN_WIDTH-1:0]   mbuf_entry_vpn;
 logic [MBUF_ENTRY_NUM-1:0][TYPE_WIDTH-1:0]  mbuf_entry_type;
 logic [MBUF_ENTRY_NUM-1:0][ID_WIDTH-1:0]    mbuf_entry_id;
+logic [MBUF_ENTRY_NUM-1:0][3:0]             mbuf_entry_twu_idx;
 logic [MBUF_ENTRY_NUM-1:0][PTE_LEVEL-1:0]   mbuf_entry_lvl;
 //logic	[3:0]		 twu_have			;
 //logic	[3:0]		mbuf_twu_idx			;
@@ -380,7 +381,7 @@ always_comb begin
     mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
 	for(int i = 0; i < MBUF_ENTRY_NUM; i = i + 1) begin
 		if(mmu_lsu_data_req_ptr[i])begin
-		mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[i][PADDR_WIDTH-1:0];
+		mmu_lsu_data_req_addr[PADDR_WIDTH-1:0] = mbuf_entry_padder[i];
 	    end
     end
 end
@@ -564,17 +565,17 @@ generate
 
             .write_back_req             (write_back_req[MBUF_ent]                    ),
             .bus_err_write_back_req     (bus_err_write_back_req[MBUF_ent]            ),
-			.mbuf_entry_padder			(mbuf_entry_padder[MBUF_ent][PADDR_WIDTH-1:0]),			
-			.mbuf_entry_vld				(mbuf_entry_vld[MBUF_ent]				 	 ),
-			.mbuf_entry_on				(mbuf_entry_on[MBUF_ent]					 ),
-			.mbuf_entry_vpn				(mbuf_entry_vpn[MBUF_ent][VPN_WIDTH-1:0]	 ),
-			.mbuf_entry_type			(mbuf_entry_type[MBUF_ent][TYPE_WIDTH-1:0]	 ),
-			.mbuf_entry_id				(mbuf_entry_id[MBUF_ent][ID_WIDTH-1:0]		 ),
-			.mbuf_entry_twu_idx			(mbuf_entry_twu_idx[MBUF_ent][3:0]			 ),
-			.mbuf_entry_lvl             (mbuf_entry_lvl[MBUF_ent][PTE_LEVEL-1:0]	 ),
-            .mbuf_entry_data            (mbuf_entry_data[MBUF_ent][DATA_WIDTH-1:0]   ),
+			.mbuf_entry_padder			(mbuf_entry_padder[MBUF_ent]                 ),
+			.mbuf_entry_vld				(mbuf_entry_vld[MBUF_ent]                    ),
+			.mbuf_entry_on				(mbuf_entry_on[MBUF_ent]                     ),
+			.mbuf_entry_vpn				(mbuf_entry_vpn[MBUF_ent]                    ),
+			.mbuf_entry_type			(mbuf_entry_type[MBUF_ent]                   ),
+			.mbuf_entry_id				(mbuf_entry_id[MBUF_ent]                     ),
+			.mbuf_entry_twu_idx			(mbuf_entry_twu_idx[MBUF_ent]                ),
+			.mbuf_entry_lvl             (mbuf_entry_lvl[MBUF_ent]                    ),
+            .mbuf_entry_data            (mbuf_entry_data[MBUF_ent]                   ),
             .mbuf_entry_get             (mbuf_entry_get[MBUF_ent]                    ),
-            .mbuf_entry_bus_err_flop     (mbuf_entry_bus_err_flop[MBUF_ent]            )
+            .mbuf_entry_bus_err_flop     (mbuf_entry_bus_err_flop[MBUF_ent]          )
 		);
 
 	end
@@ -616,7 +617,7 @@ always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
         mbuf_bus_error <= 1'b1;
     else if(|mbuf_bus_error_grant[MBUF_ENTRY_NUM-1:0])begin
         mbuf_bus_error <= 1'b1;
-    end else if(acc_err_mbuf_grant[MBUF_ENTRY_NUM-1:0])begin
+    end else if(acc_err_mbuf_grant)begin
         mbuf_bus_error <= 1'b0;
     end
 end
@@ -638,8 +639,8 @@ always_comb begin
 	entry_bus_err_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
     for (int i = 0; i < MBUF_ENTRY_NUM; i++) begin
         if(mbuf_bus_error_grant[i])begin
-			entry_bus_err_type[TYPE_WIDTH-1:0] = mbuf_entry_type[i][TYPE_WIDTH-1:0];
-			entry_bus_err_id[ID_WIDTH-1:0] = mbuf_entry_id[i][ID_WIDTH-1:0];
+			entry_bus_err_type[TYPE_WIDTH-1:0] = mbuf_entry_type[i];
+			entry_bus_err_id[ID_WIDTH-1:0] = mbuf_entry_id[i];
         end
     end
 end
@@ -654,12 +655,12 @@ always_comb begin
     mbuf_twu_data[DATA_WIDTH-1:0] = {DATA_WIDTH{1'b0}};
     for (int i = 0; i < MBUF_ENTRY_NUM; i++) begin
         if(write_back_grant[i])begin
-			mbuf_twu_vpn[VPN_WIDTH-1:0] = mbuf_entry_vpn[i][VPN_WIDTH-1:0];
-			mbuf_twu_type[TYPE_WIDTH-1:0] = mbuf_entry_type[i][TYPE_WIDTH-1:0];
-			mbuf_twu_id[ID_WIDTH-1:0] = mbuf_entry_id[i][ID_WIDTH-1:0];
-			mbuf_twu_idx[3:0] = mbuf_entry_twu_idx[i][3:0];
-			mbuf_twu_lvl[PTE_LEVEL-1:0] = mbuf_entry_lvl[i][PTE_LEVEL-1:0];
-            mbuf_twu_data[DATA_WIDTH-1:0] = mbuf_entry_data[i][DATA_WIDTH-1:0];
+			mbuf_twu_vpn[VPN_WIDTH-1:0] = mbuf_entry_vpn[i];
+			mbuf_twu_type[TYPE_WIDTH-1:0] = mbuf_entry_type[i];
+			mbuf_twu_id[ID_WIDTH-1:0] = mbuf_entry_id[i];
+			mbuf_twu_idx[3:0] = mbuf_entry_twu_idx[i];
+			mbuf_twu_lvl[PTE_LEVEL-1:0] = mbuf_entry_lvl[i];
+            mbuf_twu_data[DATA_WIDTH-1:0] = mbuf_entry_data[i];
         end
     end
 end

@@ -149,6 +149,7 @@ module mmu_l1dtlb #(
 localparam EID_WIDTH = $clog2(MB_DEPTH);
 localparam PGS_WIDTH = 3;
 localparam LVL_WIDTH = 9;
+localparam MB_STATE_WFC = 3'b010;
 //!************************************************
 //! Clock Generation
 //!************************************************
@@ -301,7 +302,9 @@ assign dutlb_read_type0 = dutlb_ori_read0;
 assign dutlb_read_type1 = dutlb_ori_read1;
 
 assign expt_wr0_vld   = ptw_l1dtlb_ref_cmplt && (ptw_l1tlb_pgflt || ptw_l1tlb_acc_err)
-                      && mb_entry_vld[ptw_l1dtlb_ref_id];
+                      && mb_entry_vld[ptw_l1dtlb_ref_id]
+                      && (mb_entry_state[ptw_l1dtlb_ref_id] == MB_STATE_WFC)
+                      && !rtu_yy_xx_flush;
 assign expt_wr0_eid   = ptw_l1dtlb_ref_id[EID_WIDTH-1:0];
 assign expt_wr0_iid   = mb_entry_iid[ptw_l1dtlb_ref_id];
 assign expt_wr0_vpn   = mb_entry_vpn[ptw_l1dtlb_ref_id];
@@ -309,7 +312,9 @@ assign expt_wr0_pgflt = ptw_l1tlb_pgflt;
 assign expt_wr0_acflt = ptw_l1tlb_acc_err;
 
 assign expt_wr1_vld   = jtlb_dutlb_ref_cmplt && jtlb_dutlb_pgflt
-                      && mb_entry_vld[jtlb_dutlb_ref_id];
+                      && mb_entry_vld[jtlb_dutlb_ref_id]
+                      && (mb_entry_state[jtlb_dutlb_ref_id] == MB_STATE_WFC)
+                      && !rtu_yy_xx_flush;
 assign expt_wr1_eid   = jtlb_dutlb_ref_id[EID_WIDTH-1:0];
 assign expt_wr1_iid   = mb_entry_iid[jtlb_dutlb_ref_id];
 assign expt_wr1_vpn   = mb_entry_vpn[jtlb_dutlb_ref_id];

@@ -123,16 +123,16 @@ always_comb begin
 end
 
 //!************************************************
-//! 3. Arbitration (Priority: PTW > JTLB > WFI)
+//! 3. Arbitration (Priority: WFI > PTW > JTLB/L2TLB)
 //!************************************************
 logic sel_ptw;
 logic sel_jtlb;
 logic sel_wfi;
 
 // Strict Priority Logic
-assign sel_ptw  = req_ptw_vld;
-assign sel_jtlb = req_jtlb_vld && !req_ptw_vld;
-assign sel_wfi  = req_wfi_vld  && !req_ptw_vld && !req_jtlb_vld;
+assign sel_wfi  = req_wfi_vld;
+assign sel_ptw  = req_ptw_vld  && !req_wfi_vld;
+assign sel_jtlb = req_jtlb_vld && !req_wfi_vld && !req_ptw_vld;
 
 assign utlb_refill_vld = sel_ptw || sel_jtlb || sel_wfi;
 
@@ -140,7 +140,12 @@ assign utlb_refill_vld = sel_ptw || sel_jtlb || sel_wfi;
 //! 4. Data Routing (MUX)
 //!************************************************
 always_comb begin
-    if (sel_ptw) begin
+    if (sel_wfi) begin
+        utlb_refill_vpn = mb_entry_vpn[id_wfi];
+        utlb_refill_ppn = mb_entry_ppn[id_wfi];
+        utlb_refill_flg = mb_entry_flg[id_wfi];
+	utlb_refill_pgs = mb_entry_pgs[id_wfi];
+    end else if (sel_ptw) begin
         utlb_refill_vpn = ptw_l1tlb_ref_vpn;
         utlb_refill_ppn = ptw_l1tlb_ref_ppn;
         utlb_refill_flg = ptw_l1tlb_ref_flg;
@@ -150,11 +155,6 @@ always_comb begin
         utlb_refill_ppn = jtlb_utlb_ref_ppn;
         utlb_refill_flg = jtlb_utlb_ref_flg;
 	utlb_refill_pgs = l2tlb_l1dtlb_ref_pgs;
-    end else if (sel_wfi) begin
-        utlb_refill_vpn = mb_entry_vpn[id_wfi];
-        utlb_refill_ppn = mb_entry_ppn[id_wfi];
-        utlb_refill_flg = mb_entry_flg[id_wfi];
-	utlb_refill_pgs = mb_entry_pgs[id_wfi];
     end else begin
         utlb_refill_vpn = '0;
         utlb_refill_ppn = '0;
@@ -182,8 +182,8 @@ always_comb begin
     end
     
     // Collision behavior:
-    // If PTW wins (sel_ptw=1), JTLB loses (sel_jtlb=0).
-    // The JTLB ID will NOT get a Grant. 
+    // If a higher priority install wins, lower priority fresh refills do not
+    // get a grant and their MB entries wait in WFI state.
     // The MB Entry logic (state machine) sees (Refill Valid && !Grant) -> goes to WFI state.
 end
 

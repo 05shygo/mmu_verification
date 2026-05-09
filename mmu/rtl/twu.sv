@@ -351,6 +351,9 @@ logic [TAG_WIDTH-1:0]   twu_ref_tag_din;
 logic [PGS_WIDTH-1:0]   twu_ref_pgs;
 logic [TYPE_WIDTH-1:0]  twu_ref_type;
 logic [ID_WIDTH-1:0]    twu_ref_id;
+logic [PADDR_WIDTH-1:0] twu_sysmap_adderx1;
+logic [PADDR_WIDTH-1:0] twu_sysmap_adderx2;
+logic [4:0] 			sysmap_mmu_flg;
 
 assign twu_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
@@ -1378,7 +1381,7 @@ end
 always_ff@(posedge twu_clk or negedge cpurst_b) begin
 	if(!cpurst_b)begin
 		thd_chk_refill_no_maee_sel <= 1'b0;
-	end else if(refill_grant[0] & twu_refill_idle & ~maee)begin
+	end else if(refill_grant[0] & twu_refill_idle & ~cp0_mmu_maee)begin
 		thd_chk_refill_no_maee_sel <= 1'b1;
 	end else if(refill_arb_twu_grant)begin
 		thd_chk_refill_no_maee_sel <= 1'b0;
@@ -1388,7 +1391,7 @@ end
 always_ff@(posedge twu_clk or negedge cpurst_b) begin
 	if(!cpurst_b)begin
 		mmu_sysmap_pax3[PPN_WIDTH-1:0] <= {PPN_WIDTH{1'b0}};
-	end else if(refill_grant[0] & twu_refill_idle & ~maee)begin
+	end else if(refill_grant[0] & twu_refill_idle & ~cp0_mmu_maee)begin
 		mmu_sysmap_pax3[PPN_WIDTH-1:0] <= thd_chk_refill_data[PPN_WIDTH+9:10];
 	end
 end

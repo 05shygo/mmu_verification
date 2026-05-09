@@ -73,8 +73,8 @@ class sysmap_hit_cross_tlb_seq extends sysmap_cfg_base_seq;
 
   function new(string name = "sysmap_hit_cross_tlb_seq");
     super.new(name);
-    hit_base  = 28'h0200_0000;
-    hit_mask  = 28'hFFFF_FFFF;
+    hit_base  = 28'h200_0000;
+    hit_mask  = 28'hFFF_FFFF;
     hit_flg   = 5'b01111;
     region_idx = 3'd0;
   endfunction

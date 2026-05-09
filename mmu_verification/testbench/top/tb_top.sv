@@ -205,6 +205,7 @@ module tb_top;
     //------------------------------------------------------------------
     // PMP Interface
     //------------------------------------------------------------------
+    .pmp_regs_update          (1'b0),
     .pmp_mmu_flg0             (pmp_if_inst.pmp_mmu_flg0),
     .pmp_mmu_flg1             (pmp_if_inst.pmp_mmu_flg1),
     .pmp_mmu_flg2             (pmp_if_inst.pmp_mmu_flg2),
@@ -558,13 +559,13 @@ module tb_top;
   assign dut_probes_if.pfu_l2tlb_acc_fault     = u_dut.x_mmu_l2tlb.l2tlb_pfu_acc_fault;
   assign dut_probes_if.pfu_l2tlb_flag_fault    = u_dut.x_mmu_l2tlb.l2tlb_pfu_flag_fault;
   assign dut_probes_if.p13_sysmap_flg_vec      = {u_dut.x_ct_mmu_ptw.twu_four.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_three.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_two.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_one.sysmap_mmu_flg};
-  assign dut_probes_if.p13_sysmap_hit_vec      = {u_dut.x_ct_mmu_ptw.twu_four.sysmap_mmu_hit, u_dut.x_ct_mmu_ptw.twu_three.sysmap_mmu_hit, u_dut.x_ct_mmu_ptw.twu_two.sysmap_mmu_hit, u_dut.x_ct_mmu_ptw.twu_one.sysmap_mmu_hit};
-  assign dut_probes_if.p13_sysmap_pa_vec       = {u_dut.x_ct_mmu_ptw.twu_four.mmu_sysmap_pa, u_dut.x_ct_mmu_ptw.twu_three.mmu_sysmap_pa, u_dut.x_ct_mmu_ptw.twu_two.mmu_sysmap_pa, u_dut.x_ct_mmu_ptw.twu_one.mmu_sysmap_pa};
-  assign dut_probes_if.p13_twu_sysmap_adder_vec = {u_dut.x_ct_mmu_ptw.twu_four.twu_sysmap_adder, u_dut.x_ct_mmu_ptw.twu_three.twu_sysmap_adder, u_dut.x_ct_mmu_ptw.twu_two.twu_sysmap_adder, u_dut.x_ct_mmu_ptw.twu_one.twu_sysmap_adder};
+  assign dut_probes_if.p13_sysmap_hit_vec      = {u_dut.x_ct_mmu_ptw.twu_four.sysmap_mmu_hitx2, u_dut.x_ct_mmu_ptw.twu_three.sysmap_mmu_hitx2, u_dut.x_ct_mmu_ptw.twu_two.sysmap_mmu_hitx2, u_dut.x_ct_mmu_ptw.twu_one.sysmap_mmu_hitx2};
+  assign dut_probes_if.p13_sysmap_pa_vec       = {u_dut.x_ct_mmu_ptw.twu_four.mmu_sysmap_pax2, u_dut.x_ct_mmu_ptw.twu_three.mmu_sysmap_pax2, u_dut.x_ct_mmu_ptw.twu_two.mmu_sysmap_pax2, u_dut.x_ct_mmu_ptw.twu_one.mmu_sysmap_pax2};
+  assign dut_probes_if.p13_twu_sysmap_adder_vec = {u_dut.x_ct_mmu_ptw.twu_four.twu_sysmap_adderx2, u_dut.x_ct_mmu_ptw.twu_three.twu_sysmap_adderx2, u_dut.x_ct_mmu_ptw.twu_two.twu_sysmap_adderx2, u_dut.x_ct_mmu_ptw.twu_one.twu_sysmap_adderx2};
   assign dut_probes_if.p13_twu_csr_cross_vec   = {u_dut.x_ct_mmu_ptw.twu_four.twu_csr_cross, u_dut.x_ct_mmu_ptw.twu_three.twu_csr_cross, u_dut.x_ct_mmu_ptw.twu_two.twu_csr_cross, u_dut.x_ct_mmu_ptw.twu_one.twu_csr_cross};
-  assign dut_probes_if.p13_twu_crs2_1g_vec     = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs2_1g, u_dut.x_ct_mmu_ptw.twu_three.twu_crs2_1g, u_dut.x_ct_mmu_ptw.twu_two.twu_crs2_1g, u_dut.x_ct_mmu_ptw.twu_one.twu_crs2_1g};
-  assign dut_probes_if.p13_twu_crs2_2m_vec     = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs2_2m, u_dut.x_ct_mmu_ptw.twu_three.twu_crs2_2m, u_dut.x_ct_mmu_ptw.twu_two.twu_crs2_2m, u_dut.x_ct_mmu_ptw.twu_one.twu_crs2_2m};
-  assign dut_probes_if.p13_twu_crs2_chk_vec    = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs2_chk, u_dut.x_ct_mmu_ptw.twu_three.twu_crs2_chk, u_dut.x_ct_mmu_ptw.twu_two.twu_crs2_chk, u_dut.x_ct_mmu_ptw.twu_one.twu_crs2_chk};
+  assign dut_probes_if.p13_twu_crs2_1g_vec     = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs_1g, u_dut.x_ct_mmu_ptw.twu_three.twu_crs_1g, u_dut.x_ct_mmu_ptw.twu_two.twu_crs_1g, u_dut.x_ct_mmu_ptw.twu_one.twu_crs_1g};
+  assign dut_probes_if.p13_twu_crs2_2m_vec     = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs_2m, u_dut.x_ct_mmu_ptw.twu_three.twu_crs_2m, u_dut.x_ct_mmu_ptw.twu_two.twu_crs_2m, u_dut.x_ct_mmu_ptw.twu_one.twu_crs_2m};
+  assign dut_probes_if.p13_twu_crs2_chk_vec    = {u_dut.x_ct_mmu_ptw.twu_four.twu_crs_chk, u_dut.x_ct_mmu_ptw.twu_three.twu_crs_chk, u_dut.x_ct_mmu_ptw.twu_two.twu_crs_chk, u_dut.x_ct_mmu_ptw.twu_one.twu_crs_chk};
   assign dut_probes_if.p13_csr_refill_req_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_req};
   assign dut_probes_if.p13_csr_refill_pgs_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_pgs};
   assign dut_probes_if.p13_csr_refill_data_vec = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_data};

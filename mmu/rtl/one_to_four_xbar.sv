@@ -1,39 +1,57 @@
-module  one_to_four_xbar(
+module one_to_four_xbar #(
+    parameter VADDR_WIDTH = 39,                         // VADDR
+    parameter PADDR_WIDTH = 40,                         // PADDR
+    parameter VPN_WIDTH   = VADDR_WIDTH-12,             // VPN
+    parameter PPN_WIDTH   = PADDR_WIDTH-12,             // PPN
+    parameter FLG_WIDTH   = 14,                         // PPN
+    parameter ASID_WIDTH  = 16,                         // PPN
+    parameter PGS_WIDTH   = 3,                          // Page Size
+    parameter PTE_LEVEL   = 3,                          // Page Table Label
+    parameter ID_WIDTH    = 6,
+    parameter TYPE_WIDTH  = 3,
+
+// VPN width per level
+    parameter VPN_PERLEL  = VPN_WIDTH/PTE_LEVEL,
+
+// Valid + VPN + ASID + PageSize + Global
+    parameter TAG_WIDTH   = 1+VPN_WIDTH+ASID_WIDTH+PGS_WIDTH+1,
+    parameter DATA_WIDTH  = PPN_WIDTH+FLG_WIDTH
+) (
 //!******************************************
 //! Clock and Reset
 //!******************************************
-input  logic 			forever_cpuclk,
-input  logic 			cpurst_b,
+    input  logic                  forever_cpuclk,
+    input  logic                  cpurst_b,
 			
 //!******************************************
 //! TWU Request
 //!******************************************
 //input  logic [3:0]		twu_idle,
-input  logic [3:0]		twu_mask,
+    input  logic [3:0]            twu_mask,
 			
 //!******************************************
 //! PDE Cache Request
 //!******************************************
-input  logic 			PDE_xbar_req,
-input  logic 			L2PDE_xbar_hit_vld,
-input  logic 			L1PDE_xbar_hit_vld,
-input  logic [27:0]		PDE_xbar_ppn,
-input  logic [26:0]		PDE_xbar_vpn,
-input  logic [2:0]		PDE_xbar_type,
-input  logic [5:0]		PDE_xbar_id,
+    input  logic                  PDE_xbar_req,
+    input  logic                  L2PDE_xbar_hit_vld,
+    input  logic                  L1PDE_xbar_hit_vld,
+    input  logic [PPN_WIDTH-1:0]  PDE_xbar_ppn,
+    input  logic [VPN_WIDTH-1:0]  PDE_xbar_vpn,
+    input  logic [TYPE_WIDTH-1:0] PDE_xbar_type,
+    input  logic [ID_WIDTH-1:0]   PDE_xbar_id,
 			
 //!******************************************
 //! xbar to TWU
 //!******************************************
-output logic [3:0]		xbar_twu_req,
-output logic [1:0]		xbar_twu_hit_level,
-output logic [27:0]		xbar_twu_ppn,
-output logic [26:0]		xbar_twu_vpn,
-output logic [2:0]		xbar_twu_type,
-output logic [5:0]		xbar_twu_id,
+    output logic [3:0]            xbar_twu_req,
+    output logic [PTE_LEVEL-2:0]  xbar_twu_hit_level,
+    output logic [PPN_WIDTH-1:0]  xbar_twu_ppn,
+    output logic [VPN_WIDTH-1:0]  xbar_twu_vpn,
+    output logic [TYPE_WIDTH-1:0] xbar_twu_type,
+    output logic [ID_WIDTH-1:0]   xbar_twu_id,
 
-input  logic			tlboper_ptw_abort,
-output logic 			xbar_pde_ready
+    input  logic                  tlboper_ptw_abort,
+    output logic                  xbar_pde_ready
 
 );
 
@@ -50,30 +68,12 @@ output logic 			xbar_pde_ready
 //logic				xbar_in_high_table;
 //logic				xbar_in_low_table;
 //logic	[3:0]		xbar_ptr_nxt;
-logic	[3:0]		twu_req;
+logic [3:0] twu_req;
 //logic				xbar_req;
 
 
-parameter VADDR_WIDTH = 39;              // VADDR
-parameter PADDR_WIDTH = 40;              // PADDR
-parameter VPN_WIDTH   = VADDR_WIDTH-12;  // VPN
-parameter PPN_WIDTH   = PADDR_WIDTH-12;  // PPN
-parameter FLG_WIDTH   = 14;              // PPN
-parameter ASID_WIDTH  = 16;              // PPN
-parameter PGS_WIDTH   = 3;               // Page Size
-parameter PTE_LEVEL   = 3;               // Page Table Label
-parameter ID_WIDTH    = 6;
-
-// VPN width per level
-parameter VPN_PERLEL = VPN_WIDTH/PTE_LEVEL;
-
-// Valid + VPN + ASID + PageSize + Global
-parameter TAG_WIDTH  = 1+VPN_WIDTH+ASID_WIDTH+PGS_WIDTH+1;  
-parameter DATA_WIDTH = PPN_WIDTH+FLG_WIDTH;
-
-
-logic twu_xbar_mask;
-logic [3:0] twu_req_hash;
+logic       twu_xbar_mask;
+logic [3:0] twu_req_hash ;
 //assign twu_ready = ~(&twu_mask[3:0]);	
 assign twu_xbar_mask = |({4{PDE_xbar_req}} & twu_req_hash[3:0] & twu_mask[3:0]);
 assign xbar_pde_ready = ~twu_xbar_mask;
@@ -102,10 +102,10 @@ assign xbar_twu_req[3:0] = twu_req[3:0];
 
 
 
-assign xbar_twu_hit_level[1:0] = {L1PDE_xbar_hit_vld,L2PDE_xbar_hit_vld};
+assign xbar_twu_hit_level[PTE_LEVEL-2:0] = {L1PDE_xbar_hit_vld,L2PDE_xbar_hit_vld};
 assign xbar_twu_ppn[PPN_WIDTH-1:0] = PDE_xbar_ppn[PPN_WIDTH-1:0];
 assign xbar_twu_vpn[VPN_WIDTH-1:0] = PDE_xbar_vpn[VPN_WIDTH-1:0];
-assign xbar_twu_type[2:0] = PDE_xbar_type[2:0];
+assign xbar_twu_type[TYPE_WIDTH-1:0] = PDE_xbar_type[TYPE_WIDTH-1:0];
 assign xbar_twu_id[ID_WIDTH-1:0] = PDE_xbar_id[ID_WIDTH-1:0];
 
 

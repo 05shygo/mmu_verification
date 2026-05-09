@@ -21,10 +21,7 @@
 //                
 // 
 // ----------------------------------------------------------------------------
-import uvm_pkg::*;
 `include "uvm_macros.svh";
-
-import bp_driver_pkg::*;
 
 // base class of virtual sequence 
 class bp_vseq_base extends uvm_sequence #(uvm_sequence_item);

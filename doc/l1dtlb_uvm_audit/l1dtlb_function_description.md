@@ -773,3 +773,242 @@
         | DTLB_RESET_STATE_001 | L1DTLB-AUD-054 | 新增reset后L1DTLB初始状态显式检查。 |
         | DTLB_PLRU_WHITEBOX_ONLY_001 | L1DTLB-AUD-055 | 将PLRU替换策略限定为whitebox coverage/SVA，避免black-box exact victim期望。 |
         | DTLB_REF_MODEL_OBSERVABILITY_001 | L1DTLB-AUD-063 | 新增reference model观测边界、逐拍精确比较和whitebox-only probe清单。 |
+
+### 3.9 L1DTLB SVA需求清单
+        本节把第1章功能描述、第2章Q&A和第3章审核表中的L1DTLB行为转换成需要补充的SVA文本需求。这里不是SystemVerilog实现代码，而是后续编写/bind `mmu_l1dtlb_sva.sv`、子模块SVA和cover property时必须覆盖的断言清单。
+        SVA分为三类：
+            1. 协议/外部可观测SVA：优先使用LSU、L2TLB、PTW、PMP、TLBOP、RTU等接口信号，可作为功能正确性pass/fail依据。
+            2. 白盒结构SVA：使用TLB entry、MB entry、exception array、credit counter、PLRU victim等内部probe，只用于守护微架构不变量和debug，不替代主scoreboard。
+            3. cover property：用于证明directed/random测试确实打到关键同拍race、边界和优先级场景。
+        除非单条SVA另有说明，所有assert property都应在`posedge forever_cpuclk`或对应子模块时钟采样，并使用`disable iff (!cpurst_b)`屏蔽复位期。所有payload类断言在valid为1时还应检查`!$isunknown(...)`。
+
+#### 3.9.1 SVA命名和绑定建议
+        SVA-ID命名规则：
+            assert类使用`L1DTLB_SVA_A###`。
+            cover类使用`L1DTLB_SVA_C###`。
+            assume/环境约束如必须使用，则使用`L1DTLB_SVA_ENV###`，并且只能约束上游协议已经由SoC/LSU保证的行为，不能掩盖DUT bug。
+
+        推荐绑定层次：
+            `mmu_l1dtlb`顶层SVA：接口响应、busy/wakeup、TLB entry、MB array、exception array、refill/install总体仲裁。
+            `mmu_l1dtlb_scheduler` SVA：credit计数、每拍最多一个L2TLB request、MB旧请求优先于bypass。
+            `mmu_l1dtlb_allocator` SVA：双pipe miss分配、同4K去重、最低空闲entry选择、单空位IID年龄选择。
+            `mmu_l1dtlb_mb_entry` SVA：单entry FSM状态转换、派生信号、WFI数据保持、ABT late refill drain。
+            `mmu_l1dtlb_hit_rd`/entry SVA：page size match、权限/page fault、属性输出、STAMO和direct map。
+            `mmu_l1dtlb_install` SVA：WFI/PTW/L2 install优先级、fault写exception array、wakeup广播。
+
+#### 3.9.2 Assert SVA矩阵
+        | SVA ID | 类型 | 追踪来源 | 绑定位置 | 需要检查的行为 |
+        | --- | --- | --- | --- | --- |
+        | L1DTLB_SVA_A001 | assert | Q071, AUD-054 | top | reset有效期间或释放后的第一个可检查周期，TLB entry valid全0、MB state为IDLE、MB valid全0、exception array valid全0、issued/sent清0、busy=0、wakeup=0、无spurious pa_vld/page_fault/access_fault。 |
+        | L1DTLB_SVA_A002 | assert | Q071, AUD-054 | scheduler | reset后credit counter等于CREDIT_MAX，且credit counter从不小于0、不大于CREDIT_MAX。 |
+        | L1DTLB_SVA_A003 | assert | Q002, AUD-014 | top/hit_rd | `lsu_mmu_vabuf0/1`不参与功能决策：在VA、va_vld、iid、store、abort、mode、TLB/MB/expt状态相同而仅vabuf不同的受控比较场景下，pa_vld、PA、attr、fault、MB allocation、L2 request不应改变。该SVA可实现为formal/equivalence辅助断言；仿真中至少cover vabuf随机变化且输出由scoreboard确认不变。 |
+        | L1DTLB_SVA_A004 | assert | Q001, Q032, AUD-039, AUD-040 | hit_rd/top | STAMO只允许走pipe1/store pipe bypass；STAMO有效时不得在pipe0产生STAMO bypass效果。 |
+        | L1DTLB_SVA_A005 | assert | Q032, AUD-039 | hit_rd/top | STAMO bypass不发起新的TLB lookup/miss、不得分配MB、不得写exception array、不得产生新的L2TLB request、不得产生新的L1DTLB PTE page fault。 |
+        | L1DTLB_SVA_A006 | assert | Q032, AUD-039 | hit_rd/top | STAMO pipe1返回PA/属性来自LM/STAMO保存路径，不得来自当前VA查TLB结果；STAMO不污染TLB entry、MB entry和PLRU miss/refill路径。 |
+        | L1DTLB_SVA_A007 | assert | Q003, Q004, AUD-011 | top/hit_rd | abort不屏蔽合法TLB hit/direct-map组合响应；若请求abort且本来TLB hit，则允许pa_vld/PA/attr按hit路径返回，不得因abort强制清零hit响应。 |
+        | L1DTLB_SVA_A008 | assert | Q004, AUD-012 | allocator/top | abort请求如果TLB miss且exception array miss，不得分配新的MB entry，不得触发bypass L2TLB request。 |
+        | L1DTLB_SVA_A009 | assert | Q004, AUD-013 | expt/top | abort请求即使命中exception array，也不得释放对应exception entry和MB entry，不得消费pending fault replay；exception replay fault输出是否屏蔽按spec实现检查，至少不得造成entry生命周期改变。 |
+        | L1DTLB_SVA_A010 | assert | Q006, Q031, AUD-019, AUD-050 | hit_rd/scheduler | load/store/AMO类型必须传递到page fault权限判断、L2TLB request type和PMP read/write检查；同一entry下load/store不应改变PA和cache/share/buf/sec/so属性本身。 |
+        | L1DTLB_SVA_A011 | assert | Q007, Q014, Q015, AUD-001, AUD-002, AUD-015, AUD-047 | hit_rd/top | TLB hit、MMU off/direct map、VA/page fault、exception page fault replay的T0终态结果必须同拍拉高对应pipe的pa_vld；pa_vld表示终态，不等价于“可正常访存”。 |
+        | L1DTLB_SVA_A012 | assert | Q007, Q008, Q016, AUD-048 | hit_rd/top | 同一请求T0产生page_fault时必须同时pa_vld=1，且不得为该请求发起PMP check token。 |
+        | L1DTLB_SVA_A013 | assert | Q008, Q017, Q019, Q020, AUD-015, AUD-045, AUD-049 | top | access_fault是T1事件，必须归属于同pipe上一拍进入PMP或exception-access-fault replay路径的请求；同拍pa_vld不得被强行视为同一请求的access_fault配对。 |
+        | L1DTLB_SVA_A014 | assert | Q008, Q018, AUD-015, AUD-026, AUD-062 | top/expt | page_fault和access_fault输出均为1-cycle pulse；exception array page fault replay为T0 pulse，exception array access fault replay为下一拍T1 pulse。 |
+        | L1DTLB_SVA_A015 | assert | Q009, Q016, AUD-015, AUD-046, AUD-048 | hit_rd/top | 同一条请求page fault和access fault互斥；page fault优先于PMP access fault。允许同一pipe同一cycle裸信号page_fault和access_fault同时为1，但必须分别归属当前T0请求和上一拍T1请求。 |
+        | L1DTLB_SVA_A016 | assert | Q010, Q011, AUD-010 | install/expt/top | `mmu_lsu_tlb_wakeup[11:0]`只能为12'h000或12'hfff，不得产生per-entry/per-pipe onehot形态。 |
+        | L1DTLB_SVA_A017 | assert | Q010, Q011, AUD-010 | install/expt/top | wakeup触发源限于TLB install完成/将写入可见，或LSU replay命中exception array并消费fault；MB CAM hit、MB full drop、RTU flush、ABT late refill drain不得单独产生wakeup。 |
+        | L1DTLB_SVA_A018 | assert | Q012, Q013, AUD-009 | top | `mmu_lsu_tlb_busy == (|mb_entry_vld)`，busy不是VA ready反压信号；busy=1时TLB hit/direct-map请求仍应正常返回。 |
+        | L1DTLB_SVA_A019 | assert | Q014, Q015 | hit_rd/top | TLB hit且无page fault时，pa_vld/PA/attr在T0返回，不等待PMP结果；PMP access fault只可在下一拍按token返回。 |
+        | L1DTLB_SVA_A020 | assert | Q014, Q036 | allocator/top | T0 TLB miss且exception miss的请求，在T1才参与MB CAM和allocation；不得在T0组合分配MB。 |
+        | L1DTLB_SVA_A021 | assert | Q021, AUD-003 | hit_rd/top | pipe0和pipe1同拍TLB hit时，两个pipe都必须能够同拍独立返回pa_vld/PA/attr/fault；一个pipe不得压掉另一个pipe的hit响应。 |
+        | L1DTLB_SVA_A022 | assert | Q022, AUD-004 | hit_rd/allocator/top | pipe0 hit、pipe1 miss或反向hit+miss同拍时，hit响应不得被miss分配、MB full、L2 request或busy影响。 |
+        | L1DTLB_SVA_A023 | assert | Q023, AUD-005 | allocator | 双pipe同拍均需分配且属于同一4K VPN时，只允许分配一个MB entry，且固定选择pipe0请求写入；pipe1不得额外分配。 |
+        | L1DTLB_SVA_A024 | assert | Q024, Q005, AUD-007 | allocator | 双pipe同拍均需分配、不同4K VPN且仅一个free MB entry时，必须按IID年龄比较选择更老请求；同时断言该仲裁场景下两个IID不相等且处于可比较窗口。 |
+        | L1DTLB_SVA_A025 | assert | Q027, AUD-006 | allocator | 双pipe同拍均需分配、不同4K VPN且free entry数量至少2时，必须选择两个最低编号free MB entry，并保持pipe0/pipe1 payload分别写入对应grant entry。 |
+        | L1DTLB_SVA_A026 | assert | Q025, AUD-052 | top/expt/hit_rd | 一pipe普通TLB hit、另一pipe exception array hit可同拍发生；TLB hit响应、exception entry释放、MB释放和wakeup广播互不污染。 |
+        | L1DTLB_SVA_A027 | assert | Q026, Q060, AUD-029 | expt/top | 两个pipe同拍不得消费同一个exception array entry；如果实现观测到同一entry双hit，应报错或至少只允许一个释放动作，不能双释放。 |
+        | L1DTLB_SVA_A028 | assert | Q028, AUD-051 | entry/hit_rd | valid entry的VPN、PPN、page size和flag[13:0]在hit响应、权限判断和属性输出中一致使用；valid=0的entry不得参与hit。 |
+        | L1DTLB_SVA_A029 | assert | Q029, AUD-032 | entry/hit_rd | 4K page按VPN[26:0]全比较，2M page按VPN[26:9]比较，1G page按VPN[26:18]比较；page size编码必须为合法one-hot 001/010/100。 |
+        | L1DTLB_SVA_A030 | assert | Q030, AUD-033 | hit_rd | 若多个TLB entry同时匹配同一VA，输出选择应符合当前spec记录的最高index优先；如果项目决定把multi-hit作为非法微架构状态，则应改为assert `$onehot0(entry_hit*)`并把最高index优先只作为diagnostic cover。 |
+        | L1DTLB_SVA_A031 | assert | Q031, AUD-016, AUD-017, AUD-018 | hit_rd | load page fault规则：V=0、W=1/R=0非法组合、读权限不满足且MXR不能救、U/S/SUM不满足、A=0、VA illegal时必须T0 page_fault；D位不应单独导致普通load page fault。 |
+        | L1DTLB_SVA_A032 | assert | Q031, AUD-018 | hit_rd | store page fault规则：V=0、W=1/R=0非法组合、W=0、U/S/SUM不满足、A=0、D=0、VA illegal时必须T0 page_fault。 |
+        | L1DTLB_SVA_A033 | assert | Q031, AUD-050 | hit_rd | AMO/LDAMO按write-type权限要求检查A/D/W等条件，不能用MXR把X-only page当作AMO可读写权限通过。 |
+        | L1DTLB_SVA_A034 | assert | Q031, Q033, AUD-041 | hit_rd/top | regs_mmu_en=0或effective M-mode direct map时，不查TLB、不分配MB、不产生PTE page fault；pa_vld应返回，PA按VA direct map生成，属性来自sysmap。 |
+        | L1DTLB_SVA_A035 | assert | Q033, AUD-041 | top/hit_rd | direct map/MMU off/M-mode不绕过PMP；无page fault但仍需按read/write类型产生PMP check，并允许T1 access_fault。 |
+        | L1DTLB_SVA_A036 | assert | Q034, Q049, AUD-062 | expt/top | PTW refill可返回normal/page fault/access fault；L2TLB refill可返回normal/page fault但不得返回access fault。两类access fault最终对LSU输出时序均为replay hit后的T1 pulse。 |
+        | L1DTLB_SVA_A037 | assert | Q035, Q038, AUD-020 | allocator/mb | MB CAM去重固定按完整4K VPN比较，不按最终2M/1G page size放宽；MB CAM hit不得再分配新entry。 |
+        | L1DTLB_SVA_A038 | assert | Q036, AUD-020 | allocator/top | T1 MB CAM hit请求不产生wakeup、不产生pa_vld/fault响应、不分配entry；后续依赖原MB refill完成后LSU replay。 |
+        | L1DTLB_SVA_A039 | assert | Q037, AUD-008 | allocator/top | MB无空位时miss请求不得分配entry，不得错误覆盖已有entry；busy必须为1，等待后续wakeup/replay。 |
+        | L1DTLB_SVA_A040 | assert | Q039, AUD-056 | mb_entry | `entry_vld == (state != IDLE)`；`entry_wfi == (state == WFI)`；`entry_wfc == (state == WFC || state == ABT)`；`ready`只能在WFG且本拍未被RTU flush屏蔽时为1。 |
+        | L1DTLB_SVA_A041 | assert | Q039, AUD-056 | mb_entry | `issued/sent`是latch而不是纯状态译码：issue_grant后置1，entry回IDLE后清0；不得在未issue的entry上声明已发送。 |
+        | L1DTLB_SVA_A042 | assert | Q040, Q041, AUD-059 | mb_entry/expt | PGFLT/ACFLT状态必须保持entry valid和exception array valid，直到原请求replay命中exception array或RTU flush；不得超时自动释放。 |
+        | L1DTLB_SVA_A043 | assert | Q042, Q043, Q044, AUD-021 | scheduler | credit更新守恒：只有L2TLB request消耗credit，只有credit_return归还credit；request和return同拍时计数不变；credit=0且同拍return允许发出一个request。 |
+        | L1DTLB_SVA_A044 | assert | Q045, AUD-021 | scheduler/top | 每拍最多一个L1DTLB->L2TLB request，限制覆盖MB旧entry request和当前bypass request总和。 |
+        | L1DTLB_SVA_A045 | assert | Q046, AUD-022 | scheduler | 当存在MB中未发送ready entry且同拍有新miss可bypass时，必须优先发送MB旧entry，不得让bypass抢占。 |
+        | L1DTLB_SVA_A046 | assert | Q047, AUD-023 | scheduler/allocator/mb_entry | bypass request必须同拍已经分配到MB entry并携带该entry id；下一拍该entry进入WFC且issued/sent为1。 |
+        | L1DTLB_SVA_A047 | assert | Q048, AUD-050 | scheduler/top | L2TLB request valid时，VPN、MB entry id和load/store access type必须稳定且非X；entry id必须在MB_DEPTH范围内，并与被发送MB entry payload一致。 |
+        | L1DTLB_SVA_A048 | assert | Q050, AUD-024 | install | 每拍最多写一个TLB entry；normal install仲裁优先级固定为WFI entry > PTW normal refill > L2TLB normal refill。 |
+        | L1DTLB_SVA_A049 | assert | Q050, Q053, AUD-024 | install | refill携带page/access fault时不得参与TLB install，不得写TLB entry；同拍normal install候选仍可按优先级写TLB。 |
+        | L1DTLB_SVA_A050 | assert | Q051, AUD-025 | install | 多个MB entry处于WFI且可install时，必须选择最低编号WFI entry。 |
+        | L1DTLB_SVA_A051 | assert | Q052, AUD-057 | mb_entry/install | WFI entry等待期间必须保持原miss VPN、refill PPN、flag和page size稳定；后续被install时写入TLB的数据必须等于WFI latch数据。 |
+        | L1DTLB_SVA_A052 | assert | Q053, Q054, AUD-026, AUD-027, AUD-058 | expt/install | fault refill必须写exception array而不是TLB；PTW和L2TLB同拍fault允许两个exception write端口同时写入，id必须在范围内，若两个fault id相同应报错或明确优先级。 |
+        | L1DTLB_SVA_A053 | assert | Q055, AUD-060 | install/expt/mb_entry | refill返回id对应entry只有处于WFC时才可作为有效完成；IDLE、PGFLT、ACFLT或其他非WFC状态不得写TLB、不得写exception array、不得wakeup。 |
+        | L1DTLB_SVA_A054 | assert | Q056, Q072, AUD-030, AUD-060, AUD-064 | mb_entry/install/expt | ABT late refill只允许drain entry回IDLE，禁止TLB install、exception write和wakeup。 |
+        | L1DTLB_SVA_A055 | assert | Q057, AUD-061 | install/top | TLB写入和对应MB entry释放在同一时钟沿完成；写入前同一组合周期LSU不能命中新写entry，下一可见周期才允许命中。 |
+        | L1DTLB_SVA_A056 | assert | Q058, Q059, AUD-058 | expt/mb | exception array entry数量等于MB_DEPTH；fault写入索引直接使用refill MB id；exception entry valid生命周期和对应MB entry PGFLT/ACFLT生命周期绑定。 |
+        | L1DTLB_SVA_A057 | assert | Q060, AUD-028 | expt | exception array CAM key必须是IID+完整4K VPN；不得把pipe id、ASID、load/store类型或page size纳入匹配条件。 |
+        | L1DTLB_SVA_A058 | assert | Q061, AUD-028, AUD-058 | expt/mb | 后续LSU replay命中exception array时，对应exception entry和MB entry必须同拍释放；该请求不得再分配新的MB entry。 |
+        | L1DTLB_SVA_A059 | assert | Q062, AUD-052 | expt/hit_rd | 同一pipe同一请求不得同时TLB hit和exception array hit；如果出现应作为design/spec violation报警。 |
+        | L1DTLB_SVA_A060 | assert | Q064, Q072, AUD-031, AUD-053, AUD-064 | expt/mb/install | RTU flush清空exception array和MB；flush kill的miss不得产生TLB install、exception write或wakeup；flush后返回的旧refill按stale/ABT late规则处理。 |
+        | L1DTLB_SVA_A061 | assert | Q065, Q066, Q067, AUD-034, AUD-035, AUD-053 | entry/top | regs_utlb_clr和tlboper_utlb_clr清空所有TLB entry valid，但不清MB和exception array；SATP/ASID相关L1清理通过全清entry体现。 |
+        | L1DTLB_SVA_A062 | assert | Q068, AUD-036 | entry | VA定点失效按VPN低8 bit保守比较；所有VPN[7:0]匹配目标VA的valid entry下一拍必须失效，低8 bit不匹配entry不得被该局部clear误清。 |
+        | L1DTLB_SVA_A063 | assert | Q069, AUD-037 | entry/hit_rd | invalidate与TLB hit同拍时，本拍允许返回旧entry hit结果；下一拍起被invalidate命中的entry不得继续作为valid hit。 |
+        | L1DTLB_SVA_A064 | assert | Q070, AUD-038 | entry/install | invalidate/clear与TLB install同拍选择同一entry时，clear优先，时钟沿后该entry最终valid必须为0。 |
+        | L1DTLB_SVA_A065 | assert | Q072, AUD-064 | mb_entry | WFG+flush+未grant -> IDLE；WFG+flush+grant/issue -> ABT；WFC+flush+无refill -> ABT；WFC+flush+refill -> IDLE且无install/expt/wakeup；WFI+flush -> IDLE且无install。 |
+        | L1DTLB_SVA_A066 | assert | Q073, Q074, Q075, Q076, AUD-043, AUD-055 | plru/install | PLRU精确victim不作为black-box功能pass/fail；白盒只检查victim onehot/onehot0、install index在NUM_ENTRY范围内、PLRU更新输入非X。 |
+        | L1DTLB_SVA_A067 | assert | Q077, Q078, Q079, Q080, Q081, AUD-063 | top | SVA/scoreboard观测边界守护：PA、attr、pa_vld、page_fault、access_fault、L2 request、credit、busy逐拍精确；wakeup按事件级和广播形态检查；PLRU victim不得进入主translation correctness断言。 |
+        | L1DTLB_SVA_A068 | assert | 1.3, Q021, AUD-001, AUD-002 | hit_rd/top | 单pipe basic hit基线：pipe0单独hit和pipe1单独hit时，T0必须返回对应pipe的pa_vld、PA和属性；另一pipe无请求时不得产生串扰响应；该hit不得分配MB、不得发L2TLB request、不得写exception array。 |
+        | L1DTLB_SVA_A069 | assert | Q017, AUD-015, AUD-047, AUD-049 | hit_rd/top | PMP T1 payload归属：T0 hit且无page fault时锁存给PMP的PA、属性和read/write类型必须非X并保持到T1检查；T1 access_fault只能由上一拍有效PMP token产生，不能使用同拍新T0请求的PA/属性。 |
+        | L1DTLB_SVA_A070 | assert | Q080, AUD-008, AUD-020, AUD-031, AUD-063 | top/allocator/mb | 合法无响应分类：MB CAM hit、MB full未分配、abort屏蔽有状态后果、flush kill请求等场景不得被SVA误判为漏响应；但必须检查它们没有非法分配、非法install、非法exception write或非法wakeup，并由后续wakeup/replay或flush终止生命周期。 |
+        | L1DTLB_SVA_A071 | assert | Q081 | top | miss统计/HPC类信号只做事件级守护：`mmu_hpcp_dutlb_miss`等miss事件不得在TLB hit、direct map、STAMO bypass、exception replay hit或abort屏蔽的请求上误拉高；真实TLB/expt miss进入miss处理时允许产生1-cycle事件。 |
+
+#### 3.9.3 Cover Property矩阵
+        | Cover ID | 追踪来源 | 需要覆盖的场景 |
+        | --- | --- | --- |
+        | L1DTLB_SVA_C001 | Q071, AUD-042, AUD-054 | reset释放后首次普通miss、首次hit、首次direct-map访问均被采到。 |
+        | L1DTLB_SVA_C002 | Q021, Q082, AUD-001, AUD-002, AUD-003 | pipe0单独hit、pipe1单独hit、pipe0和pipe1同拍都TLB hit均被采到；双pipe同拍hit包括命中同一entry和命中不同entry两类。 |
+        | L1DTLB_SVA_C003 | Q022, Q082, AUD-004 | 一pipe TLB hit、另一pipe TLB miss同拍，并且hit响应成功返回、miss进入MB处理。 |
+        | L1DTLB_SVA_C004 | Q023, Q082, AUD-005 | 双pipe同拍miss且同4K VPN，只分配pipe0一个MB entry。 |
+        | L1DTLB_SVA_C005 | Q027, Q082, AUD-006 | 双pipe同拍miss、不同4K、至少两个free entry，分配两个最低free entry。 |
+        | L1DTLB_SVA_C006 | Q024, Q005, Q082, AUD-007 | 双pipe同拍miss、不同4K、仅一个free entry，分别覆盖pipe0更老和pipe1更老两种IID年龄结果。 |
+        | L1DTLB_SVA_C007 | Q037, Q082, AUD-008 | MB full时新miss drop/不分配，busy为1，后续由wakeup后replay。 |
+        | L1DTLB_SVA_C008 | Q010-Q013, AUD-009, AUD-010 | busy=1期间发生hit-under-miss；install触发wakeup广播；exception replay触发wakeup广播。 |
+        | L1DTLB_SVA_C009 | Q003, Q004, AUD-011, AUD-012, AUD-013 | abort+hit、abort+miss、abort+exception-hit三类场景都被采到。 |
+        | L1DTLB_SVA_C010 | Q031, AUD-016, AUD-017, AUD-018 | load R=0、load MXR读X-only、store W=0、store D=0、A=0、U/S/SUM权限组合均被采到。 |
+        | L1DTLB_SVA_C011 | Q033, AUD-041 | regs_mmu_en=0 direct map、effective M-mode direct map、MPRV导致非M effective mode走正常DTLB三类场景。 |
+        | L1DTLB_SVA_C012 | Q032, AUD-039, AUD-040 | STAMO pipe1 bypass成功返回；pipe0普通请求同拍存在但不受STAMO bypass污染。 |
+        | L1DTLB_SVA_C013 | Q035-Q038, AUD-020 | MB CAM hit去重、MB CAM miss分配、2M/1G最终page但MB仍按4K VPN去重。 |
+        | L1DTLB_SVA_C014 | Q042-Q048, AUD-019, AUD-021, AUD-022, AUD-023 | load miss和store miss分别发L2TLB request；credit>0发请求、credit=0且同拍return发请求、request+return同拍计数不变、MB旧entry优先于bypass、bypass allocate+issue同拍。 |
+        | L1DTLB_SVA_C015 | Q050-Q052, AUD-024, AUD-025, AUD-057 | WFI > PTW > L2TLB install优先级、多WFI最低entry优先、WFI等待多拍后install且数据保持。 |
+        | L1DTLB_SVA_C016 | Q053, Q054, AUD-026, AUD-027, AUD-058 | PTW fault写exception、L2TLB fault写exception、PTW和L2TLB同拍双fault写两个exception entry。 |
+        | L1DTLB_SVA_C017 | Q055, Q056, AUD-030, AUD-060 | IDLE/PGFLT/ACFLT等非WFC stale refill被丢弃；ABT late refill drain回IDLE且无副作用。 |
+        | L1DTLB_SVA_C018 | Q057, AUD-061 | install同沿释放MB；同VPN请求在install前同cycle不命中新entry、下一可见cycle命中新entry。 |
+        | L1DTLB_SVA_C019 | Q058-Q063, AUD-028, AUD-059, AUD-062 | exception page fault replay、exception access fault replay、fault entry无replay保持多拍、replay同拍释放MB/expt。 |
+        | L1DTLB_SVA_C020 | Q064-Q072, AUD-031, AUD-034, AUD-035, AUD-036, AUD-037, AUD-038, AUD-053, AUD-064 | tlboper全清、regs全清、VA低8位保守清、invalidate+hit同拍、invalidate+install同entry、RTU flush清MB/expt、RTU flush与grant/refill/install race矩阵。 |
+        | L1DTLB_SVA_C021 | Q019, Q020, AUD-045, AUD-046, AUD-049 | 同pipe连续请求下，上一拍T1 access_fault与当前拍T0 pa_vld/page_fault重叠。 |
+        | L1DTLB_SVA_C022 | Q029, AUD-032 | 4K、2M、1G三种page size各自hit、miss、invalidate、refill/install后hit。 |
+        | L1DTLB_SVA_C023 | Q030, AUD-033 | 多entry同VA可匹配诊断场景，覆盖最高index优先或multi-hit invariant报警路径。 |
+        | L1DTLB_SVA_C024 | Q073, Q074, Q075, Q076, AUD-043, AUD-055 | PLRU whitebox覆盖：hit更新、install更新、双pipe hit、refill victim onehot、invalidate后replacement压力。 |
+        | L1DTLB_SVA_C025 | Q077, Q078, Q079, Q080, Q081, Q082, AUD-063 | reference model观测边界覆盖：外部接口可推导事件、whitebox-only事件、合法无响应事件、miss统计/HPC事件和wakeup事件级检查都被采样。 |
+        | L1DTLB_SVA_C026 | AUD-014 | vabuf随机变化且其他请求条件保持等价的场景被采到，用于证明vabuf无功能影响。 |
+        | L1DTLB_SVA_C027 | AUD-044 | 覆盖/回归报告层面确认原先共享`mmu_ptw_thrash_vseq`的wrapper已被retarget或至少被标记为traceability shell；该项不是DUT协议SVA，只作为验证计划完整性cover/checklist。 |
+
+#### 3.9.4 SVA实现注意事项
+        1. 不要把`mmu_lsu_tlb_wakeup[11:0]`写成per-entry onehot断言。它是广播提示，只检查全0/全1形态和触发源。
+        2. 不要写“busy为1时LSU请求必须被阻止”的断言。busy不是ready反压；hit-under-miss必须允许。
+        3. 不要写“access_fault必须和pa_vld同拍配对”的断言。access_fault是T1事件，可能与下一条请求的T0 pa_vld/page_fault同拍重叠。
+        4. 不要写“abort屏蔽所有输出”的断言。abort主要屏蔽有状态后果和exception replay消费；TLB hit响应仍可出现。
+        5. 不要把PLRU exact victim作为主功能断言。PLRU只做whitebox onehot/coverage或专项微架构检查。
+        6. 所有refill相关断言必须先检查refill id对应MB entry状态。只有WFC是正常完成态；ABT只允许late drain；其他状态按stale处理。
+        7. 所有fault相关断言必须区分page fault T0和access fault T1，并区分TLB hit权限/PMP来源与exception array replay来源。
+        8. 所有invalidate相关断言必须区分TLB entry clear和MB/expt clear：tlboper/regs/VA invalidate只清TLB entry，RTU flush清MB和exception array。
+
+### 3.10 L1DTLB Required Test Scenarios
+        本节把第1章功能描述、第2章Q&A澄清和3.7审计表中的requirement进一步整理成可直接落地的test场景。每个场景都描述触发条件、期望行为、建议test/sequence和可观察检查点；这里仍然是文档级test intent，不进入sequence、scoreboard或SVA实现细节。
+        场景ID使用`L1DTLB_TS_*`，其中`AUD`列用于追踪到3.7审计表，`Suggested Test / Sequence`优先引用当前`mmu_verification/testbench/test/l1dtlb_tests`中已有wrapper名称；若现有wrapper更像traceability shell或generic pressure test，则在检查点中明确要求补directed stimulus或coverage gate。
+
+#### 3.10.1 Basic Lookup, Dual Pipe, and Page Size
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_BASIC_HIT_PIPE0 | AUD-001 | pipe0单端口basic hit | pipe0发起valid VA，命中有效4K L1DTLB entry，pipe1无请求 | T0返回pipe0 pa_vld、PA和属性；不分配MB、不发L2 request、不写exception array | `test_mmu_l1dtlb_dtlb_hit_001` / `lsu_pipe0_only_seq` | LSU response、translation scoreboard、MB valid delta和L2 request均符合hit路径 |
+        | L1DTLB_TS_BASIC_HIT_PIPE1 | AUD-002 | pipe1单端口basic hit | pipe1发起valid VA，命中有效4K L1DTLB entry，pipe0无请求 | T0返回pipe1 pa_vld、PA和属性；pipe0无串扰响应 | `test_mmu_l1dtlb_dtlb_hit_002` / `lsu_pipe1_only_seq` | per-pipe response和fault信号按pipe归属比较 |
+        | L1DTLB_TS_BASIC_DUAL_HIT | AUD-003 | pipe0/pipe1同拍dual hit | 两个pipe同cycle valid，分别覆盖命中同一entry和不同entry | 两个pipe同拍独立返回T0 hit结果；一端不能压掉另一端 | `test_mmu_l1dtlb_dtlb_concurrent_001`, `test_mmu_l1dtlb_dtlb_dual_hit_mux_001` | cover同拍dual hit同entry/不同entry，检查两个PA/attr响应 |
+        | L1DTLB_TS_BASIC_HIT_MISS | AUD-004 | 同拍hit+miss | 一个pipe命中TLB，另一个pipe miss并需要MB allocation | hit响应不被miss路径、busy、MB full或L2 request阻塞；miss按规则进入MB/L2流程 | `test_mmu_l1dtlb_dtlb_hit_miss_concurrent_001` | cross entry_hit与miss allocation，检查hit端T0 response和miss端MB/L2事件 |
+        | L1DTLB_TS_BASIC_PAGE_SIZE_4K_2M_1G | AUD-032 | 4K/2M/1G page size匹配 | 分别构造4K、2M、1G entry，覆盖hit、miss、invalidate、refill/install后再次hit | 按page size比较VPN；PA拼接和属性来自命中entry/refill结果 | `test_mmu_l1dtlb_dtlb_huge_001`, `_002`, `_003`, `test_mmu_l1dtlb_dtlb_huge_mix_001` | page size bins、VPN compare范围、PA/attr scoreboard和invalidate后miss |
+        | L1DTLB_TS_BASIC_MULTI_HIT_DIAG | AUD-033 | 多entry同VA匹配诊断 | 人工构造多个valid entry可同时匹配同一VA | 若spec保留最高index优先，则输出按最高index；若后续定义multi-hit非法，则SVA报错且test仅作diagnostic | `test_mmu_l1dtlb_dtlb_entry_field_model_001` plus whitebox diagnostic sequence | entry hit vector、selected index、multi-hit invariant或priority cover |
+        | L1DTLB_TS_BASIC_ENTRY_FIELD_MODEL | AUD-051 | entry字段建模完整性 | refill/install写入VPN、PPN、page size、flag后发起hit、permission和attribute访问 | valid entry字段在hit、fault判断、PA生成和属性输出中一致使用；invalid entry不参与hit | `test_mmu_l1dtlb_dtlb_entry_field_model_001` | entry probe与LSU response/scoreboard一致，覆盖flag[13:0]属性输出 |
+
+#### 3.10.2 Request Control, Abort, Busy, and Wakeup
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_CTRL_ABORT_HIT | AUD-011 | abort+hit允许组合响应 | va_vld=1、abort=1且TLB hit | DTLB可以仍返回T0 PA/attr；abort不等价于输出清零，LSU侧丢弃该响应 | `test_mmu_l1dtlb_dtlb_abort_001` with directed hit case | hit+abort response被采样，且无非法state update |
+        | L1DTLB_TS_CTRL_ABORT_MISS | AUD-012 | abort+miss无状态后果 | abort=1且该请求若未abort会TLB/expt miss | 不分配MB、不发L2 request、不进入refill FSM | `test_mmu_l1dtlb_dtlb_abort_001`, `test_mmu_l1dtlb_dtlb_alloc_race_001` | MB valid不增加、L2 request无fire、no wakeup/expt write |
+        | L1DTLB_TS_CTRL_ABORT_EXPT_HIT | AUD-013 | abort不消费exception array | aborted request命中pending exception array entry | 不向该aborted request报告fault；不释放expt entry和对应MB entry | `test_mmu_l1dtlb_dtlb_abort_001` with expt-hit directed extension | expt-CAM match被观察但clear/MB release不发生，后续非abort replay仍可消费 |
+        | L1DTLB_TS_CTRL_VABUF_NO_EFFECT | AUD-014 | vabuf无功能影响 | 相同VA/IID/type/mode/TLB状态下只改变vabuf | PA、fault、attribute、MB allocation和L2 request行为不变 | add low-priority directed/random cover in L1DTLB wrapper | monitor采样vabuf变化，scoreboard比较输出等价 |
+        | L1DTLB_TS_CTRL_BUSY_ANY_INFLIGHT | AUD-009 | busy为任意MB valid | MB occupancy为1到满的各个状态，包括hit-under-miss期间 | `mmu_lsu_tlb_busy`在任意MB entry valid时为1；busy不是MB full，也不阻止hit/direct-map请求 | `test_mmu_l1dtlb_dtlb_busy_any_inflight_001`, `test_mmu_l1dtlb_dtlb_busy_restart_mode_001` | cross busy与MB occupancy 1..8，采样busy=1期间hit成功 |
+        | L1DTLB_TS_CTRL_WAKEUP_INSTALL | AUD-010 | install触发wakeup广播 | 正常refill/install写入TLB entry | `mmu_lsu_tlb_wakeup[11:0]`只允许12'hfff或12'h000，作为广播提示，不携带pipe/IID/entry语义 | `test_mmu_l1dtlb_dtlb_wakeup_complete_bcast_001` | install事件与wakeup事件级匹配，wakeup形态为全0/全1 |
+        | L1DTLB_TS_CTRL_WAKEUP_EXPT | AUD-010 | exception replay触发wakeup广播 | LSU replay命中exception array并消费page/access fault | fault replay完成时发出广播wakeup；MB CAM hit、MB full drop、RTU flush、ABT late refill不单独触发wakeup | `test_mmu_l1dtlb_dtlb_wakeup_expt_001`, `test_mmu_l1dtlb_dtlb_wakeup_multi_retry_001` | expt clear/MB release与wakeup关联，negative source不触发wakeup |
+        | L1DTLB_TS_CTRL_RESET_STATE | AUD-042, AUD-054 | reset初始状态 | reset assert/deassert后第一个可检查周期 | TLB valid全0、MB IDLE/invalid、exception invalid、sent清0、busy/wakeup/fault/pa_vld无毛刺，credit为初始最大值 | `test_mmu_l1dtlb_dtlb_reset_state_001` | reset state probe、external outputs和scheduler credit一致 |
+
+#### 3.10.3 Miss Buffer Allocation, CAM, and FSM
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_MB_DUAL_SAME_4K_DEDUP | AUD-005 | 双pipe同4K miss去重 | pipe0/pipe1同拍miss同完整27-bit 4K VPN，至少一个free MB | 只分配一个MB entry，固定写pipe0请求，pipe1不额外分配 | `test_mmu_l1dtlb_dtlb_alloc_001` with directed same-VPN case | allocation count为1、allocated VPN等于pipe0、pipe1无第二entry |
+        | L1DTLB_TS_MB_DUAL_DIFF_4K_TWO_FREE | AUD-006 | 双pipe不同4K双分配 | 两pipe同拍miss不同完整VPN，至少两个free MB | 两个miss在T1分配到两个最低编号free entry | `test_mmu_l1dtlb_dtlb_alloc_two_lowest_free_001` | 同cycle两个allocation、entry id为最低两个free、payload按pipe写入 |
+        | L1DTLB_TS_MB_DUAL_DIFF_4K_ONE_FREE_AGE | AUD-007 | 单free entry按IID年龄仲裁 | 两pipe同拍miss不同VPN，只有一个free MB，覆盖普通和wrap边界IID | older IID赢得allocation，younger不分配且作为合法无响应/等待重试 | add directed IID-age extension to allocation tests | allocated IID/VPN和未分配pipe一致，覆盖pipe0 older/pipe1 older |
+        | L1DTLB_TS_MB_FULL_DROP_RETRY | AUD-008 | MB full drop/retry | 8个MB entry全valid，新TLB/expt miss到达 | 不覆盖已有entry、不分配新entry；busy=1，LSU依赖wakeup/replay协议后续重试 | `test_mmu_l1dtlb_dtlb_alloc_full_001`, `test_mmu_l1dtlb_dtlb_mb_001`, `_002` | MB occupancy=8 bin、无allocation、后续wakeup后重试路径 |
+        | L1DTLB_TS_MB_CAM_HIT_NO_ALLOC | AUD-020 | MB CAM hit不分配不wakeup | 第二个请求访问已有pending MB entry的完整4K VPN | 不新增MB entry、不立即wakeup、不产生pa_vld/fault响应；等待原MB refill完成后由LSU replay | `test_mmu_l1dtlb_dtlb_mb_001` with MB CAM hit directed case | MB valid count不变、wakeup不拉高、后续replay成功 |
+        | L1DTLB_TS_MB_4K_DEDUP_FOR_HUGE_FINAL | AUD-020 | MB去重不按最终大页放宽 | 两个miss最终可能返回2M/1G page，但pending MB CAM比较仍为完整4K VPN | 只有完整4K VPN相同才去重；不能因最终page size大而错误合并不同4K VPN | `test_mmu_l1dtlb_dtlb_huge_mix_001` plus MB CAM directed cover | MB CAM key使用完整VPN，2M/1G refill后再按entry page size hit |
+        | L1DTLB_TS_MB_STATE_SIGNAL | AUD-056 | MB entry状态派生信号 | 覆盖IDLE/WFG/WFC/WFI/PGFLT/ACFLT/ABT状态转换 | entry_vld、entry_wfi、entry_wfc、ready、issued/sent与FSM语义一致 | `test_mmu_l1dtlb_dtlb_mb_state_signal_001`, `test_mmu_l1dtlb_dtlb_mb_fsm_wfi_001` | whitebox state/signal cross和transition coverage |
+        | L1DTLB_TS_MB_FAULT_HOLD | AUD-059 | PGFLT/ACFLT保持到replay或flush | fault refill写入exception array后，原请求长时间不replay | MB和exception entry保持valid，不超时自动释放；直到matching replay或RTU flush | `test_mmu_l1dtlb_dtlb_mb_fault_hold_001`, `test_mmu_l1dtlb_dtlb_mb_pgflt_001` | fault entry lifetime、MB state和无spurious release |
+        | L1DTLB_TS_MB_STALE_REFILL_ID | AUD-060 | 非WFC stale refill处理 | refill id对应entry处于IDLE/PGFLT/ACFLT或其他非WFC状态 | 不写TLB、不写exception array、不wakeup，按stale完成丢弃 | `test_mmu_l1dtlb_dtlb_refill_stale_id_001` | stale refill事件与无副作用检查 |
+        | L1DTLB_TS_MB_ABT_LATE_REFILL | AUD-030, AUD-060 | ABT late refill drain | entry因flush进入ABT后，旧refill返回 | 只允许drain回IDLE；禁止TLB install、exception write和wakeup | `test_mmu_l1dtlb_dtlb_mb_abt_late_refill_001` | ABT->IDLE transition，无install/expt/wakeup side effect |
+
+#### 3.10.4 L2 Request, Scheduler, Credit, and Type Propagation
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_SCHED_CREDIT_BOUND | AUD-021 | credit上下界和守恒 | reset、连续发request、credit return、request+return同拍，覆盖credit=0 | credit初值为DTLB专用ReqQ深度；只被request消耗、return归还；同拍request+return计数不变；credit=0且同拍return允许发一个request | `test_mmu_l1dtlb_dtlb_credit_001`, `_002`, `test_mmu_l1dtlb_dtlb_credit_bound_001` | scheduler credit probe或SVA，request fire条件与credit一致 |
+        | L1DTLB_TS_SCHED_ONE_REQ_PER_CYCLE | AUD-022 | 每拍最多一个L2 request | 多个MB ready或MB ready与current bypass同拍竞争 | L1DTLB->L2TLB每cycle最多一个request | `test_mmu_l1dtlb_dtlb_sched_001` | L2 request valid event计数，每cycle不超过1 |
+        | L1DTLB_TS_SCHED_OLD_MB_PRIORITY | AUD-022 | old MB优先于bypass | 已有未发送ready MB entry，同时当前cycle出现可bypass新miss | 发送old unsent MB entry，新bypass不得抢占 | `test_mmu_l1dtlb_dtlb_sched_001` with directed priority case | L2 request id/type来自old MB，new miss留在MB中待后续发送 |
+        | L1DTLB_TS_SCHED_BYPASS_ALLOC_ISSUE | AUD-023 | bypass allocate+issue同拍 | 当前新miss可分配且无old unsent MB，credit允许发送 | 新miss必须先分配MB并携带entry id同拍发L2；下一拍entry进入WFC且issued/sent=1 | `test_mmu_l1dtlb_dtlb_alloc_race_001` or add directed bypass test | allocation event、L2 request eid、next-state WFC/sent一致 |
+        | L1DTLB_TS_SCHED_L2_REQ_PAYLOAD | AUD-050 | L2 request payload稳定 | L2 request valid时覆盖load、store、AMO miss | VPN、MB entry id和load/store access type稳定非X；entry id范围合法并与MB payload一致 | `test_mmu_l1dtlb_dtlb_type_prop_load_store_amo_001` | L2 request interface probe、type bins、eid consistency |
+        | L1DTLB_TS_SCHED_STORE_TYPE_PROP | AUD-019, AUD-050 | store/load/AMO type传播 | 分别构造load miss、store miss、AMO/LDAMO类请求 | store标识影响L2/PTW/PMP访问类型和permission判断；不直接改变同一entry的PA/属性输出 | `test_mmu_l1dtlb_dtlb_type_prop_load_store_amo_001` | L2 req type、PTW/PMP type、page fault原因和attr输出cross |
+
+#### 3.10.5 Permission, Fault Timing, PMP, and Direct Map
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_FAULT_RESPONSE_TIMING | AUD-015 | T0/T1响应和fault pulse | TLB hit page fault、PMP access fault、exception page/access fault replay | pa_vld/PA/page_fault在T0；access_fault在T1；page/access fault为1-cycle pulse；同一请求page/access fault互斥 | `test_mmu_l1dtlb_dtlb_resp_no_iid_t01_001`, `test_mmu_l1dtlb_dtlb_pa_vld_terminal_001`, `test_mmu_l1dtlb_dtlb_access_fault_t1_pairing_001` | per-pipe temporal check、pulse width、request ownership |
+        | L1DTLB_TS_FAULT_LOAD_R0 | AUD-016 | load访问R=0 page fault | load访问R=0且MXR不能放行的leaf PTE | T0返回pa_vld和page_fault，不进入PMP check | `test_mmu_l1dtlb_dtlb_perm_ld_001` with directed PTE | PTE setup、page_fault pulse、PMP token absence |
+        | L1DTLB_TS_FAULT_LOAD_MXR | AUD-017 | MXR读X-only page | load访问X=1/R=0 page，分别MXR=0和MXR=1 | MXR=0 page fault；MXR=1且其他检查通过时允许读 | `test_mmu_l1dtlb_dtlb_perm_ld_002` | CP0 MXR setting、PTE flags、LSU response cross |
+        | L1DTLB_TS_FAULT_STORE_W_D | AUD-018 | store W=0/D=0 page fault | store访问W=0 page和D=0 page | T0 page fault；L1DTLB test不期待硬件D-bit update/writeback | `test_mmu_l1dtlb_dtlb_perm_st_001`, `_002` | PTE不变、page_fault pulse、无D-bit writeback expectation |
+        | L1DTLB_TS_FAULT_AD_US_SUM | AUD-016, AUD-018 | A/U/S/SUM权限组合 | load/store分别覆盖A=0、U/S不满足、SUM开关组合、VA illegal | 满足spec的page fault条件均T0报page_fault；合法组合允许继续PMP | permission directed extension | permission cover bins、page_fault与PMP token互斥/允许关系 |
+        | L1DTLB_TS_FAULT_PF_BLOCKS_PMP | AUD-048 | page fault阻止PMP | TLB hit但PTE权限/VA illegal导致page fault，同时PMP配置可产生access fault | 该请求T0 page_fault+pa_vld，不为该请求发PMP check，不产生同请求access fault | `test_mmu_l1dtlb_dtlb_pf_blocks_pmp_001` | page_fault和PMP token/access_fault归属检查 |
+        | L1DTLB_TS_FAULT_OVERLAP_PIPE | AUD-045, AUD-046, AUD-049 | T1 access fault与下一拍T0事件重叠 | 连续同pipe请求：上一拍进入PMP并在T1 access fault，当前拍又有T0 pa_vld/page_fault | 同cycle裸信号可重叠，但必须归属不同请求；scoreboard不能把access_fault和当前pa_vld强配对 | `test_mmu_l1dtlb_dtlb_fault_overlap_pipe_001`, `test_mmu_l1dtlb_dtlb_access_fault_t1_pairing_001` | request token、pipe、cycle pairing和fault ownership |
+        | L1DTLB_TS_FAULT_PMP_ACCESS | AUD-047, AUD-049 | PMP T1 payload归属 | TLB hit或direct map且无page fault，PMP配置拒绝read/write | PA/attr在T0返回；T1 access_fault由上一拍有效PMP token产生，payload稳定 | `test_mmu_l1dtlb_dtlb_pmp_001` | PMP req payload、read/write type、T1 fault response |
+        | L1DTLB_TS_MODE_DIRECT_MAP | AUD-041 | MMU off/M-mode direct map | regs_mmu_en=0、effective M-mode、以及MPRV导致非M effective mode三类 | MMU off/M-mode不查TLB、不分配MB、不产生PTE page fault，PA按VA direct map，属性来自sysmap；仍允许PMP检查 | `test_mmu_l1dtlb_dtlb_sysmap_001` | direct-map PA/attr、MB/L2无副作用、PMP access_fault可触发 |
+        | L1DTLB_TS_MODE_STAMO_PIPE1 | AUD-039 | STAMO pipe1 bypass | pipe1/store pipe发STAMO bypass请求 | 返回LM/STAMO保存路径PA/attr；不查TLB、不分配MB、不写expt、不污染PLRU/refill路径 | `test_mmu_l1dtlb_dtlb_stamo_001`, `test_mmu_l1dtlb_dtlb_stamo_pipe1_bypass_001` | pipe1 response source、无TLB/MB/L2 side effect |
+        | L1DTLB_TS_MODE_STAMO_PIPE0_NEG | AUD-040 | pipe0 STAMO negative | pipe0普通请求与STAMO相关控制同拍或尝试pipe0 STAMO | pipe0不产生STAMO bypass效果，不污染pipe0普通translation | `test_mmu_l1dtlb_dtlb_stamo_pipe0_neg_001` | pipe0按普通TLB/direct-map路径，pipe1 bypass不串扰 |
+
+#### 3.10.6 Refill, Install, WFI, and Exception Array
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_INSTALL_ARB_WFI_PTW_L2 | AUD-024 | install优先级WFI > PTW > L2 | WFI candidate、PTW normal refill和L2 normal refill同cycle竞争 | 每拍最多写一个TLB entry，固定优先级WFI、PTW、L2；未获grant的normal refill进入WFI保存 | `test_mmu_l1dtlb_dtlb_install_arb_001`, `test_mmu_l1dtlb_dtlb_refill_001`, `_002` | install source select、entry write、loser WFI latch |
+        | L1DTLB_TS_INSTALL_MULTI_WFI_LOWEST | AUD-025 | 多WFI最低entry优先 | 两个或更多MB entry同时处于WFI且可install | 选择最低编号WFI entry install，每拍仍只写一个TLB entry | `test_mmu_l1dtlb_dtlb_mb_fsm_wfi_001`, `test_mmu_l1dtlb_dtlb_install_id_chk_001` | WFI vector、selected id、entry update id |
+        | L1DTLB_TS_INSTALL_WFI_DATA_HOLD | AUD-057 | WFI data hold | normal refill未获install grant进入WFI，等待多拍后install | WFI期间保持原miss VPN、refill PPN、flag、page size稳定；后续install数据等于latch数据 | `test_mmu_l1dtlb_dtlb_wfi_data_hold_001` | WFI latch fields稳定性和最终entry write一致 |
+        | L1DTLB_TS_INSTALL_VISIBILITY_RELEASE | AUD-061 | install可见性与MB释放时序 | TLB install与对应MB entry release同沿发生，并在同VPN请求前后发访问 | 写入前同组合周期不能命中新entry；下一可见cycle才允许命中；MB同沿释放 | `test_mmu_l1dtlb_dtlb_install_visibility_001` | same-cycle miss/hit boundary、next-cycle hit、MB valid drop |
+        | L1DTLB_TS_EXPT_FAULT_REFILL_WRITE | AUD-026 | fault refill写exception array不写TLB | PTW对WFC entry返回page/access fault，或L2返回page fault | fault写exception array；不写TLB entry；L2 refill不作为access fault来源 | `test_mmu_l1dtlb_dtlb_mb_pgflt_001`, `test_mmu_l1dtlb_dtlb_access_fault_source_parity_001` | expt write probe、TLB entry no-write、后续fault replay |
+        | L1DTLB_TS_EXPT_DUAL_FAULT_WRITE | AUD-027, AUD-058 | PTW/L2同拍fault写两entry | PTW和L2同cycle对不同MB id返回fault | 两个exception entry都记录；id在范围内并直接映射refill MB id | `test_mmu_l1dtlb_dtlb_expt_id_map_001` with dual-fault extension | expt wr0/wr1 valid、id map、array capacity等于MB depth |
+        | L1DTLB_TS_EXPT_REPLAY_CONSUME | AUD-028 | exception replay消费 | LSU replay匹配IID+完整4K VPN的fault entry | page fault replay为T0，access fault replay为T1；exception entry和对应MB entry同拍释放；不再分配新MB | `test_mmu_l1dtlb_dtlb_mb_pgflt_001`, `test_mmu_l1dtlb_dtlb_wakeup_expt_001` | expt match/clear、MB release、fault timing、no allocation |
+        | L1DTLB_TS_EXPT_DUAL_SAME_ENTRY_NEG | AUD-029 | 双pipe同拍消费同expt entry负向约束 | 构造两个pipe同拍访问相同VPN但IID不同，或diagnostic非法同IID | 合法场景下不应同拍命中同一exception entry；若出现应作为design/spec violation，不做port0 priority消费期望 | `test_mmu_l1dtlb_dtlb_expt_dual_same_entry_neg_001` | same-entry dual hit invariant、no double release |
+        | L1DTLB_TS_EXPT_HIT_WITH_TLB_HIT | AUD-052 | 一pipe TLB hit、一pipe expt hit | 两pipe同拍，一个普通TLB hit，另一个exception array hit | 两路响应/释放互不污染；TLB hit端正常返回，expt端按fault replay释放并wakeup | `test_mmu_l1dtlb_dtlb_expt_hit_with_tlb_hit_001` | per-pipe response、expt/MB clear、wakeup broadcast |
+        | L1DTLB_TS_EXPT_ACCESS_FAULT_SOURCE_PARITY | AUD-062 | access fault来源一致性 | 分别由PTW fault replay和PMP检查产生access fault；L2尝试access fault作为negative | PTW可返回access fault；L2只可normal/page fault；最终对LSU均表现为replay/PMP后的T1 access_fault | `test_mmu_l1dtlb_dtlb_access_fault_source_parity_001` | source type cover、T1 timing、L2 access fault negative |
+
+#### 3.10.7 Invalidate, Cleanup, Flush, Race, and PLRU
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_INV_TLBOPER_CLR | AUD-034 | tlboper_utlb_clr全清TLB entry | TLBWI/TLBWR/INVASID/INVALL等触发tlboper_utlb_clr | 清空全部L1DTLB entry valid；不清MB和exception array | `test_mmu_l1dtlb_dtlb_inv_001`, `_002`, `test_mmu_l1dtlb_dtlb_cleanup_scope_matrix_001` | entry valid all-zero，MB/expt lifetime不变 |
+        | L1DTLB_TS_INV_REGS_CLR | AUD-035 | regs_utlb_clr全清TLB entry | SATP/mode/asid相关寄存器变化触发regs_utlb_clr | 因L1 entry不保存ASID，相关L1清理按全清entry处理；不清MB/expt | `test_mmu_l1dtlb_dtlb_inv_003`, `test_mmu_l1dtlb_dtlb_cleanup_scope_matrix_001` | all entry invalid，pending MB/expt保留 |
+        | L1DTLB_TS_INV_VA8_ALIAS | AUD-036 | VA定点失效低8bit保守清理 | tlboper_utlb_inv_va_req携带目标VA，构造VPN[7:0]相同/不同entry | VPN[7:0]匹配的valid entry下拍失效；低8bit不匹配entry不被该局部clear误清 | `test_mmu_l1dtlb_dtlb_inv_va8_alias_001`, `test_mmu_l1dtlb_dtlb_inv_004` | per-entry valid变化、alias conservative clear coverage |
+        | L1DTLB_TS_INV_HIT_SAME_CYCLE | AUD-037 | invalidate与TLB hit同拍 | 同cycle发起hit并触发匹配entry invalidate | 本拍允许返回旧entry hit；下一拍起该entry不得继续作为valid hit | `test_mmu_l1dtlb_dtlb_inv_hit_same_cycle_001` | same-cycle response和next-cycle miss |
+        | L1DTLB_TS_INV_INSTALL_SAME_ENTRY | AUD-038 | invalidate与install同entry | clear/invalidate与TLB install同拍选择同一entry | clear优先，时钟沿后该entry最终valid=0 | `test_mmu_l1dtlb_dtlb_inv_install_same_entry_001` | selected entry final valid、no stale hit |
+        | L1DTLB_TS_FLUSH_RTU_CLEAR_SCOPE | AUD-031, AUD-053 | RTU flush清理范围 | RTU flush发生时存在TLB entry、MB entry和exception entry | RTU flush清MB和exception array；TLB entry清理按spec对应控制；flush kill的miss不得install/expt write/wakeup | `test_mmu_l1dtlb_dtlb_cleanup_scope_matrix_001` | MB/expt all clear、no side effect from killed miss |
+        | L1DTLB_TS_FLUSH_MB_RACE_MATRIX | AUD-064 | RTU flush与MB FSM同拍race | 分别覆盖WFG+flush无grant、WFG+flush+grant、WFC+flush无refill、WFC+flush+refill、WFI+flush | 最终状态按Q072矩阵：IDLE或ABT drain；禁止非法install/expt/wakeup | `test_mmu_l1dtlb_dtlb_mb_flush_race_matrix_001` | state transition matrix、side-effect negative checks |
+        | L1DTLB_TS_PLRU_WHITEBOX_ONLY | AUD-043, AUD-055 | PLRU只作whitebox覆盖 | hit、install、双pipe hit、refill victim、invalidate后replacement pressure | 不把exact victim作为black-box pass/fail；只检查victim onehot/onehot0、index范围和更新输入非X | `test_mmu_l1dtlb_dtlb_plru_001`, `test_mmu_l1dtlb_dtlb_plru_whitebox_only_001` | whitebox cover/SVA，主translation scoreboard不预测exact victim |
+
+#### 3.10.8 Scoreboard, Observability, and Regression Closure
+        | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
+        | --- | --- | --- | --- | --- | --- | --- |
+        | L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY | AUD-063 | reference model观察边界 | 综合覆盖外部接口可推导事件、whitebox-only事件、合法无响应事件和wakeup/HPC事件 | PA、attr、pa_vld、page_fault、access_fault、L2 request、credit、busy逐拍精确；wakeup按事件级广播检查；PLRU victim不进入主正确性判断 | `test_mmu_l1dtlb_dtlb_ref_model_observability_001` | scoreboard checklist、whitebox-only probe清单、legal no-response分类 |
+        | L1DTLB_TS_OBS_LEGAL_NO_RESPONSE | AUD-008, AUD-020, AUD-031, AUD-063 | 合法无响应分类 | MB CAM hit、MB full未分配、abort屏蔽状态后果、flush kill请求 | 不被误判为漏响应；但必须检查没有非法allocation、install、exception write或wakeup | `test_mmu_l1dtlb_dtlb_ref_model_observability_001` | no-response reason code或monitor annotation，后续wakeup/replay/flush终止生命周期 |
+        | L1DTLB_TS_OBS_HPC_MISS_EVENT | AUD-063 | miss统计/HPC事件守护 | hit、direct map、STAMO bypass、exception replay、abort miss、真实TLB/expt miss | miss/HPC事件不在非真实miss路径误拉高；真实进入miss处理时允许1-cycle事件 | add cover/check in observability or perf wrapper | `mmu_hpcp_dutlb_miss`等事件级采样 |
+        | L1DTLB_TS_OBS_WRAPPER_RETARGET | AUD-044 | 共享generic vseq retarget闭环 | 原先只映射到`mmu_ptw_thrash_vseq`或`mmu_concurrent_3pipe_vseq`的wrapper进入回归 | wrapper必须被retarget为L1DTLB-directed stimulus，或明确标记为traceability shell，不能声称已完全覆盖directed requirement | `test_mmu_l1dtlb_dtlb_ref_model_observability_001` plus regression checklist | regression report标明directed/traceability shell状态 |
+        | L1DTLB_TS_OBS_SVA_COVER_CLOSURE | AUD-001..AUD-064 | SVA cover closure | 跑包含所有L1DTLB directed wrappers的regression | 3.9 cover矩阵C001-C027应能证明关键场景被采样；未命中的cover反向生成directed test缺口 | all `l1dtlb_tests_suite.svh` wrappers | cover property report和AUD/Scenario traceability矩阵 |

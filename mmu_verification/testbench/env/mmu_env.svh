@@ -33,6 +33,7 @@ class mmu_env extends uvm_env;
   mmu_credit_sb      m_credit_sb;
   mmu_perf_mon         m_perf;
   mmu_env_cg_whitebox  m_cg_whitebox;
+  mmu_l1dtlb_spec_sb   m_l1dtlb_spec_sb;
 
   // Phase 8: virtual sequencer (6 sub-sequencer handles, no ptw_mem)
   mmu_virtual_sequencer m_vseqr;
@@ -160,6 +161,8 @@ class mmu_env extends uvm_env;
     // Phase 5 (Engineer A): credit scoreboard + performance monitor
     m_credit_sb = mmu_credit_sb::type_id::create("m_credit_sb", this);
     m_perf      = mmu_perf_mon::type_id::create("m_perf",      this);
+    if (m_cfg.en_l1dtlb_spec_sb)
+      m_l1dtlb_spec_sb = mmu_l1dtlb_spec_sb::type_id::create("m_l1dtlb_spec_sb", this);
 
     if (m_cfg.en_whitebox_cg) begin
       m_cg_whitebox = mmu_env_cg_whitebox::type_id::create("m_cg_whitebox", this);

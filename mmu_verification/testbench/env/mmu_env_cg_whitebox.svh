@@ -16,7 +16,14 @@ class mmu_env_cg_whitebox extends uvm_component;
   logic [1:0]  wb_itlb_fsm;
   bit          wb_itlb_credit;
   int unsigned wb_dtlb_mb_occ;
+  int unsigned wb_dtlb_entry_occ;
   logic [2:0]  wb_dtlb_mb0_st;
+  logic [1:0]  wb_dtlb_dual_kind;
+  logic [1:0]  wb_dtlb_refill_src;
+  bit          wb_dtlb_l2_req;
+  logic [2:0]  wb_dtlb_l2_req_eid;
+  bit          wb_dtlb_l2_req_load;
+  int unsigned wb_dtlb_credit_cnt;
   logic [2:0]  wb_l2_b0;
   logic [2:0]  wb_l2_w0;
   logic [2:0]  wb_l2_pgs0;
@@ -89,8 +96,46 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- cg_l1dtlb ------------------------------------------------------------
   covergroup cg_l1dtlb;
     option.per_instance = 1;
-    cp_mb_occupancy: coverpoint wb_dtlb_mb_occ { bins z = {0}; bins low = {[1:3]}; bins mid = {[4:7]}; }
+    cp_entry_occupancy: coverpoint wb_dtlb_entry_occ {
+      bins c0 = {0};
+      bins low = {[1:4]};
+      bins mid = {[5:12]};
+      bins high = {[13:15]};
+      bins full = {16};
+    }
+    cp_mb_occupancy: coverpoint wb_dtlb_mb_occ {
+      bins z = {0};
+      bins low = {[1:3]};
+      bins mid = {[4:7]};
+      bins full = {8};
+    }
     cp_fsm_state: coverpoint wb_dtlb_mb0_st;
+    cp_dual_lookup: coverpoint wb_dtlb_dual_kind {
+      bins none_or_single = {2'd0};
+      bins dual_hit = {2'd1};
+      bins hit_miss = {2'd2};
+      bins dual_miss = {2'd3};
+    }
+    cp_refill_src: coverpoint wb_dtlb_refill_src {
+      bins none = {2'd0};
+      bins ptw  = {2'd1};
+      bins l2   = {2'd2};
+      bins wfi  = {2'd3};
+    }
+    cp_l2_req: coverpoint wb_dtlb_l2_req;
+    cp_l2_req_eid: coverpoint wb_dtlb_l2_req_eid iff (wb_dtlb_l2_req) {
+      bins eid[] = {[0:7]};
+    }
+    cp_l2_req_type: coverpoint wb_dtlb_l2_req_load iff (wb_dtlb_l2_req) {
+      bins load = {1};
+      bins store = {0};
+    }
+    cp_credit_cnt: coverpoint wb_dtlb_credit_cnt {
+      bins zero = {0};
+      bins low = {[1:3]};
+      bins mid = {[4:7]};
+      bins full = {8};
+    }
   endgroup
 
   // --- cg_l2_reqq -----------------------------------------------------------
@@ -698,7 +743,22 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_itlb_fsm    = v_probe.l1i_ref_fsm;
     wb_itlb_credit = v_probe.l1i_credit_cnt;
     wb_dtlb_mb_occ  = $countones(v_probe.l1d_mb_vld);
+    wb_dtlb_entry_occ = $countones(v_probe.l1d_entry_vld);
     wb_dtlb_mb0_st  = v_probe.l1d_mb_st0;
+    wb_dtlb_refill_src = v_probe.l1d_refill_vld ? v_probe.l1d_refill_src : 2'd0;
+    wb_dtlb_l2_req = v_probe.l1d_l2_req_vld;
+    wb_dtlb_l2_req_eid = v_probe.l1d_l2_req_eid;
+    wb_dtlb_l2_req_load = v_probe.l1d_l2_req_is_load;
+    wb_dtlb_credit_cnt = v_probe.l1d_sched_credit_cnt;
+    if ((v_probe.l1d_p0_hit_vld && v_probe.l1d_p1_hit_vld))
+      wb_dtlb_dual_kind = 2'd1;
+    else if ((v_probe.l1d_p0_hit_vld && v_probe.l1d_p1_miss_vld)
+          || (v_probe.l1d_p1_hit_vld && v_probe.l1d_p0_miss_vld))
+      wb_dtlb_dual_kind = 2'd2;
+    else if (v_probe.l1d_p0_miss_vld && v_probe.l1d_p1_miss_vld)
+      wb_dtlb_dual_kind = 2'd3;
+    else
+      wb_dtlb_dual_kind = 2'd0;
     wb_l2_b0        = v_probe.l2_bank0;
     wb_l2_w0        = f_first_onehot3(v_probe.l2_final_way_hit);
     wb_l2_pgs0      = v_probe.l2_raw_pre_pgs0;

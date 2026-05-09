@@ -389,6 +389,12 @@ PHASE14_TOGGLE_THRESHOLD  ?= 98.0
 PHASE14_FSM_THRESHOLD     ?= 99.0
 PHASE14_FUNC_THRESHOLD    ?= 100.0
 PHASE14_ASSERT_THRESHOLD  ?= 100.0
+L1DTLB_AUDIT_DIR          ?= $(PROJECT_DIR)/../doc/l1dtlb_uvm_audit
+L1DTLB_FUNC_DESC          ?= $(L1DTLB_AUDIT_DIR)/l1dtlb_function_description.md
+L1DTLB_TESTPOINT_AUDIT    ?= $(L1DTLB_AUDIT_DIR)/l1dtlb_testpoint_audit.md
+L1DTLB_TESTPLAN_XLSX      ?= $(L1DTLB_AUDIT_DIR)/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx
+L1DTLB_DIRECTED_GROUP     ?= l1dtlb_tests
+L1DTLB_AUDIT_SEED         ?= 97101
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -522,6 +528,32 @@ print-phase14:
 	@echo "PHASE14_FSM_THRESHOLD  = $(PHASE14_FSM_THRESHOLD)"
 	@echo "PHASE14_FUNC_THRESHOLD = $(PHASE14_FUNC_THRESHOLD)"
 	@echo "PHASE14_ASSERT_THRESHOLD = $(PHASE14_ASSERT_THRESHOLD)"
+	@echo "L1DTLB_AUDIT_DIR       = $(L1DTLB_AUDIT_DIR)"
+	@echo "L1DTLB_FUNC_DESC       = $(L1DTLB_FUNC_DESC)"
+	@echo "L1DTLB_TESTPOINT_AUDIT = $(L1DTLB_TESTPOINT_AUDIT)"
+	@echo "L1DTLB_TESTPLAN_XLSX   = $(L1DTLB_TESTPLAN_XLSX)"
+	@echo "L1DTLB_DIRECTED_GROUP  = $(L1DTLB_DIRECTED_GROUP)"
+	@echo "L1DTLB_AUDIT_SEED      = $(L1DTLB_AUDIT_SEED)"
+
+print-l1dtlb-audit:
+	@echo "L1DTLB_AUDIT_DIR       = $(L1DTLB_AUDIT_DIR)"
+	@echo "L1DTLB_FUNC_DESC       = $(L1DTLB_FUNC_DESC)"
+	@echo "L1DTLB_TESTPOINT_AUDIT = $(L1DTLB_TESTPOINT_AUDIT)"
+	@echo "L1DTLB_TESTPLAN_XLSX   = $(L1DTLB_TESTPLAN_XLSX)"
+	@echo "L1DTLB_DIRECTED_GROUP  = $(L1DTLB_DIRECTED_GROUP)"
+	@echo "L1DTLB_AUDIT_SEED      = $(L1DTLB_AUDIT_SEED)"
+
+l1dtlb_audit_check:
+	@test -f "$(L1DTLB_FUNC_DESC)" || (echo "ERROR: missing $(L1DTLB_FUNC_DESC)"; exit 2)
+	@test -f "$(L1DTLB_TESTPOINT_AUDIT)" || (echo "ERROR: missing $(L1DTLB_TESTPOINT_AUDIT)"; exit 2)
+	@test -f "$(L1DTLB_TESTPLAN_XLSX)" || (echo "ERROR: missing $(L1DTLB_TESTPLAN_XLSX)"; exit 2)
+	@echo "L1DTLB audit documents present."
+
+l1dtlb_audit_run: l1dtlb_audit_check
+	$(MAKE) run_check TEST_NAME=$(L1DTLB_DIRECTED_GROUP) SEED=$(L1DTLB_AUDIT_SEED) UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0
+
+l1dtlb_audit_run_cov: l1dtlb_audit_check
+	$(MAKE) run_cov TEST_NAME=$(L1DTLB_DIRECTED_GROUP) SEED=$(L1DTLB_AUDIT_SEED) UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -650,6 +682,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
         phase14_make_parallel_shards regress_v4_full_parallel phase14_show_parallel_failures phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
+        print-l1dtlb-audit l1dtlb_audit_check l1dtlb_audit_run l1dtlb_audit_run_cov \
         phase12_exit_check phase12_pgflt_urg_probe
 
 all: comp run
@@ -1581,6 +1614,10 @@ help:
 	@echo "  make phase14_clean_parallel                          # remove high-parallel shard/log/VDB artifacts"
 	@echo "  make phase14_coverage_merge                           # generate Phase14 URG artifacts"
 	@echo "  make phase14_exit_check                               # default Phase14 closure gate, uses high-parallel VDBs"
+	@echo "  make print-l1dtlb-audit                               # show L1DTLB audit docs/testplan paths"
+	@echo "  make l1dtlb_audit_check                               # check L1DTLB audit docs and xlsx exist"
+	@echo "  make l1dtlb_audit_run                                 # run l1dtlb_tests group once after UVM code is stable"
+	@echo "  make l1dtlb_audit_run_cov                             # run l1dtlb_tests group with coverage"
 	@echo "  Optional: PHASE14_PARALLEL_JOBS=96..144 PHASE14_PARALLEL_RUNS_PER_SHARD=1 PHASE14_FAIL_FAST=1 PHASE14_PARALLEL_UVM_ERR_ONLY=1 PHASE14_PARALLEL_STARTUP_RETRIES=2"
 	@echo "  High-parallel default: isolated VDBs under $(PHASE14_PARALLEL_VDB_DIR), per-shard RUN_DIRs, shared CFGDB trace disabled"
 	@echo ""

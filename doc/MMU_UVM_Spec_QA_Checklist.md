@@ -1780,4 +1780,31 @@ replay 类场景很容易无穷扩展，需要明确到底想验证“功能正�
    那我会继续追问：这个行为应转去 `whitebox checker / SVA / coverage` 中哪一类。
 
 所以这份文档可以作为“第一层设计问卷”，后面再迭代成更接近代码实现的规格。
+---
 
+---
+
+## 23. L1DTLB audit synchronization checklist
+
+The current L1DTLB audit package answers a large subset of the LSU/replay/
+invalidate questions above and should be treated as the active L1DTLB-specific
+QA attachment.
+
+| Item | Status | Required follow-up |
+| --- | --- | --- |
+| L1DTLB behavior source | Updated in `doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` | Review chapters 1 and 2 as the behavior baseline |
+| L1DTLB SVA requirements | Added in `l1dtlb_function_description.md` chapter 3.9 | Convert reviewed requirements into implemented/bound SVA only after UVM code stabilizes |
+| L1DTLB required test scenarios | Added in `l1dtlb_function_description.md` chapter 3.10 | Keep the 65 scenario rows aligned with AUD-001..AUD-064 |
+| HPDcache-style Excel testplan | Added as `doc/l1dtlb_uvm_audit/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` | Use for review and testplan import; do not replace markdown audit traceability |
+| Makefile document check | Added as `make l1dtlb_audit_check` | Run before Phase14 signoff archive |
+| Optional L1DTLB directed run | Added as `make l1dtlb_audit_run_cov` | Run only after in-progress UVM code edits settle |
+
+Open QA points before signoff:
+
+1. Confirm which chapter 3.9 SVA rows are implemented, bound, or deferred.
+2. Confirm whether each chapter 3.10 scenario is directed, coverage-only, or a
+   traceability shell in the final UVM branch.
+3. Confirm that scoreboard/pass-fail ownership keeps PLRU victim choice and other
+   whitebox-only observations out of black-box correctness checks.
+4. Confirm the L1DTLB Excel testplan and markdown audit stay in sync when new
+   tests are added or renamed.

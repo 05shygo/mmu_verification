@@ -82,6 +82,55 @@ Review policy:
 | MMU-P14-ISSUE-013 | RTL/Design Record | L2TLB reqq simultaneous bypass incorrectly marked DTLB entry sent | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-014 | RTL/Design Record | L2TLB miss buffer bypass could issue unallocated PTW request | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-015 | Testbench/Scoreboard | Translation scoreboard DTLB exception CAM replay model | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-016 | TestPlan/Documentation | L1DTLB audit scenario matrix, SVA requirement list, and Excel testplan synchronization | Phase 14 | Medium | Phase14 Closure Owner | Open | No |
+
+---
+
+## MMU-P14-ISSUE-016 - L1DTLB Audit Scenario/Testplan Synchronization
+
+| Field | Value |
+| --- | --- |
+| Type | TestPlan/Documentation |
+| Severity | Medium |
+| Status | Open |
+| Blocking | No |
+| Primary spec | `doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` |
+| Audit record | `doc/l1dtlb_uvm_audit/l1dtlb_testpoint_audit.md` |
+| Excel testplan | `doc/l1dtlb_uvm_audit/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` |
+| Makefile entry | `make print-l1dtlb-audit`, `make l1dtlb_audit_check`, `make l1dtlb_audit_run`, `make l1dtlb_audit_run_cov` |
+
+### Description
+
+The L1DTLB audit package now has an explicit requirements-to-test closure
+record:
+
+- `l1dtlb_function_description.md` chapter 3.9 records the SVA/checker
+  requirements derived from the L1DTLB functional description and audit rows.
+- `l1dtlb_function_description.md` chapter 3.10 records 65 required L1DTLB test
+  scenarios and maps them back to `AUD-001` through `AUD-064`.
+- `L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` mirrors the HPDcache testplan column
+  format and captures the same 65 L1DTLB scenarios for review/signoff tracking.
+- `mmu_verification/Makefile` now exposes read-only document checks plus an
+  optional `l1dtlb_tests` group run entry for the point when UVM code is stable.
+
+### Current Boundary
+
+This tracker item is a synchronization record, not a declaration that every
+L1DTLB directed wrapper has already passed regression. UVM code under
+`mmu_verification/testbench` is still being edited, so Phase14 closure should use
+`l1dtlb_audit_check` for document presence now and promote `l1dtlb_audit_run` /
+`l1dtlb_audit_run_cov` to closure evidence only after the L1DTLB UVM branch is
+stable.
+
+### Closure Requirement
+
+Close this item when:
+
+- the L1DTLB chapter 3.9/3.10 content and Excel testplan are reviewed,
+- `make l1dtlb_audit_check` passes,
+- the final L1DTLB UVM code state is either covered by a clean
+  `l1dtlb_audit_run_cov` result or explicitly deferred to the next closure
+  phase with reviewer approval.
 
 ---
 
@@ -1594,7 +1643,7 @@ Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-016
 ```
 
 Before final signoff, update this table:
@@ -1606,6 +1655,7 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-003 | Conditional | `make phase14_gate_parallel`: S3/S5 pass; S4 functional coverage is 67.66% below 100.00%, pending additional tests or reviewed waiver |
 | MMU-P14-ISSUE-004 | TBD | `make print-phase14`; `python -m py_compile scripts/phase14_exit_gate.py`; closure run evidence |
 | MMU-P14-ISSUE-005 | TBD | `doc/MMU_Phase14_SignoffMatrix.md` |
+| MMU-P14-ISSUE-016 | Open | `doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` chapters 3.9/3.10; `doc/l1dtlb_uvm_audit/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx`; `make l1dtlb_audit_check` |
 | MMU-P14-ISSUE-006 | Closed | 2026-05-07 functional high-parallel regression completed cleanly; `phase14_coverage_merge_parallel` generated `output/coverage/phase14_urgReport` with Synopsys `VCS/URG V-2023.12-SP2` |
 | MMU-P14-ISSUE-007 | Closed | 2026-05-07 `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20` completed all 465 shards cleanly |
 | MMU-P14-ISSUE-008 | Closed | Commits `17177f1`, `e6c31ea`; `test_twu_mask_pmp_wait_all4 SEED=97102` no longer shows `l1d_mb=0xff` L1DTLB hang |

@@ -291,6 +291,19 @@ module tb_top;
   assign dut_probes_if.l1i_credit_cnt   = u_dut.x_mmu_l1itlb.credit_cnt;
   assign dut_probes_if.l1d_mb_vld        = u_dut.u_mmu_l1dtlb.mb_entry_vld;
   assign dut_probes_if.l1d_mb_st0        = u_dut.u_mmu_l1dtlb.mb_entry_state[0];
+  assign dut_probes_if.l1d_entry_vld     = u_dut.u_mmu_l1dtlb.entry_vld;
+  assign dut_probes_if.l1d_mb_state      = u_dut.u_mmu_l1dtlb.mb_entry_state;
+  assign dut_probes_if.l1d_mb_vpn        = u_dut.u_mmu_l1dtlb.mb_entry_vpn;
+  assign dut_probes_if.l1d_mb_iid        = u_dut.u_mmu_l1dtlb.mb_entry_iid;
+  assign dut_probes_if.l1d_mb_ready      = u_dut.u_mmu_l1dtlb.mb_entry_ready;
+  assign dut_probes_if.l1d_mb_wfc        = u_dut.u_mmu_l1dtlb.mb_entry_wfc;
+  assign dut_probes_if.l1d_mb_wfi        = u_dut.u_mmu_l1dtlb.mb_entry_wfi;
+  assign dut_probes_if.l1d_mb_store      = u_dut.u_mmu_l1dtlb.mb_entry_store;
+  assign dut_probes_if.l1d_sched_credit_cnt = u_dut.u_mmu_l1dtlb.x_scheduler.credit_cnt;
+  assign dut_probes_if.l1d_l2_req_vld    = u_dut.u_mmu_l1dtlb.dutlb_l2tlb_req_vld;
+  assign dut_probes_if.l1d_l2_req_vpn    = u_dut.u_mmu_l1dtlb.dutlb_l2tlb_req_vpn;
+  assign dut_probes_if.l1d_l2_req_eid    = u_dut.u_mmu_l1dtlb.dutlb_l2tlb_req_eid;
+  assign dut_probes_if.l1d_l2_req_is_load = u_dut.u_mmu_l1dtlb.dutlb_l2tlb_req_is_load;
   assign dut_probes_if.l1d_p0_req_vpn    = u_dut.u_mmu_l1dtlb.utlb_req_vpn0;
   assign dut_probes_if.l1d_p0_addr_hit   = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_addr_hit;
   assign dut_probes_if.l1d_p0_hit_vld    = u_dut.u_mmu_l1dtlb.x_hit_rd_port0.dutlb_hit_vld;
@@ -628,6 +641,13 @@ endmodule : tb_top
 // Phase 7: SVA bind — 工程师 A 完整实现（iplru/dplru 子模块，非 mmu_l1itlb 口直连）
 // 参考: MMU_UVM_BuildPlan_v3 §9.2, TaskDivision Phase 7
 bind ct_mmu_top   mmu_sva             u_mmu_sva   (.*);
+bind mmu_l1dtlb   mmu_l1dtlb_sva      u_l1dtlb_sva (.*);
+bind mmu_l1dtlb_scheduler mmu_l1dtlb_scheduler_sva u_l1dtlb_scheduler_sva (.*);
+bind mmu_l1dtlb_allocator mmu_l1dtlb_allocator_sva u_l1dtlb_allocator_sva (.*);
+bind mmu_l1dtlb_mb_entry mmu_l1dtlb_mb_entry_sva u_l1dtlb_mb_entry_sva (.*);
+bind mmu_l1dtlb_install mmu_l1dtlb_install_sva u_l1dtlb_install_sva (.*);
+bind mmu_l1dtlb_expt_cam mmu_l1dtlb_expt_cam_sva u_l1dtlb_expt_cam_sva (.*);
+bind mmu_l1dtlb_hit_rd mmu_l1dtlb_hit_rd_sva u_l1dtlb_hit_rd_sva (.*);
 bind mmu_arb      mmu_arb_sva         u_arb_sva   (.*);
 bind mmu_l2tlb    mmu_l2tlb_rrpv_sva  u_l2tlb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);

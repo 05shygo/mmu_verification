@@ -19,6 +19,19 @@ interface mmu_dut_probes_if (
   // mmu_l1dtlb
   wire [7:0]   l1d_mb_vld;       // MB_DEPTH=8
   wire [2:0]   l1d_mb_st0;       // mb_entry_state[0]
+  wire [15:0]  l1d_entry_vld;
+  wire [7:0][2:0]  l1d_mb_state;
+  wire [7:0][26:0] l1d_mb_vpn;
+  wire [7:0][6:0]  l1d_mb_iid;
+  wire [7:0]   l1d_mb_ready;
+  wire [7:0]   l1d_mb_wfc;
+  wire [7:0]   l1d_mb_wfi;
+  wire [7:0]   l1d_mb_store;
+  wire [4:0]   l1d_sched_credit_cnt;
+  wire         l1d_l2_req_vld;
+  wire [26:0]  l1d_l2_req_vpn;
+  wire [2:0]   l1d_l2_req_eid;
+  wire         l1d_l2_req_is_load;
   wire [26:0]  l1d_p0_req_vpn;
   wire         l1d_p0_addr_hit;
   wire         l1d_p0_hit_vld;
@@ -184,6 +197,10 @@ interface mmu_dut_probes_if (
     default input #1step;
     input l1i_entry_vld, l1i_ref_fsm, l1i_credit_cnt;
     input l1d_mb_vld, l1d_mb_st0;
+    input l1d_entry_vld, l1d_mb_state, l1d_mb_vpn, l1d_mb_iid;
+    input l1d_mb_ready, l1d_mb_wfc, l1d_mb_wfi, l1d_mb_store;
+    input l1d_sched_credit_cnt, l1d_l2_req_vld, l1d_l2_req_vpn;
+    input l1d_l2_req_eid, l1d_l2_req_is_load;
     input l1d_p0_req_vpn, l1d_p0_addr_hit, l1d_p0_hit_vld, l1d_p0_miss_vld;
     input l1d_p0_pre_sel, l1d_p0_expt_match, l1d_p0_entry_pa, l1d_p0_off_pa, l1d_p0_fin_pa;
     input l1d_p1_req_vpn, l1d_p1_addr_hit, l1d_p1_hit_vld, l1d_p1_miss_vld;

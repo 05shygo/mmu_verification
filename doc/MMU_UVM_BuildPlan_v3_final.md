@@ -2787,3 +2787,28 @@ testbench/test/
 | R-NEW.PMP.4 | 低   | `pmpcfg2` 硬连线 0，pmp8-15 不实现（RISC-V 允许 0/16/64 entry）                                     | 文档注明 8 entry 实现；测试侧不访问 pmp8-15 区段                                                  |
 
 ---
+
+### 9.8 L1DTLB audit synchronization (Phase14 addendum)
+
+The L1DTLB audit package is now part of the Phase14 build/closure reference.
+This addendum does not freeze in-progress UVM code; it records the document and
+Makefile surfaces that must stay aligned while the L1DTLB testbench edits settle.
+
+| Area | Current artifact / entry | Build-plan impact |
+| --- | --- | --- |
+| Behavior source | `doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` | Chapters 1 and 2 remain the L1DTLB behavior baseline |
+| SVA requirements | `l1dtlb_function_description.md` chapter 3.9 | Treat as SVA/checker requirement list until implementation/bind status is reviewed |
+| Test scenario matrix | `l1dtlb_function_description.md` chapter 3.10 | 65 required scenarios mapped to `AUD-001` through `AUD-064` |
+| Excel testplan | `doc/l1dtlb_uvm_audit/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` | HPDcache-style review/import artifact for L1DTLB scenarios |
+| Makefile document check | `make l1dtlb_audit_check` from `mmu_verification/` | Confirms audit markdown and xlsx files are present |
+| Optional directed run | `make l1dtlb_audit_run_cov` from `mmu_verification/` | Intended for the final L1DTLB UVM branch, not for partially edited code |
+
+Build-plan follow-up:
+
+1. Keep `l1dtlb_tests` wrapper names, chapter 3.10 scenario IDs, and the Excel
+   testplan synchronized when tests are renamed or split.
+2. Record implemented/bound/deferred status for each chapter 3.9 SVA row before
+   using assertion coverage as signoff evidence.
+3. Use `make l1dtlb_audit_check` as the low-risk document gate while UVM code is
+   still changing; promote `make l1dtlb_audit_run_cov` only after the code branch
+   is stable.

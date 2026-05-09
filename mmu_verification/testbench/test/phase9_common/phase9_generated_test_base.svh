@@ -157,6 +157,21 @@ class phase9_generated_test_base extends test_base;
     seq.start(m_env.m_vseqr);
   endtask
 
+  protected virtual task start_l1dtlb_directed_by_tc_id(string tc_id);
+    l1dtlb_directed_vseq seq;
+    int unsigned n_txn;
+
+    n_txn = clamp_vseq_num_txn();
+    seq = l1dtlb_directed_vseq::type_id::create({tc_id, "_directed_vseq"});
+    seq.tc_id = tc_id;
+    if (!l1dtlb_directed_vseq::decode_tc_id(tc_id, seq.scenario))
+      `uvm_fatal(get_type_name(), $sformatf("Unknown L1DTLB tc_id '%s'", tc_id))
+    if (!seq.randomize() with { num_txn == n_txn; })
+      `uvm_fatal(get_type_name(), $sformatf("randomize failed for L1DTLB directed tc_id '%s'", tc_id))
+    seq.tc_id = tc_id;
+    seq.start(m_env.m_vseqr);
+  endtask
+
   protected virtual task start_ifu_seq_by_name(string seq_name);
     int unsigned n_txn;
     n_txn = clamp_direct_num_txn();
@@ -624,10 +639,24 @@ class phase9_generated_test_base extends test_base;
   virtual task run_test_body();
     setup_plan();
 
+    if (l1dtlb_directed_vseq::is_l1dtlb_tc(p9_tc_id)) begin
+      p9_seq_desc = "l1dtlb_directed_vseq";
+      p9_checker = "translation_sb,l1dtlb_spec_sb,whitebox_cg,l1dtlb_sva";
+      m_enable_sv39_4k_bringup = 1'b0;
+    end
+
     `uvm_info(get_type_name(),
       $sformatf("Phase9 generated test start: tc_id=%s checker=%s reviewer=%s seq=%s",
         p9_tc_id, p9_checker, p9_reviewer, p9_seq_desc),
       UVM_LOW)
+
+    if (l1dtlb_directed_vseq::is_l1dtlb_tc(p9_tc_id)) begin
+      if (m_run_misc_init)
+        start_misc_seq_by_name("misc_init_seq");
+      start_l1dtlb_directed_by_tc_id(p9_tc_id);
+      #(m_post_drain);
+      return;
+    end
 
     if (m_run_misc_init)
       start_misc_seq_by_name("misc_init_seq");

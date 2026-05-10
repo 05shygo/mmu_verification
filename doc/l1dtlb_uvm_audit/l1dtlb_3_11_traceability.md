@@ -77,18 +77,18 @@ point, or directed scenario that checks the required behavior.  A row is not
 
 | Requirement ID | Status | Current implementation / gap |
 | --- | --- | --- |
-| L1DTLB_MB_CAM_HIT_NO_RESPONSE | partial | SVA checks no allocation on CAM hit. No-response reason annotation and lifecycle closure are not yet implemented in scoreboard. |
+| L1DTLB_MB_CAM_HIT_NO_RESPONSE | partial | SVA checks no allocation on CAM hit. `mmu_l1dtlb_spec_sb.svh` now records `mb_cam_hit` legal-no-response reason counts and checks no T0 terminal response for the owning token. Full wakeup/replay lifecycle closure remains partial. |
 | L1DTLB_MB_DUAL_SAME_4K | implemented | Same-4K dual miss dedup assertions/covers exist. |
 | L1DTLB_MB_DUAL_DIFF_TWO_FREE | partial | Dual-diff allocation count/distinct ID checks exist; exact lowest-free selection remains partial. |
 | L1DTLB_MB_DUAL_DIFF_ONE_FREE_AGE | planned | One-free cover exists, but IID age comparison with wraparound is not fully modeled or checked. |
-| L1DTLB_MB_SINGLE_OR_FULL | partial | MB full no-alloc checks and busy check exist. Need reason-coded legal drop and replay lifecycle tracking. |
+| L1DTLB_MB_SINGLE_OR_FULL | partial | MB full no-alloc checks and busy check exist. `mmu_l1dtlb_spec_sb.svh` now records `mb_full` and `busy_sleep` legal-no-response reason counts. Exact replay lifecycle tracking remains partial. |
 | L1DTLB_MB_ABORT_SIDE_EFFECT | implemented | Abort blocks miss allocation and exception consumption through SVA/spec checks. Abort+hit response/attr preservation remains a separate partial row in 3.10. |
 | L1DTLB_L2_ONE_REQ_PER_CYCLE | implemented | Scheduler SVA checks one request channel and issue/grant behavior. |
 | L1DTLB_L2_OLD_MB_PRIORITY | implemented | Scheduler old-MB-over-bypass assertion and cover exist. |
 | L1DTLB_L2_BYPASS_ALLOC_ISSUE | implemented | Scheduler bypass payload assertions and MB issue assertions exist. |
 | L1DTLB_L2_PAYLOAD | implemented | L2 request valid/VPN/EID/is_load X/range checks exist in spec SB and scheduler/top SVA. |
-| L1DTLB_LEGAL_NO_RESPONSE_TAXONOMY | planned | Documentation exists in 3.11, but UVM does not yet record reason codes for MB hit, MB full, abort, flush kill, busy sleep, or priority drop. |
-| L1DTLB_NO_RESPONSE_NO_SIDE_EFFECT | partial | Abort/CAM/full/flush negative checks exist in SVA. Full side-effect matrix across all legal no-response reasons is planned. |
+| L1DTLB_LEGAL_NO_RESPONSE_TAXONOMY | partial | `mmu_l1dtlb_spec_sb.svh` now records reason-coded legal-no-response counters for MB CAM hit, MB full, abort mask, flush kill, busy sleep, and one-free priority drop. Transaction-level lifecycle closure and scoreboard-owned replay termination remain partial. |
+| L1DTLB_NO_RESPONSE_NO_SIDE_EFFECT | partial | Abort/CAM/full/flush negative checks exist in SVA. `mmu_l1dtlb_spec_sb.svh` now adds token-local no-T0-terminal guards, next-cycle no-T1-access-fault guards for reason-coded no-response tokens, abort miss/expt side-effect guards, and flush no-refill/no-expt/no-wakeup guards; priority-drop remains reason-counted until an allocation-winner probe/model is available. Full side-effect matrix across all stale/refill/replay cases remains partial. |
 
 ## 3.11.5 Refill, Install, and Exception Lifecycle Matrix
 
@@ -134,7 +134,7 @@ point, or directed scenario that checks the required behavior.  A row is not
 | L1DTLB_SB_L2_REQ_CREDIT | partial | L2 request payload/range, reset credit, credit-zero info diagnostics, and credit range checks exist. Shared exact UVM credit shadow with return+fire conservation remains planned/SVA-owned. |
 | L1DTLB_SB_BUSY | implemented | `mmu_lsu_tlb_busy == |l1d_mb_vld` is checked in spec SB and SVA. |
 | L1DTLB_SB_WAKEUP | partial | Wakeup all-zero/all-one and known-source assertions exist. Full negative source matrix and event lifecycle closure are partial. |
-| L1DTLB_SB_MB_ALLOCATION | partial | Some allocation/dedup/full assertions exist; full scoreboard prediction of entry id, IID-age, and no-response reason is planned. |
+| L1DTLB_SB_MB_ALLOCATION | partial | Some allocation/dedup/full assertions exist, and `mmu_l1dtlb_spec_sb.svh` now reason-codes MB CAM hit, MB full, busy sleep, and one-free priority-drop no-response observations. Full scoreboard prediction of entry id and IID-age winner remains planned. |
 | L1DTLB_SB_INSTALL_EXPT | partial | Install and expt SVA coverage is strong; unified scoreboard lifecycle model remains planned. |
 | L1DTLB_SB_INVALIDATE_FLUSH | partial | Clear/flush/race assertions exist; VA8 alias and clear/install overlap counters are implemented. Full reference-shadow invalidate/flush lifecycle remains partial. |
 | L1DTLB_SB_SCENARIO_GATE | implemented | `mmu_l1dtlb_spec_sb.svh` consumes `L1DTLB_TC_ID`/`L1DTLB_SCENARIO_ID` and final-phase event counters. |
@@ -157,6 +157,56 @@ point, or directed scenario that checks the required behavior.  A row is not
 | L1DTLB_UVM_WORK_001_REF_SUBMODEL | partial | `mmu_l1dtlb_spec_sb.svh` now contains a dedicated lightweight per-pipe token shadow and reset/credit/refill/expt checks. Full entry/MB/expt/credit reference sub-model remains planned. |
 | L1DTLB_UVM_WORK_002_REMOVE_BROAD_WAIVE | planned | Convert L1DTLB expt replay, T0/T1 overlap, STAMO, and direct-map/PMP cases from broad waive logic to explicit token/expt shadow explanation. |
 | L1DTLB_UVM_WORK_003_CREDIT | partial | Spec SB now checks reset/range and records credit-zero request info diagnostics; exact return+fire conservation remains in SVA or future shared credit shadow. |
-| L1DTLB_UVM_WORK_004_SPEC_SB | partial | Spec SB now includes T0/T1 fault ownership, stronger refill/expt payload checks, credit reset/range diagnostics, existing invalidate/install counters, and legal-no-response counters. Full MB allocation/WFI/expt lifecycle prediction remains planned. |
-| L1DTLB_UVM_WORK_005_DIAG | partial | New fault ownership diagnostics include cycle/pipe/IID/VA/VPN/fault/MB/refill-source style token fields. Full standardized diagnostics across all new checks remains partial. |
+| L1DTLB_UVM_WORK_004_SPEC_SB | partial | Spec SB now includes T0/T1 fault ownership, stronger refill/expt payload checks, credit reset/range diagnostics, existing invalidate/install counters, and reason-coded legal-no-response counters with selected T0/T1 side-effect guards. Full MB allocation/WFI/expt lifecycle prediction remains planned. |
+| L1DTLB_UVM_WORK_005_DIAG | partial | New fault ownership and legal-no-response diagnostics include cycle/pipe/IID/VA/VPN/fault/MB/refill-source style token fields plus reason counters for MB CAM, MB full, abort, flush, busy sleep, priority drop, and no-response T1 terminal violations. Full standardized diagnostics across all new checks remains partial. |
 | L1DTLB_UVM_WORK_006_PLRU | implemented | Keep exact PLRU victim whitebox-only unless the spec later defines precise replacement behavior. |
+
+## 3.11.9 Status Summary
+
+| Status | Count | Closure meaning |
+| --- | ---: | --- |
+| implemented | 28 | Concrete checker, probe, SVA, coverage, or directed scenario exists and is named in this file. |
+| partial | 58 | Some checker/stimulus/probe exists, but the behavior is not yet a complete scoreboard/reference-model oracle. |
+| planned | 4 | The requirement is captured by the spec/audit, but concrete semantic modeling or checking is still missing. |
+| formal-only | 0 | No 3.11 row is currently blocked solely on a formal setup. |
+
+The implemented rows are strongest around reset-visible state, MB derived signals, L2 request payload/scheduling, install arbitration, selected invalidate races, scenario gates, and probe availability.  The remaining risk is not basic observability; it is missing semantic prediction for L1DTLB-local state: entry contents, MB lifecycle, exception replay, exact credit conservation, and legal no-response classification.
+
+## 3.11.10 Open Work Packages
+
+| Work package | Covers | Required closure |
+| --- | --- | --- |
+| L1 entry shadow | `L1DTLB_RM_ENTRY_SHADOW`, `L1DTLB_RM_ENTRY_FLAGS`, `L1DTLB_LOOKUP_PAGE_SIZE_MATCH`, `L1DTLB_LOOKUP_PA_ASSEMBLY`, `L1DTLB_LOOKUP_ATTR_COMPARE`, `L1DTLB_SB_ATTR_COMPARE`, `L1DTLB_PROBE_ENTRY`, `L1DTLB_PROBE_REFILL_INSTALL` | Add a reusable L1DTLB entry object with valid, VPN, PPN, page size, and `flag[13:0]`; update it on reset, clear, invalidate, refill/install, and flush-scoped events; compare hit PA/fault/attribute results against this object when the entry source is observable. |
+| T0/T1 token and waive removal | `L1DTLB_RM_T0_T1_TOKEN`, `L1DTLB_LOOKUP_PIPE_TOKEN`, `L1DTLB_LOOKUP_PF_PA_VLD_PAIR`, `L1DTLB_LOOKUP_T1_ACCESS_FAULT`, `L1DTLB_LOOKUP_FAULT_OVERLAP`, `L1DTLB_SB_LSU_T0_T1_QUEUE`, `L1DTLB_UVM_WORK_002_REMOVE_BROAD_WAIVE` | Replace broad translation-SB replay/timing waives with per-pipe request tokens that explain T0 PA/page-fault ownership, T1 access-fault ownership, same-cycle overlap, abort masking, STAMO pipe1 bypass, and direct-map/PMP cases. |
+| MB lifecycle and no-response taxonomy | `L1DTLB_RM_MB_SHADOW`, `L1DTLB_RM_MB_4K_CAM`, `L1DTLB_MB_CAM_HIT_NO_RESPONSE`, `L1DTLB_MB_DUAL_DIFF_ONE_FREE_AGE`, `L1DTLB_MB_SINGLE_OR_FULL`, `L1DTLB_LEGAL_NO_RESPONSE_TAXONOMY`, `L1DTLB_NO_RESPONSE_NO_SIDE_EFFECT`, `L1DTLB_SB_MB_ALLOCATION` | Add an MB shadow that predicts allocation, 4K CAM dedup, full/drop behavior, IID-age winner when only one entry is free, WFG/WFC/WFI/ABT/fault transitions, and reason-coded legal no-response events with no illegal side effects. |
+| Exception array lifecycle | `L1DTLB_RM_EXPT_SHADOW`, `L1DTLB_RM_EXPT_BIND_MB`, `L1DTLB_FAULT_REFILL_NO_TLB_WRITE`, `L1DTLB_EXPT_REPLAY_TIMING`, `L1DTLB_EXPT_REPLAY_RELEASE`, `L1DTLB_SB_INSTALL_EXPT`, `L1DTLB_PROBE_EXPT_WRITE` | Promote the existing exception CAM shadow from waive/diagnostic support to a lifecycle oracle: bind expt write to the source MB entry, check no TLB write on fault refill, predict replay page/access timing, and verify expt consume releases the matching MB entry without allocating a new one. |
+| Credit conservation | `L1DTLB_RM_CREDIT_SHADOW`, `L1DTLB_RM_SB_PARTITION_004`, `L1DTLB_SB_L2_REQ_CREDIT`, `L1DTLB_UVM_WORK_003_CREDIT` | Use one shared L1DTLB scheduler credit shadow, or equivalent spec-SB logic, to check reset value, min/max range, decrement on request fire, increment on return, and stable value when return and fire happen in the same cycle. |
+| Effective-mode and refill monitor fields | `L1DTLB_MON_LSU_FIELDS`, `L1DTLB_MON_T0_T1_EVENTS`, `L1DTLB_MON_L2_PTW_REFILL`, `L1DTLB_MON_CP0_SYSMAP_PMP` | Extend monitor transactions or token snapshots with effective privilege, MPRV, MXR, SUM, request type, refill flag, and refill page-size/type fields so permission, PMP, sysmap, and attribute checks do not depend on reconstructing hidden state after the fact. |
+| PLRU audit guard | `L1DTLB_RM_SB_PARTITION_006`, `L1DTLB_PLRU_BLACKBOX_BOUNDARY`, `L1DTLB_UVM_WORK_006_PLRU` | Keep exact victim selection out of main translation pass/fail.  Any future exact-victim check must first be added to the spec and then implemented as a dedicated whitebox assertion/coverage item. |
+
+## 3.11.11 Recommended Implementation Order
+
+| Priority | Step | Reason |
+| ---: | --- | --- |
+| 1 | Complete T0/T1 token ownership and legal no-response reason annotation in `mmu_l1dtlb_spec_sb.svh`. | This removes the largest source of false failures: same-cycle T0/T1 overlap, abort/drop cases, and replay timing that currently require broad waives. |
+| 2 | Add the L1 entry shadow and refill/install/invalidate/reset update policy. | This enables independent hit-side PA, page-size, permission, and attribute comparison instead of relying only on final architectural translation. |
+| 3 | Add the MB shadow lifecycle and IID-age one-free arbitration check. | MB allocation/drop behavior is the main remaining gap for miss/no-response correctness and replay closure. |
+| 4 | Bind exception write/replay to the MB shadow. | Exception replay cannot be closed until fault refill, exception entry lifetime, wakeup, consume, and MB release are checked as one lifecycle. |
+| 5 | Unify credit checking between credit SB and L1DTLB spec SB. | Exact credit conservation is small in scope but should be shared so external outstanding-request tracking and internal scheduler checks cannot diverge. |
+| 6 | Standardize diagnostics and final-phase scenario gates. | Every directed wrapper should fail clearly when its target event was not observed, and every new checker should print cycle, pipe, IID, VA/VPN, reason, and source state. |
+
+## 3.11.12 Regression and Acceptance Criteria
+
+This traceability item is closed only when the following are true:
+
+| Criterion | Required evidence |
+| --- | --- |
+| No unowned `planned` rows | Each `planned` row is either implemented, downgraded to a documented spec limitation with owner/reason, or explicitly linked to a future task. |
+| All `partial` rows have concrete next evidence | Each `partial` row names the remaining missing checker, monitor field, directed scenario, SVA, or cover closure needed to become `implemented`. |
+| Scenario gates prove stimulus actually happened | `L1DTLB_TC_ID`/`L1DTLB_SCENARIO_ID` final-phase counters report the target event for directed wrappers instead of only proving that a generic vseq ran. |
+| Broad waives are explained or removed | Translation-SB waives for expt replay, T0/T1 overlap, STAMO, direct-map, and PMP cases are replaced by token/expt/no-response explanations, or remain with an explicit temporary owner. |
+| Legal no-response is reason-coded | MB hit, MB full, abort, flush kill, busy sleep, and priority drop are distinguishable in diagnostics, and each class checks no illegal allocation, L2 request, TLB write, exception write, or wakeup side effect. |
+| Regression cover closure exists | The related 3.9/3.10 SVA covers, whitebox covergroup bins, and 3.11 scenario gates have run results showing the intended events were observed. |
+| PLRU boundary remains enforced | Main translation correctness does not fail on exact PLRU victim mismatch unless the spec is changed to define exact victim behavior. |
+
+Until those criteria are met, this file is complete as a traceability/audit artifact, but the overall 3.11 UVM implementation remains `partial`.

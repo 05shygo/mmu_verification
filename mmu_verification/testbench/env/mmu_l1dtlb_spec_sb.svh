@@ -70,11 +70,24 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_fault_overlap_cycles;
   int unsigned m_credit_zero_cycles;
   int unsigned m_credit_zero_req_cycles;
+  int unsigned m_abort_hit_cycles;
+  int unsigned m_abort_miss_no_response_cycles;
   int unsigned m_va8_inv_cycles;
+  int unsigned m_inv_hit_same_cycle_cycles;
   int unsigned m_inv_install_conflict_cycles;
   int unsigned m_install_visible_next_cycles;
+  int unsigned m_expt_replay_cycles;
+  int unsigned m_expt_wakeup_cycles;
+  int unsigned m_expt_tlb_hit_overlap_cycles;
   int unsigned m_mb_cam_no_response_cycles;
   int unsigned m_legal_no_response_cycles;
+  int unsigned m_legal_no_response_mb_cam_cycles;
+  int unsigned m_legal_no_response_mb_full_cycles;
+  int unsigned m_legal_no_response_abort_cycles;
+  int unsigned m_legal_no_response_flush_cycles;
+  int unsigned m_legal_no_response_busy_sleep_cycles;
+  int unsigned m_legal_no_response_priority_drop_cycles;
+  int unsigned m_no_response_side_effect_checks;
 
   logic [15:0] m_prev_entry_vld;
   logic [15:0][26:0] m_prev_entry_vpn;
@@ -83,6 +96,9 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   logic [3:0] m_prev_refill_idx;
   logic [26:0] m_prev_refill_vpn;
   lsu_pipe_token_t m_t1_token[2];
+  bit m_t1_no_response_vld[2];
+  string m_t1_no_response_reason[2];
+  lsu_pipe_token_t m_t1_no_response_token[2];
 
   bit m_seen_post_reset;
   string m_l1dtlb_tc_id;
@@ -184,6 +200,104 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
   protected function bit req1_seen();
     return lsu_vif.monitor_cb.lsu_mmu_va1_vld && !lsu_vif.monitor_cb.lsu_mmu_abort1;
+  endfunction
+
+  protected function bit inv_req_seen();
+    return lsu_vif.monitor_cb.lsu_mmu_tlb_va_all_inv
+        || lsu_vif.monitor_cb.lsu_mmu_tlb_all_inv
+        || lsu_vif.monitor_cb.lsu_mmu_tlb_va_asid_inv
+        || lsu_vif.monitor_cb.lsu_mmu_tlb_asid_all_inv
+        || v_probe.mon_cb.tlboper_utlb_clr
+        || v_probe.mon_cb.tlboper_utlb_inv_va_req;
+  endfunction
+
+  protected function bit token_has_t0_terminal(input lsu_pipe_token_t tok);
+    if ($isunknown({tok.pa_vld, tok.page_fault}))
+      return 1'b0;
+    return tok.pa_vld || tok.page_fault;
+  endfunction
+
+  protected function lsu_pipe_token_t null_token();
+    lsu_pipe_token_t tok;
+    tok = '{default: '0};
+    return tok;
+  endfunction
+
+  protected function void check_no_response_token_side_effect(
+    input string reason,
+    input lsu_pipe_token_t tok
+  );
+    m_no_response_side_effect_checks++;
+    if (token_has_t0_terminal(tok))
+      sb_error("NO_RSP_T0_TERMINAL",
+        $sformatf("legal no-response reason=%s produced a T0 terminal response: %s",
+          reason, token_s(tok)));
+  endfunction
+
+  protected function void remember_no_response_t1_guard(
+    input string reason,
+    input lsu_pipe_token_t tok
+  );
+    if (tok.vld && (tok.pipe < 2)) begin
+      m_t1_no_response_vld[tok.pipe] = 1'b1;
+      m_t1_no_response_reason[tok.pipe] = reason;
+      m_t1_no_response_token[tok.pipe] = tok;
+    end
+  endfunction
+
+  protected function void check_no_response_t1_side_effect(
+    input int unsigned pipe,
+    input lsu_pipe_token_t t0,
+    input lsu_pipe_token_t t1
+  );
+    if (pipe >= 2)
+      return;
+
+    if (m_t1_no_response_vld[pipe]) begin
+      m_no_response_side_effect_checks++;
+      if (!$isunknown(t0.access_fault) && t0.access_fault)
+        sb_error("NO_RSP_T1_TERMINAL",
+          $sformatf("legal no-response reason=%s produced a T1 access_fault: current{%s} previous{%s} guarded{%s}",
+            m_t1_no_response_reason[pipe],
+            token_s(t0), token_s(t1),
+            token_s(m_t1_no_response_token[pipe])));
+      m_t1_no_response_vld[pipe] = 1'b0;
+    end
+  endfunction
+
+  protected function void record_legal_no_response(
+    input string reason,
+    input lsu_pipe_token_t tok,
+    input bit check_token
+  );
+    m_legal_no_response_cycles++;
+    if (check_token) begin
+      check_no_response_token_side_effect(reason, tok);
+      remember_no_response_t1_guard(reason, tok);
+    end
+    `uvm_info({get_type_name(), "::LEGAL_NO_RSP"},
+      $sformatf("reason=%s %s", reason, tok.vld ? token_s(tok) : "global-event"),
+      UVM_HIGH)
+  endfunction
+
+  protected function void check_flush_no_response_side_effects();
+    m_no_response_side_effect_checks++;
+    if (!$isunknown({v_probe.mon_cb.l1d_refill_vld,
+                     v_probe.mon_cb.l1d_expt_wr0_vld,
+                     v_probe.mon_cb.l1d_expt_wr1_vld,
+                     lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup})
+        && (v_probe.mon_cb.l1d_refill_vld
+         || v_probe.mon_cb.l1d_expt_wr0_vld
+         || v_probe.mon_cb.l1d_expt_wr1_vld
+         || (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup != 12'h000))) begin
+      sb_error("NO_RSP_FLUSH_SIDE_EFFECT",
+        $sformatf("RTU flush legal no-response produced side effect: refill=%0b expt0=%0b expt1=%0b wakeup=0x%03h mb_vld=0x%02h",
+          v_probe.mon_cb.l1d_refill_vld,
+          v_probe.mon_cb.l1d_expt_wr0_vld,
+          v_probe.mon_cb.l1d_expt_wr1_vld,
+          lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup,
+          v_probe.mon_cb.l1d_mb_vld));
+    end
   endfunction
 
   protected virtual function void check_reset_initial_state();
@@ -425,6 +539,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     input lsu_pipe_token_t t0,
     input lsu_pipe_token_t t1
   );
+    check_no_response_t1_side_effect(t0.pipe, t0, t1);
+
     if (t0.vld)
       m_t0_token_cycles++;
     if (t1.vld)
@@ -470,13 +586,21 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     end
   endfunction
 
-  protected virtual function void sample_scenario_counters();
+  protected virtual function void sample_scenario_counters(
+    input lsu_pipe_token_t t0_p0,
+    input lsu_pipe_token_t t0_p1
+  );
     bit p0_req;
     bit p1_req;
     bit p0_hit;
     bit p1_hit;
     bit p0_miss;
     bit p1_miss;
+    bit mb_full_now;
+    bit dual_diff_one_free;
+    bit inv_now;
+    bit any_tlb_hit;
+    bit any_expt_replay;
 
     p0_req  = req0_seen();
     p1_req  = req1_seen();
@@ -484,6 +608,18 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     p1_hit  = v_probe.mon_cb.l1d_p1_hit_vld;
     p0_miss = v_probe.mon_cb.l1d_p0_miss_vld;
     p1_miss = v_probe.mon_cb.l1d_p1_miss_vld;
+    mb_full_now = (count8(v_probe.mon_cb.l1d_mb_vld) == 8);
+    dual_diff_one_free = p0_req && p1_req
+                      && p0_miss && p1_miss
+                      && !v_probe.mon_cb.l1d_p0_mb_hit
+                      && !v_probe.mon_cb.l1d_p1_mb_hit
+                      && !p0_hit && !p1_hit
+                      && (count8(v_probe.mon_cb.l1d_mb_vld) == 7)
+                      && (t0_p0.vpn != t0_p1.vpn);
+    inv_now = inv_req_seen();
+    any_tlb_hit = (p0_req && p0_hit) || (p1_req && p1_hit);
+    any_expt_replay = (t0_p0.vld && t0_p0.expt_match)
+                   || (t0_p1.vld && t0_p1.expt_match);
 
     if (p0_req && p1_req) begin
       m_dual_req_cycles++;
@@ -498,7 +634,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if ((p0_req && p0_hit) || (p1_req && p1_hit))
       m_hit_cycles++;
 
-    if (count8(v_probe.mon_cb.l1d_mb_vld) == 8)
+    if (mb_full_now)
       m_mb_full_cycles++;
 
     if (lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0)
@@ -516,17 +652,93 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       m_flush_cycles++;
     if (v_probe.mon_cb.l1d_p0_miss_vld || v_probe.mon_cb.l1d_p1_miss_vld)
       m_hpc_miss_cycles++;
+
+    if (inv_now && any_tlb_hit)
+      m_inv_hit_same_cycle_cycles++;
+
+    if (any_expt_replay) begin
+      m_expt_replay_cycles++;
+      if (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup == 12'hfff)
+        m_expt_wakeup_cycles++;
+    end
+
+    if ((p0_req && p0_hit && t0_p1.vld && t0_p1.expt_match)
+     || (p1_req && p1_hit && t0_p0.vld && t0_p0.expt_match))
+      m_expt_tlb_hit_overlap_cycles++;
+
+    if (t0_p0.vld && t0_p0.abort && t0_p0.hit_vld)
+      m_abort_hit_cycles++;
+    if (t0_p1.vld && t0_p1.abort && t0_p1.hit_vld)
+      m_abort_hit_cycles++;
+
+    if (t0_p0.vld && t0_p0.abort && t0_p0.expt_match)
+      sb_error("ABORT_EXPT_SIDE_EFFECT",
+        $sformatf("abort request consumed exception match on pipe0: %s",
+          token_s(t0_p0)));
+    if (t0_p1.vld && t0_p1.abort && t0_p1.expt_match)
+      sb_error("ABORT_EXPT_SIDE_EFFECT",
+        $sformatf("abort request consumed exception match on pipe1: %s",
+          token_s(t0_p1)));
+    if (t0_p0.vld && t0_p0.abort && t0_p0.miss_vld)
+      sb_error("ABORT_MISS_SIDE_EFFECT",
+        $sformatf("abort request produced miss side effect on pipe0: %s",
+          token_s(t0_p0)));
+    if (t0_p1.vld && t0_p1.abort && t0_p1.miss_vld)
+      sb_error("ABORT_MISS_SIDE_EFFECT",
+        $sformatf("abort request produced miss side effect on pipe1: %s",
+          token_s(t0_p1)));
+
     if ((p0_req && v_probe.mon_cb.l1d_p0_mb_hit && !v_probe.mon_cb.l1d_p0_hit_vld)
      || (p1_req && v_probe.mon_cb.l1d_p1_mb_hit && !v_probe.mon_cb.l1d_p1_hit_vld)) begin
       m_mb_cam_no_response_cycles++;
-      m_legal_no_response_cycles++;
     end
-    if ((lsu_vif.monitor_cb.lsu_mmu_va0_vld && lsu_vif.monitor_cb.lsu_mmu_abort0 && v_probe.mon_cb.l1d_p0_miss_vld)
-     || (lsu_vif.monitor_cb.lsu_mmu_va1_vld && lsu_vif.monitor_cb.lsu_mmu_abort1 && v_probe.mon_cb.l1d_p1_miss_vld)) begin
-      m_legal_no_response_cycles++;
+    if (p0_req && v_probe.mon_cb.l1d_p0_mb_hit && !v_probe.mon_cb.l1d_p0_hit_vld) begin
+      m_legal_no_response_mb_cam_cycles++;
+      record_legal_no_response("mb_cam_hit", t0_p0, 1'b1);
     end
-    if (v_probe.mon_cb.rtu_yy_xx_flush && (v_probe.mon_cb.l1d_mb_vld != 8'h00))
-      m_legal_no_response_cycles++;
+    if (p1_req && v_probe.mon_cb.l1d_p1_mb_hit && !v_probe.mon_cb.l1d_p1_hit_vld) begin
+      m_legal_no_response_mb_cam_cycles++;
+      record_legal_no_response("mb_cam_hit", t0_p1, 1'b1);
+    end
+    if (p0_req && p0_miss && mb_full_now && !v_probe.mon_cb.l1d_p0_mb_hit && !p0_hit) begin
+      m_legal_no_response_mb_full_cycles++;
+      record_legal_no_response("mb_full", t0_p0, 1'b1);
+    end
+    if (p1_req && p1_miss && mb_full_now && !v_probe.mon_cb.l1d_p1_mb_hit && !p1_hit) begin
+      m_legal_no_response_mb_full_cycles++;
+      record_legal_no_response("mb_full", t0_p1, 1'b1);
+    end
+    if (t0_p0.vld && t0_p0.abort && !t0_p0.hit_vld && !token_has_t0_terminal(t0_p0)) begin
+      m_abort_miss_no_response_cycles++;
+      m_legal_no_response_abort_cycles++;
+      record_legal_no_response("abort_mask", t0_p0, 1'b1);
+    end
+    if (t0_p1.vld && t0_p1.abort && !t0_p1.hit_vld && !token_has_t0_terminal(t0_p1)) begin
+      m_abort_miss_no_response_cycles++;
+      m_legal_no_response_abort_cycles++;
+      record_legal_no_response("abort_mask", t0_p1, 1'b1);
+    end
+    if (v_probe.mon_cb.rtu_yy_xx_flush && (v_probe.mon_cb.l1d_mb_vld != 8'h00)) begin
+      m_legal_no_response_flush_cycles++;
+      record_legal_no_response("flush_kill", null_token(), 1'b0);
+      check_flush_no_response_side_effects();
+    end
+    if (dual_diff_one_free) begin
+      m_legal_no_response_priority_drop_cycles++;
+      record_legal_no_response("priority_drop_one_free", null_token(), 1'b0);
+    end
+    if (!dual_diff_one_free && !mb_full_now
+        && lsu_vif.monitor_cb.mmu_lsu_tlb_busy
+        && p0_req && p0_miss && !v_probe.mon_cb.l1d_p0_mb_hit && !p0_hit) begin
+      m_legal_no_response_busy_sleep_cycles++;
+      record_legal_no_response("busy_sleep", t0_p0, 1'b1);
+    end
+    if (!dual_diff_one_free && !mb_full_now
+        && lsu_vif.monitor_cb.mmu_lsu_tlb_busy
+        && p1_req && p1_miss && !v_probe.mon_cb.l1d_p1_mb_hit && !p1_hit) begin
+      m_legal_no_response_busy_sleep_cycles++;
+      record_legal_no_response("busy_sleep", t0_p1, 1'b1);
+    end
     if (lsu_vif.monitor_cb.mmu_lsu_page_fault0 || lsu_vif.monitor_cb.mmu_lsu_page_fault1)
       m_page_fault_cycles++;
     if (lsu_vif.monitor_cb.mmu_lsu_access_fault0 || lsu_vif.monitor_cb.mmu_lsu_access_fault1)
@@ -586,6 +798,14 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if (m_l1dtlb_tc_id == "DTLB_FAULT_OVERLAP_PIPE_001")
       gate_expect_nonzero("fault_overlap", m_fault_overlap_cycles);
 
+    if (m_l1dtlb_tc_id == "DTLB_WAKEUP_EXPT_001") begin
+      gate_expect_nonzero("expt_replay", m_expt_replay_cycles);
+      gate_expect_nonzero("expt_wakeup", m_expt_wakeup_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_EXPT_HIT_WITH_TLB_HIT_001")
+      gate_expect_nonzero("expt_tlb_hit_overlap", m_expt_tlb_hit_overlap_cycles);
+
     if ((m_l1dtlb_tc_id == "DTLB_INV_001") || (m_l1dtlb_tc_id == "DTLB_INV_002")
      || (m_l1dtlb_tc_id == "DTLB_INV_003") || (m_l1dtlb_tc_id == "DTLB_INV_004")
      || (m_l1dtlb_tc_id == "DTLB_INV_VA8_alias_001") || (m_l1dtlb_tc_id == "DTLB_INV_HIT_SAME_CYCLE_001")
@@ -598,6 +818,9 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if (m_l1dtlb_tc_id == "DTLB_INV_INSTALL_SAME_ENTRY_001")
       gate_expect_nonzero("invalidate_install_conflict", m_inv_install_conflict_cycles);
 
+    if (m_l1dtlb_tc_id == "DTLB_INV_HIT_SAME_CYCLE_001")
+      gate_expect_nonzero("invalidate_hit_same_cycle", m_inv_hit_same_cycle_cycles);
+
     if ((m_l1dtlb_tc_id == "DTLB_MB_FLUSH_RACE_MATRIX_001") || (m_l1dtlb_tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001"))
       gate_expect_nonzero("flush", m_flush_cycles);
 
@@ -608,8 +831,11 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if (m_l1dtlb_tc_id == "DTLB_SYSMAP_001")
       gate_expect_nonzero("direct_map", m_direct_map_cycles);
 
-    if (m_l1dtlb_tc_id == "DTLB_ABORT_001")
+    if (m_l1dtlb_tc_id == "DTLB_ABORT_001") begin
       gate_expect_nonzero("abort_req", m_abort_req_cycles);
+      gate_expect_nonzero("abort_hit_or_mask", m_abort_hit_cycles + m_abort_miss_no_response_cycles);
+      gate_expect_nonzero("abort_expt_replay_survived", m_expt_replay_cycles);
+    end
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -624,6 +850,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_seen_post_reset = 1'b0;
         m_t1_token[0] = '{default: '0};
         m_t1_token[1] = '{default: '0};
+        m_t1_no_response_vld[0] = 1'b0;
+        m_t1_no_response_vld[1] = 1'b0;
         m_prev_refill_vld = 1'b0;
         continue;
       end
@@ -639,7 +867,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       check_l2_req_and_credit();
       check_pipe_response_fault_pulses(t0_p0, m_t1_token[0]);
       check_pipe_response_fault_pulses(t0_p1, m_t1_token[1]);
-      sample_scenario_counters();
+      sample_scenario_counters(t0_p0, t0_p1);
       m_t1_token[0] = t0_p0;
       m_t1_token[1] = t0_p1;
       m_prev_entry_vld   = v_probe.mon_cb.l1d_entry_vld;
@@ -658,7 +886,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     m_l1dtlb_gate_en = (m_l1dtlb_tc_id.len() != 0);
     check_scenario_gate();
     `uvm_info(get_type_name(),
-      $sformatf("summary tc_id=%s scenario_id=%s cycles=%0d errors=%0d busy_checks=%0d wakeup=%0d hit=%0d dual_req=%0d dual_hit=%0d hit_miss=%0d dual_miss=%0d mb_full=%0d l2_req=%0d credit0=%0d credit0_req=%0d refill=%0d expt_wr=%0d reset_checks=%0d direct_map=%0d stamo=%0d abort=%0d inv=%0d va8_inv=%0d inv_install=%0d install_next=%0d legal_no_rsp=%0d flush=%0d t0_tokens=%0d t1_tokens=%0d pf=%0d pf_pair=%0d af=%0d af_pair=%0d fault_overlap=%0d",
+      $sformatf("summary tc_id=%s scenario_id=%s cycles=%0d errors=%0d busy_checks=%0d wakeup=%0d hit=%0d dual_req=%0d dual_hit=%0d hit_miss=%0d dual_miss=%0d mb_full=%0d l2_req=%0d credit0=%0d credit0_req=%0d refill=%0d expt_wr=%0d reset_checks=%0d direct_map=%0d stamo=%0d abort=%0d abort_hit=%0d abort_mask=%0d inv=%0d inv_hit=%0d va8_inv=%0d inv_install=%0d install_next=%0d expt_replay=%0d expt_wakeup=%0d expt_hit_overlap=%0d legal_no_rsp=%0d nr_mb_cam=%0d nr_mb_full=%0d nr_abort=%0d nr_flush=%0d nr_busy=%0d nr_prio=%0d nr_sidefx_chk=%0d flush=%0d t0_tokens=%0d t1_tokens=%0d pf=%0d pf_pair=%0d af=%0d af_pair=%0d fault_overlap=%0d",
         m_l1dtlb_tc_id, m_l1dtlb_scenario_id,
         m_cycles, m_errors, m_busy_checks, m_wakeup_pulses,
         m_hit_cycles, m_dual_req_cycles, m_dual_hit_cycles, m_hit_miss_cycles,
@@ -666,8 +894,17 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_credit_zero_cycles, m_credit_zero_req_cycles,
         m_refill_cycles, m_expt_write_cycles, m_reset_state_checks,
         m_direct_map_cycles, m_stamo_cycles, m_abort_req_cycles,
-        m_inv_cycles, m_va8_inv_cycles, m_inv_install_conflict_cycles,
-        m_install_visible_next_cycles, m_legal_no_response_cycles,
+        m_abort_hit_cycles, m_abort_miss_no_response_cycles,
+        m_inv_cycles, m_inv_hit_same_cycle_cycles, m_va8_inv_cycles,
+        m_inv_install_conflict_cycles,
+        m_install_visible_next_cycles,
+        m_expt_replay_cycles, m_expt_wakeup_cycles, m_expt_tlb_hit_overlap_cycles,
+        m_legal_no_response_cycles,
+        m_legal_no_response_mb_cam_cycles, m_legal_no_response_mb_full_cycles,
+        m_legal_no_response_abort_cycles, m_legal_no_response_flush_cycles,
+        m_legal_no_response_busy_sleep_cycles,
+        m_legal_no_response_priority_drop_cycles,
+        m_no_response_side_effect_checks,
         m_flush_cycles, m_t0_token_cycles, m_t1_token_cycles,
         m_page_fault_cycles, m_page_fault_pair_checks,
         m_access_fault_cycles, m_access_fault_pair_checks,

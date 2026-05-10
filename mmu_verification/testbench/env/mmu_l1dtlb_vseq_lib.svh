@@ -44,6 +44,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   mmu_env        m_env_h;
   virtual lsu_if m_lsu_vif;
+  virtual mmu_dut_probes_if m_probe_vif;
 
   va_t m_va_base;
   ppn_t m_root_ppn;
@@ -265,6 +266,35 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     repeat (n) @(m_lsu_vif.driver_cb);
   endtask
 
+  protected task wait_l1d_expt_write(
+    string ctx,
+    int unsigned max_cycles = 524288
+  );
+    bit seen;
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for exception write"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_expt_wr0_vld || m_probe_vif.mon_cb.l1d_expt_wr1_vld)
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        `uvm_warning(get_type_name(), {ctx, ": timed out waiting for L1DTLB exception write"})
+        seen = 1'b1;
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
   protected task configure_ptw_delay(int unsigned min_delay, int unsigned max_delay, int unsigned err_permille = 0);
     if ((m_env_h != null) && (m_env_h.m_ptw_mem != null) && (m_env_h.m_ptw_mem.m_responder != null)) begin
       m_env_h.m_ptw_mem.m_responder.m_rsp_delay_min = min_delay;
@@ -471,6 +501,48 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif.driver_cb.lsu_mmu_abort1 <= 1'b0;
   endtask
 
+  protected task raw_pipe0_with_inv(
+    va_t va,
+    bit [6:0] iid,
+    lsu_inv_kind_e inv_kind,
+    va_t inv_va,
+    asid_t inv_asid = 16'h0
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va0      <= canon_va(va);
+    m_lsu_vif.driver_cb.lsu_mmu_id0      <= iid;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf0   <= vabuf_for(va);
+    m_lsu_vif.driver_cb.lsu_mmu_tlb_va   <= inv_va[38:12];
+    m_lsu_vif.driver_cb.lsu_mmu_tlb_asid <= inv_asid;
+    case (inv_kind)
+      INV_ALL:      m_lsu_vif.driver_cb.lsu_mmu_tlb_all_inv <= 1'b1;
+      INV_VA_ALL:   m_lsu_vif.driver_cb.lsu_mmu_tlb_va_all_inv <= 1'b1;
+      INV_ASID_ALL: m_lsu_vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b1;
+      INV_VA_ASID:  m_lsu_vif.driver_cb.lsu_mmu_tlb_va_asid_inv <= 1'b1;
+    endcase
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_tlb_all_inv <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_tlb_va_all_inv <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_tlb_va_asid_inv <= 1'b0;
+    fork
+      begin
+        @(m_lsu_vif.driver_cb iff m_lsu_vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
+      end
+      begin
+        repeat (1024) @(m_lsu_vif.driver_cb);
+        `uvm_warning(get_type_name(), "raw_pipe0_with_inv timed out waiting for mmu_lsu_tlb_inv_done")
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(2);
+  endtask
+
   protected task raw_inv_pulse(
     lsu_inv_kind_e kind,
     va_t va = 39'h0,
@@ -610,7 +682,16 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(3);
     raw_pipe0(va_page(31), 7'd6, 1'b0, 1'b1);
     wait_lsu_cycles(80);
+    map_special_page(46, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    configure_ptw_delay(8, 24);
+    raw_pipe0(va_page(46), 7'd7, 1'b0, 1'b0);
+    wait_l1d_expt_write("l1dtlb_abort_expt_entry");
+    raw_pipe0(va_page(46), 7'd7, 1'b0, 1'b1);
+    wait_lsu_cycles(8);
+    raw_pipe0(va_page(46), 7'd7, 1'b0, 1'b0);
+    wait_lsu_cycles(96);
     configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_abort", 524288, 16);
   endtask
 
   protected task scenario_permission();
@@ -690,6 +771,16 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_install_done", 524288, 16);
   endtask
 
+  protected task scenario_inv_hit_same_cycle();
+    do_bringup(64, 39'h10_0000);
+    fill_page(0);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_hit_prefill", 262144, 8);
+    raw_pipe0_with_inv(va_page(0), 7'd16, INV_VA_ALL, va_page(0), m_asid);
+    raw_pipe0(va_page(0), 7'd17);
+    wait_lsu_cycles(48);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_hit_done", 524288, 8);
+  endtask
+
   protected task scenario_credit();
     do_bringup(96, 39'h10_0000);
     configure_ptw_delay(32, 96);
@@ -766,6 +857,31 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(80);
     send_rtu_flush();
     configure_ptw_delay(1, 4);
+  endtask
+
+  protected task scenario_wakeup_expt();
+    do_bringup(96, 39'h10_0000);
+    map_special_page(46, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    configure_ptw_delay(8, 24);
+    raw_pipe0(va_page(46), 7'd6, 1'b0, 1'b0);
+    wait_l1d_expt_write("l1dtlb_wakeup_expt_entry");
+    raw_pipe0(va_page(46), 7'd6);
+    wait_lsu_cycles(96);
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_wakeup_expt_done", 524288, 16);
+  endtask
+
+  protected task scenario_expt_hit_with_tlb_hit();
+    do_bringup(96, 39'h10_0000);
+    fill_page(0);
+    map_special_page(47, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0);
+    configure_ptw_delay(8, 24);
+    raw_pipe0(va_page(47), 7'd7, 1'b0, 1'b0);
+    wait_l1d_expt_write("l1dtlb_expt_tlb_overlap_entry");
+    raw_pipe01(va_page(47), va_page(0), 7'd7, 7'd1, 1'b0, 1'b1);
+    wait_lsu_cycles(96);
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_expt_tlb_overlap_done", 524288, 16);
   endtask
 
   protected task scenario_huge();
@@ -868,6 +984,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif = m_env_h.m_lsu.vif;
     if (m_lsu_vif == null)
       `uvm_fatal(get_type_name(), "LSU VIF is null")
+    if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(null, "*", "MMU_DUT_PROBES_VIF", m_probe_vif))
+      `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not found - probe-assisted L1DTLB waits use fallback", UVM_LOW)
     if (decode_tc_info(tc_id, decoded, decoded_sid, decoded_intent, decoded_shell)) begin
       scenario = decoded;
       scenario_id = decoded_sid;
@@ -902,6 +1020,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
           scenario_inv_va8_alias();
         else if (tc_id == "DTLB_INV_INSTALL_SAME_ENTRY_001")
           scenario_inv_install_same_entry();
+        else if (tc_id == "DTLB_INV_HIT_SAME_CYCLE_001")
+          scenario_inv_hit_same_cycle();
         else
           scenario_invalidate();
       end
@@ -918,7 +1038,14 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         else
           scenario_refill();
       end
-      L1DTLB_SCN_FAULT_REFILL:     scenario_fault_refill();
+      L1DTLB_SCN_FAULT_REFILL: begin
+        if (tc_id == "DTLB_WAKEUP_EXPT_001")
+          scenario_wakeup_expt();
+        else if (tc_id == "DTLB_EXPT_HIT_WITH_TLB_HIT_001")
+          scenario_expt_hit_with_tlb_hit();
+        else
+          scenario_fault_refill();
+      end
       L1DTLB_SCN_HUGE:             scenario_huge();
       L1DTLB_SCN_STAMO:            scenario_stamo();
       L1DTLB_SCN_FLUSH_RACE:       scenario_flush_race();

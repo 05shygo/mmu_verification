@@ -192,11 +192,17 @@ module mmu_l1dtlb_sva #(
   a_abort1_not_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     (lsu_mmu_va1_vld && lsu_mmu_abort1) |-> !dutlb_miss_vld1);
 
+  a_abort0_no_expt_consume_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (lsu_mmu_va0_vld && lsu_mmu_abort0) |-> !expt_match0);
+
+  a_abort1_no_expt_consume_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (lsu_mmu_va1_vld && lsu_mmu_abort1) |-> !expt_match1);
+
   a_expt_replay0_not_new_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    (lsu_mmu_va0_vld && expt_match0) |-> !dutlb_miss_vld0);
+    (lsu_mmu_va0_vld && expt_match0) |-> (!dutlb_miss_vld0 && !dutlb_miss_vld_short0));
 
   a_expt_replay1_not_new_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    (lsu_mmu_va1_vld && expt_match1) |-> !dutlb_miss_vld1);
+    (lsu_mmu_va1_vld && expt_match1) |-> (!dutlb_miss_vld1 && !dutlb_miss_vld_short1));
 
   // A011/A012/A014/A015: externally visible terminal/fault shape.
   a_pipe0_page_fault_has_pa_vld: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
@@ -204,6 +210,12 @@ module mmu_l1dtlb_sva #(
 
   a_pipe1_page_fault_has_pa_vld: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     mmu_lsu_page_fault1 |-> mmu_lsu_pa1_vld);
+
+  a_expt_replay0_has_terminal_response: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (lsu_mmu_va0_vld && expt_match0) |-> mmu_lsu_pa0_vld);
+
+  a_expt_replay1_has_terminal_response: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (lsu_mmu_va1_vld && expt_match1) |-> mmu_lsu_pa1_vld);
 
   // A016/A017/A018: wakeup/busy event-level contract.
   a_wakeup_is_broadcast: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
@@ -337,6 +349,12 @@ module mmu_l1dtlb_sva #(
   a_expt_wr1_fault_exclusive: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     expt_wr1_vld |-> !(expt_wr1_pgflt && expt_wr1_acflt));
 
+  a_expt_wr0_has_fault_class: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    expt_wr0_vld |-> (expt_wr0_pgflt ^ expt_wr0_acflt));
+
+  a_expt_wr1_has_fault_class: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    expt_wr1_vld |-> (expt_wr1_pgflt ^ expt_wr1_acflt));
+
   a_expt_wr0_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     expt_wr0_vld |-> (!$isunknown(expt_wr0_eid)
                    && !$isunknown(expt_wr0_iid)
@@ -398,6 +416,14 @@ module mmu_l1dtlb_sva #(
   cp_l1dtlb_c009_abort: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     (lsu_mmu_va0_vld && lsu_mmu_abort0) || (lsu_mmu_va1_vld && lsu_mmu_abort1));
 
+  cp_l1dtlb_c009_abort_hit: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (lsu_mmu_va0_vld && lsu_mmu_abort0 && (|entry_hit0))
+    || (lsu_mmu_va1_vld && lsu_mmu_abort1 && (|entry_hit1)));
+
+  cp_l1dtlb_c009_abort_miss_attempt: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (lsu_mmu_va0_vld && lsu_mmu_abort0 && !(|entry_hit0) && !dutlb_off_hit && !expt_match0)
+    || (lsu_mmu_va1_vld && lsu_mmu_abort1 && !(|entry_hit1) && !dutlb_off_hit && !expt_match1));
+
   cp_l1dtlb_c012_stamo: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     lsu_mmu_stamo_vld);
 
@@ -422,7 +448,7 @@ module mmu_l1dtlb_sva #(
   cp_l1dtlb_c020_va8_alias_clear: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     tlboper_utlb_inv_va_req
     && (|entry_vld)
-    && (|({16{1'b1}} & entry_vld & va8_match_vec(lsu_mmu_tlb_va[7:0]))));
+    && (|(entry_vld & va8_match_vec(lsu_mmu_tlb_va[7:0]))));
 
   cp_l1dtlb_c020_inv_install_same_entry: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     (|entry_upd)

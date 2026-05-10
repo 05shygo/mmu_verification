@@ -253,6 +253,24 @@ module mmu_l1dtlb_sva #(
   a_mb_full_no_alloc_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     ((miss0_vld_q || miss1_vld_q) && (&mb_entry_vld)) |-> (!alloc_gnt0 && !alloc_gnt1 && mb_alloc_we == '0));
 
+  a_one_free_dual_diff_at_most_one_alloc_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (miss0_vld_q && miss1_vld_q && (miss0_vpn_q != miss1_vpn_q) && ($countones(mb_entry_vld) == MB_DEPTH-1))
+    |-> ($countones(mb_alloc_we) <= 1 && !(alloc_gnt0 && alloc_gnt1)));
+
+  a_direct_map_no_new_miss_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    ((lsu_mmu_va0_vld || lsu_mmu_va1_vld) && dutlb_off_hit)
+    |-> (!dutlb_miss_vld0 && !dutlb_miss_vld1));
+
+  a_legal_no_response_no_t0_terminal_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (((lsu_mmu_va0_vld && !lsu_mmu_abort0 && !dutlb_off_hit && !expt_match0 && mb_hit0 && !(|entry_hit0))
+      || (lsu_mmu_va0_vld && !lsu_mmu_abort0 && !dutlb_off_hit && !expt_match0 && dutlb_miss_vld0 && (&mb_entry_vld) && !mb_hit0 && !(|entry_hit0)))
+     |-> (!mmu_lsu_pa0_vld && !mmu_lsu_page_fault0)));
+
+  a_legal_no_response_no_t0_terminal_top_p1: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (((lsu_mmu_va1_vld && !lsu_mmu_abort1 && !dutlb_off_hit && !expt_match1 && mb_hit1 && !(|entry_hit1))
+      || (lsu_mmu_va1_vld && !lsu_mmu_abort1 && !dutlb_off_hit && !expt_match1 && dutlb_miss_vld1 && (&mb_entry_vld) && !mb_hit1 && !(|entry_hit1)))
+     |-> (!mmu_lsu_pa1_vld && !mmu_lsu_page_fault1)));
+
   // A028/A029/A030/A066: entry/PLRU structural invariants.
   genvar ent_i;
   generate
@@ -412,6 +430,14 @@ module mmu_l1dtlb_sva #(
 
   cp_l1dtlb_c008_hit_under_miss: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     mmu_lsu_tlb_busy && (mmu_lsu_pa0_vld || mmu_lsu_pa1_vld));
+
+  cp_l1dtlb_c006_one_free_dual_diff_top: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    miss0_vld_q && miss1_vld_q && (miss0_vpn_q != miss1_vpn_q)
+    && ($countones(mb_entry_vld) == MB_DEPTH-1));
+
+  cp_l1dtlb_c011_direct_map_no_miss_top: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    ((lsu_mmu_va0_vld || lsu_mmu_va1_vld) && dutlb_off_hit
+     && !dutlb_miss_vld0 && !dutlb_miss_vld1));
 
   cp_l1dtlb_c009_abort: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     (lsu_mmu_va0_vld && lsu_mmu_abort0) || (lsu_mmu_va1_vld && lsu_mmu_abort1));
@@ -1143,6 +1169,9 @@ module mmu_l1dtlb_hit_rd_sva #(
 
   cp_l1dtlb_c012_stamo_bypass: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
     lsu_mmu_stamo_vld_x && mmu_lsu_pa_vld_x);
+
+  cp_l1dtlb_c012_stamo_pipe_negative: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+    !lsu_mmu_stamo_vld_x && lsu_mmu_va_vld_x && (|entry_hit_vec) && mmu_lsu_pa_vld_x);
 
   cp_l1dtlb_c021_access_fault: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
     mmu_lsu_access_fault_x);

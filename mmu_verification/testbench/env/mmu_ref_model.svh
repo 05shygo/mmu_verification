@@ -25,7 +25,7 @@
 //   [Decision 3] At leaf:
 //     · Privilege check (U bit vs priv_mode)
 //     · Permission check (R/W/X per acc_type_e)
-//     · A/D bit enforcement (hardware update expected; Phase 4: warning only)
+//     · A/D bit enforcement (A=0 faults; store with D=0 faults)
 //     · Assemble PA from leaf PPN + VA page offset
 // =============================================================================
 `ifndef MMU_REF_MODEL_SVH
@@ -213,7 +213,7 @@ class mmu_ref_model extends uvm_component;
   // [Decision 4] Leaf permission checks:
   //   · U-bit vs privilege mode (SUM handling)
   //   · R/W/X permission vs acc_type_e (MXR for ACC_LOAD with X=1)
-  //   · A/D bit: Phase 4 — warn if A=0 or (store && D=0); no fault
+  //   · A/D bit: A=0 faults all accesses; D=0 faults stores
   //
   // [Decision 5] Assemble PA:
   //   level 0 (4K): PA[39:12] = leaf_ppn[27:0]
@@ -405,17 +405,23 @@ class mmu_ref_model extends uvm_component;
             end
           endcase
 
-          // A/D bit check: Phase 4 — only warn (hardware sets them; DUT may
-          // trigger page fault if software intends A=0 trapping, but our
-          // reference model assumes hardware-managed A/D)
-          if (!pte[PTE_A])
+          // A/D bit check: A=0 faults all accesses; D=0 faults stores.
+          if (!pte[PTE_A]) begin
+            rsp.exc = EXC_PAGE_FAULT;
+            m_n_page_faults++;
             `uvm_info(get_type_name(),
-              $sformatf("translate WARN: A=0 va=0x%010h (phase 4: no fault)",va),
-              UVM_HIGH)
-          if ((acc == ACC_STORE) && !pte[PTE_D])
+              $sformatf("translate PAGE_FAULT (A=0): va=0x%010h",va),
+              UVM_MEDIUM)
+            return rsp;
+          end
+          if ((acc == ACC_STORE) && !pte[PTE_D]) begin
+            rsp.exc = EXC_PAGE_FAULT;
+            m_n_page_faults++;
             `uvm_info(get_type_name(),
-              $sformatf("translate WARN: D=0 on STORE va=0x%010h (phase 4: no fault)",va),
-              UVM_HIGH)
+              $sformatf("translate PAGE_FAULT (STORE,D=0): va=0x%010h",va),
+              UVM_MEDIUM)
+            return rsp;
+          end
 
           // ---- [Decision 5] Assemble PA --------------------------------
           // Sv39 superpages splice lower PA PPN bits from the VA VPN fields.

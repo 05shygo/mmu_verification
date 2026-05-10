@@ -30,6 +30,9 @@
 //       (not STAMO skip path), even if dut fault bits are still 0 on the rsp
 //       cycle. This covers replay/pre-select completion windows where pa_vld
 //       is observable before page/access-fault indication is aligned.
+//   PMP deny on LSU data ports is a T1 access-fault event after the T0 PA
+//   response; L1DTLB spec SB owns that T1 token check, so this scoreboard waives
+//   only the T0 fault mismatch for modeled PMP-deny LSU responses.
 // IFU: mmu_l1itlb can also complete a response on internal completion sources
 //   that the software ref does not observe cycle-accurately:
 //   - iutlb_acc_flt   : PTW/TWU access-fault completion. On this pulse
@@ -77,6 +80,7 @@ class mmu_translation_sb extends uvm_scoreboard;
   int unsigned m_lsu_expt_replay_rsp;
   int unsigned m_lsu_expt_replay_timing_waive_rsp;
   int unsigned m_lsu_expt_replay_orphan_rsp;
+  int unsigned m_lsu_pmp_t1_waive_rsp;
   int unsigned m_ifu_accerr_waive_rsp;
   int unsigned m_ifu_refpgflt_waive_rsp;
 
@@ -131,6 +135,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_lsu_expt_replay_rsp = 0;
     m_lsu_expt_replay_timing_waive_rsp = 0;
     m_lsu_expt_replay_orphan_rsp = 0;
+    m_lsu_pmp_t1_waive_rsp = 0;
     m_ifu_accerr_waive_rsp = 0;
     m_ifu_refpgflt_waive_rsp = 0;
     m_last_l2_ref_valid = 1'b0;
@@ -475,11 +480,11 @@ class mmu_translation_sb extends uvm_scoreboard;
   // =========================================================================
   virtual function void report_phase(uvm_phase phase);
     `uvm_info(get_type_name(),
-      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d lsu_expt_replay_rsp=%0d lsu_expt_replay_timing_waive_rsp=%0d lsu_expt_replay_orphan_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d",
+      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d lsu_expt_replay_rsp=%0d lsu_expt_replay_timing_waive_rsp=%0d lsu_expt_replay_orphan_rsp=%0d lsu_pmp_t1_waive_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d",
         m_total_checked, m_mismatch, m_lsu_fault_replay_rsp, m_lsu_replay_mismatch,
         m_lsu_replay_waive_rsp, m_lsu_expt_replay_rsp,
         m_lsu_expt_replay_timing_waive_rsp, m_lsu_expt_replay_orphan_rsp,
-        m_ifu_accerr_waive_rsp, m_ifu_refpgflt_waive_rsp),
+        m_lsu_pmp_t1_waive_rsp, m_ifu_accerr_waive_rsp, m_ifu_refpgflt_waive_rsp),
       UVM_NONE)
     if (m_mismatch > 0)
       `uvm_error(get_type_name(),
@@ -533,6 +538,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit lsu_expt_fault_class_ok;
     bit lsu_expt_timing_waive;
     bit lsu_expt_orphan;
+    bit lsu_pmp_t1_waive;
     bit skip_ifu_accerr_fault_compare;
     bit skip_ifu_accerr_completion_compare;
     bit skip_ifu_refpgflt_fault_compare;
@@ -597,6 +603,18 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     lsu_expt_replay_rsp = lsu_expt_replay_sig
       || (dbg_valid && !skip_ref_ppn_check && lsu_expt_cam_hit && dut_fault);
+
+    lsu_pmp_t1_waive = (channel == "LSU_P0" || channel == "LSU_P1")
+                    && dbg_valid
+                    && tr_mmu_en
+                    && ref_rsp.deny
+                    && (ref_rsp.exc == EXC_ACCESS_FAULT)
+                    && !tr_pgflt
+                    && !tr_access_fault
+                    && !skip_ref_ppn_check
+                    && !lsu_expt_replay_rsp;
+    if (lsu_pmp_t1_waive)
+      m_lsu_pmp_t1_waive_rsp++;
 
     lsu_expt_expected_fault = lsu_expt_cam_hit
       && (lsu_expt_cam_ent.pgflt || lsu_expt_cam_ent.acflt);
@@ -688,6 +706,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     // ── Exception / fault check ───────────────────────────────────────────
     if (exp_fault !== dut_fault) begin
       if (!skip_lsu_dtlb_ref_compare
+          && !lsu_pmp_t1_waive
           && !skip_ifu_accerr_completion_compare
           && !skip_ifu_accerr_fault_compare
           && !skip_ifu_refpgflt_fault_compare) begin
@@ -759,6 +778,11 @@ class mmu_translation_sb extends uvm_scoreboard;
             lsu_expt_cam_ent.eid, lsu_expt_timing_waive, lsu_expt_orphan,
             dtlb_expt_match, lsu_req_vpn_bypass_sig, tr_pgflt,
             tr_access_fault, dut_pa, req_vpn),
+          UVM_HIGH)
+      end else if (lsu_pmp_t1_waive) begin
+        `uvm_info(get_type_name(),
+          $sformatf("[%s] VA=0x%010h  LSU PMP deny is checked as T1 access_fault by L1DTLB spec SB; T0 PA response fault mismatch waived  ref.exc=%s ref.deny=%0b dut.pgflt=%0b dut.acflt=%0b",
+            channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, tr_pgflt, tr_access_fault),
           UVM_HIGH)
       end else if (skip_ifu_accerr_completion_compare) begin
         `uvm_info(get_type_name(),

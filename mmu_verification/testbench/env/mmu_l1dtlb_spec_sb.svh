@@ -19,6 +19,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   localparam logic [2:0] MB_STATE_ACFLT = 3'b100;
   localparam logic [2:0] MB_STATE_ABT   = 3'b101;
   localparam logic [2:0] MB_STATE_WFI   = 3'b110;
+  localparam logic [26:0] L1DTLB_DIR_VPN_BASE = 27'h0000100;
 
   typedef struct {
     bit          vld;
@@ -36,6 +37,9 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     logic        miss_vld;
     logic        mb_hit;
     logic        expt_match;
+    logic [27:0] pa;
+    logic [2:0]  hit_pgs;
+    logic [27:0] fin_pa;
   } lsu_pipe_token_t;
 
   virtual mmu_dut_probes_if v_probe;
@@ -52,6 +56,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_dual_miss_cycles;
   int unsigned m_mb_full_cycles;
   int unsigned m_l2_req_cycles;
+  int unsigned m_l2_load_req_cycles;
+  int unsigned m_l2_store_req_cycles;
   int unsigned m_refill_cycles;
   int unsigned m_expt_write_cycles;
   int unsigned m_reset_state_checks;
@@ -66,7 +72,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_t0_token_cycles;
   int unsigned m_t1_token_cycles;
   int unsigned m_page_fault_pair_checks;
+  int unsigned m_page_fault_load_pair_checks;
+  int unsigned m_page_fault_store_pair_checks;
+  int unsigned m_page_fault_no_access_fault_cycles;
   int unsigned m_access_fault_pair_checks;
+  int unsigned m_access_fault_load_pair_checks;
+  int unsigned m_access_fault_store_pair_checks;
   int unsigned m_fault_overlap_cycles;
   int unsigned m_credit_zero_cycles;
   int unsigned m_credit_zero_req_cycles;
@@ -88,10 +99,35 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_legal_no_response_busy_sleep_cycles;
   int unsigned m_legal_no_response_priority_drop_cycles;
   int unsigned m_no_response_side_effect_checks;
+  int unsigned m_one_free_dual_diff_cycles;
+  int unsigned m_one_free_p0_older_cycles;
+  int unsigned m_one_free_p1_older_cycles;
+  int unsigned m_refill_4k_cycles;
+  int unsigned m_refill_2m_cycles;
+  int unsigned m_refill_1g_cycles;
+  int unsigned m_hit_4k_cycles;
+  int unsigned m_hit_2m_cycles;
+  int unsigned m_hit_1g_cycles;
+  int unsigned m_stamo_pipe1_bypass_cycles;
+  int unsigned m_stamo_pipe0_negative_cycles;
+  int unsigned m_stamo_pipe0_pollution_checks;
+  int unsigned m_direct_map_no_mb_cycles;
+  int unsigned m_load_success_cycles;
+  int unsigned m_store_success_cycles;
+  int unsigned m_perm_load_r0_pf_cycles;
+  int unsigned m_perm_load_mxr_pf_cycles;
+  int unsigned m_perm_load_mxr_success_cycles;
+  int unsigned m_perm_store_w0_pf_cycles;
+  int unsigned m_perm_store_d0_pf_cycles;
+  int unsigned m_perm_a0_pf_cycles;
+  int unsigned m_perm_sum0_pf_cycles;
+  int unsigned m_perm_sum1_success_cycles;
+  int unsigned m_perm_user_u0_pf_cycles;
 
   logic [15:0] m_prev_entry_vld;
   logic [15:0][26:0] m_prev_entry_vpn;
   logic [15:0] m_prev_entry_upd;
+  logic [7:0] m_prev_mb_vld;
   bit m_prev_refill_vld;
   logic [3:0] m_prev_refill_idx;
   logic [26:0] m_prev_refill_vpn;
@@ -140,6 +176,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     return v;
   endfunction
 
+  protected function bit token_vpn_idx(input lsu_pipe_token_t tok, input int unsigned idx);
+    logic [26:0] idx_vpn;
+    idx_vpn = idx[26:0];
+    return !$isunknown(tok.vpn) && (tok.vpn == (L1DTLB_DIR_VPN_BASE + idx_vpn));
+  endfunction
+
   protected function lsu_pipe_token_t sample_pipe_token(input int unsigned pipe);
     lsu_pipe_token_t tok;
     tok = '{default: '0};
@@ -160,6 +202,9 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       tok.mb_hit       = v_probe.mon_cb.l1d_p0_mb_hit;
       tok.expt_match   = v_probe.mon_cb.l1d_p0_expt_match
                        || lsu_vif.monitor_cb.mmu_lsu_dtlb_expt_match0;
+      tok.pa           = lsu_vif.monitor_cb.mmu_lsu_pa0;
+      tok.hit_pgs      = v_probe.mon_cb.l1d_p0_hit_pgs;
+      tok.fin_pa       = v_probe.mon_cb.l1d_p0_fin_pa;
     end else begin
       tok.vld          = lsu_vif.monitor_cb.lsu_mmu_va1_vld;
       tok.va           = lsu_vif.monitor_cb.lsu_mmu_va1;
@@ -175,14 +220,17 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       tok.mb_hit       = v_probe.mon_cb.l1d_p1_mb_hit;
       tok.expt_match   = v_probe.mon_cb.l1d_p1_expt_match
                        || lsu_vif.monitor_cb.mmu_lsu_dtlb_expt_match1;
+      tok.pa           = lsu_vif.monitor_cb.mmu_lsu_pa1;
+      tok.hit_pgs      = v_probe.mon_cb.l1d_p1_hit_pgs;
+      tok.fin_pa       = v_probe.mon_cb.l1d_p1_fin_pa;
     end
     return tok;
   endfunction
 
   protected function string token_s(input lsu_pipe_token_t tok);
-    return $sformatf("valid=%0b cycle=%0d pipe=%0d iid=%0d vpn=0x%07h va=0x%016h abort=%0b store=%0b pa_vld=%0b pf=%0b af=%0b hit=%0b miss=%0b mb_hit=%0b expt=%0b",
+    return $sformatf("valid=%0b cycle=%0d pipe=%0d iid=%0d vpn=0x%07h va=0x%016h abort=%0b store=%0b pa_vld=%0b pa=0x%07h pf=%0b af=%0b hit=%0b hit_pgs=0x%0h miss=%0b mb_hit=%0b expt=%0b",
       tok.vld, tok.cycle, tok.pipe, tok.iid, tok.vpn, tok.va, tok.abort,
-      tok.store, tok.pa_vld, tok.page_fault, tok.access_fault, tok.hit_vld,
+      tok.store, tok.pa_vld, tok.pa, tok.page_fault, tok.access_fault, tok.hit_vld, tok.hit_pgs,
       tok.miss_vld, tok.mb_hit, tok.expt_match);
   endfunction
 
@@ -386,6 +434,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   protected virtual function void check_refill_and_expt();
     if (v_probe.mon_cb.l1d_refill_vld) begin
       m_refill_cycles++;
+      case (v_probe.mon_cb.l1d_refill_pgs)
+        3'b001: m_refill_4k_cycles++;
+        3'b010: m_refill_2m_cycles++;
+        3'b100: m_refill_1g_cycles++;
+        default: ;
+      endcase
       if ($isunknown({v_probe.mon_cb.l1d_entry_upd,
                       v_probe.mon_cb.l1d_refill_idx,
                       v_probe.mon_cb.l1d_refill_src,
@@ -504,6 +558,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   protected virtual function void check_l2_req_and_credit();
     if (v_probe.mon_cb.l1d_l2_req_vld) begin
       m_l2_req_cycles++;
+      if (!$isunknown(v_probe.mon_cb.l1d_l2_req_is_load)) begin
+        if (v_probe.mon_cb.l1d_l2_req_is_load)
+          m_l2_load_req_cycles++;
+        else
+          m_l2_store_req_cycles++;
+      end
       if ($isunknown({v_probe.mon_cb.l1d_l2_req_vpn,
                       v_probe.mon_cb.l1d_l2_req_eid,
                       v_probe.mon_cb.l1d_l2_req_is_load}))
@@ -548,6 +608,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     if (!$isunknown({t0.page_fault, t0.pa_vld}) && t0.page_fault) begin
       m_page_fault_pair_checks++;
+      if (t0.store)
+        m_page_fault_store_pair_checks++;
+      else
+        m_page_fault_load_pair_checks++;
+      if (!$isunknown(t0.access_fault) && !t0.access_fault)
+        m_page_fault_no_access_fault_cycles++;
       if (!t0.pa_vld) begin
         sb_error("PAGE_FAULT_T0_PAIR",
           $sformatf("page_fault without same-cycle pa_vld ownership: T0{%s} T1{%s}",
@@ -562,6 +628,10 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     if (!$isunknown(t0.access_fault) && t0.access_fault) begin
       m_access_fault_pair_checks++;
+      if (t1.vld && t1.store)
+        m_access_fault_store_pair_checks++;
+      else
+        m_access_fault_load_pair_checks++;
       if (!t1.vld || t1.abort) begin
         sb_error("ACCESS_FAULT_T1_OWNER",
           $sformatf("access_fault has no legal previous-cycle T1 owner: T0{%s} T1{%s}",
@@ -601,6 +671,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     bit inv_now;
     bit any_tlb_hit;
     bit any_expt_replay;
+    bit direct_map_req;
+    bit stamo_active;
 
     p0_req  = req0_seen();
     p1_req  = req1_seen();
@@ -620,6 +692,9 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     any_tlb_hit = (p0_req && p0_hit) || (p1_req && p1_hit);
     any_expt_replay = (t0_p0.vld && t0_p0.expt_match)
                    || (t0_p1.vld && t0_p1.expt_match);
+    direct_map_req = (lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0)
+                  && (p0_req || p1_req);
+    stamo_active = lsu_vif.monitor_cb.lsu_mmu_stamo_vld;
 
     if (p0_req && p1_req) begin
       m_dual_req_cycles++;
@@ -633,14 +708,71 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     if ((p0_req && p0_hit) || (p1_req && p1_hit))
       m_hit_cycles++;
+    if (p0_req && p0_hit) begin
+      case (t0_p0.hit_pgs)
+        3'b001: m_hit_4k_cycles++;
+        3'b010: m_hit_2m_cycles++;
+        3'b100: m_hit_1g_cycles++;
+        default: ;
+      endcase
+    end
+    if (p0_req && t0_p0.pa_vld && !t0_p0.page_fault && !t0_p0.access_fault) begin
+      if (t0_p0.store)
+        m_store_success_cycles++;
+      else
+        m_load_success_cycles++;
+      if (!t0_p0.store && token_vpn_idx(t0_p0, 36))
+        m_perm_load_mxr_success_cycles++;
+      if (!t0_p0.store && token_vpn_idx(t0_p0, 50))
+        m_perm_sum1_success_cycles++;
+    end
+    if (p1_req && p1_hit) begin
+      case (t0_p1.hit_pgs)
+        3'b001: m_hit_4k_cycles++;
+        3'b010: m_hit_2m_cycles++;
+        3'b100: m_hit_1g_cycles++;
+        default: ;
+      endcase
+    end
+    if (p1_req && t0_p1.pa_vld && !t0_p1.page_fault && !t0_p1.access_fault) begin
+      if (t0_p1.store)
+        m_store_success_cycles++;
+      else
+        m_load_success_cycles++;
+      if (!t0_p1.store && token_vpn_idx(t0_p1, 36))
+        m_perm_load_mxr_success_cycles++;
+      if (!t0_p1.store && token_vpn_idx(t0_p1, 50))
+        m_perm_sum1_success_cycles++;
+    end
 
     if (mb_full_now)
       m_mb_full_cycles++;
 
-    if (lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0)
+    if (direct_map_req) begin
       m_direct_map_cycles++;
-    if (lsu_vif.monitor_cb.lsu_mmu_stamo_vld)
+      if (!v_probe.mon_cb.l1d_l2_req_vld)
+        `uvm_info({get_type_name(), "::DIRECT_MAP"},
+          $sformatf("direct-map request observed with no same-cycle L2 request: p0=%0b p1=%0b",
+            p0_req, p1_req),
+          UVM_HIGH)
+      if (!$isunknown({v_probe.mon_cb.l1d_mb_vld, m_prev_mb_vld})
+          && (v_probe.mon_cb.l1d_mb_vld == m_prev_mb_vld))
+        m_direct_map_no_mb_cycles++;
+    end
+    if (stamo_active) begin
       m_stamo_cycles++;
+      if (t0_p1.pa_vld && (t0_p1.pa == lsu_vif.monitor_cb.lsu_mmu_stamo_pa))
+        m_stamo_pipe1_bypass_cycles++;
+      if (t0_p0.vld && !t0_p1.vld) begin
+        m_stamo_pipe0_pollution_checks++;
+        if (!(t0_p0.pa_vld && (t0_p0.pa == lsu_vif.monitor_cb.lsu_mmu_stamo_pa)))
+          m_stamo_pipe0_negative_cycles++;
+        else
+          sb_error("STAMO_PIPE0_POLLUTION",
+            $sformatf("pipe0 response was sourced from STAMO PA: stamo_pa=0x%07h token{%s}",
+              lsu_vif.monitor_cb.lsu_mmu_stamo_pa, token_s(t0_p0)));
+      end
+    end
     if ((lsu_vif.monitor_cb.lsu_mmu_va0_vld && lsu_vif.monitor_cb.lsu_mmu_abort0)
      || (lsu_vif.monitor_cb.lsu_mmu_va1_vld && lsu_vif.monitor_cb.lsu_mmu_abort1))
       m_abort_req_cycles++;
@@ -724,6 +856,11 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       check_flush_no_response_side_effects();
     end
     if (dual_diff_one_free) begin
+      m_one_free_dual_diff_cycles++;
+      if (t0_p0.iid < t0_p1.iid)
+        m_one_free_p0_older_cycles++;
+      else if (t0_p1.iid < t0_p0.iid)
+        m_one_free_p1_older_cycles++;
       m_legal_no_response_priority_drop_cycles++;
       record_legal_no_response("priority_drop_one_free", null_token(), 1'b0);
     end
@@ -743,6 +880,38 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       m_page_fault_cycles++;
     if (lsu_vif.monitor_cb.mmu_lsu_access_fault0 || lsu_vif.monitor_cb.mmu_lsu_access_fault1)
       m_access_fault_cycles++;
+    if (t0_p0.page_fault) begin
+      if (!t0_p0.store && token_vpn_idx(t0_p0, 32))
+        m_perm_load_r0_pf_cycles++;
+      if (!t0_p0.store && token_vpn_idx(t0_p0, 33))
+        m_perm_load_mxr_pf_cycles++;
+      if (t0_p0.store && token_vpn_idx(t0_p0, 34))
+        m_perm_store_w0_pf_cycles++;
+      if (t0_p0.store && token_vpn_idx(t0_p0, 35))
+        m_perm_store_d0_pf_cycles++;
+      if (!t0_p0.store && token_vpn_idx(t0_p0, 48))
+        m_perm_a0_pf_cycles++;
+      if (!t0_p0.store && token_vpn_idx(t0_p0, 49))
+        m_perm_sum0_pf_cycles++;
+      if (!t0_p0.store && token_vpn_idx(t0_p0, 51))
+        m_perm_user_u0_pf_cycles++;
+    end
+    if (t0_p1.page_fault) begin
+      if (!t0_p1.store && token_vpn_idx(t0_p1, 32))
+        m_perm_load_r0_pf_cycles++;
+      if (!t0_p1.store && token_vpn_idx(t0_p1, 33))
+        m_perm_load_mxr_pf_cycles++;
+      if (t0_p1.store && token_vpn_idx(t0_p1, 34))
+        m_perm_store_w0_pf_cycles++;
+      if (t0_p1.store && token_vpn_idx(t0_p1, 35))
+        m_perm_store_d0_pf_cycles++;
+      if (!t0_p1.store && token_vpn_idx(t0_p1, 48))
+        m_perm_a0_pf_cycles++;
+      if (!t0_p1.store && token_vpn_idx(t0_p1, 49))
+        m_perm_sum0_pf_cycles++;
+      if (!t0_p1.store && token_vpn_idx(t0_p1, 51))
+        m_perm_user_u0_pf_cycles++;
+    end
   endfunction
 
   protected function void gate_expect_nonzero(string tag, int unsigned value);
@@ -772,11 +941,20 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     if ((m_l1dtlb_tc_id == "DTLB_CREDIT_001") || (m_l1dtlb_tc_id == "DTLB_CREDIT_002")
      || (m_l1dtlb_tc_id == "DTLB_CREDIT_BOUND_001") || (m_l1dtlb_tc_id == "DTLB_SCHED_001")
-     || (m_l1dtlb_tc_id == "DTLB_ALLOC_RACE_001"))
+     || (m_l1dtlb_tc_id == "DTLB_ALLOC_RACE_001") || (m_l1dtlb_tc_id == "DTLB_TYPE_PROP_LOAD_STORE_AMO_001"))
       gate_expect_nonzero("l2_req", m_l2_req_cycles);
 
-    if (m_l1dtlb_tc_id == "DTLB_ALLOC_RACE_001")
-      gate_expect_nonzero("legal_no_response_or_l2", m_legal_no_response_cycles + m_l2_req_cycles);
+    if (m_l1dtlb_tc_id == "DTLB_TYPE_PROP_LOAD_STORE_AMO_001") begin
+      gate_expect_nonzero("l2_load_req", m_l2_load_req_cycles);
+      gate_expect_nonzero("l2_store_req", m_l2_store_req_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_ALLOC_RACE_001") begin
+      gate_expect_nonzero("one_free_dual_diff", m_one_free_dual_diff_cycles);
+      gate_expect_nonzero("one_free_p0_older", m_one_free_p0_older_cycles);
+      gate_expect_nonzero("one_free_p1_older", m_one_free_p1_older_cycles);
+      gate_expect_nonzero("priority_drop_no_response", m_legal_no_response_priority_drop_cycles);
+    end
 
     if ((m_l1dtlb_tc_id == "DTLB_REFILL_001") || (m_l1dtlb_tc_id == "DTLB_REFILL_002")
      || (m_l1dtlb_tc_id == "DTLB_INSTALL_ARB_001") || (m_l1dtlb_tc_id == "DTLB_INSTALL_ID_CHK_001")
@@ -792,6 +970,49 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
      || (m_l1dtlb_tc_id == "DTLB_ACCESS_FAULT_SOURCE_PARITY_001") || (m_l1dtlb_tc_id == "DTLB_WAKEUP_EXPT_001"))
       gate_expect_nonzero("exception_write_or_fault", m_expt_write_cycles + m_page_fault_cycles + m_access_fault_cycles);
 
+    if ((m_l1dtlb_tc_id == "DTLB_PERM_LD_001") || (m_l1dtlb_tc_id == "DTLB_PA_VLD_TERMINAL_001")) begin
+      gate_expect_nonzero("page_fault_load_pair", m_page_fault_load_pair_checks);
+      gate_expect_nonzero("page_fault_no_access_fault", m_page_fault_no_access_fault_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_PERM_LD_001")
+      gate_expect_nonzero("perm_load_r0_pf", m_perm_load_r0_pf_cycles);
+
+    if (m_l1dtlb_tc_id == "DTLB_PERM_LD_002") begin
+      gate_expect_nonzero("page_fault_load_pair", m_page_fault_load_pair_checks);
+      gate_expect_nonzero("perm_load_mxr_pf", m_perm_load_mxr_pf_cycles);
+      gate_expect_nonzero("perm_load_mxr_success", m_perm_load_mxr_success_cycles);
+    end
+
+    if ((m_l1dtlb_tc_id == "DTLB_PERM_ST_001") || (m_l1dtlb_tc_id == "DTLB_PERM_ST_002"))
+      gate_expect_nonzero("page_fault_store_pair", m_page_fault_store_pair_checks);
+
+    if (m_l1dtlb_tc_id == "DTLB_PERM_ST_001")
+      gate_expect_nonzero("perm_store_w0_pf", m_perm_store_w0_pf_cycles);
+
+    if (m_l1dtlb_tc_id == "DTLB_PERM_ST_002") begin
+      gate_expect_nonzero("perm_store_w0_pf", m_perm_store_w0_pf_cycles);
+      gate_expect_nonzero("perm_store_d0_pf", m_perm_store_d0_pf_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_FAULT_AD_US_SUM_001") begin
+      gate_expect_nonzero("page_fault_load_pair", m_page_fault_load_pair_checks);
+      gate_expect_nonzero("perm_a0_pf", m_perm_a0_pf_cycles);
+      gate_expect_nonzero("perm_sum0_pf", m_perm_sum0_pf_cycles);
+      gate_expect_nonzero("perm_sum1_success", m_perm_sum1_success_cycles);
+      gate_expect_nonzero("perm_user_u0_pf", m_perm_user_u0_pf_cycles);
+    end
+
+    if ((m_l1dtlb_tc_id == "DTLB_PMP_001") || (m_l1dtlb_tc_id == "DTLB_ACCESS_FAULT_T1_PAIRING_001")) begin
+      gate_expect_nonzero("access_fault_pair", m_access_fault_pair_checks);
+      gate_expect_nonzero("access_fault_load_or_store_pair", m_access_fault_load_pair_checks + m_access_fault_store_pair_checks);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_PF_BLOCKS_PMP_001") begin
+      gate_expect_nonzero("page_fault_load_pair", m_page_fault_load_pair_checks);
+      gate_expect_nonzero("page_fault_no_access_fault", m_page_fault_no_access_fault_cycles);
+    end
+
     if (m_l1dtlb_tc_id == "DTLB_ACCESS_FAULT_T1_PAIRING_001")
       gate_expect_nonzero("access_fault_t1_pair", m_access_fault_pair_checks);
 
@@ -805,6 +1026,27 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     if (m_l1dtlb_tc_id == "DTLB_EXPT_HIT_WITH_TLB_HIT_001")
       gate_expect_nonzero("expt_tlb_hit_overlap", m_expt_tlb_hit_overlap_cycles);
+
+    if (m_l1dtlb_tc_id == "DTLB_HUGE_001") begin
+      gate_expect_nonzero("refill_4k", m_refill_4k_cycles);
+      gate_expect_nonzero("hit_4k", m_hit_4k_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_HUGE_002") begin
+      gate_expect_nonzero("refill_2m", m_refill_2m_cycles);
+      gate_expect_nonzero("hit_2m", m_hit_2m_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_HUGE_003") begin
+      gate_expect_nonzero("refill_1g", m_refill_1g_cycles);
+      gate_expect_nonzero("hit_1g", m_hit_1g_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_HUGE_MIX_001") begin
+      gate_expect_nonzero("refill_4k", m_refill_4k_cycles);
+      gate_expect_nonzero("refill_2m", m_refill_2m_cycles);
+      gate_expect_nonzero("refill_1g", m_refill_1g_cycles);
+    end
 
     if ((m_l1dtlb_tc_id == "DTLB_INV_001") || (m_l1dtlb_tc_id == "DTLB_INV_002")
      || (m_l1dtlb_tc_id == "DTLB_INV_003") || (m_l1dtlb_tc_id == "DTLB_INV_004")
@@ -828,8 +1070,18 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
      || (m_l1dtlb_tc_id == "DTLB_STAMO_PIPE0_NEG_001"))
       gate_expect_nonzero("stamo", m_stamo_cycles);
 
-    if (m_l1dtlb_tc_id == "DTLB_SYSMAP_001")
+    if (m_l1dtlb_tc_id == "DTLB_STAMO_PIPE1_BYPASS_001")
+      gate_expect_nonzero("stamo_pipe1_bypass", m_stamo_pipe1_bypass_cycles);
+
+    if (m_l1dtlb_tc_id == "DTLB_STAMO_PIPE0_NEG_001") begin
+      gate_expect_nonzero("stamo_pipe0_pollution_check", m_stamo_pipe0_pollution_checks);
+      gate_expect_nonzero("stamo_pipe0_negative", m_stamo_pipe0_negative_cycles);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_SYSMAP_001") begin
       gate_expect_nonzero("direct_map", m_direct_map_cycles);
+      gate_expect_nonzero("direct_map_no_mb", m_direct_map_no_mb_cycles);
+    end
 
     if (m_l1dtlb_tc_id == "DTLB_ABORT_001") begin
       gate_expect_nonzero("abort_req", m_abort_req_cycles);
@@ -873,6 +1125,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       m_prev_entry_vld   = v_probe.mon_cb.l1d_entry_vld;
       m_prev_entry_vpn   = v_probe.mon_cb.l1d_entry_vpn;
       m_prev_entry_upd   = v_probe.mon_cb.l1d_entry_upd;
+      m_prev_mb_vld      = v_probe.mon_cb.l1d_mb_vld;
       m_prev_refill_vld  = v_probe.mon_cb.l1d_refill_vld;
       m_prev_refill_idx  = v_probe.mon_cb.l1d_refill_idx;
       m_prev_refill_vpn  = v_probe.mon_cb.l1d_refill_vpn;
@@ -886,14 +1139,20 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     m_l1dtlb_gate_en = (m_l1dtlb_tc_id.len() != 0);
     check_scenario_gate();
     `uvm_info(get_type_name(),
-      $sformatf("summary tc_id=%s scenario_id=%s cycles=%0d errors=%0d busy_checks=%0d wakeup=%0d hit=%0d dual_req=%0d dual_hit=%0d hit_miss=%0d dual_miss=%0d mb_full=%0d l2_req=%0d credit0=%0d credit0_req=%0d refill=%0d expt_wr=%0d reset_checks=%0d direct_map=%0d stamo=%0d abort=%0d abort_hit=%0d abort_mask=%0d inv=%0d inv_hit=%0d va8_inv=%0d inv_install=%0d install_next=%0d expt_replay=%0d expt_wakeup=%0d expt_hit_overlap=%0d legal_no_rsp=%0d nr_mb_cam=%0d nr_mb_full=%0d nr_abort=%0d nr_flush=%0d nr_busy=%0d nr_prio=%0d nr_sidefx_chk=%0d flush=%0d t0_tokens=%0d t1_tokens=%0d pf=%0d pf_pair=%0d af=%0d af_pair=%0d fault_overlap=%0d",
+      $sformatf("summary tc_id=%s scenario_id=%s cycles=%0d errors=%0d busy_checks=%0d wakeup=%0d hit=%0d hit4k=%0d hit2m=%0d hit1g=%0d dual_req=%0d dual_hit=%0d hit_miss=%0d dual_miss=%0d one_free=%0d one_free_p0_old=%0d one_free_p1_old=%0d mb_full=%0d l2_req=%0d l2_load=%0d l2_store=%0d credit0=%0d credit0_req=%0d refill=%0d refill4k=%0d refill2m=%0d refill1g=%0d expt_wr=%0d reset_checks=%0d direct_map=%0d direct_no_mb=%0d stamo=%0d stamo_p1=%0d stamo_p0_neg=%0d stamo_p0_chk=%0d abort=%0d abort_hit=%0d abort_mask=%0d inv=%0d inv_hit=%0d va8_inv=%0d inv_install=%0d install_next=%0d expt_replay=%0d expt_wakeup=%0d expt_hit_overlap=%0d legal_no_rsp=%0d nr_mb_cam=%0d nr_mb_full=%0d nr_abort=%0d nr_flush=%0d nr_busy=%0d nr_prio=%0d nr_sidefx_chk=%0d flush=%0d t0_tokens=%0d t1_tokens=%0d pf=%0d pf_pair=%0d pf_load=%0d pf_store=%0d pf_no_af=%0d af=%0d af_pair=%0d af_load=%0d af_store=%0d fault_overlap=%0d success_load=%0d success_store=%0d perm_r0=%0d perm_mxr_pf=%0d perm_mxr_ok=%0d perm_w0=%0d perm_d0=%0d perm_a0=%0d perm_sum0=%0d perm_sum1_ok=%0d perm_user_u0=%0d",
         m_l1dtlb_tc_id, m_l1dtlb_scenario_id,
         m_cycles, m_errors, m_busy_checks, m_wakeup_pulses,
-        m_hit_cycles, m_dual_req_cycles, m_dual_hit_cycles, m_hit_miss_cycles,
-        m_dual_miss_cycles, m_mb_full_cycles, m_l2_req_cycles,
+        m_hit_cycles, m_hit_4k_cycles, m_hit_2m_cycles, m_hit_1g_cycles,
+        m_dual_req_cycles, m_dual_hit_cycles, m_hit_miss_cycles,
+        m_dual_miss_cycles, m_one_free_dual_diff_cycles,
+        m_one_free_p0_older_cycles, m_one_free_p1_older_cycles,
+        m_mb_full_cycles, m_l2_req_cycles, m_l2_load_req_cycles, m_l2_store_req_cycles,
         m_credit_zero_cycles, m_credit_zero_req_cycles,
-        m_refill_cycles, m_expt_write_cycles, m_reset_state_checks,
-        m_direct_map_cycles, m_stamo_cycles, m_abort_req_cycles,
+        m_refill_cycles, m_refill_4k_cycles, m_refill_2m_cycles, m_refill_1g_cycles,
+        m_expt_write_cycles, m_reset_state_checks,
+        m_direct_map_cycles, m_direct_map_no_mb_cycles,
+        m_stamo_cycles, m_stamo_pipe1_bypass_cycles, m_stamo_pipe0_negative_cycles,
+        m_stamo_pipe0_pollution_checks, m_abort_req_cycles,
         m_abort_hit_cycles, m_abort_miss_no_response_cycles,
         m_inv_cycles, m_inv_hit_same_cycle_cycles, m_va8_inv_cycles,
         m_inv_install_conflict_cycles,
@@ -907,8 +1166,16 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_no_response_side_effect_checks,
         m_flush_cycles, m_t0_token_cycles, m_t1_token_cycles,
         m_page_fault_cycles, m_page_fault_pair_checks,
+        m_page_fault_load_pair_checks, m_page_fault_store_pair_checks,
+        m_page_fault_no_access_fault_cycles,
         m_access_fault_cycles, m_access_fault_pair_checks,
-        m_fault_overlap_cycles),
+        m_access_fault_load_pair_checks, m_access_fault_store_pair_checks,
+        m_fault_overlap_cycles, m_load_success_cycles, m_store_success_cycles,
+        m_perm_load_r0_pf_cycles, m_perm_load_mxr_pf_cycles,
+        m_perm_load_mxr_success_cycles, m_perm_store_w0_pf_cycles,
+        m_perm_store_d0_pf_cycles, m_perm_a0_pf_cycles,
+        m_perm_sum0_pf_cycles, m_perm_sum1_success_cycles,
+        m_perm_user_u0_pf_cycles),
       UVM_LOW)
   endfunction
 

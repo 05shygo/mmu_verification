@@ -11,6 +11,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   `uvm_component_utils(mmu_env_cg_whitebox)
 
   virtual mmu_dut_probes_if v_probe;
+  virtual lsu_if            lsu_vif;
 
   int unsigned wb_itlb_ent;
   logic [1:0]  wb_itlb_fsm;
@@ -20,6 +21,13 @@ class mmu_env_cg_whitebox extends uvm_component;
   logic [2:0]  wb_dtlb_mb0_st;
   logic [1:0]  wb_dtlb_dual_kind;
   logic [1:0]  wb_dtlb_refill_src;
+  bit          wb_dtlb_refill_vld;
+  logic [2:0]  wb_dtlb_refill_pgs;
+  bit          wb_dtlb_hit_any;
+  logic [2:0]  wb_dtlb_hit_pgs;
+  bit          wb_dtlb_one_free_dual_diff;
+  logic [1:0]  wb_dtlb_stamo_kind;
+  logic [1:0]  wb_dtlb_direct_kind;
   bit          wb_dtlb_l2_req;
   logic [2:0]  wb_dtlb_l2_req_eid;
   bit          wb_dtlb_l2_req_load;
@@ -121,6 +129,31 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins ptw  = {2'd1};
       bins l2   = {2'd2};
       bins wfi  = {2'd3};
+    }
+    cp_refill_pgs: coverpoint wb_dtlb_refill_pgs iff (wb_dtlb_refill_vld) {
+      bins pgs_4k = {3'b001};
+      bins pgs_2m = {3'b010};
+      bins pgs_1g = {3'b100};
+    }
+    cp_hit_pgs: coverpoint wb_dtlb_hit_pgs iff (wb_dtlb_hit_any) {
+      bins hit_4k = {3'b001};
+      bins hit_2m = {3'b010};
+      bins hit_1g = {3'b100};
+    }
+    cp_one_free_dual_diff: coverpoint wb_dtlb_one_free_dual_diff {
+      bins no = {0};
+      bins yes = {1};
+    }
+    cp_stamo_kind: coverpoint wb_dtlb_stamo_kind {
+      bins none = {2'd0};
+      bins pipe1_bypass = {2'd1};
+      bins pipe0_negative = {2'd2};
+      bins pulse_only = {2'd3};
+    }
+    cp_direct_kind: coverpoint wb_dtlb_direct_kind {
+      bins none = {2'd0};
+      bins mmu_off_no_side_effect = {2'd1};
+      bins mmu_off_with_l2_or_mb_change = {2'd2};
     }
     cp_l2_req: coverpoint wb_dtlb_l2_req;
     cp_l2_req_eid: coverpoint wb_dtlb_l2_req_eid iff (wb_dtlb_l2_req) {
@@ -544,6 +577,9 @@ class mmu_env_cg_whitebox extends uvm_component;
     if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe)) begin
       `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not in config_db — mmu_env_cg_whitebox will idle", UVM_LOW)
     end
+    if (!uvm_config_db#(virtual lsu_if)::get(this, "", "LSU_VIF", lsu_vif)) begin
+      `uvm_info(get_type_name(), "LSU_VIF not in config_db - L1DTLB LSU-driven whitebox bins will use DUT probes only", UVM_LOW)
+    end
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -735,6 +771,22 @@ class mmu_env_cg_whitebox extends uvm_component;
   endfunction
 
   virtual function void sample_dut;
+    bit lsu_p0_req;
+    bit lsu_p1_req;
+    bit stamo_vld;
+    logic [27:0] stamo_pa;
+
+    lsu_p0_req = 1'b0;
+    lsu_p1_req = 1'b0;
+    stamo_vld  = 1'b0;
+    stamo_pa   = '0;
+    if (lsu_vif != null) begin
+      lsu_p0_req = lsu_vif.monitor_cb.lsu_mmu_va0_vld && !lsu_vif.monitor_cb.lsu_mmu_abort0;
+      lsu_p1_req = lsu_vif.monitor_cb.lsu_mmu_va1_vld && !lsu_vif.monitor_cb.lsu_mmu_abort1;
+      stamo_vld  = lsu_vif.monitor_cb.lsu_mmu_stamo_vld;
+      stamo_pa   = lsu_vif.monitor_cb.lsu_mmu_stamo_pa;
+    end
+
     wb_ptw_ready_hist_valid = wb_ptw_ready_prev_valid;
     wb_ptw_ready_prev       = wb_ptw_ready;
     wb_ptw_ready            = v_probe.ptw_jtlb_ready;
@@ -746,10 +798,32 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_dtlb_entry_occ = $countones(v_probe.l1d_entry_vld);
     wb_dtlb_mb0_st  = v_probe.l1d_mb_st0;
     wb_dtlb_refill_src = v_probe.l1d_refill_vld ? v_probe.l1d_refill_src : 2'd0;
+    wb_dtlb_refill_vld = v_probe.l1d_refill_vld;
+    wb_dtlb_refill_pgs = v_probe.l1d_refill_pgs;
     wb_dtlb_l2_req = v_probe.l1d_l2_req_vld;
     wb_dtlb_l2_req_eid = v_probe.l1d_l2_req_eid;
     wb_dtlb_l2_req_load = v_probe.l1d_l2_req_is_load;
     wb_dtlb_credit_cnt = v_probe.l1d_sched_credit_cnt;
+    wb_dtlb_hit_any = v_probe.l1d_p0_hit_vld || v_probe.l1d_p1_hit_vld;
+    wb_dtlb_hit_pgs = v_probe.l1d_p0_hit_vld ? v_probe.l1d_p0_hit_pgs :
+                      v_probe.l1d_p1_hit_vld ? v_probe.l1d_p1_hit_pgs : 3'b000;
+    wb_dtlb_one_free_dual_diff = lsu_p0_req && lsu_p1_req
+                              && v_probe.l1d_p0_miss_vld && v_probe.l1d_p1_miss_vld
+                              && !v_probe.l1d_p0_mb_hit && !v_probe.l1d_p1_mb_hit
+                              && ($countones(v_probe.l1d_mb_vld) == 7)
+                              && (v_probe.l1d_p0_req_vpn != v_probe.l1d_p1_req_vpn);
+    if (!stamo_vld)
+      wb_dtlb_stamo_kind = 2'd0;
+    else if (lsu_p1_req && (v_probe.l1d_p1_fin_pa == stamo_pa))
+      wb_dtlb_stamo_kind = 2'd1;
+    else if (lsu_p0_req && !lsu_p1_req && (v_probe.l1d_p0_fin_pa != stamo_pa))
+      wb_dtlb_stamo_kind = 2'd2;
+    else
+      wb_dtlb_stamo_kind = 2'd3;
+    if ((lsu_vif != null) && (lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0) && (lsu_p0_req || lsu_p1_req))
+      wb_dtlb_direct_kind = v_probe.l1d_l2_req_vld ? 2'd2 : 2'd1;
+    else
+      wb_dtlb_direct_kind = 2'd0;
     if ((v_probe.l1d_p0_hit_vld && v_probe.l1d_p1_hit_vld))
       wb_dtlb_dual_kind = 2'd1;
     else if ((v_probe.l1d_p0_hit_vld && v_probe.l1d_p1_miss_vld)

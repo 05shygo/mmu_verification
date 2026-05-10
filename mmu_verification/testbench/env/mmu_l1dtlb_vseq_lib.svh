@@ -142,19 +142,52 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         sid = "L1DTLB_TS_CTRL_ABORT_MISS";
         intent = "abort hit/miss state side-effect guard";
       end
-      "DTLB_PERM_LD_001",
-      "DTLB_PERM_LD_002",
+      "DTLB_PERM_LD_001": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_FAULT_LOAD_R0";
+        intent = "R=0 load page fault";
+      end
+      "DTLB_PERM_LD_002": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_FAULT_LOAD_MXR";
+        intent = "X-only load fault/pass under MXR";
+      end
       "DTLB_PERM_ST_001",
-      "DTLB_PERM_ST_002",
+      "DTLB_PERM_ST_002": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_FAULT_STORE_W_D";
+        intent = "store permission W/D directed fault cases";
+      end
+      "DTLB_FAULT_AD_US_SUM_001": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_FAULT_AD_US_SUM";
+        intent = "A-bit, U-bit, and SUM directed permission cases";
+      end
       "DTLB_PMP_001",
-      "DTLB_PF_BLOCKS_PMP_001",
-      "DTLB_PA_VLD_TERMINAL_001",
-      "DTLB_FAULT_OVERLAP_PIPE_001",
-      "DTLB_ACCESS_FAULT_T1_PAIRING_001",
-      "DTLB_TYPE_PROP_LOAD_STORE_AMO_001": begin
+      "DTLB_ACCESS_FAULT_T1_PAIRING_001": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_FAULT_PMP_ACCESS";
+        intent = "PMP access fault and T1 ownership";
+      end
+      "DTLB_PF_BLOCKS_PMP_001": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_FAULT_PF_BLOCKS_PMP";
+        intent = "page fault blocks downstream PMP access fault";
+      end
+      "DTLB_PA_VLD_TERMINAL_001": begin
         scn = L1DTLB_SCN_PERMISSION;
         sid = "L1DTLB_TS_FAULT_RESPONSE_TIMING";
-        intent = "permission/fault timing/type propagation";
+        intent = "terminal response pa_vld/fault timing";
+      end
+      "DTLB_FAULT_OVERLAP_PIPE_001": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_FAULT_OVERLAP_PIPE";
+        intent = "same-cycle page/access fault overlap observation";
+      end
+      "DTLB_TYPE_PROP_LOAD_STORE_AMO_001": begin
+        scn = L1DTLB_SCN_PERMISSION;
+        sid = "L1DTLB_TS_SCHED_STORE_TYPE_PROP";
+        intent = "load/store type propagation to L2 request";
       end
       "DTLB_INV_001",
       "DTLB_INV_002",
@@ -314,6 +347,26 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(2);
   endtask
 
+  protected task set_pmp_allow_all();
+    pmp_flg_normal_seq seq;
+    seq = pmp_flg_normal_seq::type_id::create("l1dtlb_pmp_allow_all");
+    seq.start(p_sequencer.pmp_sqr);
+    if (m_env_h.m_ref != null)
+      m_env_h.m_ref.sync_shadow_state();
+    wait_lsu_cycles(2);
+  endtask
+
+  protected task set_pmp_deny_rw();
+    pmp_flg_deny_rw_seq seq;
+    seq = pmp_flg_deny_rw_seq::type_id::create("l1dtlb_pmp_deny_rw");
+    seq.deny_rd = 1'b1;
+    seq.deny_wr = 1'b1;
+    seq.start(p_sequencer.pmp_sqr);
+    if (m_env_h.m_ref != null)
+      m_env_h.m_ref.sync_shadow_state();
+    wait_lsu_cycles(2);
+  endtask
+
   protected task set_priv(bit [1:0] priv);
     cp0_priv_switch_seq seq;
     seq = cp0_priv_switch_seq::type_id::create("l1dtlb_set_priv");
@@ -378,6 +431,24 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       .va(39'h20_0000),
       .pa(40'h0040_0000),
       .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    m_env_h.m_pt_mem.m_builder.map_1g(
+      .va(39'h4000_0000),
+      .pa(40'h4000_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    if (m_env_h.m_ref != null)
+      m_env_h.m_ref.sync_shadow_state();
+  endtask
+
+  protected task map_2m_page();
+    m_env_h.m_pt_mem.m_builder.map_2m(
+      .va(39'h20_0000),
+      .pa(40'h0040_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    if (m_env_h.m_ref != null)
+      m_env_h.m_ref.sync_shadow_state();
+  endtask
+
+  protected task map_1g_page();
     m_env_h.m_pt_mem.m_builder.map_1g(
       .va(39'h4000_0000),
       .pa(40'h4000_0000),
@@ -468,6 +539,35 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
     m_lsu_vif.driver_cb.lsu_mmu_abort0 <= 1'b0;
+  endtask
+
+  protected task raw_pipe0_back_to_back(
+    va_t va0,
+    bit [6:0] iid0,
+    bit st0,
+    va_t va1,
+    bit [6:0] iid1,
+    bit st1
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va0      <= canon_va(va0);
+    m_lsu_vif.driver_cb.lsu_mmu_id0      <= iid0;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= st0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf0   <= vabuf_for(va0);
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va0      <= canon_va(va1);
+    m_lsu_vif.driver_cb.lsu_mmu_id0      <= iid1;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= st1;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf0   <= vabuf_for(va1);
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
   endtask
 
   protected task raw_pipe01(
@@ -595,6 +695,48 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif.driver_cb.lsu_mmu_stamo_vld <= 1'b0;
   endtask
 
+  protected task raw_pipe1_with_stamo(
+    va_t va,
+    bit [6:0] iid,
+    bit [27:0] stamo_pa,
+    bit st_inst = 1'b1
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld    <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va1        <= canon_va(va);
+    m_lsu_vif.driver_cb.lsu_mmu_id1        <= iid;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst1   <= st_inst;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1     <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf1     <= vabuf_for(va);
+    m_lsu_vif.driver_cb.lsu_mmu_stamo_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_stamo_pa   <= stamo_pa;
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_stamo_vld <= 1'b0;
+  endtask
+
+  protected task raw_pipe0_with_stamo_negative(
+    va_t va,
+    bit [6:0] iid,
+    bit [27:0] stamo_pa,
+    bit st_inst = 1'b0
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld    <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va0        <= canon_va(va);
+    m_lsu_vif.driver_cb.lsu_mmu_id0        <= iid;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst0   <= st_inst;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0     <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf0     <= vabuf_for(va);
+    m_lsu_vif.driver_cb.lsu_mmu_stamo_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_stamo_pa   <= stamo_pa;
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_stamo_vld <= 1'b0;
+  endtask
+
   protected task send_rtu_flush();
     misc_rtu_flush_seq seq;
     seq = misc_rtu_flush_seq::type_id::create("l1dtlb_rtu_flush");
@@ -695,18 +837,101 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   endtask
 
   protected task scenario_permission();
-    do_bringup(48, 39'h10_0000);
-    map_special_page(32, 1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
-    map_special_page(33, 1'b0, 1'b0, 1'b1, 1'b1, 1'b1, 1'b0);
-    map_special_page(34, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
-    map_special_page(35, 1'b1, 1'b1, 1'b0, 1'b1, 1'b0, 1'b0);
-    set_mxr_sum(1'b0, 1'b0);
-    send_lsu_item(LSU_PIPE0, va_page(32), 7'd1, 1'b0);
-    send_lsu_item(LSU_PIPE0, va_page(33), 7'd2, 1'b0);
-    set_mxr_sum(1'b1, 1'b0);
-    send_lsu_item(LSU_PIPE0, va_page(33), 7'd3, 1'b0);
-    send_lsu_item(LSU_PIPE1, va_page(34), 7'd4, 1'b1);
-    send_lsu_item(LSU_PIPE1, va_page(35), 7'd5, 1'b1);
+    do_bringup(64, 39'h10_0000);
+
+    if (tc_id == "DTLB_PERM_LD_001") begin
+      map_special_page(32, 1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      set_mxr_sum(1'b0, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(32), 7'd1, 1'b0);
+    end else if (tc_id == "DTLB_PERM_LD_002") begin
+      map_special_page(33, 1'b0, 1'b0, 1'b1, 1'b1, 1'b1, 1'b0);
+      map_special_page(36, 1'b0, 1'b0, 1'b1, 1'b1, 1'b1, 1'b0);
+      set_mxr_sum(1'b0, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(33), 7'd2, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_mxr_fault", 524288, 8);
+      set_mxr_sum(1'b1, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(36), 7'd3, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_mxr_pass_fill", 524288, 8);
+      raw_pipe0(va_page(36), 7'd3);
+    end else if (tc_id == "DTLB_PERM_ST_001") begin
+      map_special_page(34, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      send_lsu_item(LSU_PIPE1, va_page(34), 7'd4, 1'b1);
+    end else if (tc_id == "DTLB_PERM_ST_002") begin
+      map_special_page(34, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      map_special_page(35, 1'b1, 1'b1, 1'b0, 1'b1, 1'b0, 1'b0);
+      send_lsu_item(LSU_PIPE1, va_page(34), 7'd5, 1'b1);
+      send_lsu_item(LSU_PIPE1, va_page(35), 7'd6, 1'b1);
+    end else if (tc_id == "DTLB_FAULT_AD_US_SUM_001") begin
+      map_special_page(48, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0);
+      map_special_page(49, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b1);
+      map_special_page(50, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b1);
+      map_special_page(51, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+      set_priv(2'b01);
+      set_mxr_sum(1'b0, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(48), 7'd19, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_a0_fault", 524288, 8);
+      send_lsu_item(LSU_PIPE0, va_page(49), 7'd20, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_sum0_fault", 524288, 8);
+      set_mxr_sum(1'b0, 1'b1);
+      send_lsu_item(LSU_PIPE0, va_page(50), 7'd21, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_sum1_pass_fill", 524288, 8);
+      raw_pipe0(va_page(50), 7'd21, 1'b0);
+      wait_lsu_cycles(12);
+      set_priv(2'b00);
+      set_mxr_sum(1'b0, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(51), 7'd22, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_user_u0_fault", 524288, 8);
+      set_priv(2'b01);
+    end else if (tc_id == "DTLB_TYPE_PROP_LOAD_STORE_AMO_001") begin
+      send_lsu_item(LSU_PIPE0, va_page(36), 7'd8, 1'b0);
+      send_lsu_item(LSU_PIPE1, va_page(37), 7'd9, 1'b1);
+    end else if (tc_id == "DTLB_PMP_001") begin
+      fill_page(38);
+      fill_page(39, 1'b1, 1'b1);
+      set_pmp_deny_rw();
+      raw_pipe01(va_page(38), va_page(39), 7'd10, 7'd11, 1'b0, 1'b1);
+      wait_lsu_cycles(24);
+      set_pmp_allow_all();
+    end else if (tc_id == "DTLB_PF_BLOCKS_PMP_001") begin
+      map_special_page(40, 1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      set_pmp_deny_rw();
+      send_lsu_item(LSU_PIPE0, va_page(40), 7'd12, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_pf_blocks_pmp", 524288, 8);
+      set_pmp_allow_all();
+    end else if (tc_id == "DTLB_PA_VLD_TERMINAL_001") begin
+      map_special_page(41, 1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(41), 7'd13, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(0), 7'd14, 1'b0);
+    end else if (tc_id == "DTLB_ACCESS_FAULT_T1_PAIRING_001") begin
+      fill_page(42);
+      fill_page(43, 1'b1, 1'b1);
+      set_pmp_deny_rw();
+      raw_pipe01(va_page(42), va_page(43), 7'd15, 7'd16, 1'b0, 1'b1);
+      wait_lsu_cycles(24);
+      set_pmp_allow_all();
+    end else if (tc_id == "DTLB_FAULT_OVERLAP_PIPE_001") begin
+      map_special_page(45, 1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      raw_pipe0(va_page(45), 7'd18);
+      wait_l1d_expt_write("l1dtlb_fault_overlap_pf_entry");
+      fill_page(44);
+      set_pmp_deny_rw();
+      raw_pipe0_back_to_back(va_page(44), 7'd17, 1'b0, va_page(45), 7'd18, 1'b0);
+      wait_lsu_cycles(48);
+      set_pmp_allow_all();
+    end else begin
+      map_special_page(32, 1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      map_special_page(33, 1'b0, 1'b0, 1'b1, 1'b1, 1'b1, 1'b0);
+      map_special_page(34, 1'b1, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
+      map_special_page(35, 1'b1, 1'b1, 1'b0, 1'b1, 1'b0, 1'b0);
+      set_mxr_sum(1'b0, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(32), 7'd1, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(33), 7'd2, 1'b0);
+      set_mxr_sum(1'b1, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(33), 7'd3, 1'b0);
+      send_lsu_item(LSU_PIPE1, va_page(34), 7'd4, 1'b1);
+      send_lsu_item(LSU_PIPE1, va_page(35), 7'd5, 1'b1);
+    end
+
     m_env_h.wait_for_quiescent_midtest("l1dtlb_perm", 524288, 16);
   endtask
 
@@ -817,6 +1042,18 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     end
     wait_lsu_cycles(8);
     raw_pipe01(va_page(80), va_page(81), 7'd2, 7'd9, 1'b0, 1'b1);
+    wait_lsu_cycles(96);
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_alloc_race_p0_older_drain", 524288, 16);
+    configure_ptw_delay(56, 96);
+    for (int unsigned i = 0; i < 7; i++) begin
+      bit [6:0] iid;
+      iid = i + 16;
+      raw_pipe0(va_page(i + 88), iid);
+      wait_lsu_cycles(1);
+    end
+    wait_lsu_cycles(8);
+    raw_pipe01(va_page(108), va_page(109), 7'd12, 7'd3, 1'b0, 1'b1);
     wait_lsu_cycles(220);
     configure_ptw_delay(1, 4);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_alloc_race", 524288, 16);
@@ -886,21 +1123,56 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   protected task scenario_huge();
     do_bringup(32, 39'h10_0000);
-    map_huge_pages();
-    send_lsu_item(LSU_PIPE0, 39'h20_0000, 7'd1, 1'b0);
-    send_lsu_item(LSU_PIPE1, 39'h20_1000, 7'd2, 1'b1);
-    send_lsu_item(LSU_PIPE0, 39'h4000_0000, 7'd3, 1'b0);
-    send_lsu_item(LSU_PIPE1, 39'h4000_1000, 7'd4, 1'b1);
+    if (tc_id == "DTLB_HUGE_001") begin
+      send_lsu_item(LSU_PIPE0, va_page(0), 7'd1, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_huge_4k_fill", 524288, 8);
+      raw_pipe0(va_page(0), 7'd1);
+    end else if (tc_id == "DTLB_HUGE_002") begin
+      map_2m_page();
+      send_lsu_item(LSU_PIPE0, 39'h20_0000, 7'd2, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_huge_2m_fill", 524288, 8);
+      raw_pipe01(39'h20_0000, 39'h20_1000, 7'd2, 7'd3, 1'b0, 1'b1);
+      wait_lsu_cycles(12);
+      raw_inv(INV_VA_ALL, 39'h20_0000, m_asid);
+      send_lsu_item(LSU_PIPE0, 39'h20_2000, 7'd4, 1'b0);
+    end else if (tc_id == "DTLB_HUGE_003") begin
+      map_1g_page();
+      send_lsu_item(LSU_PIPE0, 39'h4000_0000, 7'd5, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_huge_1g_fill", 524288, 8);
+      raw_pipe01(39'h4000_0000, 39'h4000_1000, 7'd5, 7'd6, 1'b0, 1'b1);
+      wait_lsu_cycles(12);
+      raw_inv(INV_VA_ALL, 39'h4000_0000, m_asid);
+      send_lsu_item(LSU_PIPE1, 39'h4000_2000, 7'd7, 1'b1);
+    end else begin
+      map_huge_pages();
+      send_lsu_item(LSU_PIPE0, va_page(0), 7'd8, 1'b0);
+      send_lsu_item(LSU_PIPE0, 39'h20_0000, 7'd9, 1'b0);
+      send_lsu_item(LSU_PIPE1, 39'h20_1000, 7'd10, 1'b1);
+      send_lsu_item(LSU_PIPE0, 39'h4000_0000, 7'd11, 1'b0);
+      send_lsu_item(LSU_PIPE1, 39'h4000_1000, 7'd12, 1'b1);
+    end
     m_env_h.wait_for_quiescent_midtest("l1dtlb_huge", 524288, 16);
   endtask
 
   protected task scenario_stamo();
     do_bringup(32, 39'h10_0000);
-    raw_stamo(28'h12345);
-    raw_pipe01(va_page(0), va_page(1), 7'd1, 7'd2, 1'b0, 1'b1);
-    wait_lsu_cycles(30);
-    raw_stamo(28'h23456);
-    send_lsu_item(LSU_PIPE1, va_page(2), 7'd3, 1'b1);
+    fill_page(0);
+    fill_page(1, 1'b1, 1'b1);
+    if (tc_id == "DTLB_STAMO_PIPE1_BYPASS_001") begin
+      raw_pipe1_with_stamo(va_page(1), 7'd2, 28'h12345);
+      wait_lsu_cycles(24);
+      fill_page(2, 1'b1, 1'b1);
+      raw_pipe1_with_stamo(va_page(2), 7'd3, 28'h23456);
+    end else if (tc_id == "DTLB_STAMO_PIPE0_NEG_001") begin
+      raw_pipe0_with_stamo_negative(va_page(0), 7'd4, 28'h34567);
+      wait_lsu_cycles(24);
+      raw_pipe01(va_page(0), va_page(1), 7'd5, 7'd6, 1'b0, 1'b1);
+    end else begin
+      raw_stamo(28'h12345);
+      raw_pipe01(va_page(0), va_page(1), 7'd1, 7'd2, 1'b0, 1'b1);
+      wait_lsu_cycles(30);
+      raw_pipe1_with_stamo(va_page(2), 7'd3, 28'h23456);
+    end
     m_env_h.wait_for_quiescent_midtest("l1dtlb_stamo", 262144, 8);
   endtask
 

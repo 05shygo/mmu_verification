@@ -33,9 +33,9 @@ name.
 | L1DTLB_SVA_A001 | partial | `a_reset_clears_visible_state`, spec SB reset check. Exception CAM reset visibility still lacks direct probe. |
 | L1DTLB_SVA_A002 | implemented | scheduler `a_reset_credit_max`, `a_credit_in_range`. |
 | L1DTLB_SVA_A003 | formal-only | `cp_l1dtlb_c026_vabuf_change`; full equivalence of vabuf side effects still needs formal/paired-scoreboard flow. |
-| L1DTLB_SVA_A004 | partial | top/hit `a_stamo_no_pipe0_bypass`, `a_stamo_bypass_not_miss`, `a_stamo_pa_source`; richer pipe1-only ownership remains directed/scoreboard. |
-| L1DTLB_SVA_A005 | partial | `a_stamo_no_new_miss_side_effect`, `a_stamo_bypass_not_miss`; PLRU pollution not fully checked. |
-| L1DTLB_SVA_A006 | partial | `a_stamo_pa_source`; attribute source and PLRU pollution remain partial. |
+| L1DTLB_SVA_A004 | partial | top/hit `a_stamo_no_pipe0_bypass`, `a_stamo_bypass_not_miss`, `a_stamo_pa_source`; `DTLB_STAMO_PIPE1_BYPASS_001` and spec-SB counters now gate pipe1 STAMO PA ownership, while full attr source remains partial. |
+| L1DTLB_SVA_A005 | partial | `a_stamo_no_new_miss_side_effect`, `a_stamo_bypass_not_miss`; `DTLB_STAMO_PIPE0_NEG_001` and spec-SB pipe0 pollution checks cover the negative path. PLRU pollution is still not fully checked. |
+| L1DTLB_SVA_A006 | partial | `a_stamo_pa_source`; pipe1 STAMO bypass scenario/SB gate exists. Attribute source and PLRU pollution remain partial. |
 | L1DTLB_SVA_A007 | partial | Abort scenario now drives abort+hit; `cp_l1dtlb_c009_abort_hit` and spec-SB `abort_hit` counter observe it. Exact attr preservation remains translation/SB-owned. |
 | L1DTLB_SVA_A008 | implemented | `a_abort0_not_miss`, `a_abort1_not_miss`, hit_rd `a_abort_blocks_miss`. |
 | L1DTLB_SVA_A009 | implemented | expt CAM/top `a_abort*_does_not_consume*` assertions; `DTLB_ABORT_001` now creates an exception-CAM hit candidate, aborts it, then verifies non-abort replay survives. |
@@ -53,18 +53,18 @@ name.
 | L1DTLB_SVA_A021 | implemented | `a_dual_hit_returns_both`; hit_rd single-hit covers. |
 | L1DTLB_SVA_A022 | partial | `a_pipe*_hit_returns_t0`, directed hit/miss scenario; full MB-full immunity not separately proven. |
 | L1DTLB_SVA_A023 | implemented | top `a_same_4k_miss_dedup_top`, allocator `a_same_4k_dual_miss_dedup`. |
-| L1DTLB_SVA_A024 | partial | allocator one-free cover; exact IID age comparison not checked because compare result is not bound. |
+| L1DTLB_SVA_A024 | partial | allocator one-free cover plus `DTLB_ALLOC_RACE_001` p0-older/p1-older one-free directed gates; exact IID winner proof remains partial because compare result is not bound. |
 | L1DTLB_SVA_A025 | partial | allocator dual-diff two-free checks count/distinct IDs; lowest-free proof still partial. |
 | L1DTLB_SVA_A026 | partial | expt replay, dual-hit checks, terminal-response assertions, and `DTLB_EXPT_HIT_WITH_TLB_HIT_001` dedicated scenario/SB gate exist; full non-contamination remains partly scoreboard-owned. |
 | L1DTLB_SVA_A027 | implemented | expt CAM `a_no_dual_consume_same_entry`. |
 | L1DTLB_SVA_A028 | partial | valid payload, valid-hit-only assertions; flag-to-attr semantic checking remains translation SB. |
 | L1DTLB_SVA_A029 | partial | legal page-size assertion and page-size covers; exact comparator bounds are RTL-local and not fully asserted. |
 | L1DTLB_SVA_A030 | partial | multi-hit is retained as diagnostic cover plus valid-hit-only checks; no failure assertion until spec chooses priority vs illegal-state policy. |
-| L1DTLB_SVA_A031 | partial | Permission directed scenario plus translation SB; no full flag truth-table SVA. |
-| L1DTLB_SVA_A032 | partial | Permission directed scenario plus translation SB; no full store truth-table SVA. |
-| L1DTLB_SVA_A033 | partial | Type propagation and permission scenario; AMO-specific permission SVA still planned. |
-| L1DTLB_SVA_A034 | partial | hit_rd direct-map terminal response; no full attr/sysmap equivalence SVA. |
-| L1DTLB_SVA_A035 | partial | PMP access-fault tests/SB; direct-map PMP token ownership still partial. |
+| L1DTLB_SVA_A031 | partial | `DTLB_PERM_LD_001/002` now have directed R=0 and MXR X-only stimulus plus VPN-specific spec-SB page-fault/pass gates. Full flag truth-table SVA remains partial. |
+| L1DTLB_SVA_A032 | partial | `DTLB_PERM_ST_001/002` now have W=0 and D=0 directed store stimulus; ref model treats A=0/store D=0 as page faults and spec-SB gates W=0/D=0 independently. D-bit writeback absence remains partial. |
+| L1DTLB_SVA_A033 | partial | `DTLB_TYPE_PROP_LOAD_STORE_AMO_001` now gates L2 load/store request type propagation; AMO-specific and PTW/PMP type propagation remain partial. |
+| L1DTLB_SVA_A034 | partial | hit_rd direct-map terminal response and top no-new-miss assertion; spec-SB gates direct-map no-MB side effect. Full attr/sysmap equivalence remains partial. |
+| L1DTLB_SVA_A035 | partial | `DTLB_PMP_001` and `DTLB_ACCESS_FAULT_T1_PAIRING_001` now drive PMP deny and spec-SB access-fault owner gates; direct-map PMP token ownership remains partial. |
 | L1DTLB_SVA_A036 | implemented | `a_l2_fault_is_page_fault_only`, expt class assertions. |
 | L1DTLB_SVA_A037 | implemented | top `a_mb_cam_hit_no_alloc0/1`, same-4K dedup. |
 | L1DTLB_SVA_A038 | partial | No-alloc on CAM hit checked; no immediate response/wakeup partly covered by scoreboard. |
@@ -111,12 +111,12 @@ name.
 | L1DTLB_SVA_C003 | implemented | `cp_l1dtlb_c003_hit_miss`. |
 | L1DTLB_SVA_C004 | implemented | top/allocator same-VPN dedup covers. |
 | L1DTLB_SVA_C005 | implemented | allocator dual-diff two-free cover. |
-| L1DTLB_SVA_C006 | partial | allocator one-free cover now includes port0-wins and port1-wins split; exact wraparound IID-age oracle remains RTL-local/formal. |
+| L1DTLB_SVA_C006 | partial | allocator one-free cover includes port0-wins/port1-wins split; `DTLB_ALLOC_RACE_001` now drives p0-older and p1-older one-free subcases with spec-SB gates. Exact wraparound IID-age oracle remains RTL-local/formal. |
 | L1DTLB_SVA_C007 | implemented | MB full cover plus scoreboard counter. |
 | L1DTLB_SVA_C008 | partial | hit-under-miss and wakeup covers exist; exception wakeup covered in expt CAM. |
 | L1DTLB_SVA_C009 | partial | abort cover now has hit and miss-attempt sub-bins; abort-expt-hit is covered by the directed abort replay survivor path rather than a separate cover property. |
-| L1DTLB_SVA_C010 | partial | page fault cover plus permission sequence; detailed flag bins still covergroup work. |
-| L1DTLB_SVA_C011 | partial | direct-map cover exists; MPRV non-M split not covered. |
+| L1DTLB_SVA_C010 | partial | page fault cover plus split permission scenarios; spec-SB now separates load/store page-fault ownership and MXR pass evidence. Detailed flag bins remain covergroup work. |
+| L1DTLB_SVA_C011 | partial | direct-map cover exists; `DTLB_SYSMAP_001` now gates MMU-off/effective-mode direct-map with no-MB side-effect evidence. Full attr/sysmap and MPRV non-M closure remain partial. |
 | L1DTLB_SVA_C012 | implemented | top/hit_rd STAMO covers. |
 | L1DTLB_SVA_C013 | partial | CAM-hit/no-alloc checked; 2M/1G MB-dedup subcase still planned. |
 | L1DTLB_SVA_C014 | implemented | scheduler credit/L2/bypass/priority covers. |
@@ -127,7 +127,7 @@ name.
 | L1DTLB_SVA_C019 | implemented | expt page/access replay covers and fault-hold assertion. |
 | L1DTLB_SVA_C020 | partial | clear/flush/race covers now include low-8 VA alias clear and clear/install overlap bins; full flush-race closure still depends on regression cover results. |
 | L1DTLB_SVA_C021 | implemented | T1/T0 overlap cover. |
-| L1DTLB_SVA_C022 | implemented | 4K/2M/1G refill page-size covers. |
+| L1DTLB_SVA_C022 | implemented | 4K/2M/1G refill page-size covers plus split `DTLB_HUGE_001/002/003/HUGE_MIX` scenario gates for page-size hit/refill evidence. |
 | L1DTLB_SVA_C023 | implemented | multi-hit diagnostic cover. |
 | L1DTLB_SVA_C024 | implemented | PLRU refill cover plus onehot assertions. |
 | L1DTLB_SVA_C025 | partial | HPC/miss/wakeup/whitebox events covered separately; spec SB now records legal no-response counters for MB CAM, MB full, abort, flush, busy-sleep, and priority-drop classes. |
@@ -142,7 +142,7 @@ name.
 | L1DTLB_TS_BASIC_HIT_PIPE1 | implemented | `L1DTLB_SCN_SMOKE_P1`, hit assertions, translation SB. |
 | L1DTLB_TS_BASIC_DUAL_HIT | implemented | `L1DTLB_SCN_DUAL_HIT`, dual-hit SVA/cover. |
 | L1DTLB_TS_BASIC_HIT_MISS | implemented | `L1DTLB_SCN_HIT_MISS`, hit/miss cover and scoreboard. |
-| L1DTLB_TS_BASIC_PAGE_SIZE_4K_2M_1G | partial | `L1DTLB_SCN_HUGE`, page-size covers; exact invalidate/refill-after-hit split remains planned. |
+| L1DTLB_TS_BASIC_PAGE_SIZE_4K_2M_1G | partial | `DTLB_HUGE_001/002/003/HUGE_MIX` now split 4K/2M/1G/mixed stimulus and spec-SB gates page-size hit/refill; regression closure still pending. |
 | L1DTLB_TS_BASIC_MULTI_HIT_DIAG | partial | multi-hit onehot assertion/cover; no direct diagnostic entry injection. |
 | L1DTLB_TS_BASIC_ENTRY_FIELD_MODEL | partial | refill payload assertions and translation SB; field truth-table still partial. |
 | L1DTLB_TS_CTRL_ABORT_HIT | implemented | `L1DTLB_SCN_ABORT` explicitly drives abort+hit; `cp_l1dtlb_c009_abort_hit` and spec-SB `abort_hit` gate observe it. |
@@ -155,7 +155,7 @@ name.
 | L1DTLB_TS_CTRL_RESET_STATE | partial | reset assertions/SB; exception CAM reset direct visibility absent. |
 | L1DTLB_TS_MB_DUAL_SAME_4K_DEDUP | implemented | same-4K dedup SVA/cover, `L1DTLB_SCN_DUAL_MISS_SAME`. |
 | L1DTLB_TS_MB_DUAL_DIFF_4K_TWO_FREE | partial | dual-diff allocation SVA/cover; lowest-free exactness partial. |
-| L1DTLB_TS_MB_DUAL_DIFF_4K_ONE_FREE_AGE | partial | one-free cover; IID-age split not implemented. |
+| L1DTLB_TS_MB_DUAL_DIFF_4K_ONE_FREE_AGE | partial | `DTLB_ALLOC_RACE_001` now drives one-free dual-diff p0-older and p1-older subcases with spec-SB gates; exact winner proof remains partial. |
 | L1DTLB_TS_MB_FULL_DROP_RETRY | implemented | MB full no-alloc SVA/cover and scenario. |
 | L1DTLB_TS_MB_CAM_HIT_NO_ALLOC | implemented | top CAM hit no-alloc SVA. |
 | L1DTLB_TS_MB_4K_DEDUP_FOR_HUGE_FINAL | partial | huge scenario exists; MB full 4K key under huge final not isolated. |
@@ -168,17 +168,17 @@ name.
 | L1DTLB_TS_SCHED_OLD_MB_PRIORITY | implemented | scheduler priority assertion and cover. |
 | L1DTLB_TS_SCHED_BYPASS_ALLOC_ISSUE | implemented | scheduler bypass assertions, MB issue assertion. |
 | L1DTLB_TS_SCHED_L2_REQ_PAYLOAD | implemented | scheduler/top payload assertions. |
-| L1DTLB_TS_SCHED_STORE_TYPE_PROP | partial | L2 store/load payload asserted; PTW/PMP type propagation partial. |
-| L1DTLB_TS_FAULT_RESPONSE_TIMING | partial | translation SB handles timing; no full tokenized SVA. |
-| L1DTLB_TS_FAULT_LOAD_R0 | partial | permission scenario and translation SB. |
-| L1DTLB_TS_FAULT_LOAD_MXR | partial | MXR directed stimulus exists in permission scenario. |
-| L1DTLB_TS_FAULT_STORE_W_D | partial | store permission stimulus exists; D-bit writeback negative remains SB/docs. |
-| L1DTLB_TS_FAULT_AD_US_SUM | partial | A/D/U/S/SUM coverage partial. |
-| L1DTLB_TS_FAULT_PF_BLOCKS_PMP | partial | page fault pa_vld SVA and SB; PMP token absence partial. |
-| L1DTLB_TS_FAULT_OVERLAP_PIPE | partial | overlap cover exists; dedicated stimulus/check still partial. |
-| L1DTLB_TS_FAULT_PMP_ACCESS | partial | PMP tests/SB; T1 payload ownership partial. |
-| L1DTLB_TS_MODE_DIRECT_MAP | partial | direct-map SVA/cover; MPRV split pending. |
-| L1DTLB_TS_MODE_STAMO_PIPE1 | partial | STAMO SVA/cover; full attr/source check partial. |
+| L1DTLB_TS_SCHED_STORE_TYPE_PROP | partial | `DTLB_TYPE_PROP_LOAD_STORE_AMO_001` drives load and store misses and spec-SB gates L2 `is_load` split; PTW/PMP/AMO-specific type propagation remains partial. |
+| L1DTLB_TS_FAULT_RESPONSE_TIMING | partial | translation SB handles timing; spec-SB now checks page-fault T0 and access-fault T1 ownership counters. No full tokenized SVA. |
+| L1DTLB_TS_FAULT_LOAD_R0 | partial | `DTLB_PERM_LD_001` maps R=0/X=0 and gates load page-fault + pa_vld ownership; full permission truth-table remains partial. |
+| L1DTLB_TS_FAULT_LOAD_MXR | partial | `DTLB_PERM_LD_002` drives MXR=0 X-only load fault and MXR=1 X-only load pass/hit evidence; full MXR cross coverage remains partial. |
+| L1DTLB_TS_FAULT_STORE_W_D | partial | `DTLB_PERM_ST_001/002` drive W=0 and D=0 store cases; ref model and spec-SB now gate store W=0 and D=0 page-fault ownership separately. D-bit no-writeback/trap-only closure remains partial. |
+| L1DTLB_TS_FAULT_AD_US_SUM | partial | `DTLB_FAULT_AD_US_SUM_001` now drives A=0 load fault, S-mode U-page SUM=0 fault, SUM=1 pass/hit evidence, and U-mode U=0 fault with spec-SB gates. Full A/D/U/S/SUM truth-table remains partial. |
+| L1DTLB_TS_FAULT_PF_BLOCKS_PMP | partial | `DTLB_PF_BLOCKS_PMP_001` now drives page fault while PMP denies data access and gates page-fault-without-access-fault evidence; direct PMP token absence is still partial. |
+| L1DTLB_TS_FAULT_OVERLAP_PIPE | partial | overlap cover exists; `DTLB_FAULT_OVERLAP_PIPE_001` now creates expt page-fault replay plus PMP-denied hit traffic, but exact overlap remains regression-dependent. |
+| L1DTLB_TS_FAULT_PMP_ACCESS | partial | `DTLB_PMP_001`/`DTLB_ACCESS_FAULT_T1_PAIRING_001` drive PMP deny and spec-SB access-fault T1 owner gates; translation SB waives only modeled LSU PMP-deny T0 PA responses so the T1 checker owns this path. Full T1 payload ownership remains partial. |
+| L1DTLB_TS_MODE_DIRECT_MAP | partial | direct-map SVA/cover plus `DTLB_SYSMAP_001` no-new-miss/no-MB side-effect gate; full attr/sysmap and MPRV split closure remain partial. |
+| L1DTLB_TS_MODE_STAMO_PIPE1 | partial | `DTLB_STAMO_PIPE1_BYPASS_001` drives pipe1 STAMO+hit and spec-SB gates PA source; full attr/source check remains partial. |
 | L1DTLB_TS_MODE_STAMO_PIPE0_NEG | implemented | pipe0 no-bypass SVA. |
 | L1DTLB_TS_INSTALL_ARB_WFI_PTW_L2 | implemented | install priority assertions and cover. |
 | L1DTLB_TS_INSTALL_MULTI_WFI_LOWEST | implemented | lowest-WFI install assertion. |
@@ -199,7 +199,7 @@ name.
 | L1DTLB_TS_FLUSH_MB_RACE_MATRIX | implemented | mb_entry race assertions and cover. |
 | L1DTLB_TS_PLRU_WHITEBOX_ONLY | implemented | PLRU onehot/update assertions and cover. |
 | L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY | partial | translation SB + spec SB + SVA; legal no-response taxonomy now records core observable reasons, but transaction-level reason annotation remains pending. |
-| L1DTLB_TS_OBS_LEGAL_NO_RESPONSE | partial | abort/CAM/full/flush/busy/priority negative checks plus spec-SB reason counters exist; transaction-level reason annotation remains pending. |
+| L1DTLB_TS_OBS_LEGAL_NO_RESPONSE | partial | abort/CAM/full/flush/busy/priority negative checks plus spec-SB reason counters exist; one-free priority-drop and token side-effect counters were expanded, but full transaction-level reason annotation remains partial. |
 | L1DTLB_TS_OBS_HPC_MISS_EVENT | implemented | HPC miss event assertion and cover. |
 | L1DTLB_TS_OBS_WRAPPER_RETARGET | implemented | phase9 retarget and 71 wrapper suite. |
 | L1DTLB_TS_OBS_SVA_COVER_CLOSURE | partial | C-cover points expanded; closure requires regression results. |

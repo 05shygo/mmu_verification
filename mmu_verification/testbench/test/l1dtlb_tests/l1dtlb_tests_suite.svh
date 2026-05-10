@@ -63,6 +63,7 @@
 `include "test_mmu_l1dtlb_dtlb_fault_overlap_pipe_001.svh"
 `include "test_mmu_l1dtlb_dtlb_pa_vld_terminal_001.svh"
 `include "test_mmu_l1dtlb_dtlb_pf_blocks_pmp_001.svh"
+`include "test_mmu_l1dtlb_dtlb_fault_ad_us_sum_001.svh"
 `include "test_mmu_l1dtlb_dtlb_access_fault_t1_pairing_001.svh"
 `include "test_mmu_l1dtlb_dtlb_type_prop_load_store_amo_001.svh"
 `include "test_mmu_l1dtlb_dtlb_entry_field_model_001.svh"

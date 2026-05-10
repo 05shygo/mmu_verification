@@ -328,6 +328,48 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(8);
   endtask
 
+  protected task wait_pipe0_terminal(
+    string ctx,
+    bit expect_success,
+    output bit success,
+    int unsigned max_cycles = 524288,
+    bit flush_on_timeout = 1'b1
+  );
+    bit seen;
+    bit pa_vld;
+    bit page_fault;
+    bit access_fault;
+
+    seen = 1'b0;
+    success = 1'b0;
+    for (int unsigned i = 0; i < max_cycles; i++) begin
+      @(m_lsu_vif.monitor_cb);
+      pa_vld       = m_lsu_vif.monitor_cb.mmu_lsu_pa0_vld;
+      page_fault   = m_lsu_vif.monitor_cb.mmu_lsu_page_fault0;
+      access_fault = m_lsu_vif.monitor_cb.mmu_lsu_access_fault0;
+      if (pa_vld || page_fault || access_fault) begin
+        seen = 1'b1;
+        success = pa_vld && !page_fault && !access_fault;
+        if (expect_success && !success) begin
+          `uvm_error(get_type_name(),
+            $sformatf("%s: expected successful pipe0 terminal response, got pa_vld=%0b page_fault=%0b access_fault=%0b",
+              ctx, pa_vld, page_fault, access_fault))
+        end
+        return;
+      end
+    end
+
+    if (!seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: timed out waiting for pipe0 terminal response after %0d cycles",
+          ctx, max_cycles))
+      if (flush_on_timeout) begin
+        send_rtu_flush();
+        wait_lsu_cycles(32);
+      end
+    end
+  endtask
+
   protected task configure_ptw_delay(int unsigned min_delay, int unsigned max_delay, int unsigned err_permille = 0);
     if ((m_env_h != null) && (m_env_h.m_ptw_mem != null) && (m_env_h.m_ptw_mem.m_responder != null)) begin
       m_env_h.m_ptw_mem.m_responder.m_rsp_delay_min = min_delay;
@@ -862,6 +904,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       send_lsu_item(LSU_PIPE1, va_page(34), 7'd5, 1'b1);
       send_lsu_item(LSU_PIPE1, va_page(35), 7'd6, 1'b1);
     end else if (tc_id == "DTLB_FAULT_AD_US_SUM_001") begin
+      bit sum1_pass_ok;
+      bit sum1_hit_ok;
       map_special_page(48, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0);
       map_special_page(49, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b1);
       map_special_page(50, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b1);
@@ -874,9 +918,13 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_sum0_fault", 524288, 8);
       set_mxr_sum(1'b0, 1'b1);
       send_lsu_item(LSU_PIPE0, va_page(50), 7'd21, 1'b0);
-      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_sum1_pass_fill", 524288, 8);
-      raw_pipe0(va_page(50), 7'd21, 1'b0);
-      wait_lsu_cycles(12);
+      wait_pipe0_terminal("l1dtlb_perm_sum1_pass", 1'b1, sum1_pass_ok);
+      if (sum1_pass_ok) begin
+        m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_sum1_pass_fill", 524288, 8);
+        raw_pipe0(va_page(50), 7'd21, 1'b0);
+        wait_pipe0_terminal("l1dtlb_perm_sum1_hit", 1'b1, sum1_hit_ok, 4096, 1'b0);
+        wait_lsu_cycles(12);
+      end
       set_priv(2'b00);
       set_mxr_sum(1'b0, 1'b0);
       send_lsu_item(LSU_PIPE0, va_page(51), 7'd22, 1'b0);

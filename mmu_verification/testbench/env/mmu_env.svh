@@ -106,6 +106,8 @@ class mmu_env extends uvm_env;
               credit_snapshot))
           if (m_credit_sb != null)
             m_credit_sb.print_timeout_debug(ctx);
+          if ((m_ptw_mem != null) && (m_ptw_mem.m_responder != null))
+            m_ptw_mem.m_responder.print_timeout_debug(ctx);
           break;
         end
       end

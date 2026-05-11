@@ -45,6 +45,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   mmu_env        m_env_h;
   virtual lsu_if m_lsu_vif;
   virtual mmu_dut_probes_if m_probe_vif;
+  bit            m_terminal_timeout_seen;
 
   va_t m_va_base;
   ppn_t m_root_ppn;
@@ -360,7 +361,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     end
 
     if (!seen) begin
-      `uvm_error(get_type_name(),
+      m_terminal_timeout_seen = 1'b1;
+      `uvm_error("L1DTLB_TERMINAL_TIMEOUT",
         $sformatf("%s: timed out waiting for pipe0 terminal response after %0d cycles",
           ctx, max_cycles))
       if (flush_on_timeout) begin
@@ -916,6 +918,11 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_a0_fault", 524288, 8);
       send_lsu_item(LSU_PIPE0, va_page(49), 7'd20, 1'b0);
       m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_sum0_fault", 524288, 8);
+      set_priv(2'b00);
+      set_mxr_sum(1'b0, 1'b0);
+      send_lsu_item(LSU_PIPE0, va_page(51), 7'd22, 1'b0);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_user_u0_fault", 524288, 8);
+      set_priv(2'b01);
       set_mxr_sum(1'b0, 1'b1);
       send_lsu_item(LSU_PIPE0, va_page(50), 7'd21, 1'b0);
       wait_pipe0_terminal("l1dtlb_perm_sum1_pass", 1'b1, sum1_pass_ok);
@@ -925,11 +932,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         wait_pipe0_terminal("l1dtlb_perm_sum1_hit", 1'b1, sum1_hit_ok, 4096, 1'b0);
         wait_lsu_cycles(12);
       end
-      set_priv(2'b00);
       set_mxr_sum(1'b0, 1'b0);
-      send_lsu_item(LSU_PIPE0, va_page(51), 7'd22, 1'b0);
-      m_env_h.wait_for_quiescent_midtest("l1dtlb_perm_user_u0_fault", 524288, 8);
-      set_priv(2'b01);
     end else if (tc_id == "DTLB_TYPE_PROP_LOAD_STORE_AMO_001") begin
       send_lsu_item(LSU_PIPE0, va_page(36), 7'd8, 1'b0);
       send_lsu_item(LSU_PIPE1, va_page(37), 7'd9, 1'b1);
@@ -1302,6 +1305,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     bit decoded_shell;
     m_env_h = get_env();
     m_lsu_vif = m_env_h.m_lsu.vif;
+    m_terminal_timeout_seen = 1'b0;
     if (m_lsu_vif == null)
       `uvm_fatal(get_type_name(), "LSU VIF is null")
     if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(null, "*", "MMU_DUT_PROBES_VIF", m_probe_vif))
@@ -1386,7 +1390,13 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
     raw_idle();
     configure_ptw_delay(1, 4);
-    m_env_h.wait_for_quiescent_midtest({tc_id, "_l1dtlb_final"}, 524288, 16);
+    if (!m_terminal_timeout_seen) begin
+      m_env_h.wait_for_quiescent_midtest({tc_id, "_l1dtlb_final"}, 524288, 16);
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: final quiesce skipped after terminal timeout; root failure already reported", tc_id),
+        UVM_LOW)
+    end
     wait_lsu_cycles(40);
   endtask
 

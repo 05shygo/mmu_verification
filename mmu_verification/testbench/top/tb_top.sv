@@ -628,6 +628,111 @@ module tb_top;
   assign lsu_if_inst.mmu_lsu_dtlb_expt_match0 = u_dut.u_mmu_l1dtlb.expt_match0;
   assign lsu_if_inst.mmu_lsu_dtlb_expt_match1 = u_dut.u_mmu_l1dtlb.expt_match1;
 
+  // PTW chain diagnostic only: samples internal state without changing DUT behavior.
+  always @(posedge forever_cpuclk) begin
+    if (cpurst_b) begin
+      if (ptw_mem_if_inst.lsu_mmu_data_vld
+          || ptw_mem_if_inst.lsu_mmu_bus_error
+          || u_dut.tlboper_ptw_abort
+          || u_dut.x_ct_mmu_ptw.abort_flop
+          || (|u_dut.x_ct_mmu_ptw.u_ptw_mbuf.write_back_req)
+          || (|u_dut.x_ct_mmu_ptw.u_ptw_mbuf.write_back_grant)
+          || (|u_dut.x_ct_mmu_ptw.mbuf_twu_data_vld)
+          || (|u_dut.x_ct_mmu_ptw.twu_mbuf_req)
+          || (|u_dut.x_ct_mmu_ptw.twu_arb_ref_req)
+          || u_dut.x_ct_mmu_ptw.pgflt_vld
+          || u_dut.x_ct_mmu_ptw.acc_err_vld) begin
+        $display({"[PTW_CHAIN_DBG][MBUF] t=%0t abort=%0b abort_flop=%0b ",
+                  "lsu_vld=%0b buserr=%0b data=0x%016h req=%0b req_addr=0x%010h grant=0x%03h ",
+                  "entry_vld=0x%03h entry_on=0x%03h entry_get=0x%03h wb_req=0x%03h wb_grant=0x%03h ",
+                  "data_vld=0x%0h data_ready=%h twu_idx=0x%0h twu_lvl=0x%0h twu_vpn=0x%07h ",
+                  "twu_type=0x%0h twu_id=0x%02h twu_data=0x%016h twu_mbuf_req=0x%0h ",
+                  "twu_mbuf_paddr={0x%010h,0x%010h,0x%010h,0x%010h} fault{pg=%0b acc=%0b ref=0x%0h}"},
+          $time,
+          u_dut.tlboper_ptw_abort,
+          u_dut.x_ct_mmu_ptw.abort_flop,
+          ptw_mem_if_inst.lsu_mmu_data_vld,
+          ptw_mem_if_inst.lsu_mmu_bus_error,
+          ptw_mem_if_inst.lsu_mmu_data,
+          u_dut.x_ct_mmu_ptw.mmu_lsu_data_req,
+          u_dut.x_ct_mmu_ptw.mmu_lsu_data_req_addr,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_on,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_get,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.write_back_req,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.write_back_grant,
+          u_dut.x_ct_mmu_ptw.mbuf_twu_data_vld,
+          u_dut.x_ct_mmu_ptw.twu_data_ready,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_twu_idx,
+          u_dut.x_ct_mmu_ptw.mbuf_twu_lvl,
+          u_dut.x_ct_mmu_ptw.mbuf_twu_vpn,
+          u_dut.x_ct_mmu_ptw.mbuf_twu_type,
+          u_dut.x_ct_mmu_ptw.mbuf_twu_id,
+          u_dut.x_ct_mmu_ptw.mbuf_twu_data,
+          u_dut.x_ct_mmu_ptw.twu_mbuf_req,
+          u_dut.x_ct_mmu_ptw.twu_mbuf_paddr[3],
+          u_dut.x_ct_mmu_ptw.twu_mbuf_paddr[2],
+          u_dut.x_ct_mmu_ptw.twu_mbuf_paddr[1],
+          u_dut.x_ct_mmu_ptw.twu_mbuf_paddr[0],
+          u_dut.x_ct_mmu_ptw.pgflt_vld,
+          u_dut.x_ct_mmu_ptw.acc_err_vld,
+          u_dut.x_ct_mmu_ptw.twu_arb_ref_req);
+        $display({"[PTW_CHAIN_DBG][TWU] t=%0t abort=%0b ",
+                  "fst_vld=0x%0h fst_wait=0x%0h fst_leaf=0x%0h fst_pf=0x%0h ",
+                  "fst_data={0x%016h,0x%016h,0x%016h,0x%016h} ",
+                  "scd_vld=0x%0h scd_wait=0x%0h scd_req=0x%0h scd_deny=0x%0h scd_grant=0x%0h ",
+                  "scd_pa={0x%010h,0x%010h,0x%010h,0x%010h}"},
+          $time,
+          u_dut.tlboper_ptw_abort,
+          {u_dut.x_ct_mmu_ptw.twu_four.fst_chk_vld,
+           u_dut.x_ct_mmu_ptw.twu_three.fst_chk_vld,
+           u_dut.x_ct_mmu_ptw.twu_two.fst_chk_vld,
+           u_dut.x_ct_mmu_ptw.twu_one.fst_chk_vld},
+          {u_dut.x_ct_mmu_ptw.twu_four.fst_chk_wait,
+           u_dut.x_ct_mmu_ptw.twu_three.fst_chk_wait,
+           u_dut.x_ct_mmu_ptw.twu_two.fst_chk_wait,
+           u_dut.x_ct_mmu_ptw.twu_one.fst_chk_wait},
+          {u_dut.x_ct_mmu_ptw.twu_four.fst_chk_leaf_vld,
+           u_dut.x_ct_mmu_ptw.twu_three.fst_chk_leaf_vld,
+           u_dut.x_ct_mmu_ptw.twu_two.fst_chk_leaf_vld,
+           u_dut.x_ct_mmu_ptw.twu_one.fst_chk_leaf_vld},
+          {u_dut.x_ct_mmu_ptw.twu_four.fst_chk_page_flt,
+           u_dut.x_ct_mmu_ptw.twu_three.fst_chk_page_flt,
+           u_dut.x_ct_mmu_ptw.twu_two.fst_chk_page_flt,
+           u_dut.x_ct_mmu_ptw.twu_one.fst_chk_page_flt},
+          u_dut.x_ct_mmu_ptw.twu_four.fst_chk_data,
+          u_dut.x_ct_mmu_ptw.twu_three.fst_chk_data,
+          u_dut.x_ct_mmu_ptw.twu_two.fst_chk_data,
+          u_dut.x_ct_mmu_ptw.twu_one.fst_chk_data,
+          {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_vld,
+           u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_vld,
+           u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_vld,
+           u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vld},
+          {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_wait,
+           u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_wait,
+           u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_wait,
+           u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_wait},
+          {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_mbuf_req,
+           u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_mbuf_req,
+           u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_mbuf_req,
+           u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_mbuf_req},
+          {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_deny,
+           u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_deny,
+           u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_deny,
+           u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_deny},
+          {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_grant,
+           u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_grant,
+           u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_grant,
+           u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_grant},
+          u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_pa,
+          u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_pa,
+          u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_pa,
+          u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_pa);
+      end
+    end
+  end
+
   //=========================================================================
   // UVM Config DB — Publish Virtual Interfaces
   //=========================================================================

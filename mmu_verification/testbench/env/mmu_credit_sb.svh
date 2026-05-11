@@ -104,7 +104,20 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected logic [5:0] m_snap_l2mb_issue_eid;
   protected logic [2:0] m_snap_l2mb_issue_type;
   protected logic       m_snap_l2mb_alloc_valid;
+  protected logic [8:0][26:0] m_snap_l2mb_entry_vpn;
+  protected logic [8:0][2:0]  m_snap_l2mb_entry_l1eid;
+  protected logic [8:0][2:0]  m_snap_l2mb_entry_type;
+  protected logic [8:0][2:0]  m_snap_l2mb_entry_queue_id;
+  protected logic [8:0]       m_snap_l2mb_entry_sent;
   protected logic [7:0] m_snap_l1d_mb_vld;
+  protected logic [7:0][2:0]  m_snap_l1d_mb_state;
+  protected logic [7:0][26:0] m_snap_l1d_mb_vpn;
+  protected logic [7:0][6:0]  m_snap_l1d_mb_iid;
+  protected logic [7:0]       m_snap_l1d_mb_issued;
+  protected logic [7:0]       m_snap_l1d_mb_ready;
+  protected logic [7:0]       m_snap_l1d_mb_wfc;
+  protected logic [7:0]       m_snap_l1d_mb_wfi;
+  protected logic [7:0]       m_snap_l1d_mb_store;
   protected logic       m_snap_l2_final_vld;
   protected logic       m_snap_l2_miss;
   protected logic       m_snap_l2_dtlb_ref_pavld;
@@ -466,6 +479,12 @@ class mmu_credit_sb extends uvm_scoreboard;
     return m_last_drain_timed_out;
   endfunction
 
+  virtual function string pending_snapshot();
+    if (v_probe != null)
+      m_ptw_snap_valid = 1'b0;
+    return _ptw_pending_snapshot();
+  endfunction
+
   virtual function void print_timeout_debug(string ctx = "timeout");
     if (v_probe != null)
       m_ptw_snap_valid = 1'b0;
@@ -573,7 +592,20 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_snap_l2mb_issue_eid         = v_probe.l2mb_issue_eid;
     m_snap_l2mb_issue_type        = v_probe.l2mb_issue_type;
     m_snap_l2mb_alloc_valid       = v_probe.l2mb_alloc_valid;
+    m_snap_l2mb_entry_vpn         = v_probe.l2mb_entry_vpn;
+    m_snap_l2mb_entry_l1eid       = v_probe.l2mb_entry_l1eid;
+    m_snap_l2mb_entry_type        = v_probe.l2mb_entry_type;
+    m_snap_l2mb_entry_queue_id    = v_probe.l2mb_entry_queue_id;
+    m_snap_l2mb_entry_sent        = v_probe.l2mb_entry_sent;
     m_snap_l1d_mb_vld             = v_probe.l1d_mb_vld;
+    m_snap_l1d_mb_state           = v_probe.l1d_mb_state;
+    m_snap_l1d_mb_vpn             = v_probe.l1d_mb_vpn;
+    m_snap_l1d_mb_iid             = v_probe.l1d_mb_iid;
+    m_snap_l1d_mb_issued          = v_probe.l1d_mb_issued;
+    m_snap_l1d_mb_ready           = v_probe.l1d_mb_ready;
+    m_snap_l1d_mb_wfc             = v_probe.l1d_mb_wfc;
+    m_snap_l1d_mb_wfi             = v_probe.l1d_mb_wfi;
+    m_snap_l1d_mb_store           = v_probe.l1d_mb_store;
     m_snap_l2_final_vld           = v_probe.l2_final_vld;
     m_snap_l2_miss                = v_probe.l2_miss;
     m_snap_l2_dtlb_ref_pavld      = v_probe.l2_dtlb_ref_pavld;
@@ -625,6 +657,7 @@ class mmu_credit_sb extends uvm_scoreboard;
 
       return (m_snap_l2_reqq_vld_vec        !== 9'b0)
           || (m_snap_l1d_mb_vld             !== 8'b0)
+          || (m_snap_l2mb_vld_vec           !== 9'b0)
           || (m_snap_l2_final_vld           === 1'b1)
           || (m_snap_l2_miss                === 1'b1)
           || (m_snap_l2_dtlb_ref_pavld      === 1'b1)
@@ -661,6 +694,7 @@ class mmu_credit_sb extends uvm_scoreboard;
 
     return (v_probe.l2_reqq_vld_vec     !== 9'b0)
         || (v_probe.l1d_mb_vld          !== 8'b0)
+        || (v_probe.l2mb_vld_vec        !== 9'b0)
         || (v_probe.l2_final_vld        === 1'b1)
         || (v_probe.l2_miss             === 1'b1)
         || (v_probe.l2_dtlb_ref_pavld   === 1'b1)
@@ -690,10 +724,110 @@ class mmu_credit_sb extends uvm_scoreboard;
     return _ptw_drain_pending();
   endfunction
 
+  protected function string _l1d_mb_detail_snapshot();
+    string s;
+    s = "";
+    for (int i = 0; i < 8; i++) begin
+      if (m_snap_l1d_mb_vld[i]) begin
+        s = {s, $sformatf(
+          " e%0d{state=%0d ready=%0b sent=%0b wfc=%0b wfi=%0b store=%0b iid=0x%02h vpn=0x%07h}",
+          i,
+          m_snap_l1d_mb_state[i],
+          m_snap_l1d_mb_ready[i],
+          m_snap_l1d_mb_issued[i],
+          m_snap_l1d_mb_wfc[i],
+          m_snap_l1d_mb_wfi[i],
+          m_snap_l1d_mb_store[i],
+          m_snap_l1d_mb_iid[i],
+          m_snap_l1d_mb_vpn[i])};
+      end
+    end
+    if (s == "")
+      s = " none";
+    return {"l1d_detail={", s, " }"};
+  endfunction
+
+  protected function string _l1d_mb_detail_raw();
+    string s;
+    if (v_probe == null)
+      return "l1d_detail={ v_probe=null }";
+    s = "";
+    for (int i = 0; i < 8; i++) begin
+      if (v_probe.l1d_mb_vld[i]) begin
+        s = {s, $sformatf(
+          " e%0d{state=%0d ready=%0b sent=%0b wfc=%0b wfi=%0b store=%0b iid=0x%02h vpn=0x%07h}",
+          i,
+          v_probe.l1d_mb_state[i],
+          v_probe.l1d_mb_ready[i],
+          v_probe.l1d_mb_issued[i],
+          v_probe.l1d_mb_wfc[i],
+          v_probe.l1d_mb_wfi[i],
+          v_probe.l1d_mb_store[i],
+          v_probe.l1d_mb_iid[i],
+          v_probe.l1d_mb_vpn[i])};
+      end
+    end
+    if (s == "")
+      s = " none";
+    return {"l1d_detail={", s, " }"};
+  endfunction
+
+  protected function string _l2mb_detail_snapshot();
+    string s;
+    string state;
+    s = "";
+    for (int i = 0; i < 9; i++) begin
+      if (m_snap_l2mb_vld_vec[i]) begin
+        state = m_snap_l2mb_entry_sent[i] ? "SENT" :
+                m_snap_l2mb_rdy_vec[i]   ? "READY" : "HELD";
+        s = {s, $sformatf(
+          " e%0d{state=%s ready=%0b sent=%0b type=0x%0h l1eid=0x%0h qid=0x%0h vpn=0x%07h}",
+          i,
+          state,
+          m_snap_l2mb_rdy_vec[i],
+          m_snap_l2mb_entry_sent[i],
+          m_snap_l2mb_entry_type[i],
+          m_snap_l2mb_entry_l1eid[i],
+          m_snap_l2mb_entry_queue_id[i],
+          m_snap_l2mb_entry_vpn[i])};
+      end
+    end
+    if (s == "")
+      s = " none";
+    return {"l2mb_detail={", s, " }"};
+  endfunction
+
+  protected function string _l2mb_detail_raw();
+    string s;
+    string state;
+    if (v_probe == null)
+      return "l2mb_detail={ v_probe=null }";
+    s = "";
+    for (int i = 0; i < 9; i++) begin
+      if (v_probe.l2mb_vld_vec[i]) begin
+        state = v_probe.l2mb_entry_sent[i] ? "SENT" :
+                v_probe.l2mb_rdy_vec[i]   ? "READY" : "HELD";
+        s = {s, $sformatf(
+          " e%0d{state=%s ready=%0b sent=%0b type=0x%0h l1eid=0x%0h qid=0x%0h vpn=0x%07h}",
+          i,
+          state,
+          v_probe.l2mb_rdy_vec[i],
+          v_probe.l2mb_entry_sent[i],
+          v_probe.l2mb_entry_type[i],
+          v_probe.l2mb_entry_l1eid[i],
+          v_probe.l2mb_entry_queue_id[i],
+          v_probe.l2mb_entry_vpn[i])};
+      end
+    end
+    if (s == "")
+      s = " none";
+    return {"l2mb_detail={", s, " }"};
+  endfunction
+
   protected function string _ptw_pending_snapshot();
     if (m_ptw_snap_valid) begin
       return $sformatf(
-        "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=settled",
+        "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b %s %s sample=settled",
         m_ptw_mbuf_cnt,
         m_snap_l1d_mb_vld,
         m_snap_l2_reqq_vld_vec,
@@ -723,13 +857,15 @@ class mmu_credit_sb extends uvm_scoreboard;
         m_snap_ptw_twu_ref_req,
         m_snap_ptw_arb_req,
         m_snap_arb_ptw_grant,
-        m_snap_arb_l2tlb_req);
+        m_snap_arb_l2tlb_req,
+        _l1d_mb_detail_snapshot(),
+        _l2mb_detail_snapshot());
     end
 
     if (v_probe == null)
       return $sformatf("ptw_mbuf_cnt=%0d v_probe=null", m_ptw_mbuf_cnt);
     return $sformatf(
-      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b sample=raw",
+      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b %s %s sample=raw",
       m_ptw_mbuf_cnt,
       v_probe.l1d_mb_vld,
       v_probe.l2_reqq_vld_vec,
@@ -759,7 +895,9 @@ class mmu_credit_sb extends uvm_scoreboard;
       v_probe.ptw_twu_ref_req,
       v_probe.ptw_arb_req,
       v_probe.arb_ptw_grant,
-      v_probe.arb_l2tlb_req);
+      v_probe.arb_l2tlb_req,
+      _l1d_mb_detail_raw(),
+      _l2mb_detail_raw());
   endfunction
 
   // ── Inline bound checks ───────────────────────────────────────────────────

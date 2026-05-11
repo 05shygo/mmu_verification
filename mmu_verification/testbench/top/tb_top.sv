@@ -296,6 +296,7 @@ module tb_top;
   assign dut_probes_if.l1d_mb_state      = u_dut.u_mmu_l1dtlb.mb_entry_state;
   assign dut_probes_if.l1d_mb_vpn        = u_dut.u_mmu_l1dtlb.mb_entry_vpn;
   assign dut_probes_if.l1d_mb_iid        = u_dut.u_mmu_l1dtlb.mb_entry_iid;
+  assign dut_probes_if.l1d_mb_issued     = u_dut.u_mmu_l1dtlb.mb_entry_issued;
   assign dut_probes_if.l1d_mb_ready      = u_dut.u_mmu_l1dtlb.mb_entry_ready;
   assign dut_probes_if.l1d_mb_wfc        = u_dut.u_mmu_l1dtlb.mb_entry_wfc;
   assign dut_probes_if.l1d_mb_wfi        = u_dut.u_mmu_l1dtlb.mb_entry_wfi;
@@ -384,6 +385,21 @@ module tb_top;
   assign dut_probes_if.l2mb_issue_eid    = u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_eid;
   assign dut_probes_if.l2mb_issue_type   = u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_type;
   assign dut_probes_if.l2mb_alloc_valid  = u_dut.x_mmu_l2tlb.mb_alloc_valid;
+  genvar tb_l2mb_i;
+  generate
+    for (tb_l2mb_i = 0; tb_l2mb_i < 9; tb_l2mb_i++) begin : gen_l2mb_probe_assign
+      assign dut_probes_if.l2mb_entry_vpn[tb_l2mb_i] =
+          u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_out_vpn[tb_l2mb_i];
+      assign dut_probes_if.l2mb_entry_l1eid[tb_l2mb_i] =
+          u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_out_l1eid[tb_l2mb_i];
+      assign dut_probes_if.l2mb_entry_type[tb_l2mb_i] =
+          u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_out_type[tb_l2mb_i];
+      assign dut_probes_if.l2mb_entry_queue_id[tb_l2mb_i] =
+          u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_out_queue_id[tb_l2mb_i];
+      assign dut_probes_if.l2mb_entry_sent[tb_l2mb_i] =
+          u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[tb_l2mb_i].x_mb_entry.r_sent;
+    end
+  endgenerate
   assign dut_probes_if.ptw_xbar_hit_lvl = u_dut.x_ct_mmu_ptw.xbar_twu_hit_level;
   assign dut_probes_if.ptw_mbuf_twu_lvl  = u_dut.x_ct_mmu_ptw.mbuf_twu_lvl;
   assign dut_probes_if.ptw_fault_any     = u_dut.x_ct_mmu_ptw.pgflt_vld

@@ -90,14 +90,22 @@ class mmu_env extends uvm_env;
     // Without this check, subsequent requests see a non-empty exception array.
     if ((m_lsu != null) && (m_lsu.m_driver != null)) begin
       int unsigned busy_wait_cycles;
+      string credit_snapshot;
       busy_wait_cycles = 0;
       while (m_lsu.m_driver.vif.driver_cb.mmu_lsu_tlb_busy === 1'b1) begin
         @(m_lsu.m_driver.vif.driver_cb);
         busy_wait_cycles++;
         if (busy_wait_cycles >= max_cycles) begin
+          credit_snapshot = (m_credit_sb != null)
+                            ? m_credit_sb.pending_snapshot()
+                            : "credit_sb=null";
           `uvm_error(get_type_name(),
-            $sformatf("TLB busy did not clear before %s after %0d cycles (page fault/access fault replay pending in exception array)",
-              ctx, busy_wait_cycles))
+            $sformatf("TLB busy did not clear before %s after %0d cycles: %s",
+              ctx,
+              busy_wait_cycles,
+              credit_snapshot))
+          if (m_credit_sb != null)
+            m_credit_sb.print_timeout_debug(ctx);
           break;
         end
       end

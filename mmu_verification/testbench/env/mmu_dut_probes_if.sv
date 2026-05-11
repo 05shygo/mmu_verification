@@ -24,6 +24,7 @@ interface mmu_dut_probes_if (
   wire [7:0][2:0]  l1d_mb_state;
   wire [7:0][26:0] l1d_mb_vpn;
   wire [7:0][6:0]  l1d_mb_iid;
+  wire [7:0]   l1d_mb_issued;
   wire [7:0]   l1d_mb_ready;
   wire [7:0]   l1d_mb_wfc;
   wire [7:0]   l1d_mb_wfi;
@@ -118,6 +119,11 @@ interface mmu_dut_probes_if (
   wire [5:0]   l2mb_issue_eid;
   wire [2:0]   l2mb_issue_type;
   wire         l2mb_alloc_valid;
+  wire [8:0][26:0] l2mb_entry_vpn;
+  wire [8:0][2:0]  l2mb_entry_l1eid;
+  wire [8:0][2:0]  l2mb_entry_type;
+  wire [8:0][2:0]  l2mb_entry_queue_id;
+  wire [8:0]        l2mb_entry_sent;
 
   // ptw
   wire [1:0]   ptw_xbar_hit_lvl;
@@ -202,6 +208,7 @@ interface mmu_dut_probes_if (
     input l1i_entry_vld, l1i_ref_fsm, l1i_credit_cnt;
     input l1d_mb_vld, l1d_mb_st0;
     input l1d_entry_vld, l1d_entry_vpn, l1d_mb_state, l1d_mb_vpn, l1d_mb_iid;
+    input l1d_mb_issued;
     input l1d_mb_ready, l1d_mb_wfc, l1d_mb_wfi, l1d_mb_store;
     input l1d_sched_credit_cnt, l1d_l2_req_vld, l1d_l2_req_vpn;
     input l1d_l2_req_eid, l1d_l2_req_is_load;
@@ -223,6 +230,7 @@ interface mmu_dut_probes_if (
     input l2_dtlb_ref_pavld, l2_dtlb_ref_cmplt, l2_dtlb_ref_vpn, l2_dtlb_ref_ppn;
     input l2_reqq_vld_vec, l2_reqq_rdy_vec, l2_reqq_qid, l2_reqq_issue_valid, l2_reqq_issue_type;
     input l2mb_vld_vec, l2mb_rdy_vec, l2mb_issue_req, l2mb_issue_eid, l2mb_issue_type, l2mb_alloc_valid;
+    input l2mb_entry_vpn, l2mb_entry_l1eid, l2mb_entry_type, l2mb_entry_queue_id, l2mb_entry_sent;
     input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any;
     input ptw_jtlb_ready, ptw_twu_idle, ptw_twu_mask, ptw_twu_data_ready;
     input ptw_mbuf_twu_have, ptw_mbuf_entry_vld;

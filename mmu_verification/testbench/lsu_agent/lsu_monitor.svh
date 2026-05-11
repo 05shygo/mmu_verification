@@ -96,6 +96,16 @@ class lsu_monitor extends uvm_monitor;
     tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match1;
   endfunction
 
+  protected function bit _pipe0_t0_terminal();
+    return (vif.monitor_cb.mmu_lsu_pa0_vld === 1'b1)
+        || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1);
+  endfunction
+
+  protected function bit _pipe1_t0_terminal();
+    return (vif.monitor_cb.mmu_lsu_pa1_vld === 1'b1)
+        || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1);
+  endfunction
+
   function new(string name, uvm_component parent);
     super.new(name, parent);
   endfunction
@@ -187,7 +197,7 @@ class lsu_monitor extends uvm_monitor;
       end
 
       req_seen    = vif.monitor_cb.lsu_mmu_va0_vld;
-      rsp_seen    = vif.monitor_cb.mmu_lsu_pa0_vld;
+      rsp_seen    = _pipe0_t0_terminal();
       fresh_rsp   = rsp_seen && !prev_rsp_seen;
       cur_va      = vif.monitor_cb.lsu_mmu_va0;
       cur_id      = vif.monitor_cb.lsu_mmu_id0;
@@ -353,7 +363,7 @@ class lsu_monitor extends uvm_monitor;
       end
 
       req_seen    = vif.monitor_cb.lsu_mmu_va1_vld;
-      rsp_seen    = vif.monitor_cb.mmu_lsu_pa1_vld;
+      rsp_seen    = _pipe1_t0_terminal();
       fresh_rsp   = rsp_seen && !prev_rsp_seen;
       cur_va      = vif.monitor_cb.lsu_mmu_va1;
       cur_id      = vif.monitor_cb.lsu_mmu_id1;
@@ -467,7 +477,7 @@ class lsu_monitor extends uvm_monitor;
 
   // ── Pipe 0 request ────────────────────────────────────────────────────────
   // Edge detection: wait for va0_vld HIGH, sample once, then wait for LOW
-  // before looping.  When va0_vld falls, check if a matching pa0_vld was
+  // before looping.  When va0_vld falls, check if a matching T0 terminal was
   // received.  If not (driver timeout), pop the stale entry to keep the
   // m_pending_p0 FIFO in sync and prevent downstream PA mismatch cascades.
   protected task _collect_pipe0_req();
@@ -494,13 +504,13 @@ class lsu_monitor extends uvm_monitor;
       ap_pipe0_req.write(_clone_txn(tr, "lsu_p0_req_ap"));
       // Wait for va0_vld to deassert (rising-edge semantics)
       @(vif.monitor_cb iff !vif.monitor_cb.lsu_mmu_va0_vld);
-      // If va0_vld fell without a matching pa0_vld (driver timeout),
+      // If va0_vld fell without a matching T0 terminal (driver timeout),
       // discard the pending entry to prevent FIFO desync.
       if (!m_p0_rsp_seen && m_pending_p0.size() > 0) begin
         lsu_txn drop_tr;
         drop_tr = m_pending_p0.pop_back();
         `uvm_info(get_type_name(),
-          $sformatf("P0 REQ dropped (no pa0_vld before va0_vld deassert): VA=0x%016h id=%0d",
+          $sformatf("P0 REQ dropped (no pipe0 terminal before va0_vld deassert): VA=0x%016h id=%0d",
             tr.va, tr.id), UVM_DEBUG)
         ap_pipe0_drop.write(_clone_txn(drop_tr, "lsu_p0_drop_ap"));
       end
@@ -508,15 +518,16 @@ class lsu_monitor extends uvm_monitor;
   endtask
 
   // ── Pipe 0 response ───────────────────────────────────────────────────────
-  // Wait for a matching req in the queue before latching pa_vld. If pa0_vld is
+  // Wait for a matching req in the queue before latching T0 terminal. If it is
   // already high on the same sampled cycle as the req, capture it immediately
   // instead of waiting for a later edge and risking req/rsp skew.
   protected task _collect_pipe0_rsp();
     lsu_txn tr, req_tr;
     forever begin
       wait(m_pending_p0.size() > 0);
-      if (!vif.monitor_cb.mmu_lsu_pa0_vld)
-        @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa0_vld);
+      if (!_pipe0_t0_terminal())
+        @(vif.monitor_cb iff ((vif.monitor_cb.mmu_lsu_pa0_vld === 1'b1)
+                           || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1)));
       tr              = lsu_txn::type_id::create("lsu_p0_rsp");
       _sample_pipe0_rsp_fields(tr);
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
@@ -533,13 +544,14 @@ class lsu_monitor extends uvm_monitor;
         UVM_DEBUG)
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_pipe0_rsp.write(_clone_txn(tr, "lsu_p0_rsp_ap"));
-      @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa0_vld);
+      @(vif.monitor_cb iff !((vif.monitor_cb.mmu_lsu_pa0_vld === 1'b1)
+                          || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1)));
     end
   endtask
 
   // ── Pipe 1 request ────────────────────────────────────────────────────────
   // Same timeout-resilient approach as pipe0: track va1_vld deassert without
-  // pa1_vld and discard the stale pending entry if so.
+  // pipe1 terminal and discard the stale pending entry if so.
   protected task _collect_pipe1_req();
     lsu_txn tr;
     forever begin
@@ -566,7 +578,7 @@ class lsu_monitor extends uvm_monitor;
         lsu_txn drop_tr;
         drop_tr = m_pending_p1.pop_back();
         `uvm_info(get_type_name(),
-          $sformatf("P1 REQ dropped (no pa1_vld before va1_vld deassert): VA=0x%016h id=%0d",
+          $sformatf("P1 REQ dropped (no pipe1 terminal before va1_vld deassert): VA=0x%016h id=%0d",
             tr.va, tr.id), UVM_DEBUG)
         ap_pipe1_drop.write(_clone_txn(drop_tr, "lsu_p1_drop_ap"));
       end
@@ -578,8 +590,9 @@ class lsu_monitor extends uvm_monitor;
     lsu_txn tr, req_tr;
     forever begin
       wait(m_pending_p1.size() > 0);
-      if (!vif.monitor_cb.mmu_lsu_pa1_vld)
-        @(vif.monitor_cb iff vif.monitor_cb.mmu_lsu_pa1_vld);
+      if (!_pipe1_t0_terminal())
+        @(vif.monitor_cb iff ((vif.monitor_cb.mmu_lsu_pa1_vld === 1'b1)
+                           || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1)));
       tr              = lsu_txn::type_id::create("lsu_p1_rsp");
       _sample_pipe1_rsp_fields(tr);
       req_tr      = m_pending_p1.pop_front();
@@ -609,7 +622,8 @@ class lsu_monitor extends uvm_monitor;
           UVM_NONE)
       end
       ap_pipe1_rsp.write(_clone_txn(tr, "lsu_p1_rsp_ap"));
-      @(vif.monitor_cb iff !vif.monitor_cb.mmu_lsu_pa1_vld);
+      @(vif.monitor_cb iff !((vif.monitor_cb.mmu_lsu_pa1_vld === 1'b1)
+                          || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1)));
     end
   endtask
 

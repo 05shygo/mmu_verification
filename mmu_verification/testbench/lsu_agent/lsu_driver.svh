@@ -119,13 +119,16 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       return "vif=null";
 
     return $sformatf(
-      "pending=%0d busy={p0:%0b p1:%0b p2:%0b stamo:%0b inv:%0b} vld={p0:%0b p1:%0b p2:%0b stamo:%0b inv:%0b/%0b/%0b/%0b} tlb_busy=%0b wakeup=0x%03h",
+      "pending=%0d busy={p0:%0b p1:%0b p2:%0b stamo:%0b inv:%0b} vld={p0:%0b p1:%0b p2:%0b stamo:%0b inv:%0b/%0b/%0b/%0b} rsp={p0:%0b p1:%0b p2:%0b} fault={p0_pg:%0b p0_ac:%0b p1_pg:%0b p1_ac:%0b p2_ac:%0b} tlb_busy=%0b wakeup=0x%03h",
       m_pending.size(), m_pipe0_busy, m_pipe1_busy, m_pipe2_busy,
       m_stamo_busy, m_inv_busy,
       vif.lsu_mmu_va0_vld, vif.lsu_mmu_va1_vld, vif.lsu_mmu_va2_vld,
       vif.lsu_mmu_stamo_vld,
       vif.lsu_mmu_tlb_va_all_inv, vif.lsu_mmu_tlb_all_inv,
       vif.lsu_mmu_tlb_va_asid_inv, vif.lsu_mmu_tlb_asid_all_inv,
+      vif.mmu_lsu_pa0_vld, vif.mmu_lsu_pa1_vld, vif.mmu_lsu_pa2_vld,
+      vif.mmu_lsu_page_fault0, vif.mmu_lsu_access_fault0,
+      vif.mmu_lsu_page_fault1, vif.mmu_lsu_access_fault1, vif.mmu_lsu_pa2_err,
       vif.mmu_lsu_tlb_busy, vif.mmu_lsu_tlb_wakeup);
   endfunction
 
@@ -292,6 +295,16 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     return (cur_wakeup != 12'h000) && (cur_wakeup != prev_wakeup);
   endfunction
 
+  protected function bit _pipe0_t0_terminal();
+    return (vif.driver_cb.mmu_lsu_pa0_vld === 1'b1)
+        || (vif.driver_cb.mmu_lsu_page_fault0 === 1'b1);
+  endfunction
+
+  protected function bit _pipe1_t0_terminal();
+    return (vif.driver_cb.mmu_lsu_pa1_vld === 1'b1)
+        || (vif.driver_cb.mmu_lsu_page_fault1 === 1'b1);
+  endfunction
+
   protected task _pulse_pipe0_req(lsu_txn tr);
     m_dtlb_mutex.get(1);
     vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
@@ -353,8 +366,9 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         watchdog_hit = 1'b0;
         fork
           begin : wait_rsp_p0
-            if (vif.driver_cb.mmu_lsu_pa0_vld !== 1'b1)
-              @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa0_vld === 1'b1);
+            if (!_pipe0_t0_terminal())
+              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_pa0_vld === 1'b1)
+                                || (vif.driver_cb.mmu_lsu_page_fault0 === 1'b1)));
             got_rsp         = 1'b1;
             tr.pa           = vif.driver_cb.mmu_lsu_pa0;
             tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
@@ -369,7 +383,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
               @(vif.driver_cb);
               retry_wait_cycles++;
               cur_wakeup = vif.driver_cb.mmu_lsu_tlb_wakeup;
-              if ((vif.driver_cb.mmu_lsu_pa0_vld !== 1'b1)
+              if (!_pipe0_t0_terminal()
                   && ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)
                       || _has_wakeup_edge(prev_wakeup, cur_wakeup)
                       || (retry_wait_cycles >= m_retry_probe_cycles))) begin
@@ -390,7 +404,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
           end
         join_any
         disable fork;
-        if (!got_rsp && (vif.driver_cb.mmu_lsu_pa0_vld === 1'b1)) begin
+        if (!got_rsp && _pipe0_t0_terminal()) begin
           got_rsp         = 1'b1;
           tr.pa           = vif.driver_cb.mmu_lsu_pa0;
           tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
@@ -449,8 +463,9 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         watchdog_hit = 1'b0;
         fork
           begin : wait_rsp_p1
-            if (vif.driver_cb.mmu_lsu_pa1_vld !== 1'b1)
-              @(vif.driver_cb iff vif.driver_cb.mmu_lsu_pa1_vld === 1'b1);
+            if (!_pipe1_t0_terminal())
+              @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_pa1_vld === 1'b1)
+                                || (vif.driver_cb.mmu_lsu_page_fault1 === 1'b1)));
             got_rsp         = 1'b1;
             tr.pa           = vif.driver_cb.mmu_lsu_pa1;
             tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;
@@ -465,7 +480,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
               @(vif.driver_cb);
               retry_wait_cycles++;
               cur_wakeup = vif.driver_cb.mmu_lsu_tlb_wakeup;
-              if ((vif.driver_cb.mmu_lsu_pa1_vld !== 1'b1)
+              if (!_pipe1_t0_terminal()
                   && ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)
                       || _has_wakeup_edge(prev_wakeup, cur_wakeup)
                       || (retry_wait_cycles >= m_retry_probe_cycles))) begin
@@ -486,7 +501,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
           end
         join_any
         disable fork;
-        if (!got_rsp && (vif.driver_cb.mmu_lsu_pa1_vld === 1'b1)) begin
+        if (!got_rsp && _pipe1_t0_terminal()) begin
           got_rsp         = 1'b1;
           tr.pa           = vif.driver_cb.mmu_lsu_pa1;
           tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;

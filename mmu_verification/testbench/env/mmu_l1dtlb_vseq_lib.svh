@@ -348,7 +348,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       pa_vld       = m_lsu_vif.monitor_cb.mmu_lsu_pa0_vld;
       page_fault   = m_lsu_vif.monitor_cb.mmu_lsu_page_fault0;
       access_fault = m_lsu_vif.monitor_cb.mmu_lsu_access_fault0;
-      if (pa_vld || page_fault || access_fault) begin
+      if (pa_vld || page_fault) begin
         seen = 1'b1;
         success = pa_vld && !page_fault && !access_fault;
         if (expect_success && !success) begin

@@ -83,6 +83,32 @@ class mmu_env extends uvm_env;
       end
     join
 
+    // Wait for DUT tlb_busy to clear (all MB entries IDLE).
+    // The LSU driver may complete its transaction when a fault refill returns
+    // pa_vld=1 with page_fault/access_fault, but the DUT's MB entry remains
+    // in PGFLT/ACFLT until the exception CAM is consumed by LSU replay.
+    // Without this check, subsequent requests see a non-empty exception array.
+    if ((m_lsu != null) && (m_lsu.m_driver != null)) begin
+      int unsigned busy_wait_cycles;
+      busy_wait_cycles = 0;
+      while (m_lsu.m_driver.vif.driver_cb.mmu_lsu_tlb_busy === 1'b1) begin
+        @(m_lsu.m_driver.vif.driver_cb);
+        busy_wait_cycles++;
+        if (busy_wait_cycles >= max_cycles) begin
+          `uvm_error(get_type_name(),
+            $sformatf("TLB busy did not clear before %s after %0d cycles "
+              "(page fault/access fault replay pending in exception array)",
+              ctx, busy_wait_cycles))
+          break;
+        end
+      end
+      if (busy_wait_cycles > 0) begin
+        `uvm_info(get_type_name(),
+          $sformatf("TLB busy cleared before %s after %0d cycles", ctx, busy_wait_cycles),
+          UVM_MEDIUM)
+      end
+    end
+
     if (m_credit_sb != null)
       m_credit_sb.wait_for_internal_idle(ctx);
   endtask

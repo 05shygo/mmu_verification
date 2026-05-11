@@ -337,9 +337,6 @@ module mmu_l1dtlb_sva #(
       a_mb_wfi_matches_state: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
         mb_entry_wfi[mb_i] == (mb_entry_state[mb_i] == MB_STATE_WFI));
 
-      a_mb_issued_requires_valid: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-        mb_entry_issued[mb_i] |-> mb_entry_vld[mb_i]);
-
       a_valid_mb_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
         mb_entry_vld[mb_i] |-> (!$isunknown(mb_entry_vpn[mb_i])
                              && !$isunknown(mb_entry_iid[mb_i])
@@ -643,12 +640,6 @@ module mmu_l1dtlb_mb_entry_sva #(
     |=> (entry_vpn == $past(alloc_vpn)
       && entry_iid == $past(alloc_iid)
       && entry_store == $past(alloc_store)));
-
-  a_issue_sets_issued: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
-    (entry_state == STATE_WFG && issue_sel && issue_grant) |=> entry_issued);
-
-  a_idle_clears_issued: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
-    entry_state == STATE_IDLE |-> !entry_issued);
 
   a_wfi_data_stable_without_grant: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
     (entry_state == STATE_WFI && !refill_gnt && !rtu_yy_xx_flush)

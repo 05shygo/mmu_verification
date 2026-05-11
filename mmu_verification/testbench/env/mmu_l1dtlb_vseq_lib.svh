@@ -332,8 +332,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     string ctx,
     bit expect_success,
     output bit success,
-    int unsigned max_cycles = 524288,
-    bit flush_on_timeout = 1'b1
+    input int unsigned max_cycles = 524288,
+    input bit flush_on_timeout = 1'b1
   );
     bit seen;
     bit pa_vld;

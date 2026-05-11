@@ -96,8 +96,7 @@ class mmu_env extends uvm_env;
         busy_wait_cycles++;
         if (busy_wait_cycles >= max_cycles) begin
           `uvm_error(get_type_name(),
-            $sformatf("TLB busy did not clear before %s after %0d cycles "
-              "(page fault/access fault replay pending in exception array)",
+            $sformatf("TLB busy did not clear before %s after %0d cycles (page fault/access fault replay pending in exception array)",
               ctx, busy_wait_cycles))
           break;
         end

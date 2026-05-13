@@ -35,6 +35,13 @@ class ptw_mem_responder extends uvm_component;
   int unsigned m_rsp_delay_min          = 1;
   int unsigned m_rsp_delay_max          = 8;
   int unsigned m_bus_error_rate_permille = 0;  // 0 = never inject bus error
+  protected int unsigned m_forced_delay_by_addr [longint unsigned];
+  protected int unsigned m_forced_delay_by_count [int unsigned];
+  protected bit          m_forced_bus_error_by_addr [longint unsigned];
+  protected bit          m_forced_bus_error_by_count [int unsigned];
+  protected bit          m_same_cycle_abort_data_by_count [int unsigned];
+  protected bit          m_same_cycle_abort_bus_error_by_count [int unsigned];
+  protected int unsigned m_chk_not_ready_slow_cycles;
   protected bit        m_has_accepted_req;
   protected bit [39:0] m_accepted_addr;
   protected bit        m_accepted_size;
@@ -75,6 +82,138 @@ class ptw_mem_responder extends uvm_component;
     m_pt = pt;
   endfunction
 
+  virtual function void clear_directed_controls();
+    m_forced_delay_by_addr.delete();
+    m_forced_delay_by_count.delete();
+    m_forced_bus_error_by_addr.delete();
+    m_forced_bus_error_by_count.delete();
+    m_same_cycle_abort_data_by_count.delete();
+    m_same_cycle_abort_bus_error_by_count.delete();
+    m_chk_not_ready_slow_cycles = 0;
+    m_bus_error_rate_permille = 0;
+    m_accept_count = 0;
+    m_rsp_count = 0;
+    m_buserr_count = 0;
+    `uvm_info(get_type_name(), "PTW responder directed controls cleared", UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_delay_range(int unsigned min_delay, int unsigned max_delay);
+    if (max_delay < min_delay)
+      max_delay = min_delay;
+    m_rsp_delay_min = min_delay;
+    m_rsp_delay_max = max_delay;
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder delay range set to [%0d:%0d]", min_delay, max_delay),
+      UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_delay_for_addr(bit [39:0] addr, int unsigned delay);
+    m_forced_delay_by_addr[longint'(addr)] = delay;
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder forced delay by addr: addr=0x%010h delay=%0d",
+        addr, delay),
+      UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_delay_for_count(int unsigned count, int unsigned delay);
+    if (count == 0) begin
+      `uvm_warning(get_type_name(), "set_delay_for_count ignored count=0; accept counts start at 1")
+      return;
+    end
+    m_forced_delay_by_count[count] = delay;
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder forced delay by count: count=%0d delay=%0d",
+        count, delay),
+      UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_bus_error_for_addr(bit [39:0] addr, bit enable = 1'b1);
+    if (enable)
+      m_forced_bus_error_by_addr[longint'(addr)] = 1'b1;
+    else
+      m_forced_bus_error_by_addr.delete(longint'(addr));
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder forced bus error by addr: addr=0x%010h enable=%0b",
+        addr, enable),
+      UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_bus_error_for_count(int unsigned count, bit enable = 1'b1);
+    if (count == 0) begin
+      `uvm_warning(get_type_name(), "set_bus_error_for_count ignored count=0; accept counts start at 1")
+      return;
+    end
+    if (enable)
+      m_forced_bus_error_by_count[count] = 1'b1;
+    else
+      m_forced_bus_error_by_count.delete(count);
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder forced bus error by count: count=%0d enable=%0b",
+        count, enable),
+      UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_same_cycle_abort_data_for_count(int unsigned count);
+    if (count == 0) begin
+      `uvm_warning(get_type_name(), "set_same_cycle_abort_data_for_count ignored count=0")
+      return;
+    end
+    m_same_cycle_abort_data_by_count[count] = 1'b1;
+    m_forced_delay_by_count[count] = 0;
+    m_forced_bus_error_by_count.delete(count);
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder same-cycle abort/data window registered for count=%0d",
+        count),
+      UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_same_cycle_abort_bus_error_for_count(int unsigned count);
+    if (count == 0) begin
+      `uvm_warning(get_type_name(), "set_same_cycle_abort_bus_error_for_count ignored count=0")
+      return;
+    end
+    m_same_cycle_abort_bus_error_by_count[count] = 1'b1;
+    m_forced_delay_by_count[count] = 0;
+    m_forced_bus_error_by_count[count] = 1'b1;
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder same-cycle abort/bus-error window registered for count=%0d",
+        count),
+      UVM_MEDIUM)
+  endfunction
+
+  virtual function void set_chk_not_ready_slow_response(int unsigned delay_cycles);
+    m_chk_not_ready_slow_cycles = delay_cycles;
+    `uvm_info(get_type_name(),
+      $sformatf("PTW responder CHK-not-ready slow-response delay set to %0d cycles",
+        delay_cycles),
+      UVM_MEDIUM)
+  endfunction
+
+  protected function int _select_delay(bit [39:0] addr, int unsigned accept_count);
+    longint unsigned addr_key;
+
+    addr_key = longint'(addr);
+    if (m_forced_delay_by_count.exists(accept_count))
+      return int'(m_forced_delay_by_count[accept_count]);
+    if (m_forced_delay_by_addr.exists(addr_key))
+      return int'(m_forced_delay_by_addr[addr_key]);
+    if (m_chk_not_ready_slow_cycles != 0)
+      return int'(m_chk_not_ready_slow_cycles);
+    return int'($urandom_range(m_rsp_delay_min, m_rsp_delay_max));
+  endfunction
+
+  protected function bit _select_bus_error(bit [39:0] addr, int unsigned accept_count);
+    longint unsigned addr_key;
+
+    addr_key = longint'(addr);
+    if (m_forced_bus_error_by_count.exists(accept_count))
+      return m_forced_bus_error_by_count[accept_count];
+    if (m_forced_bus_error_by_addr.exists(addr_key))
+      return m_forced_bus_error_by_addr[addr_key];
+    return (m_bus_error_rate_permille > 0)
+        && ($urandom_range(0, 999) < m_bus_error_rate_permille);
+  endfunction
+
   virtual function void print_timeout_debug(string ctx = "timeout");
     if (vif == null) begin
       $display("[MMU_TIMEOUT_DBG] PTW_RESP ctx=%s vif=null", ctx);
@@ -87,6 +226,7 @@ class ptw_mem_responder extends uvm_component;
               "last_rsp_t=%0t last_rsp_addr=0x%010h last_rsp_size=%0b last_rsp_pte=0x%016h last_rsp_delay=%0d ",
               "last_buserr_t=%0t last_buserr_addr=0x%010h last_buserr_size=%0b ",
               "has_accepted=%0b accepted_addr=0x%010h accepted_size=%0b ",
+              "directed={addr_delay:%0d count_delay:%0d addr_buserr:%0d count_buserr:%0d chk_slow:%0d} ",
               "req=%0b accept=%0b req_addr=0x%010h req_size=%0b data_vld=%0b bus_error=%0b data=0x%016h pt_configured=%0b"},
       ctx,
       m_rsp_delay_min,
@@ -116,6 +256,11 @@ class ptw_mem_responder extends uvm_component;
       m_has_accepted_req,
       m_accepted_addr,
       m_accepted_size,
+      m_forced_delay_by_addr.num(),
+      m_forced_delay_by_count.num(),
+      m_forced_bus_error_by_addr.num(),
+      m_forced_bus_error_by_count.num(),
+      m_chk_not_ready_slow_cycles,
       vif.mmu_lsu_data_req,
       vif.mmu_lsu_data_req_accept,
       vif.mmu_lsu_data_req_addr,
@@ -217,6 +362,7 @@ class ptw_mem_responder extends uvm_component;
     bit [27:0] pte_ppn;
     int        delay;
     bit        inject_err;
+    int unsigned accept_idx;
     bit        logged_req_drop;
     bit        logged_req_replace;
 
@@ -231,12 +377,9 @@ class ptw_mem_responder extends uvm_component;
     end
     pte_ppn = pte[37:10];
 
-    // Decide whether to inject a bus error for this transaction
-    inject_err = (m_bus_error_rate_permille > 0) &&
-                 ($urandom_range(0, 999) < m_bus_error_rate_permille);
-
-    // Random response delay
-    delay = $urandom_range(m_rsp_delay_min, m_rsp_delay_max);
+    accept_idx = m_accept_count;
+    delay      = _select_delay(addr, accept_idx);
+    inject_err = _select_bus_error(addr, accept_idx);
     logged_req_drop = 1'b0;
     logged_req_replace = 1'b0;
     m_active_req        = 1'b1;
@@ -245,8 +388,10 @@ class ptw_mem_responder extends uvm_component;
     m_active_size       = req_size;
     m_active_pte        = pte;
     m_active_delay      = delay;
-    $display("[PTW_RESP_TRACE][START] t=%0t addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d",
-      $time, addr, req_size, pte, pte_ppn, delay);
+    $display("[PTW_RESP_TRACE][START] t=%0t accept_cnt=%0d addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d bus_err=%0b same_cycle_abort_data=%0b same_cycle_abort_buserr=%0b",
+      $time, accept_idx, addr, req_size, pte, pte_ppn, delay, inject_err,
+      m_same_cycle_abort_data_by_count.exists(accept_idx),
+      m_same_cycle_abort_bus_error_by_count.exists(accept_idx));
     repeat (delay) begin
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin

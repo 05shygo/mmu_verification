@@ -49,11 +49,152 @@ class ptw_mem_normal_rsp_seq extends ptw_mem_cfg_base_seq;
   virtual task body();
     ptw_mem_responder rsp_h;
     rsp_h = get_responder();
-    rsp_h.m_rsp_delay_min           = 1;
-    rsp_h.m_rsp_delay_max           = 4;
-    rsp_h.m_bus_error_rate_permille = 0;
+    rsp_h.clear_directed_controls();
+    rsp_h.set_delay_range(1, 4);
   endtask
 endclass : ptw_mem_normal_rsp_seq
+
+class ptw_mem_directed_clear_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_directed_clear_seq)
+  function new(string name = "ptw_mem_directed_clear_seq");
+    super.new(name);
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.clear_directed_controls();
+  endtask
+endclass : ptw_mem_directed_clear_seq
+
+class ptw_mem_delay_range_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_delay_range_seq)
+  rand int unsigned delay_min;
+  rand int unsigned delay_max;
+  constraint c_range { delay_min inside {[0:512]}; delay_max inside {[0:512]}; delay_min <= delay_max; }
+  function new(string name = "ptw_mem_delay_range_seq");
+    super.new(name);
+    delay_min = 1;
+    delay_max = 8;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_delay_range(delay_min, delay_max);
+  endtask
+endclass : ptw_mem_delay_range_seq
+
+class ptw_mem_delay_by_addr_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_delay_by_addr_seq)
+  rand bit [39:0] addr;
+  rand int unsigned delay;
+  constraint c_delay { delay inside {[0:512]}; }
+  function new(string name = "ptw_mem_delay_by_addr_seq");
+    super.new(name);
+    addr = 40'h0;
+    delay = 0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_delay_for_addr(addr, delay);
+  endtask
+endclass : ptw_mem_delay_by_addr_seq
+
+class ptw_mem_delay_by_count_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_delay_by_count_seq)
+  rand int unsigned accept_count;
+  rand int unsigned delay;
+  constraint c_count { accept_count inside {[1:1024]}; }
+  constraint c_delay { delay inside {[0:512]}; }
+  function new(string name = "ptw_mem_delay_by_count_seq");
+    super.new(name);
+    accept_count = 1;
+    delay = 0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_delay_for_count(accept_count, delay);
+  endtask
+endclass : ptw_mem_delay_by_count_seq
+
+class ptw_mem_bus_error_by_addr_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_bus_error_by_addr_seq)
+  rand bit [39:0] addr;
+  bit enable;
+  function new(string name = "ptw_mem_bus_error_by_addr_seq");
+    super.new(name);
+    addr = 40'h0;
+    enable = 1'b1;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_bus_error_for_addr(addr, enable);
+  endtask
+endclass : ptw_mem_bus_error_by_addr_seq
+
+class ptw_mem_bus_error_by_count_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_bus_error_by_count_seq)
+  rand int unsigned accept_count;
+  bit enable;
+  constraint c_count { accept_count inside {[1:1024]}; }
+  function new(string name = "ptw_mem_bus_error_by_count_seq");
+    super.new(name);
+    accept_count = 1;
+    enable = 1'b1;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_bus_error_for_count(accept_count, enable);
+  endtask
+endclass : ptw_mem_bus_error_by_count_seq
+
+class ptw_mem_same_cycle_abort_data_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_same_cycle_abort_data_seq)
+  rand int unsigned accept_count;
+  constraint c_count { accept_count inside {[1:1024]}; }
+  function new(string name = "ptw_mem_same_cycle_abort_data_seq");
+    super.new(name);
+    accept_count = 1;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_same_cycle_abort_data_for_count(accept_count);
+  endtask
+endclass : ptw_mem_same_cycle_abort_data_seq
+
+class ptw_mem_same_cycle_abort_bus_error_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_same_cycle_abort_bus_error_seq)
+  rand int unsigned accept_count;
+  constraint c_count { accept_count inside {[1:1024]}; }
+  function new(string name = "ptw_mem_same_cycle_abort_bus_error_seq");
+    super.new(name);
+    accept_count = 1;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_same_cycle_abort_bus_error_for_count(accept_count);
+  endtask
+endclass : ptw_mem_same_cycle_abort_bus_error_seq
+
+class ptw_mem_chk_not_ready_slow_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_chk_not_ready_slow_seq)
+  rand int unsigned slow_cycles;
+  constraint c_slow { slow_cycles inside {[16:512]}; }
+  function new(string name = "ptw_mem_chk_not_ready_slow_seq");
+    super.new(name);
+    slow_cycles = 96;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_chk_not_ready_slow_response(slow_cycles);
+  endtask
+endclass : ptw_mem_chk_not_ready_slow_seq
 
 // -----------------------------------------------------------------------------
 // 2. Out-of-order response (protocol does not support OOO; reserved for future)
@@ -84,9 +225,8 @@ class ptw_mem_slow_rsp_seq extends ptw_mem_cfg_base_seq;
   virtual task body();
     ptw_mem_responder rsp_h;
     rsp_h = get_responder();
-    rsp_h.m_rsp_delay_min           = slow_min;
-    rsp_h.m_rsp_delay_max           = slow_max;
-    rsp_h.m_bus_error_rate_permille = 0;
+    rsp_h.clear_directed_controls();
+    rsp_h.set_delay_range(slow_min, slow_max);
   endtask
 endclass : ptw_mem_slow_rsp_seq
 
@@ -104,8 +244,8 @@ class ptw_mem_bus_error_inject_seq extends ptw_mem_cfg_base_seq;
   virtual task body();
     ptw_mem_responder rsp_h;
     rsp_h = get_responder();
-    rsp_h.m_rsp_delay_min           = 1;
-    rsp_h.m_rsp_delay_max           = 8;
+    rsp_h.clear_directed_controls();
+    rsp_h.set_delay_range(1, 8);
     rsp_h.m_bus_error_rate_permille = error_rate_permille;
   endtask
 endclass : ptw_mem_bus_error_inject_seq

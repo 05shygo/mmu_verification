@@ -108,6 +108,318 @@ class page_table_builder extends uvm_object;
                     .u(0), .g(0), .a(0), .d(0));
   endfunction
 
+  protected function bit _is_nonleaf_pointer_pte(pte_t pte);
+    return pte[PTE_V] && !pte[PTE_R] && !pte[PTE_W] && !pte[PTE_X];
+  endfunction
+
+  protected function bit _level_is_valid(int unsigned level);
+    return (level <= 2);
+  endfunction
+
+  protected function bit _resolve_table_for_level(
+    va_t va,
+    int unsigned target_level,
+    output ppn_t table_ppn
+  );
+    pte_t pte;
+    pa_t  pte_addr;
+
+    table_ppn = m_root_ppn;
+    if (!_level_is_valid(target_level)) begin
+      `uvm_warning("PAGE_TABLE_BUILDER",
+        $sformatf("_resolve_table_for_level: illegal level=%0d", target_level))
+      return 1'b0;
+    end
+
+    for (int level = 2; level > int'(target_level); level--) begin
+      pte_addr = _pte_addr(table_ppn, va_vpn_level(va, level));
+      pte      = read_pte_at(pte_addr);
+      if (!_is_nonleaf_pointer_pte(pte)) begin
+        `uvm_info("PAGE_TABLE_BUILDER",
+          $sformatf("_resolve_table_for_level: no pointer at level=%0d va=0x%010h pte_addr=0x%010h pte=0x%016h",
+            level, va, pte_addr, pte),
+          UVM_HIGH)
+        return 1'b0;
+      end
+      table_ppn = pte[PTE_PPN_LSB +: PPN_WIDTH];
+    end
+
+    return 1'b1;
+  endfunction
+
+  protected function bit _ensure_table_for_level(
+    va_t va,
+    int unsigned target_level,
+    output ppn_t table_ppn
+  );
+    pte_t pte;
+    pa_t  pte_addr;
+    ppn_t next_ppn;
+
+    table_ppn = m_root_ppn;
+    if (!_level_is_valid(target_level)) begin
+      `uvm_warning("PAGE_TABLE_BUILDER",
+        $sformatf("_ensure_table_for_level: illegal level=%0d", target_level))
+      return 1'b0;
+    end
+
+    for (int level = 2; level > int'(target_level); level--) begin
+      pte_addr = _pte_addr(table_ppn, va_vpn_level(va, level));
+      pte      = read_pte_at(pte_addr);
+      if (!_is_nonleaf_pointer_pte(pte)) begin
+        next_ppn = _alloc_ppn();
+        pte      = _make_pointer_pte(next_ppn);
+        write_pte_at(pte_addr, pte);
+        table_ppn = next_ppn;
+      end else begin
+        table_ppn = pte[PTE_PPN_LSB +: PPN_WIDTH];
+      end
+    end
+
+    return 1'b1;
+  endfunction
+
+  // ── Directed raw-PTE construction API ────────────────────────────────────
+
+  virtual function ppn_t alloc_table_ppn();
+    return _alloc_ppn();
+  endfunction
+
+  virtual function pte_t make_raw_pte(
+    ppn_t        ppn,
+    bit          v = 1,
+    bit          r = 1,
+    bit          w = 1,
+    bit          x = 1,
+    bit          u = 0,
+    bit          g = 0,
+    bit          a = 1,
+    bit          d = 1,
+    bit [1:0]    rsw = 2'b00,
+    bit [20:0]   high_reserved = 21'h0,
+    bit [4:0]    ext_attr = 5'h0
+  );
+    pte_t raw_pte;
+
+    raw_pte = make_pte(.ppn(ppn), .v(v), .r(r), .w(w), .x(x),
+                       .u(u), .g(g), .a(a), .d(d));
+    raw_pte[9:8]   = rsw;
+    raw_pte[58:38] = high_reserved;
+    raw_pte[63:59] = ext_attr;
+    return raw_pte;
+  endfunction
+
+  virtual function pte_t make_legal_pointer_pte(
+    ppn_t      next_ppn,
+    bit [1:0]  rsw = 2'b00,
+    bit        g = 0,
+    bit [20:0] high_reserved = 21'h0,
+    bit [4:0]  ext_attr = 5'h0
+  );
+    return make_raw_pte(.ppn(next_ppn), .v(1), .r(0), .w(0), .x(0),
+                        .u(0), .g(g), .a(0), .d(0),
+                        .rsw(rsw), .high_reserved(high_reserved),
+                        .ext_attr(ext_attr));
+  endfunction
+
+  virtual function pte_t make_illegal_nonleaf_pte(
+    ppn_t      next_ppn,
+    bit        v = 1,
+    bit        r = 0,
+    bit        w = 1,
+    bit        x = 0,
+    bit        u = 0,
+    bit        g = 0,
+    bit        a = 0,
+    bit        d = 0,
+    bit [1:0]  rsw = 2'b00,
+    bit [20:0] high_reserved = 21'h0,
+    bit [4:0]  ext_attr = 5'h0
+  );
+    return make_raw_pte(.ppn(next_ppn), .v(v), .r(r), .w(w), .x(x),
+                        .u(u), .g(g), .a(a), .d(d),
+                        .rsw(rsw), .high_reserved(high_reserved),
+                        .ext_attr(ext_attr));
+  endfunction
+
+  virtual function bit get_pte_addr_for_level(
+    va_t va,
+    int unsigned level,
+    output pa_t pte_addr
+  );
+    ppn_t table_ppn;
+
+    pte_addr = '0;
+    if (!_resolve_table_for_level(va, level, table_ppn))
+      return 1'b0;
+    pte_addr = _pte_addr(table_ppn, va_vpn_level(va, int'(level)));
+    return 1'b1;
+  endfunction
+
+  virtual function bit get_or_create_pte_addr_for_level(
+    va_t va,
+    int unsigned level,
+    output pa_t pte_addr
+  );
+    ppn_t table_ppn;
+
+    pte_addr = '0;
+    if (!_ensure_table_for_level(va, level, table_ppn))
+      return 1'b0;
+    pte_addr = _pte_addr(table_ppn, va_vpn_level(va, int'(level)));
+    return 1'b1;
+  endfunction
+
+  virtual function bit read_pte_for_level(
+    va_t va,
+    int unsigned level,
+    output pte_t raw_pte,
+    output pa_t pte_addr
+  );
+    raw_pte = '0;
+    pte_addr = '0;
+    if (!get_pte_addr_for_level(va, level, pte_addr))
+      return 1'b0;
+    raw_pte = read_pte_at(pte_addr);
+    return 1'b1;
+  endfunction
+
+  virtual function bit write_raw_pte_for_level(
+    va_t va,
+    int unsigned level,
+    pte_t raw_pte,
+    output pa_t pte_addr,
+    input bit create_path = 1'b1
+  );
+    ppn_t table_ppn;
+
+    pte_addr = '0;
+    if (create_path) begin
+      if (!_ensure_table_for_level(va, level, table_ppn))
+        return 1'b0;
+    end else begin
+      if (!_resolve_table_for_level(va, level, table_ppn))
+        return 1'b0;
+    end
+
+    pte_addr = _pte_addr(table_ppn, va_vpn_level(va, int'(level)));
+    write_pte_at(pte_addr, raw_pte);
+    `uvm_info("PAGE_TABLE_BUILDER",
+      $sformatf("write_raw_pte_for_level: va=0x%010h level=%0d pte_addr=0x%010h raw=0x%016h create_path=%0b",
+        va, level, pte_addr, raw_pte, create_path),
+      UVM_MEDIUM)
+    return 1'b1;
+  endfunction
+
+  virtual function bit map_raw_leaf(
+    va_t va,
+    int unsigned level,
+    ppn_t leaf_ppn,
+    output pte_t raw_pte,
+    output pa_t pte_addr,
+    input bit v = 1,
+    input bit r = 1,
+    input bit w = 1,
+    input bit x = 1,
+    input bit u = 0,
+    input bit g = 0,
+    input bit a = 1,
+    input bit d = 1,
+    input bit [1:0] rsw = 2'b00,
+    input bit [20:0] high_reserved = 21'h0,
+    input bit [4:0] ext_attr = 5'h0,
+    input bit allow_misaligned = 1'b0
+  );
+    ppn_t adjusted_ppn;
+
+    adjusted_ppn = leaf_ppn;
+    if (!allow_misaligned) begin
+      if (level == 1)
+        adjusted_ppn[8:0] = 9'b0;
+      else if (level == 2)
+        adjusted_ppn[17:0] = 18'b0;
+    end
+
+    raw_pte = make_raw_pte(.ppn(adjusted_ppn), .v(v), .r(r), .w(w), .x(x),
+                           .u(u), .g(g), .a(a), .d(d),
+                           .rsw(rsw), .high_reserved(high_reserved),
+                           .ext_attr(ext_attr));
+    return write_raw_pte_for_level(.va(va), .level(level), .raw_pte(raw_pte),
+                                   .create_path(1'b1), .pte_addr(pte_addr));
+  endfunction
+
+  virtual function bit map_raw_leaf_pa(
+    va_t va,
+    int unsigned level,
+    pa_t pa,
+    output pte_t raw_pte,
+    output pa_t pte_addr,
+    input bit v = 1,
+    input bit r = 1,
+    input bit w = 1,
+    input bit x = 1,
+    input bit u = 0,
+    input bit g = 0,
+    input bit a = 1,
+    input bit d = 1,
+    input bit [1:0] rsw = 2'b00,
+    input bit [20:0] high_reserved = 21'h0,
+    input bit [4:0] ext_attr = 5'h0,
+    input bit allow_misaligned = 1'b0
+  );
+    return map_raw_leaf(.va(va), .level(level),
+                        .leaf_ppn(pa[PA_WIDTH-1:PAGE_OFFSET]),
+                        .v(v), .r(r), .w(w), .x(x), .u(u), .g(g),
+                        .a(a), .d(d), .rsw(rsw),
+                        .high_reserved(high_reserved),
+                        .ext_attr(ext_attr),
+                        .allow_misaligned(allow_misaligned),
+                        .raw_pte(raw_pte), .pte_addr(pte_addr));
+  endfunction
+
+  virtual function bit write_nonleaf_for_level(
+    va_t va,
+    int unsigned level,
+    ppn_t next_ppn,
+    output pte_t raw_pte,
+    output pa_t pte_addr,
+    input bit legal = 1'b1,
+    input bit create_path = 1'b1,
+    input bit r = 0,
+    input bit w = 0,
+    input bit x = 0,
+    input bit u = 0,
+    input bit g = 0,
+    input bit a = 0,
+    input bit d = 0,
+    input bit [1:0] rsw = 2'b00,
+    input bit [20:0] high_reserved = 21'h0,
+    input bit [4:0] ext_attr = 5'h0
+  );
+    ppn_t effective_next_ppn;
+
+    effective_next_ppn = next_ppn;
+    if (effective_next_ppn == '0)
+      effective_next_ppn = _alloc_ppn();
+
+    if (legal) begin
+      raw_pte = make_legal_pointer_pte(.next_ppn(effective_next_ppn),
+                                       .rsw(rsw), .g(g),
+                                       .high_reserved(high_reserved),
+                                       .ext_attr(ext_attr));
+    end else begin
+      raw_pte = make_illegal_nonleaf_pte(.next_ppn(effective_next_ppn), .v(1),
+                                         .r(r), .w(w), .x(x), .u(u), .g(g),
+                                         .a(a), .d(d), .rsw(rsw),
+                                         .high_reserved(high_reserved),
+                                         .ext_attr(ext_attr));
+    end
+
+    return write_raw_pte_for_level(.va(va), .level(level), .raw_pte(raw_pte),
+                                   .create_path(create_path),
+                                   .pte_addr(pte_addr));
+  endfunction
+
   // ── High-level mapping API ────────────────────────────────────────────────
 
   // Map a 4K page: VA → PA with given permission bits.

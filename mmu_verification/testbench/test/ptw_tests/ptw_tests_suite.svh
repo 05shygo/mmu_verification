@@ -1,4 +1,6 @@
 // Auto-generated Phase 9 suite include list
+`include "ptw_source_directed_base.svh"
+`include "test_ptw_source_stage2_smoke.svh"
 `include "test_arb_backpressure_mask.svh"
 `include "test_arb_bank_conflict_resolution.svh"
 `include "test_arb_no_double_grant.svh"

@@ -1400,7 +1400,7 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 end
 
 //assign mmu_sysmap_pax3[PPN_WIDTH-1:0] = thd_chk_refill_data[PPN_WIDTH+9:10];
-assign thd_chk_refill_data_no_maee[RDATA_WIDTH-1:0] = {twu_ref_data_din[PPN_WIDTH+9:10], sysmap_mmu_flgx3[4:0],twu_ref_data_din[8:0]};
+assign thd_chk_refill_data_no_maee[RDATA_WIDTH-1:0] = {twu_ref_data_din[RDATA_WIDTH-1:14], sysmap_mmu_flgx3[4:0],twu_ref_data_din[8:0]};
 
 always_ff@(posedge twu_clk or negedge cpurst_b) begin
 	if(!cpurst_b)begin

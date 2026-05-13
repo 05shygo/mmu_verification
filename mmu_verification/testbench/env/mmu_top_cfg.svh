@@ -23,6 +23,11 @@ class mmu_top_cfg extends uvm_object;
     `uvm_field_int(en_credit_sb,       UVM_ALL_ON)
     `uvm_field_int(en_perf_mon,        UVM_ALL_ON)
     `uvm_field_int(en_l1dtlb_spec_sb,  UVM_ALL_ON)
+    `uvm_field_int(en_ptw_source_ref_model,      UVM_ALL_ON)
+    `uvm_field_int(en_ptw_source_sb,             UVM_ALL_ON)
+    `uvm_field_int(en_ptw_source_monitor,        UVM_ALL_ON)
+    `uvm_field_int(en_ptw_source_cov,            UVM_ALL_ON)
+    `uvm_field_int(en_ptw_source_strict_illegal, UVM_ALL_ON)
     // Reference model mode
     `uvm_field_int(ref_model_strict,   UVM_ALL_ON)
     // SVA enable knobs
@@ -54,6 +59,11 @@ class mmu_top_cfg extends uvm_object;
   bit en_credit_sb      = 1;  // L2 TLB request-queue credit protocol checker
   bit en_perf_mon       = 1;  // HPCP performance event monitor
   bit en_l1dtlb_spec_sb = 1;  // L1DTLB directed audit/spec checker
+  bit en_ptw_source_ref_model      = 0;  // PTW source-side golden model skeleton
+  bit en_ptw_source_sb             = 0;  // PTW source-side scoreboard skeleton
+  bit en_ptw_source_monitor        = 0;  // PTW source-side monitor skeleton
+  bit en_ptw_source_cov            = 0;  // PTW source-side coverage/SVA reporting
+  bit en_ptw_source_strict_illegal = 1;  // Applies only when PTW source checker is enabled
 
   // =========================================================================
   // Reference Model Strictness

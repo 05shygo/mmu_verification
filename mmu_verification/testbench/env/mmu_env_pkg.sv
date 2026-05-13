@@ -27,6 +27,10 @@ package mmu_env_pkg;
   `include "mmu_top_cfg.svh"
   `include "mmu_page_table_mem.svh"  // Phase 4: shared shadow page table
   `include "mmu_ref_model.svh"       // Phase 4: Sv39 reference model
+  `include "ptw_source_types.svh"     // PTW source-side shared types/helpers
+  `include "ptw_source_monitor.svh"   // PTW source-side monitor skeleton
+  `include "ptw_source_ref_model.svh" // PTW source-side ref model skeleton
+  `include "ptw_source_sb.svh"        // PTW source-side scoreboard skeleton
   `include "mmu_translation_sb.svh"  // Phase 5: translation scoreboard
   `include "mmu_invalidate_sb.svh"   // Phase 6: invalidate scoreboard
   `include "mmu_credit_sb.svh"       // Phase 5: credit / capacity scoreboard

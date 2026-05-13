@@ -24,6 +24,11 @@ class mmu_env extends uvm_env;
   mmu_page_table_mem m_pt_mem;
   mmu_ref_model    m_ref;
 
+  // PTW source-side checker skeletons (created only when enabled)
+  ptw_source_monitor   m_ptw_source_mon;
+  ptw_source_ref_model m_ptw_source_ref;
+  ptw_source_sb        m_ptw_source_sb;
+
   // ── Phase 5: Translation scoreboard ─────────────────────────────────────
   mmu_translation_sb m_translation_sb;
   mmu_invalidate_sb  m_invalidate_sb;
@@ -163,6 +168,15 @@ class mmu_env extends uvm_env;
       m_cfg = mmu_top_cfg::type_id::create("m_cfg");
     end
 
+    if ($test$plusargs("EN_PTW_SOURCE_MONITOR"))
+      m_cfg.en_ptw_source_monitor = 1'b1;
+    if ($test$plusargs("EN_PTW_SOURCE_REF_MODEL"))
+      m_cfg.en_ptw_source_ref_model = 1'b1;
+    if ($test$plusargs("EN_PTW_SOURCE_SB"))
+      m_cfg.en_ptw_source_sb = 1'b1;
+    if ($test$plusargs("EN_PTW_SOURCE_COV"))
+      m_cfg.en_ptw_source_cov = 1'b1;
+
     // Create agents
     m_cp0        = cp0_agent::type_id::create("m_cp0",        this);
     m_pmp        = pmp_agent::type_id::create("m_pmp",        this);
@@ -182,6 +196,16 @@ class mmu_env extends uvm_env;
     m_ref = mmu_ref_model::type_id::create("m_ref", this);
     // Inject shared page table reference BEFORE run_phase
     m_ref.m_pt = m_pt_mem;
+
+    if (m_cfg.en_ptw_source_monitor
+        || m_cfg.en_ptw_source_ref_model
+        || m_cfg.en_ptw_source_sb) begin
+      m_ptw_source_mon = ptw_source_monitor::type_id::create("m_ptw_source_mon", this);
+    end
+    if (m_cfg.en_ptw_source_ref_model)
+      m_ptw_source_ref = ptw_source_ref_model::type_id::create("m_ptw_source_ref", this);
+    if (m_cfg.en_ptw_source_sb)
+      m_ptw_source_sb = ptw_source_sb::type_id::create("m_ptw_source_sb", this);
 
     // Phase 5: Translation scoreboard (optional: RTU/PTW stress may disable)
     if (m_cfg.en_translation_sb) begin
@@ -234,6 +258,36 @@ class mmu_env extends uvm_env;
     m_pmp.m_monitor.ap.connect(m_ref.af_pmp_cfg.analysis_export);
     m_sysmap_cfg.m_monitor.ap.connect(m_ref.af_sysmap_cfg.analysis_export);
 
+    // PTW source-side skeleton fanout. These connections define the stage-1
+    // topology only; the source monitor/ref-model/SB do not sample or compare yet.
+    if (m_ptw_source_ref != null) begin
+      m_cp0.m_monitor.ap.connect(m_ptw_source_ref.af_csr_write.analysis_export);
+      m_pmp.m_monitor.ap.connect(m_ptw_source_ref.af_pmp_cfg.analysis_export);
+      m_sysmap_cfg.m_monitor.ap.connect(m_ptw_source_ref.af_sysmap_cfg.analysis_export);
+      m_ptw_mem.m_monitor.ap_req.connect(m_ptw_source_ref.af_ptw_mem_req.analysis_export);
+      m_ptw_mem.m_monitor.ap_rsp.connect(m_ptw_source_ref.af_ptw_mem_rsp.analysis_export);
+      m_ptw_mem.m_monitor.ap_drop.connect(m_ptw_source_ref.af_ptw_mem_drop.analysis_export);
+    end
+
+    if ((m_ptw_source_mon != null) && (m_ptw_source_ref != null)) begin
+      m_ptw_source_mon.ap_req_accept.connect(m_ptw_source_ref.af_req_accept.analysis_export);
+      m_ptw_source_mon.ap_abort.connect(m_ptw_source_ref.af_abort.analysis_export);
+    end
+
+    if ((m_ptw_source_ref != null) && (m_ptw_source_sb != null))
+      m_ptw_source_ref.ap_expected.connect(m_ptw_source_sb.af_expected.analysis_export);
+
+    if ((m_ptw_source_mon != null) && (m_ptw_source_sb != null)) begin
+      m_ptw_source_mon.ap_req_accept.connect(m_ptw_source_sb.af_req.analysis_export);
+      m_ptw_source_mon.ap_actual_rsp.connect(m_ptw_source_sb.af_actual.analysis_export);
+    end
+
+    if (m_ptw_source_sb != null) begin
+      m_ptw_mem.m_monitor.ap_req.connect(m_ptw_source_sb.af_mem_req.analysis_export);
+      m_ptw_mem.m_monitor.ap_rsp.connect(m_ptw_source_sb.af_mem_rsp.analysis_export);
+      m_ptw_mem.m_monitor.ap_drop.connect(m_ptw_source_sb.af_mem_drop.analysis_export);
+    end
+
     // Phase 5: Connect monitor rsp APs → translation scoreboard
     if (m_translation_sb != null) begin
       m_ifu.m_monitor.ap_rsp.connect(m_translation_sb.af_ifu_rsp);
@@ -275,6 +329,16 @@ class mmu_env extends uvm_env;
     // Phase 8: PTW mem channel → perf (PTW walk proxy / TaskDivision #3)
     m_ptw_mem.m_monitor.ap_req.connect(m_perf.af_ptw_req.analysis_export);
     m_ptw_mem.m_monitor.ap_rsp.connect(m_perf.af_ptw_rsp.analysis_export);
+  endfunction
+
+  virtual function void report_phase(uvm_phase phase);
+    super.report_phase(phase);
+
+    if ((m_cfg != null) && m_cfg.en_ptw_source_cov) begin
+      `uvm_info(get_type_name(),
+        "PTW_SVA_COVER module=mmu_env name=ptw_source_stage1_placeholder hits=0 provisional=1",
+        UVM_NONE)
+    end
   endfunction
 
 endclass : mmu_env

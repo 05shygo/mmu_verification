@@ -155,10 +155,18 @@ class ptw_source_directed_base extends test_base;
     ptw_actual   = "not_checked_stage2";
     ptw_result   = "provisional";
     ptw_current_scenario_open = 1'b1;
+    if ((m_env != null) && (m_env.m_cfg != null)
+        && (m_env.m_ptw_scenario_db != null)
+        && m_env.m_cfg.en_ptw_source_monitor)
+      m_env.m_ptw_scenario_db.register_scenario(scenario_id);
   endfunction
 
   virtual function void ptw_meta_add_req(string req_id);
     ptw_requirement_ids.push_back(req_id);
+    if ((m_env != null) && (m_env.m_cfg != null)
+        && (m_env.m_ptw_scenario_db != null)
+        && m_env.m_cfg.en_ptw_source_monitor)
+      m_env.m_ptw_scenario_db.register_scenario(ptw_scenario_id, req_id);
   endfunction
 
   virtual function void ptw_meta_add_context(string context);

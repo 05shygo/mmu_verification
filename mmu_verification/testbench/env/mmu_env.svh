@@ -26,6 +26,7 @@ class mmu_env extends uvm_env;
 
   // PTW source-side checker skeletons (created only when enabled)
   ptw_source_monitor   m_ptw_source_mon;
+  ptw_scenario_db      m_ptw_scenario_db;
   ptw_source_ref_model m_ptw_source_ref;
   ptw_source_sb        m_ptw_source_sb;
 
@@ -201,6 +202,7 @@ class mmu_env extends uvm_env;
         || m_cfg.en_ptw_source_ref_model
         || m_cfg.en_ptw_source_sb) begin
       m_ptw_source_mon = ptw_source_monitor::type_id::create("m_ptw_source_mon", this);
+      m_ptw_scenario_db = ptw_scenario_db::type_id::create("m_ptw_scenario_db", this);
     end
     if (m_cfg.en_ptw_source_ref_model)
       m_ptw_source_ref = ptw_source_ref_model::type_id::create("m_ptw_source_ref", this);
@@ -258,8 +260,8 @@ class mmu_env extends uvm_env;
     m_pmp.m_monitor.ap.connect(m_ref.af_pmp_cfg.analysis_export);
     m_sysmap_cfg.m_monitor.ap.connect(m_ref.af_sysmap_cfg.analysis_export);
 
-    // PTW source-side skeleton fanout. These connections define the stage-1
-    // topology only; the source monitor/ref-model/SB do not sample or compare yet.
+    // PTW source-side fanout. Stage 3 monitor/scenario-db emit actual/probe
+    // transactions only; source ref-model/SB matching remains later-stage work.
     if (m_ptw_source_ref != null) begin
       m_cp0.m_monitor.ap.connect(m_ptw_source_ref.af_csr_write.analysis_export);
       m_pmp.m_monitor.ap.connect(m_ptw_source_ref.af_pmp_cfg.analysis_export);
@@ -280,6 +282,19 @@ class mmu_env extends uvm_env;
     if ((m_ptw_source_mon != null) && (m_ptw_source_sb != null)) begin
       m_ptw_source_mon.ap_req_accept.connect(m_ptw_source_sb.af_req.analysis_export);
       m_ptw_source_mon.ap_actual_rsp.connect(m_ptw_source_sb.af_actual.analysis_export);
+    end
+
+    if ((m_ptw_source_mon != null) && (m_ptw_scenario_db != null)) begin
+      m_ptw_source_mon.ap_req_accept.connect(m_ptw_scenario_db.af_req_accept.analysis_export);
+      m_ptw_source_mon.ap_actual_rsp.connect(m_ptw_scenario_db.af_actual_rsp.analysis_export);
+      m_ptw_source_mon.ap_abort.connect(m_ptw_scenario_db.af_abort.analysis_export);
+      m_ptw_source_mon.ap_ctx.connect(m_ptw_scenario_db.af_ctx.analysis_export);
+      m_ptw_source_mon.ap_level.connect(m_ptw_scenario_db.af_level.analysis_export);
+      m_ptw_source_mon.ap_pde.connect(m_ptw_scenario_db.af_pde.analysis_export);
+      m_ptw_source_mon.ap_drop.connect(m_ptw_scenario_db.af_drop.analysis_export);
+      m_ptw_mem.m_monitor.ap_req.connect(m_ptw_scenario_db.af_ptw_mem_req.analysis_export);
+      m_ptw_mem.m_monitor.ap_rsp.connect(m_ptw_scenario_db.af_ptw_mem_rsp.analysis_export);
+      m_ptw_mem.m_monitor.ap_drop.connect(m_ptw_scenario_db.af_ptw_mem_drop.analysis_export);
     end
 
     if (m_ptw_source_sb != null) begin

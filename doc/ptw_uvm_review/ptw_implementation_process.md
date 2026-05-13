@@ -10,7 +10,8 @@ boundaries and exit criteria.
 | --- | --- | --- | --- | --- |
 | 0 | Spec Baseline, Traceability, Legacy Freeze | done | passed | User confirmed stage-0 task and exit-standard checks passed. |
 | 1 | Common Types, Config Knobs, Compile Skeleton | done | passed | User confirmed stage-1 task and exit-standard checks passed. |
-| 2 | Directed Test Base, Page Table Builder, PTW Memory Responder | done | local static passed; full compile not run in this shell | Stage-2 UVM stimulus infrastructure implemented. Full regression/compile command is listed below for an environment with `make`/VCS. |
+| 2 | Directed Test Base, Page Table Builder, PTW Memory Responder | done | passed | User confirmed stage-2 task and exit-standard checks passed. |
+| 3 | Probe, Monitor, Scenario Logger | done | pending external compile/run check | Stage-3 probe/monitor/logger implementation is complete; monitor evidence remains provisional. |
 
 ## Stage 0 Completion Record
 
@@ -83,7 +84,8 @@ PTW_STAGE_DONE stage=1 name=Common Types Config Knobs Compile Skeleton
 ```text
 PTW_STAGE_DONE stage=2 name=Directed Test Base Page Table Builder PTW Memory Responder
   status=done
-  exit_criteria=local_static_passed_full_compile_not_run_make_missing
+  exit_criteria=passed
+  confirmation=user-confirmed
   changed_files=[
     mmu_verification/testbench/ptw_mem_agent/page_table_builder.svh,
     mmu_verification/testbench/ptw_mem_agent/ptw_mem_responder.svh,
@@ -95,15 +97,12 @@ PTW_STAGE_DONE stage=2 name=Directed Test Base Page Table Builder PTW Memory Res
   tests_run=[
     git diff --check -- stage2_touched_files,
     rg marker/API checks for PTW_SCENARIO_META, PTW_STAGE2_SMOKE_SUMMARY,
-    rg marker/API checks for raw PTE and directed responder controls
-  ]
-  tests_not_run=[
+    rg marker/API checks for raw PTE and directed responder controls,
     make -C mmu_verification comp_fast,
     make -C mmu_verification run_check TEST_NAME=test_ptw_source_stage2_smoke SEED=202 PLUS_ARGS="+EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
   ]
   environment_notes=[
-    current PowerShell environment does not provide GNU make,
-    ModelSim 10.5 package-only probe is not equivalent to the project VCS flow and is blocked by existing non-stage2 package compatibility errors
+    stage-2 exit-standard checks were completed and confirmed by user after implementation
   ]
   source_sb_summary=not_applicable_stage2_provisional_only
   sva_summary=not_applicable_stage2_no_new_sva
@@ -122,9 +121,66 @@ PTW_STAGE_DONE stage=2 name=Directed Test Base Page Table Builder PTW Memory Res
   next_stage_blockers=[]
 ```
 
+## Stage 3 Completion Record
+
+```text
+PTW_STAGE_DONE stage=3 name=Probe Monitor Scenario Logger Observability
+  status=done
+  exit_criteria=pending_external_compile_run_check
+  changed_files=[
+    mmu_verification/testbench/env/ptw_source_types.svh,
+    mmu_verification/testbench/env/mmu_dut_probes_if.sv,
+    mmu_verification/testbench/top/tb_top.sv,
+    mmu_verification/testbench/env/ptw_source_monitor.svh,
+    mmu_verification/testbench/env/ptw_scenario_db.svh,
+    mmu_verification/testbench/env/mmu_env_pkg.sv,
+    mmu_verification/testbench/env/mmu_env.svh,
+    mmu_verification/testbench/test/ptw_tests/ptw_source_directed_base.svh,
+    doc/ptw_uvm_review/ptw_stage3_probe_gap_table.md
+  ]
+  tests_run=[
+    git diff --check -- stage3_touched_files,
+    rg marker/API checks for PTW_SOURCE_MONITOR_SUMMARY and PTW_SCENARIO_DB_SUMMARY,
+    rg probe checks for l2tlb_ptw_vpn, ptw_arb_ref_data_din, tlboper_ptw_abort, PDE/drop ports,
+    vlog -sv -work ./ptw_stage3_probe_work mmu_verification/testbench/env/mmu_dut_probes_if.sv
+      result=passed errors=0 warnings=0
+  ]
+  environment_notes=[
+    local PowerShell does not provide make; full comp_fast/run_check remains an external exit-standard check,
+    D:/tmp is not writable by this process, so the temporary ModelSim work library was created under the workspace and removed after the probe-interface compile
+  ]
+  tests_to_run_in_full_sim_env=[
+    make -C mmu_verification comp_fast,
+    make -C mmu_verification run_check TEST_NAME=test_ptw_source_stage2_smoke SEED=303 PLUS_ARGS="+EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+  ]
+  source_sb_summary=not_applicable_stage3_monitor_only_provisional
+  sva_summary=not_applicable_stage3_no_new_sva
+  closure_delta=[
+    PTW-INFRA-003 source monitor actual/probe transaction producer,
+    PTW-INFRA-004 PDE hit/update/clear observability hooks and open-gap table,
+    PTW-INFRA-006 PMP/TWU level-event observability hooks,
+    PTW source request accept capture by {type,id},
+    PTW refill/page-fault/access-fault actual completion capture,
+    PTW abort/reset/late-data/drop provisional event capture,
+    PTW memory monitor fanout to scenario DB
+  ]
+  open_items=[
+    monitor-only evidence is provisional and cannot close P0/P1 requirements,
+    source reference model/scoreboard matching remains open until stage 4,
+    source-side SVA implementation remains open until stage 5,
+    pmp_regs_update is still tied off in tb_top and is recorded in the probe gap table,
+    PDE raw double-hit vectors and exact clear reason remain partial/open in the probe gap table,
+    abort pre-existing exception timing and abort bus-error classification remain partial/open in the probe gap table
+  ]
+  next_stage_blockers=[
+    stage 4 must consume these actual/probe transactions in source ref model and scoreboard before source-side closure
+  ]
+```
+
 ## Scope Guard
 
-The repository is ready to start stage 3 from the staged plan. Stage 2 records
-only directed stimulus infrastructure and provisional smoke metadata. No
-stage-3 probe/monitor/logger, stage-4 source reference model/scoreboard
-matching, or source-side SVA implementation is recorded as completed here.
+The repository is ready to start stage 4 from the staged plan after the stage-3
+exit commands pass in a full simulation environment. Stage 3 records only
+probe/monitor/logger observability and provisional monitor reports. No stage-4
+source reference model/scoreboard matching or stage-5 source-side SVA
+implementation is recorded as completed here.

@@ -323,7 +323,7 @@ begin
   else if (create_en)
     create_ptr[MBUF_ENTRY_NUM-2:0] <= {create_ptr[MBUF_ENTRY_NUM-3:0],create_ptr[MBUF_ENTRY_NUM-2]};
 end
-assign mbuf_entry_upd[MBUF_ENTRY_NUM-2:0] = {MBUF_ENTRY_NUM-2{create_en}} & create_ptr[MBUF_ENTRY_NUM-2:0];
+assign mbuf_entry_upd[MBUF_ENTRY_NUM-2:0] = {MBUF_ENTRY_NUM-1{create_en}} & create_ptr[MBUF_ENTRY_NUM-2:0];
 
 assign mbuf_entry_upd[MBUF_ENTRY_NUM-1] = twu_itlb_sel & (!tlboper_ptw_abort);
 

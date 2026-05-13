@@ -260,6 +260,10 @@ class ptw_source_monitor extends uvm_monitor;
         level_vec = v_probe.mon_cb.ptw_twu_mbuf_lvl[twu];
         if (level_vec == 3'b000)
           level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
+        if ((level_vec == 3'b000) && (|v_probe.mon_cb.p13_pmp_vld_vec[twu]))
+          level_vec = v_probe.mon_cb.p13_pmp_vld_vec[twu];
+        if ((level_vec == 3'b000) && (|v_probe.mon_cb.p13_pmp_deny_vec[twu]))
+          level_vec = v_probe.mon_cb.p13_pmp_deny_vec[twu];
         tr.level = level_from_onehot(level_vec);
 
         lvl_idx = (tr.level == PTW_SRC_LEVEL_FST) ? 2
@@ -269,7 +273,7 @@ class ptw_source_monitor extends uvm_monitor;
         if (tr.mbuf_data_vld)
           tr.pte_data = v_probe.mon_cb.ptw_mbuf_twu_data;
         if ((tr.req_type == PTW_SRC_TYPE_UNKNOWN)
-            && (|v_probe.mon_cb.p13_pmp_type_vec[twu][lvl_idx]))
+            && ptw_src_is_legal_req_type(v_probe.mon_cb.p13_pmp_type_vec[twu][lvl_idx]))
           tr.req_type = cast_req_type(v_probe.mon_cb.p13_pmp_type_vec[twu][lvl_idx]);
 
         m_level_count++;
@@ -403,14 +407,22 @@ class ptw_source_monitor extends uvm_monitor;
 
       tr = ptw_src_actual_rsp_txn::type_id::create("ptw_actual_rsp");
       tr.cycle = m_cycle;
+      tr.kind = PTW_SRC_EXP_UNKNOWN;
       tr.req_type = cast_req_type(v_probe.mon_cb.ptw_l2tlb_type);
       tr.id = v_probe.mon_cb.ptw_l2tlb_id;
+      tr.vpn = '0;
+      tr.asid = '0;
+      tr.page_size = PTW_SRC_PGS_NONE;
+      tr.ppn = '0;
+      tr.global_bit = 1'b0;
+      tr.flg = '0;
       tr.raw_tag = v_probe.mon_cb.ptw_arb_ref_tag_din;
       tr.raw_data = v_probe.mon_cb.ptw_arb_ref_data_din;
       tr.completion_or_seen = completion_or_seen;
       tr.refill_valid = refill_seen;
       tr.page_fault = page_fault_seen;
       tr.access_fault = access_fault_seen;
+      tr.fault_kind = PTW_SRC_FAULT_NONE;
       tr.target_l2tlb = 1'b1;
       tr.target_l1i = v_probe.mon_cb.ptw_l1i_ref_cmplt;
       tr.target_l1d = v_probe.mon_cb.ptw_l1d_ref_cmplt;
@@ -425,7 +437,7 @@ class ptw_source_monitor extends uvm_monitor;
         tr.asid = tag.asid;
         tr.page_size = tag.page_size;
         tr.ppn = data.ppn;
-        tr.global = tag.global;
+        tr.global_bit = tag.global_bit;
         tr.flg = v_probe.mon_cb.ptw_l2tlb_flg;
         tr.fault_kind = PTW_SRC_FAULT_NONE;
         m_refill_count++;
@@ -437,7 +449,8 @@ class ptw_source_monitor extends uvm_monitor;
       end else begin
         tr.kind = PTW_SRC_EXP_ACCESS_FAULT;
         tr.page_size = PTW_SRC_PGS_NONE;
-        tr.fault_kind = PTW_SRC_FAULT_ACCESS;
+        tr.fault_kind = (v_probe.mon_cb.ptw_lsu_bus_error === 1'b1)
+                      ? PTW_SRC_FAULT_BUS_ERROR : PTW_SRC_FAULT_ACCESS;
         m_access_fault_count++;
       end
 

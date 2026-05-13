@@ -11,7 +11,8 @@ boundaries and exit criteria.
 | 0 | Spec Baseline, Traceability, Legacy Freeze | done | passed | User confirmed stage-0 task and exit-standard checks passed. |
 | 1 | Common Types, Config Knobs, Compile Skeleton | done | passed | User confirmed stage-1 task and exit-standard checks passed. |
 | 2 | Directed Test Base, Page Table Builder, PTW Memory Responder | done | passed | User confirmed stage-2 task and exit-standard checks passed. |
-| 3 | Probe, Monitor, Scenario Logger | done | pending external compile/run check | Stage-3 probe/monitor/logger implementation is complete; monitor evidence remains provisional. |
+| 3 | Probe, Monitor, Scenario Logger | done | passed | User confirmed stage-3 task and exit-standard checks passed; monitor evidence remains provisional. |
+| 4 | Source Reference Model and Scoreboard MVP | done | pending external compile/run check | Stage-4 ref model/SB MVP implementation is complete; full compile/run must be checked in project simulation environment. |
 
 ## Stage 0 Completion Record
 
@@ -126,7 +127,8 @@ PTW_STAGE_DONE stage=2 name=Directed Test Base Page Table Builder PTW Memory Res
 ```text
 PTW_STAGE_DONE stage=3 name=Probe Monitor Scenario Logger Observability
   status=done
-  exit_criteria=pending_external_compile_run_check
+  exit_criteria=passed
+  confirmation=user-confirmed
   changed_files=[
     mmu_verification/testbench/env/ptw_source_types.svh,
     mmu_verification/testbench/env/mmu_dut_probes_if.sv,
@@ -143,15 +145,13 @@ PTW_STAGE_DONE stage=3 name=Probe Monitor Scenario Logger Observability
     rg marker/API checks for PTW_SOURCE_MONITOR_SUMMARY and PTW_SCENARIO_DB_SUMMARY,
     rg probe checks for l2tlb_ptw_vpn, ptw_arb_ref_data_din, tlboper_ptw_abort, PDE/drop ports,
     vlog -sv -work ./ptw_stage3_probe_work mmu_verification/testbench/env/mmu_dut_probes_if.sv
-      result=passed errors=0 warnings=0
-  ]
-  environment_notes=[
-    local PowerShell does not provide make; full comp_fast/run_check remains an external exit-standard check,
-    D:/tmp is not writable by this process, so the temporary ModelSim work library was created under the workspace and removed after the probe-interface compile
-  ]
-  tests_to_run_in_full_sim_env=[
+      result=passed errors=0 warnings=0,
     make -C mmu_verification comp_fast,
     make -C mmu_verification run_check TEST_NAME=test_ptw_source_stage2_smoke SEED=303 PLUS_ARGS="+EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+  ]
+  environment_notes=[
+    local PowerShell did not provide make during implementation, so full comp_fast/run_check was completed and confirmed by user after implementation,
+    D:/tmp was not writable by this process, so the temporary ModelSim work library was created under the workspace and removed after the probe-interface compile
   ]
   source_sb_summary=not_applicable_stage3_monitor_only_provisional
   sva_summary=not_applicable_stage3_no_new_sva
@@ -177,10 +177,63 @@ PTW_STAGE_DONE stage=3 name=Probe Monitor Scenario Logger Observability
   ]
 ```
 
+## Stage 4 Completion Record
+
+```text
+PTW_STAGE_DONE stage=4 name=Source Reference Model and Scoreboard MVP
+  status=done
+  exit_criteria=pending_external_compile_run_check
+  changed_files=[
+    mmu_verification/testbench/env/ptw_pde_cache_model.svh,
+    mmu_verification/testbench/env/ptw_source_types.svh,
+    mmu_verification/testbench/env/ptw_source_monitor.svh,
+    mmu_verification/testbench/env/ptw_source_ref_model.svh,
+    mmu_verification/testbench/env/ptw_source_sb.svh,
+    mmu_verification/testbench/env/mmu_env_pkg.sv,
+    mmu_verification/testbench/env/mmu_env.svh,
+    doc/ptw_uvm_review/ptw_implementation_process.md
+  ]
+  tests_run=[
+    git diff --check -- stage4_touched_files,
+    rg marker/API checks for PTW_SOURCE_REF_SUMMARY stage=4 and PTW_SOURCE_SB_SUMMARY stage=4,
+    rg checks for PTW_SOURCE_ILLEGAL_REUSE, PTW_SOURCE_MISMATCH, PTW_SOURCE_DROP_MATCH, PTW_STAGE4_OPEN_GAP,
+    attempted local ModelSim env package compile; blocked by existing package/UVM macro dependency issues before stage-4-only compilation could be isolated
+  ]
+  environment_notes=[
+    local PowerShell does not provide make; full comp_fast/run_check remains an external exit-standard check,
+    source ref model explicitly does not call mmu_ref_model.translate(),
+    stage-4 source SB plusarg enables source ref model and monitor automatically
+  ]
+  tests_to_run_in_full_sim_env=[
+    make -C mmu_verification comp_fast,
+    make -C mmu_verification run_check TEST_NAME=test_ptw_source_stage2_smoke SEED=404 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+  ]
+  source_sb_summary=PTW_SOURCE_SB_SUMMARY stage=4 expected_after_run mismatch=0 pending=0 illegal=0 provisional=0
+  sva_summary=not_applicable_stage4_no_new_sva
+  closure_delta=[
+    PTW-INFRA-003 source monitor actual/probe transactions consumed by source ref model/SB,
+    PTW-INFRA-004 abstract PDE cache model with L1/L2 lookup, double-hit L2 priority, queued update, clear, and abort flush,
+    PTW source expected generation for refill/page fault/access fault/drop,
+    PTW source scoreboard matching by {type,id} without fixed latency assumptions,
+    duplicate {type,id} request reuse classified as illegal,
+    mismatch taxonomy for class_mismatch, field_mismatch, drop_mismatch, pending, illegal, and probe_gap
+  ]
+  open_items=[
+    full compile/run must be completed in the project simulation environment,
+    MAEE=0 1G/2M sysmap degrade remains a later-stage modeling/test closure item,
+    PMP deny and LSU bus-error expected generation use visible monitor/probe evidence and unique-pending fallback when exact key probes are insufficient,
+    source-side SVA implementation remains open until stage 5,
+    P0 directed closure remains open until stage 6
+  ]
+  next_stage_blockers=[
+    stage 5 may add SVA using the stage-3 probes and stage-4 mismatch taxonomy,
+    stage 6 directed tests should require PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0
+  ]
+```
+
 ## Scope Guard
 
-The repository is ready to start stage 4 from the staged plan after the stage-3
-exit commands pass in a full simulation environment. Stage 3 records only
-probe/monitor/logger observability and provisional monitor reports. No stage-4
-source reference model/scoreboard matching or stage-5 source-side SVA
-implementation is recorded as completed here.
+The repository is ready for the stage-4 exit commands in a full simulation
+environment. Stage 4 records source reference model and scoreboard MVP work
+only. No stage-5 source-side SVA implementation or stage-6 directed test
+closure is recorded as completed here.

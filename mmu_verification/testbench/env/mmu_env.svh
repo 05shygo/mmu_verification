@@ -24,7 +24,7 @@ class mmu_env extends uvm_env;
   mmu_page_table_mem m_pt_mem;
   mmu_ref_model    m_ref;
 
-  // PTW source-side checker skeletons (created only when enabled)
+  // PTW source-side checker components (created only when enabled)
   ptw_source_monitor   m_ptw_source_mon;
   ptw_scenario_db      m_ptw_scenario_db;
   ptw_source_ref_model m_ptw_source_ref;
@@ -178,6 +178,13 @@ class mmu_env extends uvm_env;
     if ($test$plusargs("EN_PTW_SOURCE_COV"))
       m_cfg.en_ptw_source_cov = 1'b1;
 
+    if (m_cfg.en_ptw_source_sb) begin
+      m_cfg.en_ptw_source_ref_model = 1'b1;
+      m_cfg.en_ptw_source_monitor = 1'b1;
+    end
+    if (m_cfg.en_ptw_source_ref_model)
+      m_cfg.en_ptw_source_monitor = 1'b1;
+
     // Create agents
     m_cp0        = cp0_agent::type_id::create("m_cp0",        this);
     m_pmp        = pmp_agent::type_id::create("m_pmp",        this);
@@ -260,8 +267,8 @@ class mmu_env extends uvm_env;
     m_pmp.m_monitor.ap.connect(m_ref.af_pmp_cfg.analysis_export);
     m_sysmap_cfg.m_monitor.ap.connect(m_ref.af_sysmap_cfg.analysis_export);
 
-    // PTW source-side fanout. Stage 3 monitor/scenario-db emit actual/probe
-    // transactions only; source ref-model/SB matching remains later-stage work.
+    // PTW source-side fanout. Stage 4 consumes source monitor/probe and PTW
+    // memory monitor events in the source ref-model/SB.
     if (m_ptw_source_ref != null) begin
       m_cp0.m_monitor.ap.connect(m_ptw_source_ref.af_csr_write.analysis_export);
       m_pmp.m_monitor.ap.connect(m_ptw_source_ref.af_pmp_cfg.analysis_export);
@@ -274,6 +281,10 @@ class mmu_env extends uvm_env;
     if ((m_ptw_source_mon != null) && (m_ptw_source_ref != null)) begin
       m_ptw_source_mon.ap_req_accept.connect(m_ptw_source_ref.af_req_accept.analysis_export);
       m_ptw_source_mon.ap_abort.connect(m_ptw_source_ref.af_abort.analysis_export);
+      m_ptw_source_mon.ap_ctx.connect(m_ptw_source_ref.af_ctx.analysis_export);
+      m_ptw_source_mon.ap_level.connect(m_ptw_source_ref.af_level.analysis_export);
+      m_ptw_source_mon.ap_pde.connect(m_ptw_source_ref.af_pde.analysis_export);
+      m_ptw_source_mon.ap_drop.connect(m_ptw_source_ref.af_drop.analysis_export);
     end
 
     if ((m_ptw_source_ref != null) && (m_ptw_source_sb != null))
@@ -282,6 +293,7 @@ class mmu_env extends uvm_env;
     if ((m_ptw_source_mon != null) && (m_ptw_source_sb != null)) begin
       m_ptw_source_mon.ap_req_accept.connect(m_ptw_source_sb.af_req.analysis_export);
       m_ptw_source_mon.ap_actual_rsp.connect(m_ptw_source_sb.af_actual.analysis_export);
+      m_ptw_source_mon.ap_drop.connect(m_ptw_source_sb.af_drop.analysis_export);
     end
 
     if ((m_ptw_source_mon != null) && (m_ptw_scenario_db != null)) begin

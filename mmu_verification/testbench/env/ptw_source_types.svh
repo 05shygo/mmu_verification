@@ -12,6 +12,11 @@
 //   - Add monitor/logger transaction payloads for request accept, actual
 //     completion, context, PDE, level, and drop observability. These are still
 //     provisional evidence until the stage-4 ref model/SB consumes them.
+//
+// Stage 4 scope:
+//   - Add expected transaction evidence fields used by the source reference
+//     model and scoreboard. These fields remain transaction-level; cycle-level
+//     protocol assertions are stage-5 work.
 // =============================================================================
 `ifndef PTW_SOURCE_TYPES_SVH
 `define PTW_SOURCE_TYPES_SVH
@@ -110,7 +115,7 @@ typedef struct packed {
   vpn_t               vpn;
   asid_t              asid;
   ptw_src_page_size_e page_size;
-  logic               global;
+  logic               global_bit;
 } ptw_src_refill_tag_s;
 
 typedef struct packed {
@@ -179,9 +184,9 @@ function automatic logic [47:0] ptw_src_make_refill_tag(
   input vpn_t               vpn,
   input asid_t              asid,
   input ptw_src_page_size_e page_size,
-  input logic               global
+  input logic               global_bit
 );
-  return {1'b1, vpn, asid, page_size, global};
+  return {1'b1, vpn, asid, page_size, global_bit};
 endfunction
 
 function automatic logic [41:0] ptw_src_make_refill_data(
@@ -201,7 +206,7 @@ function automatic ptw_src_refill_tag_s ptw_src_decode_refill_tag(
   tag.vpn       = raw_tag[46:20];
   tag.asid      = raw_tag[19:4];
   tag.page_size = ptw_src_page_size_e'(raw_tag[3:1]);
-  tag.global    = raw_tag[0];
+  tag.global_bit = raw_tag[0];
 
   return tag;
 endfunction
@@ -292,11 +297,28 @@ class ptw_src_expected_rsp_txn extends uvm_sequence_item;
   asid_t                 asid;
   ptw_src_page_size_e    page_size;
   ppn_t                  ppn;
-  logic                  global;
+  logic                  global_bit;
   logic [13:0]           flg;
   ptw_src_target_kind_e  target;
   ptw_src_fault_kind_e   fault_kind;
   ptw_src_drop_reason_e  drop_reason;
+  logic [47:0]           raw_tag;
+  logic [41:0]           raw_data;
+  logic                  completion_or_seen;
+  logic                  refill_valid;
+  logic                  page_fault;
+  logic                  access_fault;
+  logic                  target_l2tlb;
+  logic                  target_l1i;
+  logic                  target_l1d;
+  logic                  target_pfu;
+  logic                  has_drop_key;
+  bit                    reset_drop;
+  bit                    abort_drop;
+  bit                    late_data;
+  bit                    abort_bus_error;
+  bit                    pre_existing_exception_grant;
+  int unsigned           cycle;
 
   function new(string name = "ptw_src_expected_rsp_txn");
     super.new(name);
@@ -304,9 +326,14 @@ class ptw_src_expected_rsp_txn extends uvm_sequence_item;
 
   virtual function string convert2string();
     return $sformatf(
-      "kind=%s type=%s id=0x%02h vpn=0x%07h asid=0x%04h pgs=%s ppn=0x%07h global=%0b flg=0x%04h target=%s fault=%s drop=%s",
+      "cycle=%0d kind=%s type=%s id=0x%02h vpn=0x%07h asid=0x%04h pgs=%s ppn=0x%07h global=%0b flg=0x%04h target=%s target_mask={l2=%0b,l1i=%0b,l1d=%0b,pfu=%0b} fault=%s drop=%s cmplt_or=%0b refill=%0b pf=%0b af=%0b raw_tag=0x%012h raw_data=0x%011h drop_flags={has=%0b,reset=%0b,abort=%0b,late=%0b,abort_bus_error=%0b,pre_existing=%0b}",
+      cycle,
       kind.name(), req_type.name(), id, vpn, asid, page_size.name(), ppn,
-      global, flg, target.name(), fault_kind.name(), drop_reason.name());
+      global_bit, flg, target.name(), target_l2tlb, target_l1i, target_l1d,
+      target_pfu, fault_kind.name(), drop_reason.name(), completion_or_seen,
+      refill_valid, page_fault, access_fault, raw_tag, raw_data,
+      has_drop_key, reset_drop, abort_drop, late_data, abort_bus_error,
+      pre_existing_exception_grant);
   endfunction
 endclass : ptw_src_expected_rsp_txn
 
@@ -320,7 +347,7 @@ class ptw_src_actual_rsp_txn extends uvm_sequence_item;
   asid_t                 asid;
   ptw_src_page_size_e    page_size;
   ppn_t                  ppn;
-  logic                  global;
+  logic                  global_bit;
   logic [13:0]           flg;
   ptw_src_target_kind_e  target;
   ptw_src_fault_kind_e   fault_kind;
@@ -344,7 +371,7 @@ class ptw_src_actual_rsp_txn extends uvm_sequence_item;
     return $sformatf(
       "cycle=%0d kind=%s type=%s id=0x%02h vpn=0x%07h asid=0x%04h pgs=%s ppn=0x%07h global=%0b flg=0x%04h target=%s target_mask={l2=%0b,l1i=%0b,l1d=%0b,pfu=%0b} fault=%s cmplt_or=%0b refill=%0b pf=%0b af=%0b raw_tag=0x%012h raw_data=0x%011h",
       cycle, kind.name(), req_type.name(), id, vpn, asid, page_size.name(),
-      ppn, global, flg, target.name(), target_l2tlb, target_l1i, target_l1d,
+      ppn, global_bit, flg, target.name(), target_l2tlb, target_l1i, target_l1d,
       target_pfu, fault_kind.name(), completion_or_seen, refill_valid,
       page_fault, access_fault, raw_tag, raw_data);
   endfunction

@@ -13,7 +13,8 @@ boundaries and exit criteria.
 | 2 | Directed Test Base, Page Table Builder, PTW Memory Responder | done | passed | User confirmed stage-2 task and exit-standard checks passed. |
 | 3 | Probe, Monitor, Scenario Logger | done | passed | User confirmed stage-3 task and exit-standard checks passed; monitor evidence remains provisional. |
 | 4 | Source Reference Model and Scoreboard MVP | done | passed | User confirmed stage-4 task and exit-standard checks passed after bus-error/access-fault debug updates. |
-| 5 | P0 SVA and Cover Gate | implemented | pending user run | Stage-5 SVA/bind/filelist/report markers implemented; local SVA-only ModelSim compile passed. |
+| 5 | P0 SVA and Cover Gate | done | passed | User confirmed stage-5 task and exit-standard checks passed. |
+| 6 | P0 Directed Tests and Legacy Conflict Fixes | implemented | pending user run | Grouped P0 directed suite, P0 list, exit gate, closure report, CSV update, and legacy conflict patches are implemented. |
 
 ## Stage 0 Completion Record
 
@@ -244,9 +245,9 @@ PTW_STAGE_DONE stage=4 name=Source Reference Model and Scoreboard MVP
 
 ```text
 PTW_STAGE_DONE stage=5 name=P0 SVA and Cover Gate
-  status=implemented
-  exit_criteria=pending_full_regression
-  confirmation=not_user_confirmed_yet
+  status=done
+  exit_criteria=passed
+  confirmation=user-confirmed
   changed_files=[
     mmu_verification/testbench/top/mmu_ptw_top_sva.sv,
     mmu_verification/testbench/top/mmu_pde_cache_sva.sv,
@@ -273,10 +274,17 @@ PTW_STAGE_DONE stage=5 name=P0 SVA and Cover Gate
     bind-check warnings were pre-existing ModelSim always_comb/vopt warnings in mmu_l1dtlb.sv
       plus compilation-unit bind elaboration guidance,
     attempted make -C mmu_verification comp_fast
-      result=blocked reason=make_not_found_in_local_powershell
+      result=blocked_in_local_powershell reason=make_not_found,
+    make -C mmu_verification comp_fast
+      result=passed user_confirmed,
+    make -C mmu_verification run_check TEST_NAME=test_ptw_source_stage2_smoke SEED=505 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+      result=passed user_confirmed
+  ]
+  environment_notes=[
+    local PowerShell did not provide make during implementation, so full comp_fast/run_check exit-standard checks were completed and confirmed by user after implementation
   ]
   source_sb_summary=not_applicable_stage5_no_new_source_model
-  sva_summary=local_sva_compile_passed_full_make_pending
+  sva_summary=stage5_exit_passed_user_confirmed
   closure_delta=[
     PTW-SVA-REQ-001..004 top request ready/hold/type cover,
     PTW-SVA-ARB-001..008 visible class priority/completion/target/layout cover,
@@ -289,19 +297,114 @@ PTW_STAGE_DONE stage=5 name=P0 SVA and Cover Gate
     L1D-SVA-PTW-001/003 consumer-only cover markers
   ]
   open_items=[
-    full make comp_fast/run_check not executed locally in this record,
-    local PowerShell does not provide make; user should run exit-standard commands in the normal regression environment,
     stage5 probe gaps documented in doc/ptw_uvm_review/ptw_stage5_sva_gap_table.md,
     several deep CHK/PDE/MAEE/abort subitems require Stage 6 directed source-SB evidence
   ]
   next_stage_blockers=[
-    run full Stage 5 exit commands before marking exit_criteria=passed,
     Stage 6 directed tests should require PTW_SVA_COVER plus source scoreboard match
   ]
 ```
 
 ## Scope Guard
 
-Stage 5 implementation is present, but the full regression exit gate still must
-be run before marking Stage 5 passed. No stage-6 directed test closure is
-recorded as completed here.
+Stage 5 implementation and exit-standard checks are recorded as passed by user
+confirmation. Stage 6 implementation is recorded below and is waiting for the
+normal regression-environment exit checks before it can be marked passed.
+
+## Stage 6 Implementation Record
+
+```text
+PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
+  status=implemented
+  exit_criteria=pending_full_regression
+  confirmation=not_user_confirmed_yet
+  changed_files=[
+    mmu_verification/testbench/test/ptw_tests/test_ptw_stage6_p0_suite.svh,
+    mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh,
+    mmu_verification/testbench/test/ptw_tests/test_xbar_twu_round_robin.svh,
+    mmu_verification/testbench/test/ptw_tests/test_pte_reserved_bits.svh,
+    mmu_verification/testbench/test/ptw_tests/test_mbuf_ooo_response.svh,
+    mmu_verification/simu/ptw_p0_list,
+    mmu_verification/simu/ptw_source_closure_matrix.csv,
+    mmu_verification/scripts/ptw_stage6_exit_gate.py,
+    doc/ptw_uvm_review/ptw_stage6_p0_closure_report.md,
+    doc/ptw_uvm_review/ptw_implementation_process.md
+  ]
+  tests_run=[
+    python mmu_verification/scripts/ptw_stage6_exit_gate.py --help
+      result=blocked_in_local_powershell reason=python_windowsapps_logon_session_error,
+    python syntax parse for mmu_verification/scripts/ptw_stage6_exit_gate.py
+      result=blocked_in_local_powershell reason=python_windowsapps_logon_session_error,
+    rg marker/API checks for test_ptw_p0_*, PTW_STAGE6_CLOSURE, PTW_FLOW_BIND,
+      obsolete-by-spec, and stage6 statuses
+      result=passed,
+    git diff --check -- stage6_touched_files
+      result=passed,
+    make -C mmu_verification comp_fast
+      result=blocked_in_local_powershell reason=make_not_found
+  ]
+  environment_notes=[
+    local PowerShell did not provide make and the WindowsApps python/python3 launchers failed with a logon-session error, so full compile/regression/exit-gate checks must be run in the normal regression environment,
+    Stage 6 intentionally uses 6 grouped P0 test classes rather than creating one file per requirement,
+    no temporary stage task split plan was needed because created file count stayed below the requested threshold
+  ]
+  source_sb_summary=required_at_exit PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0
+  sva_summary=required_at_exit PTW_SVA_COVER hits>0 and assert_fail=0
+  closure_delta=[
+    PTW-ADD-001..034 mapped to stage6 directed evidence or explicit open reason,
+    PTW-FLOW-001..023 bound by test_ptw_p0_flow_trace_umbrella to directed scenarios or explicit open reason,
+    P0 list added at mmu_verification/simu/ptw_p0_list,
+    P0 closure report added at doc/ptw_uvm_review/ptw_stage6_p0_closure_report.md,
+    stage6 exit gate added at mmu_verification/scripts/ptw_stage6_exit_gate.py,
+    legacy round-robin xbar, reserved/RSW fault, and PTW memory OOO wrappers marked not_source_closure/obsolete-by-spec
+  ]
+  open_items=[
+    PTW-ADD-007 raw PDE double-hit L2-wins vector remains Stage 7 precision work,
+    PTW-ADD-008 PDE lookup/update same-cycle old-state precision remains Stage 7,
+    PTW-ADD-010 and PTW-FLOW-022 satp/PMP clear-only re-update remain Stage 7/TB gap,
+    PTW-ADD-011/024 and PTW-FLOW-019 full abort/drop matrix remains Stage 7 ref/SB precision,
+    PTW-ADD-013 and PTW-FLOW-010/011 isolated scd/thd PMP deny vectors remain Stage 7 vector work,
+    PTW-ADD-027/028 and PTW-FLOW-004..007 MAEE=0 1G/2M degrade/no-lower-walk remain Stage 7 source-model precision,
+    PTW-ADD-029 malformed/no-hit/multi-hit sysmap constraints remain Stage 7/8 signoff,
+    PTW-ADD-030 context usage-point sampling remains Stage 7,
+    PTW-ADD-032 remains consumer-only and cannot replace source-side closure
+  ]
+  next_stage_blockers=[
+    run Stage 6 exit commands and confirm source SB clean plus SVA cover hit before marking exit_criteria=passed
+  ]
+```
+
+## Stage 6 Exit Commands
+
+```bash
+make -C mmu_verification comp_fast
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_p0_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage6_p0 \
+  REGRESS_SEEDS="606" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+python3 mmu_verification/scripts/ptw_stage6_exit_gate.py \
+  --list mmu_verification/simu/ptw_p0_list \
+  --log-dir mmu_verification/output/logs \
+  --seed 606 \
+  --closure doc/ptw_uvm_review/ptw_stage6_p0_closure_report.md \
+  --csv mmu_verification/simu/ptw_source_closure_matrix.csv
+
+git diff --check -- \
+  mmu_verification/testbench/test/ptw_tests/test_ptw_stage6_p0_suite.svh \
+  mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh \
+  mmu_verification/testbench/test/ptw_tests/test_xbar_twu_round_robin.svh \
+  mmu_verification/testbench/test/ptw_tests/test_pte_reserved_bits.svh \
+  mmu_verification/testbench/test/ptw_tests/test_mbuf_ooo_response.svh \
+  mmu_verification/simu/ptw_p0_list \
+  mmu_verification/simu/ptw_source_closure_matrix.csv \
+  mmu_verification/scripts/ptw_stage6_exit_gate.py \
+  doc/ptw_uvm_review/ptw_stage6_p0_closure_report.md \
+  doc/ptw_uvm_review/ptw_implementation_process.md
+```

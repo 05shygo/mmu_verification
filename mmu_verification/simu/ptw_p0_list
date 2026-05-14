@@ -1,0 +1,10 @@
+# PTW stage-6 P0 source-side directed list
+# Required global plusargs may also be passed from make; each entry repeats them
+# so the list is self-contained for run_test.py.
+
+test_ptw_p0_pte_layout_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_p0_type_pfu_fault_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_p0_permission_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_p0_pde_mbuf_pmp_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_p0_maee_sysmap_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_p0_flow_trace_umbrella +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV

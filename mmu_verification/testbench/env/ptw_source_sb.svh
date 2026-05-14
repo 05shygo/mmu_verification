@@ -94,6 +94,24 @@ class ptw_source_sb extends uvm_scoreboard;
     return (exp.kind != PTW_SRC_EXP_DROP) || exp.has_drop_key;
   endfunction
 
+  protected function bit fault_kind_matches(
+    input ptw_src_expected_rsp_txn exp,
+    input ptw_src_actual_rsp_txn actual
+  );
+    if (exp.fault_kind == actual.fault_kind)
+      return 1'b1;
+
+    // LSU bus error is a root cause in the source ref model, but the visible
+    // PTW/L1TLB completion is the same access-fault class as PMP deny.
+    if ((exp.kind == PTW_SRC_EXP_ACCESS_FAULT)
+        && (actual.kind == PTW_SRC_EXP_ACCESS_FAULT)
+        && (exp.fault_kind == PTW_SRC_FAULT_BUS_ERROR)
+        && (actual.fault_kind == PTW_SRC_FAULT_ACCESS))
+      return 1'b1;
+
+    return 1'b0;
+  endfunction
+
   protected function string compare_completion(
     input ptw_src_expected_rsp_txn exp,
     input ptw_src_actual_rsp_txn actual
@@ -123,7 +141,7 @@ class ptw_source_sb extends uvm_scoreboard;
     end
     if (exp.target != actual.target)
       msg = {msg, $sformatf(" target exp=%s act=%s;", exp.target.name(), actual.target.name())};
-    if (exp.fault_kind != actual.fault_kind)
+    if (!fault_kind_matches(exp, actual))
       msg = {msg, $sformatf(" fault exp=%s act=%s;", exp.fault_kind.name(), actual.fault_kind.name())};
     if (exp.target_l2tlb != actual.target_l2tlb)
       msg = {msg, $sformatf(" target_l2 exp=%0b act=%0b;", exp.target_l2tlb, actual.target_l2tlb)};

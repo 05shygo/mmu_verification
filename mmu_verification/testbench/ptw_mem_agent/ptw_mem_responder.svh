@@ -8,8 +8,10 @@
 //     read was accepted, but the response still returns to retire PTW cleanup
 //   · mmu_lsu_data_req_accept is the TB whitebox view of the RTL grant pulse;
 //     the responder services exactly one accepted read per pulse.
-//   · TB drives lsu_mmu_data_vld=1 (with PTE data) for exactly one cycle,
-//     then deasserts.  OR drives lsu_mmu_bus_error=1 for one cycle.
+//   · TB drives lsu_mmu_data_vld=1 for exactly one cycle, then deasserts.
+//     lsu_mmu_bus_error qualifies that same response beat: data_vld=1 and
+//     bus_error=0 is a normal PTE response; data_vld=1 and bus_error=1 is a
+//     bus-error response.
 //   · At most 1 outstanding request at any time (no tag/ID)
 //   · m_rsp_delay_min/max: random per-request delay in clock cycles
 //   · m_bus_error_rate_permille: probability (‰) of injecting bus_error
@@ -430,6 +432,8 @@ class ptw_mem_responder extends uvm_component;
 
     if (inject_err) begin
       // ── Bus error response ─────────────────────────────────────────────
+      vif.driver_cb.lsu_mmu_data_vld  <= 1'b1;
+      vif.driver_cb.lsu_mmu_data      <= pte;
       vif.driver_cb.lsu_mmu_bus_error <= 1'b1;
       m_buserr_count++;
       m_last_buserr_time = $time;
@@ -446,6 +450,8 @@ class ptw_mem_responder extends uvm_component;
         m_active_req = 1'b0;
         return;
       end
+      vif.driver_cb.lsu_mmu_data_vld  <= 1'b0;
+      vif.driver_cb.lsu_mmu_data      <= 64'b0;
       vif.driver_cb.lsu_mmu_bus_error <= 1'b0;
       m_active_req = 1'b0;
       _stash_accept_if_seen("PTW_BUS_ERR_DONE");

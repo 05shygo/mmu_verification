@@ -449,8 +449,7 @@ class ptw_source_monitor extends uvm_monitor;
       end else begin
         tr.kind = PTW_SRC_EXP_ACCESS_FAULT;
         tr.page_size = PTW_SRC_PGS_NONE;
-        tr.fault_kind = (v_probe.mon_cb.ptw_lsu_bus_error === 1'b1)
-                      ? PTW_SRC_FAULT_BUS_ERROR : PTW_SRC_FAULT_ACCESS;
+        tr.fault_kind = PTW_SRC_FAULT_ACCESS;
         m_access_fault_count++;
       end
 

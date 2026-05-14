@@ -253,6 +253,15 @@ class mmu_ref_model extends uvm_component;
         // Phase 4 passthrough: PA = zero-extend VA[38:0] to PA_WIDTH=40
         rsp.ppn = va_t'(va) >> PAGE_OFFSET;  // VA[39:12] zero-padded
         m_n_passthrough++;
+        if (direct_map_access_fault(rsp.ppn, acc)) begin
+          rsp.deny = 1'b1;
+          rsp.exc  = (acc == ACC_FETCH) ? EXC_PMP_DENY : EXC_ACCESS_FAULT;
+          `uvm_info(get_type_name(),
+            $sformatf("translate PASSTHROUGH DENY(SysMap): va=0x%010h ppn=0x%07h acc=%s exc=%s",
+              va, rsp.ppn, acc.name(), rsp.exc.name()),
+            UVM_MEDIUM)
+          return rsp;
+        end
         `uvm_info(get_type_name(),
           $sformatf("translate PASSTHROUGH: va=0x%010h ppn=0x%07h mmu_en=%0b",
             va, rsp.ppn, m_mmu_en), UVM_HIGH)
@@ -535,6 +544,33 @@ class mmu_ref_model extends uvm_component;
       end
     end
     return hit;
+  endfunction
+
+  protected function bit [4:0] rtl_default_sysmap_flg(input ppn_t ppn);
+    if (ppn < 28'h0012100) return 5'b01111;
+    if (ppn < 28'h0080000) return 5'b10011;
+    if (ppn < 28'h00E0000) return 5'b10001;
+    if (ppn < 28'h0200000) return 5'b01111;
+    if (ppn < 28'h0400000) return 5'b01111;
+    if (ppn < 28'h0800000) return 5'b01111;
+    if (ppn < 28'h1000000) return 5'b01111;
+    if (ppn < 28'hF000000) return 5'b10011;
+    return 5'b10011;
+  endfunction
+
+  protected function bit [4:0] direct_map_sysmap_flg(input ppn_t ppn);
+    // PFU direct-map uses ct_mmu_sysmap's compile-time macro table.  The
+    // sysmap_cfg_agent mirror is not forced into that RTL table.
+    return rtl_default_sysmap_flg(ppn);
+  endfunction
+
+  protected function bit direct_map_access_fault(input ppn_t ppn, input acc_type_e acc);
+    bit [4:0] flg;
+    flg = direct_map_sysmap_flg(ppn);
+    case (acc)
+      ACC_PFU: return (flg[4] || !flg[3]);
+      default: return 1'b0;
+    endcase
   endfunction
 
   // =========================================================================

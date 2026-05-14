@@ -26,7 +26,7 @@ mmu_verification/simu/ptw_p0_list
 | `test_ptw_p0_pte_layout_matrix` | RSW/high reserved no-fault, G leaf-only, refill flg/tag/data layout, 1G/4K success flows. |
 | `test_ptw_p0_type_pfu_fault_matrix` | fetch/load/store/PFU success target, exception target, PFU L2-only, PFU permission exception, original PMP type permission representative. |
 | `test_ptw_p0_permission_matrix` | write-only/MXR, fetch/load/store/PFU permission representatives, A/D/U/S/SUM, scd/thd page fault representatives, huge align before degrade. |
-| `test_ptw_p0_pde_mbuf_pmp_matrix` | PDE hit/update representative paths, fst PMP deny, CHK slow/hold, LSU bus error priority, MPRV/MPP=M load/PFU. |
+| `test_ptw_p0_pde_mbuf_pmp_matrix` | PDE hit/update representative paths, fst PMP deny, CHK slow/hold, LSU bus error priority, MPRV/MPP=M load PTW walk plus PFU direct-map consumer sanity. |
 | `test_ptw_p0_maee_sysmap_matrix` | MAEE=1 raw ext attr for 1G/2M/4K and MAEE=0 4K sysmap flag refill. |
 | `test_ptw_p0_flow_trace_umbrella` | `PTW-FLOW-001..023` binding markers with closed/open status and source evidence owner. |
 
@@ -48,7 +48,7 @@ mmu_verification/simu/ptw_p0_list
 | PTW-ADD-012 | closed-by-sva-directed | P0 requests in grouped tests exercise xbar/ready cover; old round-robin expectation obsolete. |
 | PTW-ADD-013 | partial-open | `stage6_pmp_fst_deny_access_fault` closes fst deny; scd/thd isolated deny remains Stage 7 vector work. |
 | PTW-ADD-014 | closed-by-directed | `stage6_pmp_original_fetch_x_deny`, `stage6_pmp_original_load_r_allow`. |
-| PTW-ADD-015 | closed-by-directed | `stage6_mprv_mpp_m_load_success`, `stage6_mprv_mpp_m_pfu_success`. |
+| PTW-ADD-015 | closed-by-directed | `stage6_mprv_mpp_m_load_success`; `stage6_mprv_mpp_m_pfu_success` is consumer-only when effective M-mode direct-maps before PTW. |
 | PTW-ADD-016 | partial-open | `stage6_scd_page_fault_v0` and `stage6_thd_nonleaf_page_fault` close representative nonleaf/level page faults; malformed nonleaf expansion remains Stage 7 precision work. |
 | PTW-ADD-017 | closed-by-directed | `stage6_write_only_mxr0_fault`, `stage6_write_only_mxr1_success`. |
 | PTW-ADD-018 | closed-by-directed | fetch/load/store/PFU representatives in type and permission matrices. |
@@ -66,7 +66,7 @@ mmu_verification/simu/ptw_p0_list
 | PTW-ADD-030 | open-stage7 | Same-cycle ASID/MXR/SUM/MAEE usage-point sampling is Stage 7. |
 | PTW-ADD-031 | closed-by-binding | `test_ptw_p0_flow_trace_umbrella` binds all `PTW-FLOW-001..023` to directed evidence or open reason. |
 | PTW-ADD-032 | consumer-only | L1DTLB evidence remains auxiliary and cannot replace PTW source closure. |
-| PTW-ADD-033 | closed-by-directed | `stage6_type_pfu_success_l2_only`, `stage6_fault_pfu_a_zero`, `stage6_mprv_mpp_m_pfu_success`. |
+| PTW-ADD-033 | closed-by-directed | `stage6_type_pfu_success_l2_only`, `stage6_fault_pfu_a_zero`. |
 | PTW-ADD-034 | closed-by-directed | PTE layout and MAEE tests compare bit-exact refill tag/data/flg. |
 
 ## PTW-FLOW Status
@@ -95,7 +95,7 @@ mmu_verification/simu/ptw_p0_list
 | PTW-FLOW-020 | closed | PFU success L2-only. |
 | PTW-FLOW-021 | closed | PFU exception target. |
 | PTW-FLOW-022 | open-stage7-tb-gap | satp/PMP PDE clear-only re-update pending. |
-| PTW-FLOW-023 | closed | load/PFU MPRV=1 MPP=M representatives. |
+| PTW-FLOW-023 | closed | load MPRV=1 MPP=M PTW-walk representative; PFU MPP=M direct-map is recorded as consumer-only sanity. |
 
 ## Legacy Conflict Handling
 

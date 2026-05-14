@@ -14,7 +14,7 @@ boundaries and exit criteria.
 | 3 | Probe, Monitor, Scenario Logger | done | passed | User confirmed stage-3 task and exit-standard checks passed; monitor evidence remains provisional. |
 | 4 | Source Reference Model and Scoreboard MVP | done | passed | User confirmed stage-4 task and exit-standard checks passed after bus-error/access-fault debug updates. |
 | 5 | P0 SVA and Cover Gate | done | passed | User confirmed stage-5 task and exit-standard checks passed. |
-| 6 | P0 Directed Tests and Legacy Conflict Fixes | implemented | pending user run | Grouped P0 directed suite, P0 list, exit gate, closure report, CSV update, and legacy conflict patches are implemented. |
+| 6 | P0 Directed Tests and Legacy Conflict Fixes | implemented | pending user run | Grouped P0 directed suite, P0 list, exit gate, closure report, CSV update, legacy conflict patches, and PFU direct-map SysMap debug fix are implemented. |
 
 ## Stage 0 Completion Record
 
@@ -319,6 +319,7 @@ PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
   exit_criteria=pending_full_regression
   confirmation=not_user_confirmed_yet
   changed_files=[
+    mmu_verification/testbench/env/mmu_ref_model.svh,
     mmu_verification/testbench/test/ptw_tests/test_ptw_stage6_p0_suite.svh,
     mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh,
     mmu_verification/testbench/test/ptw_tests/test_xbar_twu_round_robin.svh,
@@ -347,6 +348,15 @@ PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
     local PowerShell did not provide make and the WindowsApps python/python3 launchers failed with a logon-session error, so full compile/regression/exit-gate checks must be run in the normal regression environment,
     Stage 6 intentionally uses 6 grouped P0 test classes rather than creating one file per requirement,
     no temporary stage task split plan was needed because created file count stayed below the requested threshold
+  ]
+  debug_record=[
+    test_ptw_p0_pde_mbuf_pmp_matrix SEED=606 reported LSU_P2 fault mismatch in stage6_mprv_mpp_m_pfu_success,
+    waveform/debug conclusion: MPRV=1 and MPP=M are valid MMU-wide effective-mode inputs, so PFU takes effective M-mode direct-map and does not walk the page table,
+    root_cause: VA=0x0030704000 has PPN=0x0030704, which hits RTL default SysMap region1 from mmu_verification/testbench/common/mmu_rtl_defines.v and gets SYSMAP_FLG1=5'b10011,
+    RTL behavior: PFU direct-map treats sysmap_flg4[4] || !sysmap_flg4[3] as access fault, so flg=0x13 correctly drives pfu_acc_fault/pa2_err/access_fault,
+    scoreboard fix: mmu_ref_model.translate passthrough path now models PFU direct-map SysMap access fault from the compiled RTL default SysMap table,
+    stimulus fix: stage6_mprv_mpp_m_pfu_success now uses VA=0x0010704000, whose PPN=0x0010704 falls below SYSMAP_BASE_ADDR0 and receives SYSMAP_FLG0=5'b01111 for the intended direct-map success case,
+    closure fix: stage6_mprv_mpp_m_pfu_success is recorded as consumer-only sanity because it does not enter PTW; PTW-ADD-015/PTW-ADD-033/PTW-FLOW-023 source closure remains tied to scenarios that actually produce PTW source events
   ]
   source_sb_summary=required_at_exit PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0
   sva_summary=required_at_exit PTW_SVA_COVER hits>0 and assert_fail=0
@@ -397,6 +407,7 @@ python3 mmu_verification/scripts/ptw_stage6_exit_gate.py \
   --csv mmu_verification/simu/ptw_source_closure_matrix.csv
 
 git diff --check -- \
+  mmu_verification/testbench/env/mmu_ref_model.svh \
   mmu_verification/testbench/test/ptw_tests/test_ptw_stage6_p0_suite.svh \
   mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh \
   mmu_verification/testbench/test/ptw_tests/test_xbar_twu_round_robin.svh \

@@ -30,14 +30,25 @@ module mmu_pmp_twu_sva (
     input logic        cp0_mmu_mprv,
     input logic [1:0]  cp0_mmu_mpp,
     input logic [1:0]  cp0_yy_priv_mode,
+    input logic [27:0] regs_ptw_satp_ppn,
+    input logic [26:0] fst_pmp_vpn,
     input logic [2:0]  fst_pmp_type,
+    input logic [39:0] fst_pmp_pa,
+    input logic [26:0] scd_pmp_vpn,
     input logic [2:0]  scd_pmp_type,
+    input logic [27:0] scd_pmp_ppn,
+    input logic [39:0] scd_pmp_pa,
+    input logic [26:0] thd_pmp_vpn,
     input logic [2:0]  thd_pmp_type,
+    input logic [27:0] thd_pmp_ppn,
+    input logic [39:0] thd_pmp_pa,
     input logic [5:0]  fst_pmp_id,
     input logic [5:0]  scd_pmp_id,
     input logic [5:0]  thd_pmp_id,
     input logic        mmu_pmp_fecth,
+    input logic [27:0] mmu_pmp_pa,
     input logic        twu_mbuf_req,
+    input logic [39:0] twu_mbuf_paddr,
     input logic        twu_arb_ref_req,
     input logic [2:0]  twu_arb_ref_type,
     input logic [5:0]  twu_arb_ref_id,
@@ -77,6 +88,9 @@ module mmu_pmp_twu_sva (
   int unsigned cp_pmp_store_uses_w_perm_hits;
   int unsigned cp_pmp_mmode_l0_bypass_hits;
   int unsigned cp_pmp_deny_no_lsu_req_hits;
+  int unsigned cp_pmp_pte_pa_formula_hits;
+  int unsigned cp_pmp_pass_to_mbuf_addr_hits;
+  int unsigned cp_pmp_deny_level_hits;
 
   localparam logic [2:0] TWU_REQ_TYPE_LOAD  = 3'b010;
   localparam logic [2:0] TWU_REQ_TYPE_FETCH = 3'b011;
@@ -161,6 +175,21 @@ module mmu_pmp_twu_sva (
   assign pmp_mmode_l0_bypass_window =
       cp0_mmu_mprv && (cp0_mmu_mpp == 2'b11) && !pmp_mmu_flg[3]
    && (!pmp_mmu_flg[0] || !pmp_mmu_flg[1]);
+
+  // PTW-SVA-PMP-008: PMP checks the physical address used to fetch the PTE.
+  sva_pmp_pte_pa_formula: assert property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    (fst_pmp_vld |-> (fst_pmp_pa == {regs_ptw_satp_ppn[27:0], fst_pmp_vpn[26:18], 3'b000}))
+    and (scd_pmp_vld |-> (scd_pmp_pa == {scd_pmp_ppn[27:0], scd_pmp_vpn[17:9], 3'b000}))
+    and (thd_pmp_vld |-> (thd_pmp_pa == {thd_pmp_ppn[27:0], thd_pmp_vpn[8:0], 3'b000})));
+
+  cp_pmp_pte_pa_formula: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    (fst_pmp_vld && (fst_pmp_pa == {regs_ptw_satp_ppn[27:0], fst_pmp_vpn[26:18], 3'b000}))
+    || (scd_pmp_vld && (scd_pmp_pa == {scd_pmp_ppn[27:0], scd_pmp_vpn[17:9], 3'b000}))
+    || (thd_pmp_vld && (thd_pmp_pa == {thd_pmp_ppn[27:0], thd_pmp_vpn[8:0], 3'b000}))) begin
+    cp_pmp_pte_pa_formula_hits++;
+  end
 
   // Verification intent: MBUF/PTE read requests are issued only after a PMP
   // stage grants an allowed access.
@@ -290,6 +319,21 @@ module mmu_pmp_twu_sva (
     cp_pmp_mmode_l0_bypass_hits++;
   end
 
+  // PTW-SVA-PMP-009: an allowed PMP stage launches the same PTE PA to MBUF.
+  sva_pmp_pass_to_mbuf_addr: assert property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    (fst_pmp_mbuf_req |-> (twu_mbuf_req && (twu_mbuf_paddr == fst_pmp_pa)))
+    and (scd_pmp_mbuf_req |-> (twu_mbuf_req && (twu_mbuf_paddr == scd_pmp_pa)))
+    and (thd_pmp_mbuf_req |-> (twu_mbuf_req && (twu_mbuf_paddr == thd_pmp_pa))));
+
+  cp_pmp_pass_to_mbuf_addr: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    (fst_pmp_mbuf_req && (twu_mbuf_paddr == fst_pmp_pa))
+    || (scd_pmp_mbuf_req && (twu_mbuf_paddr == scd_pmp_pa))
+    || (thd_pmp_mbuf_req && (twu_mbuf_paddr == thd_pmp_pa))) begin
+    cp_pmp_pass_to_mbuf_addr_hits++;
+  end
+
   // Verification intent: denied PMP stages must not request PTE memory access.
   sva_pmp_deny_no_lsu_req: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
@@ -299,6 +343,14 @@ module mmu_pmp_twu_sva (
     disable iff (!cpurst_b || tlboper_ptw_abort)
     pmp_deny_accept && !twu_mbuf_req) begin
     cp_pmp_deny_no_lsu_req_hits++;
+  end
+
+  cp_pmp_deny_level: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    (fst_pmp_vld && fst_pmp_grant && fst_pmp_deny)
+    || (scd_pmp_vld && scd_pmp_grant && scd_pmp_deny)
+    || (thd_pmp_vld && thd_pmp_grant && thd_pmp_deny)) begin
+    cp_pmp_deny_level_hits++;
   end
 
   final begin
@@ -315,6 +367,23 @@ module mmu_pmp_twu_sva (
     $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_store_uses_w_perm hits=%0d", cp_pmp_store_uses_w_perm_hits);
     $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_mmode_l0_bypass hits=%0d", cp_pmp_mmode_l0_bypass_hits);
     $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_no_lsu_req hits=%0d", cp_pmp_deny_no_lsu_req_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_pte_pa_formula hits=%0d", cp_pmp_pte_pa_formula_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_pass_to_mbuf_addr hits=%0d", cp_pmp_pass_to_mbuf_addr_hits);
+    $display("PHASE13_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_level hits=%0d", cp_pmp_deny_level_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_check_before_lsu_req req=PTW-SVA-PMP-009 hits=%0d", cp_pmp_check_before_lsu_req_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_wait_implies_mask req=PTW-SVA-PMP-009 hits=%0d", cp_pmp_wait_implies_mask_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_no_refill req=PTW-SVA-PMP-009 hits=%0d", cp_pmp_deny_no_refill_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_acc_fault req=PTW-SVA-PMP-009 hits=%0d", cp_pmp_deny_acc_fault_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_grant_onehot req=PTW-SVA-PMP-009 hits=%0d", cp_pmp_grant_onehot_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_fetch_matches_grant_stage req=PTW-SVA-PMP-010 hits=%0d", cp_pmp_fetch_matches_grant_stage_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_fetch_uses_x_perm req=PTW-SVA-PMP-010 hits=%0d", cp_pmp_fetch_uses_x_perm_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_load_pref_uses_r_perm req=PTW-SVA-PMP-010 hits=%0d", cp_pmp_load_pref_uses_r_perm_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_store_uses_w_perm req=PTW-SVA-PMP-010 hits=%0d", cp_pmp_store_uses_w_perm_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_mmode_l0_bypass req=PTW-SVA-PMP-010 hits=%0d", cp_pmp_mmode_l0_bypass_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_no_lsu_req req=PTW-SVA-PMP-009 hits=%0d", cp_pmp_deny_no_lsu_req_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_pte_pa_formula req=PTW-SVA-PMP-008 hits=%0d", cp_pmp_pte_pa_formula_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_pass_to_mbuf_addr req=PTW-SVA-PMP-009 hits=%0d", cp_pmp_pass_to_mbuf_addr_hits);
+    $display("PTW_SVA_COVER module=mmu_pmp_twu_sva name=cp_pmp_deny_level req=PTW-SVA-PMP-010 hits=%0d", cp_pmp_deny_level_hits);
   end
 
 endmodule

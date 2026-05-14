@@ -113,6 +113,10 @@ module mmu_sysmap_sva (
     $display("PHASE13_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_cross_degrade hits=%0d", cp_sysmap_cross_degrade_hits);
     $display("PHASE13_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_no_cross_no_degrade hits=%0d", cp_sysmap_no_cross_no_degrade_hits);
     $display("PHASE13_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_pa_align hits=%0d", cp_sysmap_pa_align_hits);
+    $display("PTW_SVA_COVER module=mmu_sysmap_sva name=cp_csr_refill_flg_matches_sysmap req=PTW-SVA-MAEE-004 hits=%0d", cp_csr_refill_flg_matches_sysmap_hits);
+    $display("PTW_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_cross_degrade req=PTW-SVA-MAEE-005 hits=%0d", cp_sysmap_cross_degrade_hits);
+    $display("PTW_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_no_cross_no_degrade req=PTW-SVA-MAEE-006 hits=%0d", cp_sysmap_no_cross_no_degrade_hits);
+    $display("PTW_SVA_COVER module=mmu_sysmap_sva name=cp_sysmap_pa_align req=PTW-SVA-MAEE-010 hits=%0d", cp_sysmap_pa_align_hits);
   end
 
 endmodule

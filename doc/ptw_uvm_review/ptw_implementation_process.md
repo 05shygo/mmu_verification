@@ -12,7 +12,8 @@ boundaries and exit criteria.
 | 1 | Common Types, Config Knobs, Compile Skeleton | done | passed | User confirmed stage-1 task and exit-standard checks passed. |
 | 2 | Directed Test Base, Page Table Builder, PTW Memory Responder | done | passed | User confirmed stage-2 task and exit-standard checks passed. |
 | 3 | Probe, Monitor, Scenario Logger | done | passed | User confirmed stage-3 task and exit-standard checks passed; monitor evidence remains provisional. |
-| 4 | Source Reference Model and Scoreboard MVP | done | pending external compile/run check | Stage-4 ref model/SB MVP implementation is complete; full compile/run must be checked in project simulation environment. |
+| 4 | Source Reference Model and Scoreboard MVP | done | passed | User confirmed stage-4 task and exit-standard checks passed after bus-error/access-fault debug updates. |
+| 5 | P0 SVA and Cover Gate | implemented | pending user run | Stage-5 SVA/bind/filelist/report markers implemented; local SVA-only ModelSim compile passed. |
 
 ## Stage 0 Completion Record
 
@@ -182,7 +183,8 @@ PTW_STAGE_DONE stage=3 name=Probe Monitor Scenario Logger Observability
 ```text
 PTW_STAGE_DONE stage=4 name=Source Reference Model and Scoreboard MVP
   status=done
-  exit_criteria=pending_external_compile_run_check
+  exit_criteria=passed
+  confirmation=user-confirmed
   changed_files=[
     mmu_verification/testbench/env/ptw_pde_cache_model.svh,
     mmu_verification/testbench/env/ptw_source_types.svh,
@@ -191,24 +193,32 @@ PTW_STAGE_DONE stage=4 name=Source Reference Model and Scoreboard MVP
     mmu_verification/testbench/env/ptw_source_sb.svh,
     mmu_verification/testbench/env/mmu_env_pkg.sv,
     mmu_verification/testbench/env/mmu_env.svh,
+    mmu_verification/testbench/ptw_mem_agent/ptw_mem_responder.svh,
     doc/ptw_uvm_review/ptw_implementation_process.md
   ]
   tests_run=[
     git diff --check -- stage4_touched_files,
     rg marker/API checks for PTW_SOURCE_REF_SUMMARY stage=4 and PTW_SOURCE_SB_SUMMARY stage=4,
     rg checks for PTW_SOURCE_ILLEGAL_REUSE, PTW_SOURCE_MISMATCH, PTW_SOURCE_DROP_MATCH, PTW_STAGE4_OPEN_GAP,
-    attempted local ModelSim env package compile; blocked by existing package/UVM macro dependency issues before stage-4-only compilation could be isolated
-  ]
-  environment_notes=[
-    local PowerShell does not provide make; full comp_fast/run_check remains an external exit-standard check,
-    source ref model explicitly does not call mmu_ref_model.translate(),
-    stage-4 source SB plusarg enables source ref model and monitor automatically
-  ]
-  tests_to_run_in_full_sim_env=[
+    attempted local ModelSim env package compile; blocked by existing package/UVM macro dependency issues before stage-4-only compilation could be isolated,
     make -C mmu_verification comp_fast,
     make -C mmu_verification run_check TEST_NAME=test_ptw_source_stage2_smoke SEED=404 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
   ]
-  source_sb_summary=PTW_SOURCE_SB_SUMMARY stage=4 expected_after_run mismatch=0 pending=0 illegal=0 provisional=0
+  environment_notes=[
+    local PowerShell did not provide make during implementation, so full comp_fast/run_check was completed and confirmed by user after implementation,
+    source ref model explicitly does not call mmu_ref_model.translate(),
+    stage-4 source SB plusarg enables source ref model and monitor automatically,
+    LSU bus error is modeled as an access-fault output with bus-error root-cause evidence, matching ptwspec.md Q26/Q104/Q121
+  ]
+  debug_record=[
+    initial_stage4_run_check_reported PTW_SOURCE_MISMATCH key=2:8 with exp.fault=PTW_SRC_FAULT_BUS_ERROR and act.fault=PTW_SRC_FAULT_ACCESS,
+    waveform/debug conclusion: LSU bus error is expected to be reported to L1DTLB as the same visible access-fault class as PMP deny; bus-error root cause must not be treated as a distinct visible fault code,
+    scoreboard fix: ptw_source_sb.fault_kind_matches allows ref-model PTW_SRC_FAULT_BUS_ERROR root cause to match actual PTW_SRC_FAULT_ACCESS when kind is PTW_SRC_EXP_ACCESS_FAULT,
+    monitor fix: ptw_source_monitor actual access-fault completion records PTW_SRC_FAULT_ACCESS as the final visible class,
+    responder/protocol fix: ptw_mem_responder now drives lsu_mmu_data_vld and lsu_mmu_bus_error high on the same response beat for bus-error injection; data_vld high without bus_error remains normal data,
+    post-debug result: user confirmed stage-4 task and exit-standard checks all passed
+  ]
+  source_sb_summary=PTW_SOURCE_SB_SUMMARY stage=4 mismatch=0 pending=0 illegal=0 provisional=0
   sva_summary=not_applicable_stage4_no_new_sva
   closure_delta=[
     PTW-INFRA-003 source monitor actual/probe transactions consumed by source ref model/SB,
@@ -219,7 +229,6 @@ PTW_STAGE_DONE stage=4 name=Source Reference Model and Scoreboard MVP
     mismatch taxonomy for class_mismatch, field_mismatch, drop_mismatch, pending, illegal, and probe_gap
   ]
   open_items=[
-    full compile/run must be completed in the project simulation environment,
     MAEE=0 1G/2M sysmap degrade remains a later-stage modeling/test closure item,
     PMP deny and LSU bus-error expected generation use visible monitor/probe evidence and unique-pending fallback when exact key probes are insufficient,
     source-side SVA implementation remains open until stage 5,
@@ -231,9 +240,68 @@ PTW_STAGE_DONE stage=4 name=Source Reference Model and Scoreboard MVP
   ]
 ```
 
+## Stage 5 Implementation Record
+
+```text
+PTW_STAGE_DONE stage=5 name=P0 SVA and Cover Gate
+  status=implemented
+  exit_criteria=pending_full_regression
+  confirmation=not_user_confirmed_yet
+  changed_files=[
+    mmu_verification/testbench/top/mmu_ptw_top_sva.sv,
+    mmu_verification/testbench/top/mmu_pde_cache_sva.sv,
+    mmu_verification/testbench/top/mmu_ptw_xbar_sva.sv,
+    mmu_verification/testbench/top/mmu_twu_chk_sva.sv,
+    mmu_verification/testbench/top/mmu_ptw_lsu_protocol_sva.sv,
+    mmu_verification/testbench/top/mmu_pmp_twu_sva.sv,
+    mmu_verification/testbench/top/mmu_maee_twu_sva.sv,
+    mmu_verification/testbench/top/mmu_sysmap_sva.sv,
+    mmu_verification/testbench/top/mmu_l1dtlb_sva.sv,
+    mmu_verification/testbench/top/tb_top.sv,
+    mmu_verification/testbench/Files.f,
+    doc/ptw_uvm_review/ptw_stage5_sva_gap_table.md,
+    doc/ptw_uvm_review/ptw_implementation_process.md
+  ]
+  tests_run=[
+    vlog -sv -work ./ptw_stage5_sva_work stage5_sva_files
+      result=passed errors=0 warnings=0,
+    vlog -sv -work ./ptw_stage5_sva_work mmu_l1dtlb_sva.sv
+      result=passed errors=0 warnings=0,
+    temporary bind-check compile of ptw/PDE_cache/one_to_four_xbar/twu/ptw_mbuf/mmu_l1dtlb
+      plus Stage-5 SVA and bind statements
+      result=passed errors=0 warnings=25,
+    bind-check warnings were pre-existing ModelSim always_comb/vopt warnings in mmu_l1dtlb.sv
+      plus compilation-unit bind elaboration guidance,
+    attempted make -C mmu_verification comp_fast
+      result=blocked reason=make_not_found_in_local_powershell
+  ]
+  source_sb_summary=not_applicable_stage5_no_new_source_model
+  sva_summary=local_sva_compile_passed_full_make_pending
+  closure_delta=[
+    PTW-SVA-REQ-001..004 top request ready/hold/type cover,
+    PTW-SVA-ARB-001..008 visible class priority/completion/target/layout cover,
+    PTW-SVA-PDE-001..006 and PTW-SVA-PDE-008 clear/double-hit/hit-level/update/old-state cover,
+    PTW-SVA-XBAR-001..006 hash/mask/abort/payload/hold cover,
+    PTW-SVA-CHK-001..011 and PTW-SVA-WAIT-001..005 CHK/permission/wait cover,
+    PTW-SVA-PMP-008..010 PTE PA/original permission/MBUF pass/deny cover,
+    PTW-SVA-MBUF-001/002/006/008/009/010/011 LSU protocol, bus-error, abort cover,
+    PTW-SVA-MAEE-001..006/010 MAEE/SysMap cover markers,
+    L1D-SVA-PTW-001/003 consumer-only cover markers
+  ]
+  open_items=[
+    full make comp_fast/run_check not executed locally in this record,
+    local PowerShell does not provide make; user should run exit-standard commands in the normal regression environment,
+    stage5 probe gaps documented in doc/ptw_uvm_review/ptw_stage5_sva_gap_table.md,
+    several deep CHK/PDE/MAEE/abort subitems require Stage 6 directed source-SB evidence
+  ]
+  next_stage_blockers=[
+    run full Stage 5 exit commands before marking exit_criteria=passed,
+    Stage 6 directed tests should require PTW_SVA_COVER plus source scoreboard match
+  ]
+```
+
 ## Scope Guard
 
-The repository is ready for the stage-4 exit commands in a full simulation
-environment. Stage 4 records source reference model and scoreboard MVP work
-only. No stage-5 source-side SVA implementation or stage-6 directed test
-closure is recorded as completed here.
+Stage 5 implementation is present, but the full regression exit gate still must
+be run before marking Stage 5 passed. No stage-6 directed test closure is
+recorded as completed here.

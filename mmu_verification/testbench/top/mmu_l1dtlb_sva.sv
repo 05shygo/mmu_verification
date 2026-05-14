@@ -103,6 +103,7 @@ module mmu_l1dtlb_sva #(
     input logic ptw_l1dtlb_ref_pavld,
     input logic ptw_l1dtlb_ref_cmplt,
     input logic [2:0] ptw_l1dtlb_ref_id,
+    input logic [2:0] ptw_l1tlb_ref_pgs,
     input logic ptw_l1tlb_acc_err,
     input logic ptw_l1tlb_pgflt,
     input logic jtlb_dutlb_ref_pavld,
@@ -140,6 +141,9 @@ module mmu_l1dtlb_sva #(
   localparam logic [2:0] MB_STATE_WFC  = 3'b010;
   localparam logic [2:0] MB_STATE_ABT  = 3'b101;
   localparam logic [2:0] MB_STATE_WFI  = 3'b110;
+
+  int unsigned cp_l1d_ptw_consumer_install_hits;
+  int unsigned cp_l1d_ptw_consumer_fault_hits;
 
   function automatic logic [NUM_ENTRY-1:0] onehot_entry(input logic [3:0] idx);
     onehot_entry = '0;
@@ -502,6 +506,35 @@ module mmu_l1dtlb_sva #(
 
   cp_l1dtlb_c026_vabuf_change: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     lsu_mmu_va0_vld && $changed(lsu_mmu_vabuf0));
+
+  // Consumer-only PTW routing evidence. PTW source-side closure remains in
+  // ptw_source_sb and PTW-bound SVA.
+  a_l1d_ptw_success_has_install_payload: assert property (@(posedge forever_cpuclk)
+    disable iff (!cpurst_b)
+    (ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt)
+    |-> (!ptw_l1tlb_pgflt && !ptw_l1tlb_acc_err && legal_pgs(ptw_l1tlb_ref_pgs)));
+
+  cp_l1d_ptw_consumer_install: cover property (@(posedge forever_cpuclk)
+    disable iff (!cpurst_b)
+    ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt
+    && !ptw_l1tlb_pgflt && !ptw_l1tlb_acc_err) begin
+    cp_l1d_ptw_consumer_install_hits++;
+  end
+
+  a_l1d_ptw_fault_class_mutex: assert property (@(posedge forever_cpuclk)
+    disable iff (!cpurst_b)
+    ptw_l1dtlb_ref_cmplt |-> !(ptw_l1tlb_pgflt && ptw_l1tlb_acc_err));
+
+  cp_l1d_ptw_consumer_fault: cover property (@(posedge forever_cpuclk)
+    disable iff (!cpurst_b)
+    ptw_l1dtlb_ref_cmplt && (ptw_l1tlb_pgflt || ptw_l1tlb_acc_err)) begin
+    cp_l1d_ptw_consumer_fault_hits++;
+  end
+
+  final begin
+    $display("PTW_SVA_COVER module=mmu_l1dtlb_sva name=cp_l1d_ptw_consumer_install req=L1D-SVA-PTW-001 hits=%0d consumer_only=1", cp_l1d_ptw_consumer_install_hits);
+    $display("PTW_SVA_COVER module=mmu_l1dtlb_sva name=cp_l1d_ptw_consumer_fault req=L1D-SVA-PTW-003 hits=%0d consumer_only=1", cp_l1d_ptw_consumer_fault_hits);
+  end
 
 endmodule
 

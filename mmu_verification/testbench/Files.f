@@ -80,6 +80,10 @@ ${TB_DIR}/top/mmu_l2tlb_rrpv_sva.sv
 ${TB_DIR}/top/mmu_plru_sva.sv
 ${TB_DIR}/top/credit_sva.sv
 ${TB_DIR}/top/mmu_twu_sva.sv
+${TB_DIR}/top/mmu_ptw_top_sva.sv
+${TB_DIR}/top/mmu_pde_cache_sva.sv
+${TB_DIR}/top/mmu_ptw_xbar_sva.sv
+${TB_DIR}/top/mmu_twu_chk_sva.sv
 ${TB_DIR}/top/mmu_ptw_lsu_protocol_sva.sv
 ${TB_DIR}/top/mmu_maee_twu_sva.sv
 ${TB_DIR}/top/mmu_pmp_twu_sva.sv

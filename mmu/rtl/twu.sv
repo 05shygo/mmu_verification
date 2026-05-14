@@ -1395,7 +1395,7 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 	if(!cpurst_b)begin
 		mmu_sysmap_pax3[PPN_WIDTH-1:0] <= {PPN_WIDTH{1'b0}};
 	end else if(refill_grant[0] & twu_refill_idle & ~cp0_mmu_maee)begin
-		mmu_sysmap_pax3[PPN_WIDTH-1:0] <= thd_chk_refill_data[PPN_WIDTH+9:10];
+		mmu_sysmap_pax3[PPN_WIDTH-1:0] <= thd_chk_refill_data[RDATA_WIDTH-1:14];
 	end
 end
 

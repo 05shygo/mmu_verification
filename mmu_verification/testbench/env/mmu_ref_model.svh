@@ -547,6 +547,16 @@ class mmu_ref_model extends uvm_component;
   endfunction
 
   protected function bit [4:0] rtl_default_sysmap_flg(input ppn_t ppn);
+`ifdef SYSMAP_BASE_ADDR0
+    if (ppn < `SYSMAP_BASE_ADDR0) return `SYSMAP_FLG0;
+    if (ppn < `SYSMAP_BASE_ADDR1) return `SYSMAP_FLG1;
+    if (ppn < `SYSMAP_BASE_ADDR2) return `SYSMAP_FLG2;
+    if (ppn < `SYSMAP_BASE_ADDR3) return `SYSMAP_FLG3;
+    if (ppn < `SYSMAP_BASE_ADDR4) return `SYSMAP_FLG4;
+    if (ppn < `SYSMAP_BASE_ADDR5) return `SYSMAP_FLG5;
+    if (ppn < `SYSMAP_BASE_ADDR6) return `SYSMAP_FLG6;
+    if (ppn < `SYSMAP_BASE_ADDR7) return `SYSMAP_FLG7;
+`else
     if (ppn < 28'h0012100) return 5'b01111;
     if (ppn < 28'h0080000) return 5'b10011;
     if (ppn < 28'h00E0000) return 5'b10001;
@@ -555,6 +565,7 @@ class mmu_ref_model extends uvm_component;
     if (ppn < 28'h0800000) return 5'b01111;
     if (ppn < 28'h1000000) return 5'b01111;
     if (ppn < 28'hF000000) return 5'b10011;
+`endif
     return 5'b10011;
   endfunction
 

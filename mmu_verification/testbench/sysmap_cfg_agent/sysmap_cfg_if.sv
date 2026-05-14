@@ -1,15 +1,16 @@
 // =============================================================================
 // MMU UVM Verification — testbench/sysmap_cfg_agent/sysmap_cfg_if.sv
-// Phase 2: SysMap configuration interface (whitebox injection)
+// Phase 2: SysMap configuration interface (UVM mirror)
 //
 // NOTE: ct_mmu_sysmap.v has NO top-level ports — its base/mask/flg/enable
-//       registers are internal.  The sysmap_cfg_driver uses SystemVerilog
-//       force/release to inject configuration into the DUT hierarchy:
+//       values are compile-time macros in the current RTL build.  The
+//       sysmap_cfg_driver currently mirrors configuration to this interface
+//       only; the planned whitebox force paths remain disabled:
 //         tb_top.u_dut.u_sysmap.region_base[N]
 //         tb_top.u_dut.u_sysmap.region_mask[N]
 //         tb_top.u_dut.u_sysmap.region_flg[N]
 //         tb_top.u_dut.u_sysmap.region_en[N]
-//       The actual force paths are resolved in sysmap_cfg_driver.svh (Phase 3).
+//       See sysmap_cfg_driver.svh DA-003 before treating this as DUT config.
 //
 // This interface carries only the configuration data arrays used for
 // handshake between sequencer/driver; no DUT signal bindings here.
@@ -24,7 +25,7 @@ interface sysmap_cfg_if (
 
   // =========================================================================
   // Configuration Data (8 SysMap regions)
-  // Written by sysmap_cfg_driver.svh via force/release into DUT hierarchy.
+  // Written by sysmap_cfg_driver.svh as a UVM mirror.
   // Observed by sysmap_cfg_monitor.svh (snapshot on enable-bit change).
   // =========================================================================
   bit [27:0] cfg_base   [8];   // Region base physical address

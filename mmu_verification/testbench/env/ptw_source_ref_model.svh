@@ -290,14 +290,31 @@ class ptw_source_ref_model extends uvm_component;
   endfunction
 
   protected function logic [4:0] sysmap_attr(input ppn_t ppn, output bit hit);
+    // ct_mmu_sysmap is macro-configured in this build.  The sysmap_cfg_agent
+    // mirror is not forced into RTL, so source expectations must use the RTL
+    // compile-time region table rather than the UVM mirror transaction.
+    hit = 1'b1;
+`ifdef SYSMAP_BASE_ADDR0
+    if (ppn < `SYSMAP_BASE_ADDR0) return `SYSMAP_FLG0;
+    if (ppn < `SYSMAP_BASE_ADDR1) return `SYSMAP_FLG1;
+    if (ppn < `SYSMAP_BASE_ADDR2) return `SYSMAP_FLG2;
+    if (ppn < `SYSMAP_BASE_ADDR3) return `SYSMAP_FLG3;
+    if (ppn < `SYSMAP_BASE_ADDR4) return `SYSMAP_FLG4;
+    if (ppn < `SYSMAP_BASE_ADDR5) return `SYSMAP_FLG5;
+    if (ppn < `SYSMAP_BASE_ADDR6) return `SYSMAP_FLG6;
+    if (ppn < `SYSMAP_BASE_ADDR7) return `SYSMAP_FLG7;
+`else
+    if (ppn < 28'h0012100) return 5'b01111;
+    if (ppn < 28'h0080000) return 5'b10011;
+    if (ppn < 28'h00E0000) return 5'b10001;
+    if (ppn < 28'h0200000) return 5'b01111;
+    if (ppn < 28'h0400000) return 5'b01111;
+    if (ppn < 28'h0800000) return 5'b01111;
+    if (ppn < 28'h1000000) return 5'b01111;
+    if (ppn < 28'hF000000) return 5'b10011;
+`endif
     hit = 1'b0;
-    foreach (m_sysmap_enable[i]) begin
-      if (m_sysmap_enable[i] && ((ppn & m_sysmap_mask[i]) == (m_sysmap_base[i] & m_sysmap_mask[i]))) begin
-        hit = 1'b1;
-        return m_sysmap_flg[i];
-      end
-    end
-    return 5'h0;
+    return 5'b10011;
   endfunction
 
   protected function logic [4:0] ext_attr_for_refill(
@@ -312,14 +329,12 @@ class ptw_source_ref_model extends uvm_component;
       return raw_pte[63:59];
 
     attr = sysmap_attr(raw_pte[PTE_PPN_LSB +: PPN_WIDTH], hit);
-    if (!hit) begin
-      m_probe_gap_count++;
-      `uvm_warning(get_type_name(),
-        $sformatf("PTW_STAGE4_OPEN_GAP kind=sysmap_attr_missing key=%s page_size=%s ppn=0x%07h using_zero_attr",
+    if (!hit)
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_SOURCE_SYSMAP_DEFAULT key=%s page_size=%s ppn=0x%07h attr=0x%02h",
           key_string(pending.req_type, pending.id), page_size.name(),
-          raw_pte[PTE_PPN_LSB +: PPN_WIDTH]))
-      return 5'h0;
-    end
+          raw_pte[PTE_PPN_LSB +: PPN_WIDTH], attr),
+        UVM_HIGH)
     return attr;
   endfunction
 

@@ -2,8 +2,9 @@
 // MMU UVM Verification — testbench/sysmap_cfg_agent/sysmap_cfg_driver.svh
 // Phase 3: SysMap configuration driver
 //
-// ct_mmu_sysmap.v has no top-level DUT ports; this driver uses SystemVerilog
-// force/release to inject configuration into the DUT's internal registers.
+// ct_mmu_sysmap.v has no top-level DUT ports and is macro-configured in the
+// current build.  This driver mirrors sequence data to sysmap_cfg_if only.
+// Whitebox force/release is intentionally disabled until DA-003 is resolved.
 //
 // Force path convention (needs confirmation against actual RTL hierarchy):
 //   tb_top.u_dut.<sysmap_instance>.sysmap_base_addr[N]

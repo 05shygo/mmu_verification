@@ -781,16 +781,16 @@ class test_ptw_p0_maee_sysmap_matrix extends ptw_stage6_p0_base;
     ptw_meta_add_req("PTW-ADD-029");
     ptw_meta_add_req("PTW-FLOW-008");
     ptw_setup_sv39(STAGE6_ROOT_PPN + 28'h63, STAGE6_ROOT_ASID + 16'h63, PRIV_S, 1'b0, 1'b0, 1'b0);
-    ptw_sysmap_one_region(3'd2, pa[39:12], 28'hfffffff, 5'h17);
+    ptw_meta_add_context("rtl_default_sysmap region0 flg=0x0f; sysmap_cfg_agent mirror is not forced into RTL");
     stage6_map_leaf(.va(va), .level(0), .pa(pa), .req_type(PTW_SRC_TYPE_LOAD), .id(6'h33),
       .kind("maee0_4k_sysmap_leaf"), .r(1), .w(1), .x(0), .a(1), .d(1),
       .rsw(2'b01), .ext_attr(5'h00));
-    ptw_meta_set_expected("MAEE=0 4K refill attr comes from SysMap flg, not PTE ext_attr");
+    ptw_meta_set_expected("MAEE=0 4K refill attr comes from RTL default SysMap flg, not PTE ext_attr");
     stage6_drive_req(PTW_SRC_TYPE_LOAD, va, 6'h33);
     stage6_finish_scenario("stage6_maee0_4k_sysmap_refill");
     stage6_close("PTW-ADD-026,PTW-ADD-029,PTW-FLOW-008",
       "stage6_maee0_4k_sysmap_refill",
-      "source_sb sysmap flg compare; PTW-SVA-MAEE-002/004 cover");
+      "source_sb RTL default sysmap flg compare; PTW-SVA-MAEE-002/004 cover");
   endtask
 
   virtual task run_test_body();

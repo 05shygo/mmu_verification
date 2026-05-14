@@ -1,8 +1,9 @@
 // =============================================================================
 // MMU UVM Verification — testbench/sysmap_cfg_agent/sysmap_cfg_txn.svh
 // Phase 3: SysMap configuration transaction
-// ct_mmu_sysmap.v has no top-level ports; configuration is injected via
-// SystemVerilog force/release inside sysmap_cfg_driver.svh.
+// ct_mmu_sysmap.v has no top-level ports and is macro-configured in the
+// current build.  This transaction is a UVM mirror item only until the
+// sysmap_cfg_driver whitebox force paths are implemented.
 // =============================================================================
 `ifndef SYSMAP_CFG_TXN_SVH
 `define SYSMAP_CFG_TXN_SVH
@@ -16,7 +17,7 @@ class sysmap_cfg_txn extends uvm_sequence_item;
     `uvm_field_sarray_int(enable, UVM_ALL_ON)
   `uvm_object_utils_end
 
-  // 8 SysMap regions (mirrors ct_mmu_sysmap.v internals)
+  // 8 SysMap regions (UVM mirror; not currently forced into ct_mmu_sysmap.v)
   rand bit [27:0] base   [8];   // Region base physical address  (28-bit PPN)
   rand bit [27:0] mask   [8];   // Region address mask
   rand bit [4:0]  flg    [8];   // 5-bit attribute flags

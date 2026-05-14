@@ -171,30 +171,30 @@ class ptw_source_ref_model extends uvm_component;
   );
     string candidate;
     string iter_key;
-    int unsigned matches;
+    int unsigned match_count;
 
     key = key_string(req_type, id);
     if (m_pending.exists(key))
       return 1'b1;
 
-    matches = 0;
+    match_count = 0;
     foreach (m_pending[iter_key]) begin
       if ((req_type != PTW_SRC_TYPE_UNKNOWN)
           && (m_pending[iter_key].req_type != req_type))
         continue;
       candidate = iter_key;
-      matches++;
+      match_count++;
     end
 
-    if (matches == 1) begin
+    if (match_count == 1) begin
       key = candidate;
       return 1'b1;
     end
 
     m_probe_gap_count++;
     `uvm_warning(get_type_name(),
-      $sformatf("PTW_STAGE4_OPEN_GAP kind=ambiguous_pending_key type=%s id=0x%02h matches=%0d pending=%0d",
-        req_type.name(), id, matches, m_pending.num()))
+      $sformatf("PTW_STAGE4_OPEN_GAP kind=ambiguous_pending_key type=%s id=0x%02h match_count=%0d pending=%0d",
+        req_type.name(), id, match_count, m_pending.num()))
     return 1'b0;
   endfunction
 

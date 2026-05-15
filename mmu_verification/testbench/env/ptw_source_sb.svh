@@ -374,6 +374,11 @@ class ptw_source_sb extends uvm_scoreboard;
       n_actual++;
       key = key_string(tr.req_type, tr.id);
       m_actual_q[key].push_back(tr);
+      // The legal reuse window is closed by a visible DUT completion/drop, not
+      // by the later scoreboard expected/actual match.  Retire here so a
+      // ref-model/FIFO ordering lag after a page/access fault does not turn a
+      // legal next request with the same {type,id} into illegal stimulus.
+      retire_active_key(tr.req_type, tr.id);
       try_match_key(key);
     end
   endtask
@@ -404,6 +409,8 @@ class ptw_source_sb extends uvm_scoreboard;
       af_drop.get(tr);
       if (tr.pre_existing_exception_grant) begin
         n_cov_pre_existing_exception_grant++;
+        if (tr.has_key)
+          retire_active_key(tr.key.req_type, tr.key.id);
         `uvm_info(get_type_name(),
           $sformatf("PTW_SOURCE_AUXILIARY_DROP class=pre_existing_exception_grant ignored_for_drop_match act={%s}",
             tr.convert2string()),

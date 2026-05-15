@@ -26,6 +26,9 @@ module PDE_cache #(
     input  logic                  cpurst_b,
     input  logic                  cp0_mmu_icg_en,
     input  logic                  pad_yy_icg_scan_en,
+	input  logic                  cp0_mmu_mprv,
+	input  logic [1:0]            cp0_yy_priv_mode,
+	input  logic [1:0]            cp0_mmu_mpp,
 
 //!******************************************
 //! L2TLB Request

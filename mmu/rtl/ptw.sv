@@ -303,6 +303,9 @@ PDE_cache #(
 .cpurst_b							(cpurst_b			),
 .cp0_mmu_icg_en                     (cp0_mmu_icg_en     ),
 .pad_yy_icg_scan_en                 (pad_yy_icg_scan_en ),
+.cp0_yy_priv_mode					(cp0_yy_priv_mode	),
+.cp0_mmu_mprv						(cp0_mmu_mprv		),
+.cp0_mmu_mpp						(cp0_mmu_mpp		),
 				
 .l2tlb_ptw_vpn						(l2tlb_ptw_vpn		),
 .l2tlb_ptw_type						(l2tlb_ptw_type		),

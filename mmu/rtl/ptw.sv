@@ -252,6 +252,8 @@ logic                      acc_err_rant       ;
 logic                      ref_rant           ;
 logic                      l2tlb_miss         ;
 logic                      l2tlb_miss_cnt     ;
+logic [3:0][4:0]           twu_mbuf_pmpflg    ;
+
 
 
 assign ptw_clk_en = 1'b1; 
@@ -435,6 +437,7 @@ twu #(
 .twu_mbuf_id						(twu_mbuf_id[0]					),
 .twu_mbuf_lvl						(twu_mbuf_lvl[0]				),
 .twu_mbuf_twu_idx					(twu_mbuf_twu_idx[0]			),
+.twu_mbuf_pmpflg					(twu_mbuf_pmpflg[0]				),
 //.twu_mbuf_mask						(twu_mbuf_mask[0]				),
 										
 .mmu_pmp_pa							(mmu_pmp_pa3					),
@@ -530,6 +533,7 @@ twu #(
 .twu_mbuf_id						(twu_mbuf_id[1]					),
 .twu_mbuf_lvl						(twu_mbuf_lvl[1]				),
 .twu_mbuf_twu_idx					(twu_mbuf_twu_idx[1]			),
+.twu_mbuf_pmpflg					(twu_mbuf_pmpflg[1]				),
 //.twu_mbuf_mask						(twu_mbuf_mask[1]				),
 										
 .mmu_pmp_pa							(mmu_pmp_pa5					),
@@ -627,6 +631,7 @@ twu #(
 .twu_mbuf_id						(twu_mbuf_id[2]					),
 .twu_mbuf_lvl						(twu_mbuf_lvl[2]				),
 .twu_mbuf_twu_idx					(twu_mbuf_twu_idx[2]			),
+.twu_mbuf_pmpflg					(twu_mbuf_pmpflg[2]				),
 //.twu_mbuf_mask						(twu_mbuf_mask[2]				),
 										
 .mmu_pmp_pa							(mmu_pmp_pa6					),
@@ -723,6 +728,7 @@ twu #(
 .twu_mbuf_id						(twu_mbuf_id[3]					),
 .twu_mbuf_lvl						(twu_mbuf_lvl[3]				),
 .twu_mbuf_twu_idx					(twu_mbuf_twu_idx[3]			),
+.twu_mbuf_pmpflg					(twu_mbuf_pmpflg[3]				),
 //.twu_mbuf_mask						(twu_mbuf_mask[3]				),
 										
 .mmu_pmp_pa							(mmu_pmp_pa7					),

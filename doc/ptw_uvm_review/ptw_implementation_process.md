@@ -16,7 +16,7 @@ boundaries and exit criteria.
 | 5 | P0 SVA and Cover Gate | done | passed | User confirmed stage-5 task and exit-standard checks passed. |
 | 6 | P0 Directed Tests and Legacy Conflict Fixes | done | passed | User confirmed stage-6 task and exit-standard checks passed after PFU direct-map and MAEE=0 SysMap refill debug updates. |
 | 7 | Reference/Scoreboard Complete P1/P2 Random Stress | done | passed | User confirmed stage-7 task and exit-standard checks passed after SATP old-walk, TWU/L1TLB permission, and MAEE=0 huge-page cross debug updates. |
-| 8 | Regression, Report, Signoff Freeze | implemented | pending user run | Stage-8 lists, signoff gate, frozen report, open register, and closure-matrix cleanup added; exit commands below must be run in the normal regression environment. |
+| 8 | Regression, Report, Signoff Freeze | done | passed | User confirmed stage-8 task and exit-standard checks passed after source active-key, L1DTLB PGFLT replay, and signoff-gate Python compatibility debug updates. |
 
 ## Stage 0 Completion Record
 
@@ -651,9 +651,9 @@ git diff --check -- \
 
 ```text
 PTW_STAGE_DONE stage=8 name=Regression Report Signoff Freeze
-  status=implemented
-  exit_criteria=pending_user_run
-  confirmation=not_yet_user_confirmed
+  status=done
+  exit_criteria=passed
+  confirmation=user-confirmed
   changed_files=[
     mmu_verification/simu/ptw_p0_smoke_list,
     mmu_verification/simu/ptw_p2_illegal_list,
@@ -661,6 +661,8 @@ PTW_STAGE_DONE stage=8 name=Regression Report Signoff Freeze
     mmu_verification/simu/ptw_consumer_evidence_list,
     mmu_verification/simu/ptw_source_closure_matrix.csv,
     mmu_verification/scripts/ptw_stage8_signoff_gate.py,
+    mmu_verification/testbench/env/ptw_source_sb.svh,
+    mmu_verification/testbench/env/mmu_l1dtlb_vseq_lib.svh,
     doc/ptw_uvm_review/ptw_source_signoff_report.md,
     doc/ptw_uvm_review/ptw_implementation_process.md
   ]
@@ -675,10 +677,12 @@ PTW_STAGE_DONE stage=8 name=Regression Report Signoff Freeze
       result=passed,
     git diff --check -- stage8_touched_files
       result=passed,
+    Stage8 full exit-standard checks
+      result=passed source=user-confirmed,
     python/python3 --version
       result=blocked_in_local_powershell reason=WindowsApps logon-session error,
     make -C mmu_verification comp_fast and Stage8 regressions
-      result=not_run_in_local_powershell reason=make_not_available
+      result=passed_in_normal_linux_vcs_env source=user-confirmed
   ]
   implementation_notes=[
     no temporary phase split plan was needed because Stage8 created fewer than 15 files,
@@ -688,7 +692,20 @@ PTW_STAGE_DONE stage=8 name=Regression Report Signoff Freeze
     added ptw_consumer_evidence_list for downstream L1D/L1I/L2 evidence that cannot close PTW source-side requirements,
     added ptw_stage8_signoff_gate.py to validate P0 source scoreboard summaries, P0 SVA cover hits, P1/P2/random status, closure CSV integrity, final signoff report markers, open records, legacy freeze, and waiver rules,
     added ptw_source_signoff_report.md with regression package, flow status, no-waiver statement, consumer-only register, debug semantic freeze, and machine-readable PTW_SIGNOFF_OPEN records,
-    fixed PTW-INFRA rows in ptw_source_closure_matrix.csv to have exactly the frozen 15 CSV fields and Stage8-readable status/action/reason columns
+    fixed PTW-INFRA rows in ptw_source_closure_matrix.csv to have exactly the frozen 15 CSV fields and Stage8-readable status/action/reason columns,
+    fixed source scoreboard active-key retirement to use visible DUT completion/drop as the legal same type/id reuse boundary,
+    fixed DTLB_MB_PGFLT_001 directed raw stimulus so each faulting LSU request is paired: first request writes the PTW page fault into L1DTLB MB, second request consumes the MB exception and no further retry request is generated,
+    made ptw_stage8_signoff_gate.py compatible with older Python3 by removing future annotations and PEP585/PEP604 type syntax
+  ]
+  debug_record=[
+    permission_matrix debug conclusion: same_type_id_reuse in test_ptw_p0_permission_matrix_606 was a UVM scoreboard lifecycle issue, not RTL; a request that has produced a visible DUT completion/drop must release its active type/id key even if expected/actual queue matching completes later,
+    scoreboard fix: collect_actual now retires the active key after queuing the actual completion and before try_match_key, preserving mismatch/pending checking while preventing false illegal-stimulus reports after page/access fault completion,
+    auxiliary drop fix: keyed pre_existing_exception_grant drops retire the active key because they are visible completion/drop-like endpoints for reuse legality,
+    L1DTLB consumer debug conclusion: TLB busy timeout in test_mmu_l1dtlb_dtlb_mb_pgflt_001_707 was caused by UVM directed stimulus leaving PGFLT miss-buffer entries unconsumed; RTL was holding state as expected until a matching LSU replay consumed the exception CAM,
+    directed-stimulus fix: DTLB_MB_PGFLT_001 now uses raw-only paired requests per pipe/VA/IID, with no automatic retrying LSU driver in that scenario, so the first request walks and writes PGFLT and the second request reports it to LSU and clears the MB,
+    signoff-gate debug conclusion: the Linux regression environment used an older Python3 that rejects from __future__ import annotations and newer generic type syntax; the gate script was downgraded to typing.Dict/List/Optional/Set/Tuple annotations,
+    command-line note: stage8 signoff gate should be invoked with shell continuation backslash at line end, not as backslash-space before the next option,
+    post-debug result: user confirmed stage-8 task and exit-standard checks all passed
   ]
   source_sb_summary=stage8_gate_requires P0 PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0
   sva_summary=stage8_gate_requires P0 PTW_SVA_COVER hits>0 and assert_fail=0
@@ -701,7 +718,6 @@ PTW_STAGE_DONE stage=8 name=Regression Report Signoff Freeze
     consumer-only evidence is separated from source-side closure in list/report/gate
   ]
   open_items=[
-    P0/P1/P2/random/consumer regressions and ptw_stage8_signoff_gate.py must be run in the normal Linux/VCS environment,
     all open/partial items listed in doc/ptw_uvm_review/ptw_source_signoff_report.md remain open by design and are not waived,
     no global source waiver exists; any future waiver must be narrow and must not cover flg/page_size/ppn/fault_kind/target mismatches
   ]

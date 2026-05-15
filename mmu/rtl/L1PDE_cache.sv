@@ -12,17 +12,21 @@ module L1PDE_cache #(
     input  logic                 pad_yy_icg_scan_en,
     input  logic                 cp0_mmu_icg_en,
     input  logic                 regs_ptw_clr,
+    input  logic [1:0]           cp0_yy_priv_mode,
+    input  logic [1:0]           cp0_priv_mode,
 
     input  logic [TAG_WIDTH-1:0] ptw_vpn,
+    input  logic [TYPE_WIDTH-1:0] ptw_type,
     input  logic                 L1PDE_entry_upd,
     input  logic [TAG_WIDTH-1:0] L1PDE_entry_before_upd_vpn,
     output logic                 L1PDE_entry_before_upd_hit,
     input  logic [TAG_WIDTH-1:0] L1PDE_upd_vpn,
     input  logic [PPN_WIDTH-1:0] L1PDE_upd_ppn,
-
+    input  logic [4:0]           L1PDE_upd_pmpflg,
     output logic [PPN_WIDTH-1:0] L1PDE_entry_ppn,
     output logic                 L1PDE_entry_vld,
-    output logic                 L1PDE_entry_hit
+    output logic                 L1PDE_entry_hit,
+    output logic                 L1PDE_miss_because_pmp
 );
 
 
@@ -37,9 +41,20 @@ logic                 ptw_hit           ;
 logic                 L1PDE_vld         ;
 logic [TAG_WIDTH-1:0] L1PDE_tag         ;
 logic [PPN_WIDTH-1:0] L1PDE_ppn         ;
+logic                 cp0_mach_mode     ;
+logic                 pmp_ok            ;
+logic                 L1PDE_short_hit   ;
+logic                 fetch_type        ;
+logic                 load_type         ;
+logic                 store_type        ;
+logic                 pref_type         ;
+
 
 
 assign L1PDE_entry_clk_en = regs_ptw_clr | L1PDE_entry_upd;
+
+assign cp0_mach_mode = ptw_type[TYPE_WIDTH-1:0] == 3'b011 ? cp0_yy_priv_mode[1:0] == 2'b11
+                                      : cp0_priv_mode[1:0] == 2'b11;
 
 // &Instance("gated_clk_cell", "x_iutlb_entry_gateclk"); @55
 gated_clk_cell  x_L1PDE_entry_gateclk (
@@ -73,16 +88,35 @@ always @(posedge L1PDE_entry_clk or negedge cpurst_b)begin
     if(!cpurst_b)begin
 		L1PDE_tag[TAG_WIDTH-1:0] <= {TAG_WIDTH{1'b0}};
 		L1PDE_ppn[PPN_WIDTH-1:0] <= {PPN_WIDTH{1'b0}};
+		L1PDE_pmpflg[4:0] <= 5'b0;
     end else if(L1PDE_entry_upd)begin
 		L1PDE_tag[TAG_WIDTH-1:0] <= L1PDE_upd_vpn[TAG_WIDTH-1:0];
 		L1PDE_ppn[PPN_WIDTH-1:0] <= L1PDE_upd_ppn[PPN_WIDTH-1:0];
+		L1PDE_pmpflg[4:0] <= L1PDE_upd_pmpflg[4:0];
 	end
+end
+
+assign fetch_type = ptw_type[TYPE_WIDTH-1:0] == 3'b011;
+assign load_type  = ptw_type[TYPE_WIDTH-1:0] == 3'b010;
+assign store_type = ptw_type[TYPE_WIDTH-1:0] == 3'b110;
+assign pref_type  = ptw_type[TYPE_WIDTH-1:0] == 3'b100;
+
+always_comb begin
+    case({fetch_type, load_type, store_type, pref_type})
+        4'b1000: pmp_ok = L1PDE_pmpflg[2];
+        4'b0100: pmp_ok = L1PDE_pmpflg[0];
+        4'b0010: pmp_ok = L1PDE_pmpflg[1];
+        4'b0001: pmp_ok = L1PDE_pmpflg[0];
+        default: pmp_ok = 1'b0;
+    endcase
 end
 
 //------------------------------------------------------------
 //                  Entry Hit
 //------------------------------------------------------------
-assign L1PDE_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
+assing L1PDE_short_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
+assign L1PDE_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]) & (pmp_ok | cp0_mach_mode & L1PDE_pmpflg[3]);
+assign L1PDE_miss_because_pmp = L1PDE_short_hit ^ L1PDE_hit;
 assign L1PDE_entry_before_upd_hit = (L1PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
 //------------------------------------------------------------
 //                  Output

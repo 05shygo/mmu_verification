@@ -30,6 +30,7 @@ module mbuf_entry #(
     input  logic [5:0]                mbuf_upd_id,
     input  logic [3:0]                mbuf_upd_twu_idx,
     input  logic [PTE_LEVEL-1:0]      mbuf_upd_lvl,
+    input  logic [4:0]                mbuf_upd_pmpflg,
     input  logic [3:0][PTE_LEVEL-1:0] twu_data_ready,
     input  logic                      write_back_grant,
     input  logic                      mbuf_entry_bus_err_req_mask,
@@ -45,6 +46,7 @@ module mbuf_entry #(
     output logic [5:0]                mbuf_entry_id,
     output logic [3:0]                mbuf_entry_twu_idx,
     output logic [PTE_LEVEL-1:0]      mbuf_entry_lvl,
+    output logic [4:0]                mbuf_entry_pmpflg,
     output logic [63:0]               mbuf_entry_data,
     output logic                      mbuf_entry_get,
     output logic                      mbuf_entry_bus_err_flop
@@ -65,7 +67,7 @@ logic                   mbuf_get         ;
 logic                   mbuf_bus_err_flop;
 logic                   mbuf_entry_clk_en;
 logic                   mbuf_entry_clk   ;
-
+logic [4:0]             mbuf_pmpflg      ;
 
 assign mbuf_entry_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
@@ -127,8 +129,12 @@ always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
         mbuf_bus_err_flop <= 1'b0;
 end
 
-        
-
+always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
+    if(!cpurst_b)
+        mbuf_pmpflg[4:0] <= 5'b0;
+    else if(mbuf_entry_upd)
+        mbuf_pmpflg[4:0] <= mbuf_upd_pmpflg[4:0];
+end
 //------------------------------------------------------------
 //                  VPN ,PFN and Flag information
 //------------------------------------------------------------
@@ -179,6 +185,7 @@ assign mbuf_entry_type = mbuf_type[TYPE_WIDTH-1:0];
 assign mbuf_entry_id = mbuf_id[5:0];
 assign mbuf_entry_twu_idx = mbuf_twu_idx[3:0];
 assign mbuf_entry_lvl = mbuf_lvl[PTE_LEVEL-1:0];
+assign mbuf_entry_pmpflg = mbuf_pmpflg[4:0];
 assign mbuf_entry_data = mbuf_get ? mbuf_lsu_data[63:0] : lsu_mmu_data[63:0];
 assign mbuf_entry_get = mbuf_get;
 assign mbuf_entry_bus_err_flop = mbuf_bus_err_flop;

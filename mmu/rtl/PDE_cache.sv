@@ -42,6 +42,7 @@ module PDE_cache #(
     input  logic [PTE_LEVEL-2:0]  mbuf_cache_upd_lvl,
     input  logic [PPN_WIDTH-1:0]  mbuf_cache_upd_ppn,
     input  logic [VPN_WIDTH-1:0]  mbuf_cache_upd_vpn,
+    input  logic [4:0]            mbuf_cache_upd_pmpflg,
 
 //!******************************************
 //! Regs Request
@@ -98,10 +99,16 @@ logic [L1PDE_ENTRY_NUM-1:0]                plru_L1PDE_ref_num     ;
 logic [L2PDE_ENTRY_NUM-1:0]                plru_L2PDE_ref_num     ;
 logic                                      pde_cache_clk_en       ;
 logic                                      pde_cache_clk          ;
+logic                                      L1PDE_miss_because_pmp_vld;
+logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_miss_because_pmp;
 
 
 //assign pde_cache_clk_en = l2tlb_ptw_req | tlboper_ptw_abort | (!xbar_pde_ready);
 assign pde_cache_clk_en = 1'b1;
+
+assign cp0_priv_mode[1:0] = cp0_mmu_mprv ? cp0_mmu_mpp[1:0]
+                                         : cp0_yy_priv_mode[1:0];
+
 
 gated_clk_cell  x_pde_cache_gateclk (
   .clk_in             (forever_cpuclk    ),
@@ -174,17 +181,22 @@ generate
         .pad_yy_icg_scan_en             (pad_yy_icg_scan_en         ),
         .cp0_mmu_icg_en                 (cp0_mmu_icg_en             ),
 		.regs_ptw_clr					(pde_cache_clear			),
+		.cp0_yy_priv_mode				(cp0_yy_priv_mode			),
+		.cp0_priv_mode					(cp0_priv_mode				),
 	
 		.ptw_vpn						(ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)]	),
+		.ptw_type						(ptw_type[TYPE_WIDTH-1:0]		),
 		.L1PDE_entry_upd				(L1PDE_entry_upd[L1PDE_ent]	),
 		.L1PDE_entry_before_upd_vpn	    (mbuf_cache_upd_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)]	),
 		.L1PDE_upd_vpn					(mbuf_cache_upd_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)]	),
 		.L1PDE_upd_ppn					(mbuf_cache_upd_ppn[PPN_WIDTH-1:0]   ),
+		.L1PDE_upd_pmpflg				(mbuf_cache_upd_pmpflg[4:0]   ),
 		.L1PDE_entry_before_upd_hit	    (L1PDE_entry_before_upd_hit[L1PDE_ent]	),
 
 		.L1PDE_entry_ppn				(L1PDE_entry_ppn[L1PDE_ent] ),
 		.L1PDE_entry_vld				(L1PDE_entry_vld[L1PDE_ent]	),
-		.L1PDE_entry_hit                (L1PDE_entry_hit[L1PDE_ent]	)
+		.L1PDE_entry_hit                (L1PDE_entry_hit[L1PDE_ent]	),
+		.L1PDE_miss_because_pmp         (L1PDE_miss_because_pmp[L1PDE_ent]	)
 		);
 	end
 endgenerate
@@ -207,12 +219,16 @@ generate
         .pad_yy_icg_scan_en             (pad_yy_icg_scan_en         ),
         .cp0_mmu_icg_en                 (cp0_mmu_icg_en             ),
 		.regs_ptw_clr					(pde_cache_clear			),
+		.cp0_yy_priv_mode				(cp0_yy_priv_mode			),
+		.cp0_priv_mode					(cp0_priv_mode				),
                                                                     
 		.ptw_vpn						(ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] 	),
+		.ptw_type						(ptw_type[TYPE_WIDTH-1:0]		),
 		.L2PDE_entry_upd				(L2PDE_entry_upd[L2PDE_ent] ),
 		.L2PDE_entry_before_upd_vpn	    (mbuf_cache_upd_vpn[VPN_WIDTH-1:VPN_PERLEL]	),
 		.L2PDE_upd_vpn					(mbuf_cache_upd_vpn[VPN_WIDTH-1:VPN_PERLEL]	),
 		.L2PDE_upd_ppn					(mbuf_cache_upd_ppn[PPN_WIDTH-1:0]   ),
+		.L2PDE_upd_pmpflg				(mbuf_cache_upd_pmpflg[4:0]   ),
 		.L2PDE_entry_before_upd_hit	    (L2PDE_entry_before_upd_hit[L2PDE_ent]	),
 
 		.L2PDE_entry_ppn				(L2PDE_entry_ppn[L2PDE_ent] ),
@@ -227,9 +243,10 @@ endgenerate
 //==============================================================================
 assign L1PDE_entry_hit_idx[L1PDE_ENTRY_NUM-1:0] = (L1PDE_entry_vld[L1PDE_ENTRY_NUM-1:0] & L1PDE_entry_hit[L1PDE_ENTRY_NUM-1:0]);
 assign L1PDE_entry_hit_vld = (|L1PDE_entry_hit_idx[L1PDE_ENTRY_NUM-1:0]) ;
+assign L1PDE_miss_because_pmp_vld = (|L1PDE_miss_because_pmp[L1PDE_ENTRY_NUM-1:0]);
 
 assign L2PDE_entry_hit_idx[L2PDE_ENTRY_NUM-1:0] = (L2PDE_entry_vld[L2PDE_ENTRY_NUM-1:0] & L2PDE_entry_hit[L2PDE_ENTRY_NUM-1:0]);
-assign L2PDE_entry_hit_vld = (|L2PDE_entry_hit_idx[L2PDE_ENTRY_NUM-1:0]);
+assign L2PDE_entry_hit_vld = (|L2PDE_entry_hit_idx[L2PDE_ENTRY_NUM-1:0]) & (~L1PDE_miss_because_pmp_vld);
 
 
 always_comb begin

@@ -176,7 +176,7 @@ logic                       mmu_lsu_data_req_fst_time;
 logic                       tlboper_ptw_abort_reg;
 //logic   [TYPE_WIDTH-1:0]	    mbuf_bus_error_type                 ;
 logic [4:0]                 mbuf_upd_pmpflg;
-logic [4:0]                 mbuf_entry_pmpflg;
+logic [MBUF_ENTRY_NUM-1:0][4:0]                 mbuf_entry_pmpflg;
 logic [4:0]                 pde_updata_pmpflg;
 logic [4:0]                 mbuf_twu_pmpflg;
 

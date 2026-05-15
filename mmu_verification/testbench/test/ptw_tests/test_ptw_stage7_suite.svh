@@ -174,15 +174,24 @@ class ptw_stage7_base extends ptw_source_directed_base;
 
   protected task stage7_wait_ptw_accept(
     input string scenario_id,
+    input ptw_src_req_type_e req_type,
     input va_t va,
-    input int unsigned id,
-    input int unsigned max_cycles = 512
+    input int unsigned source_id,
+    input int unsigned max_cycles = 4096
   );
     bit seen;
+    bit saw_any_accept;
     bit [26:0] vpn;
+    bit [2:0] last_accept_type;
+    bit [5:0] last_accept_id;
+    bit [26:0] last_accept_vpn;
 
     seen = 1'b0;
+    saw_any_accept = 1'b0;
     vpn = va[38:12];
+    last_accept_type = '0;
+    last_accept_id = '0;
+    last_accept_vpn = '0;
     if (m_stage7_probe_vif == null) begin
       `uvm_error(get_type_name(),
         $sformatf("%s: MMU_DUT_PROBES_VIF unavailable; cannot prove PTW accept before SATP switch",
@@ -195,21 +204,30 @@ class ptw_stage7_base extends ptw_source_directed_base;
     repeat (max_cycles) begin
       @(m_stage7_probe_vif.mon_cb);
       if ((m_stage7_probe_vif.mon_cb.l2tlb_ptw_req === 1'b1)
-          && (m_stage7_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)
-          && (m_stage7_probe_vif.mon_cb.l2tlb_ptw_id == id[5:0])
-          && (m_stage7_probe_vif.mon_cb.l2tlb_ptw_vpn == vpn)) begin
-        seen = 1'b1;
-        break;
+          && (m_stage7_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)) begin
+        saw_any_accept = 1'b1;
+        last_accept_type = m_stage7_probe_vif.mon_cb.l2tlb_ptw_type;
+        last_accept_id = m_stage7_probe_vif.mon_cb.l2tlb_ptw_id;
+        last_accept_vpn = m_stage7_probe_vif.mon_cb.l2tlb_ptw_vpn;
+        // l2tlb_ptw_id is the L2 miss-buffer/L1 miss-entry composite ID, not
+        // the LSU source stimulus id.  Match the accepted PTW request by the
+        // architectural source type and VPN; log both IDs for correlation.
+        if ((m_stage7_probe_vif.mon_cb.l2tlb_ptw_type == req_type)
+            && (m_stage7_probe_vif.mon_cb.l2tlb_ptw_vpn == vpn)) begin
+          seen = 1'b1;
+          break;
+        end
       end
     end
 
     if (!seen)
       `uvm_error(get_type_name(),
-        $sformatf("%s: did not observe matching PTW accept before SATP switch vpn=0x%07h id=0x%02h",
-          scenario_id, vpn, id[5:0]))
+        $sformatf("%s: did not observe matching PTW accept before SATP switch type=%s vpn=0x%07h source_id=0x%02h saw_any_accept=%0b last_accept={type=0x%0h id=0x%02h vpn=0x%07h}",
+          scenario_id, req_type.name(), vpn, source_id[5:0], saw_any_accept,
+          last_accept_type, last_accept_id, last_accept_vpn))
     else
-      ptw_meta_add_context($sformatf("%s: observed_ptw_accept_before_satp_switch vpn=0x%07h id=0x%02h",
-        scenario_id, vpn, id[5:0]));
+      ptw_meta_add_context($sformatf("%s: observed_ptw_accept_before_satp_switch type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
+        scenario_id, req_type.name(), vpn, source_id[5:0], last_accept_id));
   endtask
 
   protected task stage7_finish_scenario(input string scenario_id);
@@ -291,7 +309,8 @@ class test_ptw_pde_satp_old_walk_reupdate_001 extends ptw_stage7_base;
         stage7_drive_req(PTW_SRC_TYPE_LOAD, va, 6'h01);
       end
       begin
-        stage7_wait_ptw_accept("stage7_satp_old_walk_reupdate", va, 6'h01);
+        stage7_wait_ptw_accept("stage7_satp_old_walk_reupdate",
+          PTW_SRC_TYPE_LOAD, va, 6'h01);
         stage7_write_satp(STAGE7_ROOT_PPN + 28'h21, STAGE7_ROOT_ASID + 16'h21);
       end
     join
@@ -380,7 +399,8 @@ class test_ptw_asid_refill_current_sample_001 extends ptw_stage7_base;
         stage7_drive_req(PTW_SRC_TYPE_LOAD, va, 6'h03);
       end
       begin
-        stage7_wait_ptw_accept("stage7_asid_change_abort_constraint", va, 6'h03);
+        stage7_wait_ptw_accept("stage7_asid_change_abort_constraint",
+          PTW_SRC_TYPE_LOAD, va, 6'h03);
         stage7_write_satp(STAGE7_ROOT_PPN + 28'h03, 16'h07fe);
       end
     join

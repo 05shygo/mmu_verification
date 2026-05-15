@@ -195,7 +195,8 @@ class ptw_stage7_base extends ptw_source_directed_base;
     if (m_stage7_probe_vif == null) begin
       `uvm_info(get_type_name(),
         $sformatf("%s: MMU_DUT_PROBES_VIF unavailable; skip optional PTW accept observation before SATP switch",
-          scenario_id))
+          scenario_id),
+        UVM_LOW)
       ptw_meta_add_context({scenario_id, ": probe_vif_unavailable_optional_ptw_accept_skipped"});
       #25ns;
       return;

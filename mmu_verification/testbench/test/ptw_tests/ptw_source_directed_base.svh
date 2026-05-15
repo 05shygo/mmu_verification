@@ -213,8 +213,8 @@ class ptw_source_directed_base extends test_base;
       m_env.m_ptw_scenario_db.register_scenario(ptw_scenario_id, req_id);
   endfunction
 
-  virtual function void ptw_meta_add_context(string context);
-    ptw_context_samples.push_back(context);
+  virtual function void ptw_meta_add_context(string ctx);
+    ptw_context_samples.push_back(ctx);
   endfunction
 
   virtual function void ptw_meta_add_level(

@@ -1180,10 +1180,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_fault_refill_before_replay", 524288, 16);
     raw_pipe01(va_page(46), va_page(47), 7'd6, 7'd7, 1'b0, 1'b1);
     wait_l1d_expt_writes("l1dtlb_fault_refill_second_expt_entries", 2);
-    // The raw pair above creates a fresh pair of faulted MB entries.  Model the
-    // LSU replay that consumes the L1DTLB exception CAM before final idle.
-    send_lsu_item(LSU_PIPE0, va_page(46), 7'd6, 1'b0);
-    send_lsu_item(LSU_PIPE1, va_page(47), 7'd7, 1'b1);
+    // Keep the raw fault stimulus paired: first pulse walks and writes PGFLT
+    // into L1DTLB, second pulse consumes that DTLB exception and clears the MB.
+    // Do not use the retrying LSU driver here; an extra retry would start a new
+    // PTW walk and leave another PGFLT entry for this directed raw scenario.
+    raw_pipe01(va_page(46), va_page(47), 7'd6, 7'd7, 1'b0, 1'b1);
+    wait_lsu_cycles(8);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_fault_refill_after_second_replay", 524288, 16);
     send_rtu_flush();
     configure_ptw_delay(1, 4);

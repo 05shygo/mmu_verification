@@ -16,7 +16,7 @@ module L1PDE_cache #(
     input  logic [1:0]           cp0_priv_mode,
 
     input  logic [TAG_WIDTH-1:0] ptw_vpn,
-    input  logic [TYPE_WIDTH-1:0] ptw_type,
+    input  logic [2:0]           ptw_type,
     input  logic                 L1PDE_entry_upd,
     input  logic [TAG_WIDTH-1:0] L1PDE_entry_before_upd_vpn,
     output logic                 L1PDE_entry_before_upd_hit,
@@ -48,6 +48,7 @@ logic                 fetch_type        ;
 logic                 load_type         ;
 logic                 store_type        ;
 logic                 pref_type         ;
+logic [4:0]           L1PDE_pmpflg      ;
 
 
 

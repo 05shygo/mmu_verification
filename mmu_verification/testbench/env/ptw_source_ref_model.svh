@@ -9,6 +9,17 @@
 //   - Track PDE cache events with an abstract model for later tests/debug.
 //   - Do not call the shared translation reference-model API; this model is
 //     event-driven from PTW source probes and memory monitor evidence.
+//
+// Stage 7 scope:
+//   - Use current CSR samples for CHK/refill-time fields such as ASID, MXR/SUM,
+//     effective privilege, and MAEE.
+//   - Model MAEE=0 1G/2M SysMap no-cross/degrade refill page size, PPN, and
+//     flg attributes.
+//   - Keep satp/PMP clear-only events as PDE-cache clear events only; in-flight
+//     requests remain eligible to update PDE state when their non-leaf data
+//     returns.
+//   - Treat pre-existing exception grant during abort as visible completion
+//     evidence, not as a drop expected by the source scoreboard.
 // =============================================================================
 `ifndef PTW_SOURCE_REF_MODEL_SVH
 `define PTW_SOURCE_REF_MODEL_SVH
@@ -41,6 +52,7 @@ class ptw_source_ref_model extends uvm_component;
     logic [5:0]            id;
     vpn_t                  vpn;
     asid_t                 asid;
+    asid_t                 accept_asid;
     ppn_t                  satp_ppn;
     bit                    maee;
     bit                    mprv;
@@ -54,6 +66,11 @@ class ptw_source_ref_model extends uvm_component;
     pte_t                  last_pte;
     logic [39:0]           last_pte_pa;
     ptw_src_page_size_e    expected_page_size;
+    ptw_src_page_size_e    refill_page_size;
+    ppn_t                  refill_ppn;
+    logic [4:0]            refill_ext_attr;
+    bit                    refill_fields_valid;
+    bit                    refill_degraded;
     bit                    expected_page_fault;
     bit                    expected_access_fault;
     bit                    bus_error_seen;
@@ -69,6 +86,14 @@ class ptw_source_ref_model extends uvm_component;
   bit [27:0]    m_sysmap_base [8];
   bit [27:0]    m_sysmap_mask [8];
   bit [4:0]     m_sysmap_flg [8];
+  asid_t        m_cur_asid;
+  ppn_t         m_cur_satp_ppn;
+  bit           m_cur_maee;
+  bit           m_cur_mprv;
+  bit           m_cur_mxr;
+  bit           m_cur_sum;
+  logic [1:0]   m_cur_mpp;
+  logic [1:0]   m_cur_priv_mode;
 
   int unsigned m_req_accept_count;
   int unsigned m_expected_count;
@@ -85,6 +110,15 @@ class ptw_source_ref_model extends uvm_component;
   int unsigned m_pde_event_count;
   int unsigned m_pde_update_count;
   int unsigned m_probe_gap_count;
+  int unsigned m_satp_clear_count;
+  int unsigned m_pmp_clear_count;
+  int unsigned m_asid_current_refill_count;
+  int unsigned m_context_current_sample_count;
+  int unsigned m_maee0_sysmap_refill_count;
+  int unsigned m_maee0_degrade_1g_to_2m_count;
+  int unsigned m_maee0_degrade_1g_to_4k_count;
+  int unsigned m_maee0_degrade_2m_to_4k_count;
+  int unsigned m_pre_existing_exception_grant_count;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -96,6 +130,14 @@ class ptw_source_ref_model extends uvm_component;
       m_sysmap_mask[i] = '0;
       m_sysmap_flg[i] = 5'h0;
     end
+    m_cur_asid = '0;
+    m_cur_satp_ppn = '0;
+    m_cur_maee = 1'b0;
+    m_cur_mprv = 1'b0;
+    m_cur_mxr = 1'b0;
+    m_cur_sum = 1'b0;
+    m_cur_mpp = PRIV_M;
+    m_cur_priv_mode = PRIV_M;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -120,7 +162,7 @@ class ptw_source_ref_model extends uvm_component;
       m_cfg = mmu_top_cfg::type_id::create("m_cfg");
 
     `uvm_info(get_type_name(),
-      "PTW_SOURCE_CLOSURE component=ref_model stage=4 status=created expected=0 provisional=0",
+      "PTW_SOURCE_CLOSURE component=ref_model stage=7 status=created expected=0 provisional=0",
       UVM_LOW)
   endfunction
 
@@ -193,7 +235,7 @@ class ptw_source_ref_model extends uvm_component;
 
     m_probe_gap_count++;
     `uvm_warning(get_type_name(),
-      $sformatf("PTW_STAGE4_OPEN_GAP kind=ambiguous_pending_key type=%s id=0x%02h match_count=%0d pending=%0d",
+      $sformatf("PTW_STAGE7_OPEN_GAP kind=ambiguous_pending_key type=%s id=0x%02h match_count=%0d pending=%0d",
         req_type.name(), id, match_count, m_pending.num()))
     return 1'b0;
   endfunction
@@ -317,25 +359,105 @@ class ptw_source_ref_model extends uvm_component;
     return 5'b10011;
   endfunction
 
-  protected function logic [4:0] ext_attr_for_refill(
+  protected function int sysmap_region(input ppn_t ppn, output bit hit);
+    hit = 1'b1;
+`ifdef SYSMAP_BASE_ADDR0
+    if (ppn < `SYSMAP_BASE_ADDR0) return 0;
+    if (ppn < `SYSMAP_BASE_ADDR1) return 1;
+    if (ppn < `SYSMAP_BASE_ADDR2) return 2;
+    if (ppn < `SYSMAP_BASE_ADDR3) return 3;
+    if (ppn < `SYSMAP_BASE_ADDR4) return 4;
+    if (ppn < `SYSMAP_BASE_ADDR5) return 5;
+    if (ppn < `SYSMAP_BASE_ADDR6) return 6;
+    if (ppn < `SYSMAP_BASE_ADDR7) return 7;
+`else
+    if (ppn < 28'h0012100) return 0;
+    if (ppn < 28'h0080000) return 1;
+    if (ppn < 28'h00E0000) return 2;
+    if (ppn < 28'h0200000) return 3;
+    if (ppn < 28'h0400000) return 4;
+    if (ppn < 28'h0800000) return 5;
+    if (ppn < 28'h1000000) return 6;
+    if (ppn < 28'hF000000) return 7;
+`endif
+    hit = 1'b0;
+    return -1;
+  endfunction
+
+  protected function bit same_sysmap_region(input ppn_t first_ppn, input ppn_t last_ppn);
+    bit first_hit;
+    bit last_hit;
+    int first_region;
+    int last_region;
+
+    first_region = sysmap_region(first_ppn, first_hit);
+    last_region = sysmap_region(last_ppn, last_hit);
+    return (first_hit == last_hit) && (first_region == last_region);
+  endfunction
+
+  protected function void compute_refill_fields(
     input pending_req_s pending,
     input pte_t raw_pte,
-    input ptw_src_page_size_e page_size
+    input ptw_src_page_size_e base_page_size,
+    output ptw_src_page_size_e page_size,
+    output ppn_t ppn,
+    output logic [4:0] ext_attr,
+    output bit degraded
   );
     bit hit;
-    logic [4:0] attr;
+    ppn_t leaf_ppn;
+    ppn_t first_ppn;
+    ppn_t last_ppn;
+    ppn_t candidate_ppn;
 
-    if (pending.maee)
-      return raw_pte[63:59];
+    leaf_ppn = raw_pte[PTE_PPN_LSB +: PPN_WIDTH];
+    page_size = base_page_size;
+    ppn = leaf_ppn;
+    degraded = 1'b0;
 
-    attr = sysmap_attr(raw_pte[PTE_PPN_LSB +: PPN_WIDTH], hit);
+    if (pending.maee) begin
+      ext_attr = raw_pte[63:59];
+      return;
+    end
+
+    if (base_page_size == PTW_SRC_PGS_1G) begin
+      first_ppn = leaf_ppn;
+      last_ppn = {leaf_ppn[PPN_WIDTH-1:18], 18'h3ffff};
+      if (!same_sysmap_region(first_ppn, last_ppn)) begin
+        candidate_ppn = {leaf_ppn[PPN_WIDTH-1:18], pending.vpn[17:9], 9'b0};
+        first_ppn = candidate_ppn;
+        last_ppn = {candidate_ppn[PPN_WIDTH-1:9], 9'h1ff};
+        page_size = PTW_SRC_PGS_2M;
+        ppn = candidate_ppn;
+        degraded = 1'b1;
+        if (!same_sysmap_region(first_ppn, last_ppn)) begin
+          page_size = PTW_SRC_PGS_4K;
+          ppn = {leaf_ppn[PPN_WIDTH-1:18], pending.vpn[17:0]};
+        end
+      end
+    end else if (base_page_size == PTW_SRC_PGS_2M) begin
+      first_ppn = leaf_ppn;
+      last_ppn = {leaf_ppn[PPN_WIDTH-1:9], 9'h1ff};
+      if (!same_sysmap_region(first_ppn, last_ppn)) begin
+        page_size = PTW_SRC_PGS_4K;
+        ppn = {leaf_ppn[PPN_WIDTH-1:9], pending.vpn[8:0]};
+        degraded = 1'b1;
+      end
+    end
+
+    if (page_size == PTW_SRC_PGS_1G)
+      ext_attr = sysmap_attr({ppn[PPN_WIDTH-1:18], 18'h3ffff}, hit);
+    else if (page_size == PTW_SRC_PGS_2M)
+      ext_attr = sysmap_attr({ppn[PPN_WIDTH-1:9], 9'h1ff}, hit);
+    else
+      ext_attr = sysmap_attr(ppn, hit);
+
     if (!hit)
       `uvm_info(get_type_name(),
         $sformatf("PTW_SOURCE_SYSMAP_DEFAULT key=%s page_size=%s ppn=0x%07h attr=0x%02h",
-          key_string(pending.req_type, pending.id), page_size.name(),
-          raw_pte[PTE_PPN_LSB +: PPN_WIDTH], attr),
+          key_string(pending.req_type, pending.id), page_size.name(), ppn,
+          ext_attr),
         UVM_HIGH)
-    return attr;
   endfunction
 
   protected task emit_expected(input ptw_src_expected_rsp_txn exp);
@@ -365,6 +487,8 @@ class ptw_source_ref_model extends uvm_component;
     ptw_src_page_size_e pgs;
     ppn_t ppn;
     logic [4:0] ext_attr;
+    bit degraded;
+    asid_t refill_asid;
 
     exp = ptw_src_expected_rsp_txn::type_id::create("ptw_expected");
     exp.cycle = cycle;
@@ -372,7 +496,8 @@ class ptw_source_ref_model extends uvm_component;
     exp.req_type = pending.req_type;
     exp.id = pending.id;
     exp.vpn = pending.vpn;
-    exp.asid = pending.asid;
+    refill_asid = (kind == PTW_SRC_EXP_REFILL) ? m_cur_asid : pending.asid;
+    exp.asid = refill_asid;
     exp.target = target_from_type(pending.req_type);
     exp.target_l2tlb = 1'b1;
     exp.target_l1i = (pending.req_type == PTW_SRC_TYPE_FETCH);
@@ -392,18 +517,25 @@ class ptw_source_ref_model extends uvm_component;
     exp.pre_existing_exception_grant = 1'b0;
 
     if (kind == PTW_SRC_EXP_REFILL) begin
-      pgs = pending.expected_page_size;
-      ppn = raw_pte[PTE_PPN_LSB +: PPN_WIDTH];
-      ext_attr = ext_attr_for_refill(pending, raw_pte, pgs);
+      if (pending.refill_fields_valid) begin
+        pgs = pending.refill_page_size;
+        ppn = pending.refill_ppn;
+        ext_attr = pending.refill_ext_attr;
+      end else begin
+        compute_refill_fields(pending, raw_pte, pending.expected_page_size,
+          pgs, ppn, ext_attr, degraded);
+      end
       exp.page_size = pgs;
       exp.ppn = ppn;
       exp.global_bit = raw_pte[PTE_G];
       exp.flg = ptw_src_make_refill_flg(ext_attr, raw_pte);
-      exp.raw_tag = ptw_src_make_refill_tag(pending.vpn, pending.asid, pgs, raw_pte[PTE_G]);
+      exp.raw_tag = ptw_src_make_refill_tag(pending.vpn, refill_asid, pgs, raw_pte[PTE_G]);
       exp.raw_data = ptw_src_make_refill_data(ppn, ext_attr, raw_pte);
       exp.refill_valid = 1'b1;
       exp.page_fault = 1'b0;
       exp.access_fault = 1'b0;
+      if (exp.asid != pending.accept_asid)
+        m_asid_current_refill_count++;
     end else begin
       exp.page_size = PTW_SRC_PGS_NONE;
       exp.ppn = '0;
@@ -485,19 +617,25 @@ class ptw_source_ref_model extends uvm_component;
       pending.id = tr.id;
       pending.vpn = tr.vpn;
       pending.asid = tr.asid;
-      pending.satp_ppn = '0;
-      pending.maee = 1'b1;
-      pending.mprv = 1'b0;
-      pending.mxr = 1'b0;
-      pending.sum = 1'b0;
-      pending.mpp = PRIV_M;
-      pending.priv_mode = PRIV_S;
+      pending.accept_asid = tr.asid;
+      pending.satp_ppn = m_cur_satp_ppn;
+      pending.maee = m_cur_maee;
+      pending.mprv = m_cur_mprv;
+      pending.mxr = m_cur_mxr;
+      pending.sum = m_cur_sum;
+      pending.mpp = m_cur_mpp;
+      pending.priv_mode = m_cur_priv_mode;
       pending.accept_cycle = tr.cycle;
       pending.last_cycle = tr.cycle;
       pending.last_level = PTW_SRC_LEVEL_NONE;
       pending.last_pte = '0;
       pending.last_pte_pa = '0;
       pending.expected_page_size = PTW_SRC_PGS_NONE;
+      pending.refill_page_size = PTW_SRC_PGS_NONE;
+      pending.refill_ppn = '0;
+      pending.refill_ext_attr = '0;
+      pending.refill_fields_valid = 1'b0;
+      pending.refill_degraded = 1'b0;
       pending.expected_page_fault = 1'b0;
       pending.expected_access_fault = 1'b0;
       pending.bus_error_seen = 1'b0;
@@ -517,6 +655,14 @@ class ptw_source_ref_model extends uvm_component;
       pending_req_s pending;
 
       af_ctx.get(tr);
+      m_cur_asid = tr.asid;
+      m_cur_satp_ppn = tr.satp_ppn;
+      m_cur_maee = tr.maee;
+      m_cur_mprv = tr.mprv;
+      m_cur_mxr = tr.mxr;
+      m_cur_sum = tr.sum;
+      m_cur_mpp = tr.mpp;
+      m_cur_priv_mode = tr.priv_mode;
       if (resolve_pending_key(tr.req_type, tr.id, key)) begin
         pending = m_pending[key];
         pending.asid = tr.asid;
@@ -541,6 +687,10 @@ class ptw_source_ref_model extends uvm_component;
       pending_req_s pending;
       bit leaf;
       bit page_fault;
+      ptw_src_page_size_e refill_page_size;
+      ppn_t refill_ppn;
+      logic [4:0] refill_ext_attr;
+      bit refill_degraded;
 
       af_level.get(tr);
       if (!resolve_pending_key(tr.req_type, tr.id, key)) begin
@@ -549,6 +699,18 @@ class ptw_source_ref_model extends uvm_component;
       end
 
       pending = m_pending[key];
+      if ((tr.req_type != PTW_SRC_TYPE_UNKNOWN)
+          && (tr.level != PTW_SRC_LEVEL_NONE)) begin
+        pending.asid = m_cur_asid;
+        pending.satp_ppn = m_cur_satp_ppn;
+        pending.maee = m_cur_maee;
+        pending.mprv = m_cur_mprv;
+        pending.mxr = m_cur_mxr;
+        pending.sum = m_cur_sum;
+        pending.mpp = m_cur_mpp;
+        pending.priv_mode = m_cur_priv_mode;
+        m_context_current_sample_count++;
+      end
       pending.last_cycle = tr.cycle;
       if (tr.level != PTW_SRC_LEVEL_NONE)
         pending.last_level = tr.level;
@@ -569,6 +731,30 @@ class ptw_source_ref_model extends uvm_component;
         if (leaf) begin
           pending.expected_page_size = page_size_from_level(tr.level);
           page_fault = leaf_page_fault(pending, tr.pte_data, tr.level);
+          if (!page_fault && !tr.page_fault) begin
+            compute_refill_fields(pending, tr.pte_data,
+              pending.expected_page_size, refill_page_size,
+              refill_ppn, refill_ext_attr, refill_degraded);
+            pending.refill_page_size = refill_page_size;
+            pending.refill_ppn = refill_ppn;
+            pending.refill_ext_attr = refill_ext_attr;
+            pending.refill_degraded = refill_degraded;
+            pending.refill_fields_valid = 1'b1;
+            if (!pending.maee) begin
+              m_maee0_sysmap_refill_count++;
+              if (pending.refill_degraded) begin
+                if ((pending.expected_page_size == PTW_SRC_PGS_1G)
+                    && (pending.refill_page_size == PTW_SRC_PGS_2M))
+                  m_maee0_degrade_1g_to_2m_count++;
+                else if ((pending.expected_page_size == PTW_SRC_PGS_1G)
+                    && (pending.refill_page_size == PTW_SRC_PGS_4K))
+                  m_maee0_degrade_1g_to_4k_count++;
+                else if ((pending.expected_page_size == PTW_SRC_PGS_2M)
+                    && (pending.refill_page_size == PTW_SRC_PGS_4K))
+                  m_maee0_degrade_2m_to_4k_count++;
+              end
+            end
+          end
         end else begin
           pending.expected_page_size = PTW_SRC_PGS_NONE;
           page_fault = nonleaf_page_fault(pending, tr.pte_data, tr.level);
@@ -627,6 +813,14 @@ class ptw_source_ref_model extends uvm_component;
       end
 
       if (found) begin
+        pending.asid = m_cur_asid;
+        pending.satp_ppn = m_cur_satp_ppn;
+        pending.maee = m_cur_maee;
+        pending.mprv = m_cur_mprv;
+        pending.mxr = m_cur_mxr;
+        pending.sum = m_cur_sum;
+        pending.mpp = m_cur_mpp;
+        pending.priv_mode = m_cur_priv_mode;
         pending.bus_error_seen = 1'b1;
         pending.expected_access_fault = 1'b1;
         m_pending[selected_key] = pending;
@@ -635,7 +829,7 @@ class ptw_source_ref_model extends uvm_component;
       end else begin
         m_probe_gap_count++;
         `uvm_warning(get_type_name(),
-          $sformatf("PTW_STAGE4_OPEN_GAP kind=bus_error_without_unique_pending addr=0x%010h pending=%0d",
+          $sformatf("PTW_STAGE7_OPEN_GAP kind=bus_error_without_unique_pending addr=0x%010h pending=%0d",
             tr.addr, m_pending.num()))
       end
     end
@@ -646,6 +840,14 @@ class ptw_source_ref_model extends uvm_component;
       ptw_src_drop_txn tr;
       string key;
       af_drop.get(tr);
+      if (tr.pre_existing_exception_grant) begin
+        m_pre_existing_exception_grant_count++;
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_SOURCE_PRE_EXISTING_EXCEPTION_GRANT auxiliary_drop_ignored %s",
+            tr.convert2string()),
+          UVM_MEDIUM)
+        continue;
+      end
       emit_drop_expected(tr);
       if (tr.has_key) begin
         key = key_string(tr.key.req_type, tr.key.id);
@@ -692,8 +894,33 @@ class ptw_source_ref_model extends uvm_component;
     forever begin
       cp0_txn tr;
       af_csr_write.get(tr);
-      if ((tr.op == CP0_WRITE_SATP) || (tr.op == CP0_TLB_ALL_INV))
-        m_pde_model.clear();
+      case (tr.op)
+        CP0_WRITE_SATP: begin
+          m_cur_asid = tr.wdata[59:44];
+          m_cur_satp_ppn = tr.wdata[PPN_WIDTH-1:0];
+          m_cur_mxr = tr.mxr;
+          m_cur_sum = tr.sum;
+          m_cur_mprv = tr.mprv;
+          m_cur_mpp = tr.mpp;
+          m_cur_maee = tr.maee;
+          m_cur_priv_mode = tr.priv_mode;
+          m_satp_clear_count++;
+          m_pde_model.clear();
+        end
+        CP0_TLB_ALL_INV: begin
+          m_satp_clear_count++;
+          m_pde_model.clear();
+        end
+        CP0_SET_PRIV: m_cur_priv_mode = tr.priv_mode;
+        CP0_SET_MXR: m_cur_mxr = tr.mxr;
+        CP0_SET_SUM: m_cur_sum = tr.sum;
+        CP0_SET_MPRV_MPP: begin
+          m_cur_mprv = tr.mprv;
+          m_cur_mpp = tr.mpp;
+        end
+        CP0_SET_MAEE: m_cur_maee = tr.maee;
+        default: ;
+      endcase
     end
   endtask
 
@@ -704,6 +931,7 @@ class ptw_source_ref_model extends uvm_component;
       if (tr.cfg_update) begin
         foreach (tr.flg[i])
           m_pmp_flg[i] = tr.flg[i];
+        m_pmp_clear_count++;
         m_pde_model.clear();
       end
     end
@@ -740,21 +968,29 @@ class ptw_source_ref_model extends uvm_component;
 
   virtual function void report_phase(uvm_phase phase);
     `uvm_info(get_type_name(),
-      $sformatf({"PTW_SOURCE_REF_SUMMARY stage=4 req_accept=%0d expected=%0d ",
+      $sformatf({"PTW_SOURCE_REF_SUMMARY stage=7 req_accept=%0d expected=%0d ",
                  "refill=%0d page_fault=%0d access_fault=%0d drop=%0d ",
                  "pending=%0d duplicate_req=%0d mem_req=%0d mem_rsp=%0d ",
                  "mem_drop=%0d ctx=%0d level=%0d pde=%0d pde_update=%0d ",
-                 "probe_gap=%0d provisional=0"},
+                 "probe_gap=%0d satp_clear=%0d pmp_clear=%0d ",
+                 "asid_current_refill=%0d context_current_sample=%0d maee0_sysmap=%0d ",
+                 "degrade_1g_2m=%0d degrade_1g_4k=%0d degrade_2m_4k=%0d ",
+                 "pre_existing_exception_grant=%0d provisional=0"},
         m_req_accept_count, m_expected_count, m_refill_expected_count,
         m_page_fault_expected_count, m_access_fault_expected_count,
         m_drop_expected_count, m_pending.num(), m_duplicate_req_count,
         m_mem_req_count, m_mem_rsp_count, m_mem_drop_count, m_ctx_count,
         m_level_count, m_pde_event_count, m_pde_update_count,
-        m_probe_gap_count),
+        m_probe_gap_count, m_satp_clear_count, m_pmp_clear_count,
+        m_asid_current_refill_count, m_context_current_sample_count,
+        m_maee0_sysmap_refill_count,
+        m_maee0_degrade_1g_to_2m_count, m_maee0_degrade_1g_to_4k_count,
+        m_maee0_degrade_2m_to_4k_count,
+        m_pre_existing_exception_grant_count),
       UVM_NONE)
 
     `uvm_info(get_type_name(),
-      "PTW_SOURCE_CLOSURE component=ref_model stage=4 status=event_driven_no_translate provisional=0",
+      "PTW_SOURCE_CLOSURE component=ref_model stage=7 status=event_driven_no_translate current_context_and_maee_degrade=1 provisional=0",
       UVM_NONE)
   endfunction
 

@@ -7,6 +7,12 @@
 //   - Detect duplicate {type,id} request reuse before completion/drop.
 //   - Match drop/no-output expectations.
 //   - Classify mismatches for field/class/drop/pending/illegal/probe-gap.
+//
+// Stage 7 scope:
+//   - Add field/function coverage-style counters to the summary so P1/P2/random
+//     logs can prove more than a global pass/fail.
+//   - Print pending age/debug taxonomy, illegal-stimulus classification, and
+//     consumer-only/auxiliary rules in machine-parseable banners.
 // =============================================================================
 `ifndef PTW_SOURCE_SB_SVH
 `define PTW_SOURCE_SB_SVH
@@ -50,6 +56,31 @@ class ptw_source_sb extends uvm_scoreboard;
   int unsigned n_mem_req;
   int unsigned n_mem_rsp;
   int unsigned n_mem_drop;
+  int unsigned n_cov_refill;
+  int unsigned n_cov_page_fault;
+  int unsigned n_cov_access_fault;
+  int unsigned n_cov_drop;
+  int unsigned n_cov_type_fetch;
+  int unsigned n_cov_type_load;
+  int unsigned n_cov_type_store;
+  int unsigned n_cov_type_pfu;
+  int unsigned n_cov_pgs_1g;
+  int unsigned n_cov_pgs_2m;
+  int unsigned n_cov_pgs_4k;
+  int unsigned n_cov_global;
+  int unsigned n_cov_fault_page;
+  int unsigned n_cov_fault_access;
+  int unsigned n_cov_fault_bus_error;
+  int unsigned n_cov_drop_reset;
+  int unsigned n_cov_drop_abort;
+  int unsigned n_cov_drop_late;
+  int unsigned n_cov_drop_abort_bus_error;
+  int unsigned n_cov_pre_existing_exception_grant;
+  int unsigned n_cov_target_l1i;
+  int unsigned n_cov_target_l1d;
+  int unsigned n_cov_target_pfu;
+  int unsigned n_cov_target_l2;
+  int unsigned n_pending_oldest_age;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -70,7 +101,7 @@ class ptw_source_sb extends uvm_scoreboard;
       m_cfg = mmu_top_cfg::type_id::create("m_cfg");
 
     `uvm_info(get_type_name(),
-      "PTW_SOURCE_CLOSURE component=source_sb stage=4 status=created provisional=0",
+      "PTW_SOURCE_CLOSURE component=source_sb stage=7 status=created provisional=0",
       UVM_LOW)
   endfunction
 
@@ -186,6 +217,63 @@ class ptw_source_sb extends uvm_scoreboard;
     return msg;
   endfunction
 
+  protected function void sample_req_type(input ptw_src_req_type_e req_type);
+    case (req_type)
+      PTW_SRC_TYPE_FETCH: n_cov_type_fetch++;
+      PTW_SRC_TYPE_LOAD:  n_cov_type_load++;
+      PTW_SRC_TYPE_STORE: n_cov_type_store++;
+      PTW_SRC_TYPE_PFU:   n_cov_type_pfu++;
+      default: ;
+    endcase
+  endfunction
+
+  protected function void sample_expected_coverage(input ptw_src_expected_rsp_txn exp);
+    sample_req_type(exp.req_type);
+    case (exp.kind)
+      PTW_SRC_EXP_REFILL: begin
+        n_cov_refill++;
+        case (exp.page_size)
+          PTW_SRC_PGS_1G: n_cov_pgs_1g++;
+          PTW_SRC_PGS_2M: n_cov_pgs_2m++;
+          PTW_SRC_PGS_4K: n_cov_pgs_4k++;
+          default: ;
+        endcase
+        if (exp.global_bit)
+          n_cov_global++;
+      end
+      PTW_SRC_EXP_PAGE_FAULT: n_cov_page_fault++;
+      PTW_SRC_EXP_ACCESS_FAULT: n_cov_access_fault++;
+      PTW_SRC_EXP_DROP: n_cov_drop++;
+      default: ;
+    endcase
+    case (exp.fault_kind)
+      PTW_SRC_FAULT_PAGE: n_cov_fault_page++;
+      PTW_SRC_FAULT_ACCESS: n_cov_fault_access++;
+      PTW_SRC_FAULT_BUS_ERROR: n_cov_fault_bus_error++;
+      default: ;
+    endcase
+    case (exp.drop_reason)
+      PTW_SRC_DROP_RESET: n_cov_drop_reset++;
+      PTW_SRC_DROP_ABORT: n_cov_drop_abort++;
+      PTW_SRC_DROP_LATE_DATA: n_cov_drop_late++;
+      PTW_SRC_DROP_ABORT_BUS_ERROR: n_cov_drop_abort_bus_error++;
+      PTW_SRC_DROP_PRE_EXISTING_EXCEPTION_GRANT: n_cov_pre_existing_exception_grant++;
+      default: ;
+    endcase
+    if (exp.target_l1i)
+      n_cov_target_l1i++;
+    if (exp.target_l1d)
+      n_cov_target_l1d++;
+    if (exp.target_pfu)
+      n_cov_target_pfu++;
+    if (exp.target_l2tlb)
+      n_cov_target_l2++;
+  endfunction
+
+  protected function void sample_actual_coverage(input ptw_src_actual_rsp_txn actual);
+    sample_req_type(actual.req_type);
+  endfunction
+
   protected function void retire_active_key(input logic [2:0] req_type, input logic [5:0] id);
     string key;
     key = key_string(req_type, id);
@@ -204,6 +292,8 @@ class ptw_source_sb extends uvm_scoreboard;
 
       exp = m_expected_q[key].pop_front();
       actual = m_actual_q[key].pop_front();
+      sample_expected_coverage(exp);
+      sample_actual_coverage(actual);
       diff = compare_completion(exp, actual);
       if (diff == "") begin
         n_matched++;
@@ -232,6 +322,7 @@ class ptw_source_sb extends uvm_scoreboard;
 
       exp = m_drop_expected_q.pop_front();
       actual = m_drop_actual_q.pop_front();
+      sample_expected_coverage(exp);
       diff = compare_drop(exp, actual);
       if (diff == "") begin
         n_matched++;
@@ -298,7 +389,7 @@ class ptw_source_sb extends uvm_scoreboard;
       if (m_active_keys.exists(key)) begin
         n_illegal++;
         `uvm_error(get_type_name(),
-          $sformatf("PTW_SOURCE_ILLEGAL_REUSE key=%s old={%s} new={%s}",
+          $sformatf("PTW_SOURCE_ILLEGAL_STIMULUS class=same_type_id_reuse key=%s old={%s} new={%s}",
             key, m_active_req[key].convert2string(), tr.convert2string()))
       end else begin
         m_active_keys[key] = 1'b1;
@@ -311,6 +402,14 @@ class ptw_source_sb extends uvm_scoreboard;
     forever begin
       ptw_src_drop_txn tr;
       af_drop.get(tr);
+      if (tr.pre_existing_exception_grant) begin
+        n_cov_pre_existing_exception_grant++;
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_SOURCE_AUXILIARY_DROP class=pre_existing_exception_grant ignored_for_drop_match act={%s}",
+            tr.convert2string()),
+          UVM_MEDIUM)
+        continue;
+      end
       n_drop_actual++;
       m_drop_actual_q.push_back(tr);
       try_match_drops();
@@ -359,10 +458,68 @@ class ptw_source_sb extends uvm_scoreboard;
     return count;
   endfunction
 
+  protected function int unsigned oldest_pending_age();
+    int unsigned oldest_age;
+    int unsigned age;
+    int unsigned now_cycle;
+    bit found;
+
+    oldest_age = 0;
+    now_cycle = 0;
+    found = 1'b0;
+    foreach (m_expected_q[key]) begin
+      for (int i = 0; i < m_expected_q[key].size(); i++) begin
+        if (m_expected_q[key][i].cycle > now_cycle)
+          now_cycle = m_expected_q[key][i].cycle;
+      end
+    end
+    foreach (m_actual_q[key]) begin
+      for (int i = 0; i < m_actual_q[key].size(); i++) begin
+        if (m_actual_q[key][i].cycle > now_cycle)
+          now_cycle = m_actual_q[key][i].cycle;
+      end
+    end
+    foreach (m_active_keys[key]) begin
+      if (m_active_req[key].cycle > now_cycle)
+        now_cycle = m_active_req[key].cycle;
+    end
+
+    foreach (m_expected_q[key]) begin
+      for (int i = 0; i < m_expected_q[key].size(); i++) begin
+        age = (now_cycle >= m_expected_q[key][i].cycle)
+            ? (now_cycle - m_expected_q[key][i].cycle) : 0;
+        if (!found || (age > oldest_age)) begin
+          oldest_age = age;
+          found = 1'b1;
+        end
+      end
+    end
+    foreach (m_actual_q[key]) begin
+      for (int i = 0; i < m_actual_q[key].size(); i++) begin
+        age = (now_cycle >= m_actual_q[key][i].cycle)
+            ? (now_cycle - m_actual_q[key][i].cycle) : 0;
+        if (!found || (age > oldest_age)) begin
+          oldest_age = age;
+          found = 1'b1;
+        end
+      end
+    end
+    foreach (m_active_keys[key]) begin
+      age = (now_cycle >= m_active_req[key].cycle)
+          ? (now_cycle - m_active_req[key].cycle) : 0;
+      if (!found || (age > oldest_age)) begin
+        oldest_age = age;
+        found = 1'b1;
+      end
+    end
+    return oldest_age;
+  endfunction
+
   virtual function void report_phase(uvm_phase phase);
     n_pending_expected = count_pending_expected();
     n_pending_actual = count_pending_actual();
     n_pending = n_pending_expected + n_pending_actual + m_active_keys.num();
+    n_pending_oldest_age = oldest_pending_age();
 
     foreach (m_expected_q[key]) begin
       for (int i = 0; i < m_expected_q[key].size(); i++) begin
@@ -385,27 +542,49 @@ class ptw_source_sb extends uvm_scoreboard;
     end
 
     `uvm_info(get_type_name(),
-      $sformatf({"PTW_SOURCE_SB_SUMMARY stage=4 accepted=%0d expected=%0d actual=%0d ",
+      $sformatf({"PTW_SOURCE_SB_SUMMARY stage=7 accepted=%0d expected=%0d actual=%0d ",
                  "drop_expected=%0d drop_actual=%0d matched=%0d mismatch=%0d ",
                  "pending=%0d pending_expected=%0d pending_actual=%0d active=%0d ",
                  "illegal=%0d class_mismatch=%0d field_mismatch=%0d ",
                  "drop_mismatch=%0d probe_gap=%0d mem_req=%0d mem_rsp=%0d ",
-                 "mem_drop=%0d provisional=0"},
+                 "mem_drop=%0d pending_oldest_age=%0d provisional=0"},
         n_accepted, n_expected, n_actual, n_drop_expected, n_drop_actual,
         n_matched, n_mismatch, n_pending, n_pending_expected,
         n_pending_actual, m_active_keys.num(), n_illegal,
         n_class_mismatch, n_field_mismatch, n_drop_mismatch, n_probe_gap,
-        n_mem_req, n_mem_rsp, n_mem_drop),
+        n_mem_req, n_mem_rsp, n_mem_drop, n_pending_oldest_age),
+      UVM_NONE)
+
+    `uvm_info(get_type_name(),
+      $sformatf({"PTW_SOURCE_SB_FIELD_COVERAGE stage=7 refill=%0d page_fault=%0d ",
+                 "access_fault=%0d drop=%0d type_fetch=%0d type_load=%0d ",
+                 "type_store=%0d type_pfu=%0d pgs_1g=%0d pgs_2m=%0d pgs_4k=%0d ",
+                 "global=%0d fault_page=%0d fault_access=%0d fault_bus_error=%0d ",
+                 "drop_reset=%0d drop_abort=%0d drop_late=%0d drop_abort_bus_error=%0d ",
+                 "pre_existing_exception_grant=%0d ",
+                 "target_l2=%0d target_l1i=%0d target_l1d=%0d target_pfu=%0d"},
+        n_cov_refill, n_cov_page_fault, n_cov_access_fault, n_cov_drop,
+        n_cov_type_fetch, n_cov_type_load, n_cov_type_store, n_cov_type_pfu,
+        n_cov_pgs_1g, n_cov_pgs_2m, n_cov_pgs_4k, n_cov_global,
+        n_cov_fault_page, n_cov_fault_access, n_cov_fault_bus_error,
+        n_cov_drop_reset, n_cov_drop_abort, n_cov_drop_late,
+        n_cov_drop_abort_bus_error, n_cov_pre_existing_exception_grant,
+        n_cov_target_l2, n_cov_target_l1i, n_cov_target_l1d,
+        n_cov_target_pfu),
+      UVM_NONE)
+
+    `uvm_info(get_type_name(),
+      "PTW_SOURCE_REQ_SUMMARY stage=7 requirement=field_function_coverage status=reported consumer_only_does_not_close_source=1 partial_evidence_must_be_tagged=1 provisional=0",
       UVM_NONE)
 
     if ((n_mismatch == 0) && (n_pending == 0) && (n_illegal == 0)) begin
       `uvm_info(get_type_name(),
-        "PTW_SOURCE_CLOSURE component=source_sb stage=4 status=closed mismatch=0 pending=0 illegal=0 provisional=0",
+        "PTW_SOURCE_CLOSURE component=source_sb stage=7 status=closed mismatch=0 pending=0 illegal=0 provisional=0",
         UVM_NONE)
     end else begin
       `uvm_warning(get_type_name(),
-        $sformatf("PTW_SOURCE_CLOSURE component=source_sb stage=4 status=open mismatch=%0d pending=%0d illegal=%0d probe_gap=%0d provisional=0",
-          n_mismatch, n_pending, n_illegal, n_probe_gap))
+        $sformatf("PTW_SOURCE_CLOSURE component=source_sb stage=7 status=open mismatch=%0d pending=%0d illegal=%0d probe_gap=%0d pending_oldest_age=%0d provisional=0",
+          n_mismatch, n_pending, n_illegal, n_probe_gap, n_pending_oldest_age))
     end
   endfunction
 

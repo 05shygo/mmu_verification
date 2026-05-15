@@ -14,7 +14,8 @@ boundaries and exit criteria.
 | 3 | Probe, Monitor, Scenario Logger | done | passed | User confirmed stage-3 task and exit-standard checks passed; monitor evidence remains provisional. |
 | 4 | Source Reference Model and Scoreboard MVP | done | passed | User confirmed stage-4 task and exit-standard checks passed after bus-error/access-fault debug updates. |
 | 5 | P0 SVA and Cover Gate | done | passed | User confirmed stage-5 task and exit-standard checks passed. |
-| 6 | P0 Directed Tests and Legacy Conflict Fixes | implemented | pending user run | Grouped P0 directed suite, P0 list, exit gate, closure report, CSV update, legacy conflict patches, and PFU direct-map SysMap debug fix are implemented. |
+| 6 | P0 Directed Tests and Legacy Conflict Fixes | done | passed | User confirmed stage-6 task and exit-standard checks passed after PFU direct-map and MAEE=0 SysMap refill debug updates. |
+| 7 | Reference/Scoreboard Complete P1/P2 Random Stress | implemented | pending_user_run | Stage-7 files, lists, closure matrix, and exit gate are updated; local full compile/regress is blocked by missing make/Python launcher. |
 
 ## Stage 0 Completion Record
 
@@ -308,16 +309,16 @@ PTW_STAGE_DONE stage=5 name=P0 SVA and Cover Gate
 ## Scope Guard
 
 Stage 5 implementation and exit-standard checks are recorded as passed by user
-confirmation. Stage 6 implementation is recorded below and is waiting for the
-normal regression-environment exit checks before it can be marked passed.
+confirmation. Stage 6 implementation and exit-standard checks are also recorded
+as passed by user confirmation.
 
 ## Stage 6 Implementation Record
 
 ```text
 PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
-  status=implemented
-  exit_criteria=pending_full_regression
-  confirmation=not_user_confirmed_yet
+  status=done
+  exit_criteria=passed
+  confirmation=user-confirmed
   changed_files=[
     mmu_verification/testbench/env/mmu_ref_model.svh,
     mmu_verification/testbench/test/ptw_tests/test_ptw_stage6_p0_suite.svh,
@@ -342,10 +343,16 @@ PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
     git diff --check -- stage6_touched_files
       result=passed,
     make -C mmu_verification comp_fast
-      result=blocked_in_local_powershell reason=make_not_found
+      result=blocked_in_local_powershell reason=make_not_found,
+    make -C mmu_verification comp_fast
+      result=passed user_confirmed,
+    make -C mmu_verification regress LIST=simu/ptw_p0_list REGRESS_MODE=run_check REGRESS_NAME=ptw_stage6_p0 REGRESS_SEEDS="606" REGRESS_JOBS=1 REGRESS_FAIL_FAST=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+      result=passed user_confirmed,
+    python3 mmu_verification/scripts/ptw_stage6_exit_gate.py --list mmu_verification/simu/ptw_p0_list --log-dir mmu_verification/output/logs --seed 606 --closure doc/ptw_uvm_review/ptw_stage6_p0_closure_report.md --csv mmu_verification/simu/ptw_source_closure_matrix.csv
+      result=passed user_confirmed
   ]
   environment_notes=[
-    local PowerShell did not provide make and the WindowsApps python/python3 launchers failed with a logon-session error, so full compile/regression/exit-gate checks must be run in the normal regression environment,
+    local PowerShell did not provide make and the WindowsApps python/python3 launchers failed with a logon-session error during implementation; full compile/regression/exit-gate checks were later completed and confirmed by user in the normal regression environment,
     Stage 6 intentionally uses 6 grouped P0 test classes rather than creating one file per requirement,
     no temporary stage task split plan was needed because created file count stayed below the requested threshold
   ]
@@ -356,10 +363,17 @@ PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
     RTL behavior: PFU direct-map treats sysmap_flg4[4] || !sysmap_flg4[3] as access fault, so flg=0x13 correctly drives pfu_acc_fault/pa2_err/access_fault,
     scoreboard fix: mmu_ref_model.translate passthrough path now models PFU direct-map SysMap access fault from the compiled RTL default SysMap table,
     stimulus fix: stage6_mprv_mpp_m_pfu_success now uses VA=0x0010704000, whose PPN=0x0010704 falls below SYSMAP_BASE_ADDR0 and receives SYSMAP_FLG0=5'b01111 for the intended direct-map success case,
-    closure fix: stage6_mprv_mpp_m_pfu_success is recorded as consumer-only sanity because it does not enter PTW; PTW-ADD-015/PTW-ADD-033/PTW-FLOW-023 source closure remains tied to scenarios that actually produce PTW source events
+    closure fix: stage6_mprv_mpp_m_pfu_success is recorded as consumer-only sanity because it does not enter PTW; PTW-ADD-015/PTW-ADD-033/PTW-FLOW-023 source closure remains tied to scenarios that actually produce PTW source events,
+    test_ptw_p0_maee_sysmap_matrix SEED=606 later reported PTW_SOURCE_MISMATCH in stage6_maee0_4k_sysmap_refill with flg exp=0x2ee7 act=0x26e7,
+    mismatch bit delta was 0x0800, i.e. refill attr bit[11]; expected attr[13:9]=0x17 came from UVM sysmap_cfg_agent mirror while actual attr[13:9]=0x13 came from compiled RTL SysMap behavior before the RTL THD query fix,
+    debug conclusion: sysmap_cfg_agent currently mirrors configuration to sysmap_cfg_if only; its force path is disabled, so PTW source ref model must not expect ptw_sysmap_one_region flg values unless whitebox RTL force is implemented,
+    RTL-side THD MAEE=0 SysMap query bit-slice issue was fixed separately by user; UVM-side fix changed ptw_source_ref_model sysmap_attr and mmu_ref_model rtl_default_sysmap_flg to use RTL compile-time SysMap macros with fallback constants,
+    stimulus/ref-model fix: stage6_maee0_4k_sysmap_refill no longer injects the unforced 0x17 mirror configuration and now records expectation against RTL default SysMap region0 flg=0x0f for PA=0x03801000,
+    documentation fix: sysmap_cfg_agent comments now state that configuration is a UVM mirror only until DA-003 whitebox force paths are implemented,
+    post-debug result: user confirmed stage-6 task and exit-standard checks all passed
   ]
-  source_sb_summary=required_at_exit PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0
-  sva_summary=required_at_exit PTW_SVA_COVER hits>0 and assert_fail=0
+  source_sb_summary=stage6_exit_passed_user_confirmed PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0
+  sva_summary=stage6_exit_passed_user_confirmed PTW_SVA_COVER hits>0 and assert_fail=0
   closure_delta=[
     PTW-ADD-001..034 mapped to stage6 directed evidence or explicit open reason,
     PTW-FLOW-001..023 bound by test_ptw_p0_flow_trace_umbrella to directed scenarios or explicit open reason,
@@ -380,7 +394,7 @@ PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
     PTW-ADD-032 remains consumer-only and cannot replace source-side closure
   ]
   next_stage_blockers=[
-    run Stage 6 exit commands and confirm source SB clean plus SVA cover hit before marking exit_criteria=passed
+    none for Stage 6; Stage 7 can start from the remaining open precision/modeling items
   ]
 ```
 
@@ -417,5 +431,167 @@ git diff --check -- \
   mmu_verification/simu/ptw_source_closure_matrix.csv \
   mmu_verification/scripts/ptw_stage6_exit_gate.py \
   doc/ptw_uvm_review/ptw_stage6_p0_closure_report.md \
+  doc/ptw_uvm_review/ptw_implementation_process.md
+```
+
+## Stage 7 Implementation Record
+
+```text
+PTW_STAGE_DONE stage=7 name=Reference/Scoreboard Complete P1/P2 Random Stress
+  status=implemented
+  exit_criteria=pending_user_run
+  confirmation=not_yet_run_in_full_regression
+  changed_files=[
+    mmu_verification/testbench/env/ptw_source_ref_model.svh,
+    mmu_verification/testbench/env/ptw_source_sb.svh,
+    mmu_verification/testbench/test/ptw_tests/ptw_source_directed_base.svh,
+    mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh,
+    mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh,
+    mmu_verification/simu/ptw_p1_list,
+    mmu_verification/simu/ptw_random_list,
+    mmu_verification/simu/ptw_source_closure_matrix.csv,
+    mmu_verification/scripts/ptw_stage7_exit_gate.py,
+    doc/ptw_uvm_review/ptw_implementation_process.md
+  ]
+  tests_run=[
+    rg marker checks for Stage7 tests, source-SB field coverage, ref summary,
+      auxiliary drop handling, and consumer-only separation marker
+      result=passed,
+    Import-Csv structural check for mmu_verification/simu/ptw_source_closure_matrix.csv
+      result=passed rows=128 cols=15,
+    git diff --check -- stage7_touched_files
+      result=passed,
+    make -C mmu_verification comp_fast
+      result=blocked_in_local_powershell reason=make_not_found,
+    python3 mmu_verification/scripts/ptw_stage7_exit_gate.py --help
+      result=blocked_in_local_powershell reason=python3_not_found_in_path,
+    python mmu_verification/scripts/ptw_stage7_exit_gate.py --help
+      result=blocked_in_local_powershell reason=python_not_found_in_path
+  ]
+  implementation_notes=[
+    completed Stage7 source ref model precision for current context mirror,
+      refill-time ASID sampling, RTL-macro SysMap attributes, MAEE=0 1G/2M
+      no-cross/degrade final page_size/PPN/flg modeling, satp/PMP clear-only
+      PDE model clear/re-update behavior, and pre-existing exception grant
+      auxiliary handling,
+    completed Stage7 source scoreboard reporting for pending age debug,
+      illegal-stimulus taxonomy, source field/function coverage summary,
+      consumer-only separation marker, and auxiliary pre-existing exception
+      drop ignore path,
+    added P1 directed tests for satp old-walk re-update, PMP cfg clear no
+      flush, ASID refill current sample, MAEE mid-sysmap change, and random
+      PTE permission cross,
+    added P2/constraint tests for same type/id no-reuse, Bare/M no-request,
+      malformed SysMap constraint classification, and PTW memory OOO illegal
+      classification without issuing illegal DUT source stimulus,
+    added ptw_p1_list and ptw_random_list plus ptw_stage7_exit_gate.py for
+      Stage7-only exit checks,
+    no temporary phase split plan was needed because created file count stayed
+      below the requested threshold
+  ]
+  debug_record=[
+    Stage7 ASID refill current-sample: ref model now emits refill tag/data
+      using current satp ASID at refill time rather than accept-time ASID,
+      matching ptwspec usage-point sampling,
+    Stage7 SysMap/MAEE: ref model continues to use RTL compile-time SysMap
+      macros/fallback constants rather than the unforced UVM sysmap mirror;
+      this preserves the Stage6 debug conclusion,
+    Stage7 MAEE=0 degrade: ref model computes 1G no-cross, 1G->2M,
+      1G->4K, 2M no-cross, and 2M->4K final PPN/page_size/flg, but closure
+      matrix keeps dedicated cross/degrade directed coverage open or partial
+      where no dedicated directed test was added in this stage,
+    Stage7 MAEE mid-sysmap directed test waits for the whitebox SysMap/MAEE
+      path marker before flipping MAEE when MMU_DUT_PROBES_VIF is available;
+      it falls back to a timed switch only if the probe VIF is unavailable,
+    Stage7 PMP cfg/no-flush directed test drives TWU PMP flags to 4'h5 rather
+      than the default 4'h7 so pmp_monitor publishes a real cfg_update while
+      keeping read permission enabled; the RTL pmp_regs_update clear proof
+      remains an explicit top/probe tie-off gap,
+    Stage7 abort/drop: pre-existing exception grant during abort is logged as
+      auxiliary visible completion evidence and ignored for drop matching in
+      both ref model and source scoreboard,
+    Stage7 P2 constraints: illegal same type/id reuse, Bare/M no-request,
+      malformed/no-hit/multi-hit SysMap setup, and PTW memory OOO are reported
+      with PTW_STAGE7_ILLEGAL blocked_by_constraint markers and must not be
+      treated as DUT source functional failures,
+    Stage7 random permission cross: 2M/1G random leaf PA is explicitly aligned
+      before mapping so the random profile stresses permission/context/source
+      coverage rather than accidental huge-page misalignment
+  ]
+  closure_delta=[
+    PTW-ADD-010 and PTW-FLOW-022 now have Stage7 satp old-walk re-update
+      evidence; PMP cfg clear no-flush remains partial because pmp_regs_update
+      is still tied off at the top/probe path,
+    PTW-ADD-016..019 and PTW-ADD-033 are strengthened by the Stage7 random PTE
+      permission cross and source-SB field coverage,
+    PTW-ADD-026/030 and MAEE-TP-012 are strengthened/closed by ASID current
+      refill and MAEE mid-sysmap no-rollback directed tests,
+    PTW-ADD-027/028 and PTW-FLOW-004..007 gain Stage7 ref-model support and
+      selected no-cross random evidence, while dedicated 1G/2M cross/degrade
+      directed closure remains open/partial,
+    PTW-ADD-029/035/036 gain P2 illegal constraint classification evidence,
+      with consumer-only evidence still prevented from source-side closure,
+    PTW-INFRA-001/003 are Stage7 implemented; PTW-INFRA-007 is model-ready
+      with full directed degrade closure still open; PTW-INFRA-009 has a
+      Stage7 gate but final signoff parser remains Stage8
+  ]
+  open_items=[
+    PTW-ADD-007 raw PDE double-hit L2-wins vector remains open,
+    PTW-ADD-008 and PDE-TP-009 lookup/update old-state precision still need
+      dedicated directed proof beyond current abstract model support,
+    PDE-TP-012 PLRU/victim directed test remains open,
+    PTW-ADD-011/024 and PTW-FLOW-019 full abort data/bus-error/drop matrix
+      remains open beyond the auxiliary pre-existing exception grant fix,
+    PTW-ADD-013 and PTW-FLOW-010/011 isolated scd/thd PMP deny vectors remain
+      open,
+    PTW-ADD-027/028 and MAEE-TP-005/006/008/010 need dedicated cross/degrade
+      directed evidence to close fully,
+    Stage8 final report/parser/signoff and consumer evidence list remain out
+      of Stage7 scope
+  ]
+```
+
+## Stage 7 Exit Commands
+
+```bash
+make -C mmu_verification comp_fast
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_p1_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage7_p1 \
+  REGRESS_SEEDS="707" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_random_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage7_random \
+  REGRESS_SEEDS="707" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+python3 mmu_verification/scripts/ptw_stage7_exit_gate.py \
+  --list mmu_verification/simu/ptw_p1_list \
+  --list mmu_verification/simu/ptw_random_list \
+  --log-dir mmu_verification/output/logs \
+  --seed 707 \
+  --csv mmu_verification/simu/ptw_source_closure_matrix.csv
+
+git diff --check -- \
+  mmu_verification/testbench/env/ptw_source_ref_model.svh \
+  mmu_verification/testbench/env/ptw_source_sb.svh \
+  mmu_verification/testbench/test/ptw_tests/ptw_source_directed_base.svh \
+  mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh \
+  mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh \
+  mmu_verification/simu/ptw_p1_list \
+  mmu_verification/simu/ptw_random_list \
+  mmu_verification/simu/ptw_source_closure_matrix.csv \
+  mmu_verification/scripts/ptw_stage7_exit_gate.py \
   doc/ptw_uvm_review/ptw_implementation_process.md
 ```

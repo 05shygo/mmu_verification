@@ -581,6 +581,12 @@ class ptw_source_directed_base extends test_base;
     ptw_allow_bare_m_no_request = enable;
   endfunction
 
+  virtual function void ptw_enable_key_reuse(bit enable = 1'b1);
+    ptw_allow_key_reuse = enable;
+    if (enable)
+      `uvm_warning(get_type_name(), "PTW source {type,id} reuse is illegal for normal source directed tests")
+  endfunction
+
 endclass : ptw_source_directed_base
 
 `endif // PTW_SOURCE_DIRECTED_BASE_SVH

@@ -614,7 +614,7 @@ always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
 	if(!cpurst_b)begin
 	    mbuf_bus_error <= 1'b0;
 	end else if(tlboper_ptw_abort)
-        mbuf_bus_error <= 1'b1;
+        mbuf_bus_error <= 1'b0;
     else if(|mbuf_bus_error_grant[MBUF_ENTRY_NUM-1:0])begin
         mbuf_bus_error <= 1'b1;
     end else if(acc_err_mbuf_grant)begin

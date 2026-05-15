@@ -418,6 +418,8 @@ assign pde_cache_clear = regs_ptw_clr | tlboper_ptw_abort;
 
 ## 调试记录 #12 — `ptw_mbuf.sv`：`mbuf_bus_error` 与 `tlboper_ptw_abort`（总线异常上报与废止同拍/先后）
 
+> **勘误**：本条代码锚点中 `tlboper_ptw_abort` 分支曾写为 `mbuf_bus_error <= 1'b1`，**已纠错**，见 **调试记录 #14**（废止时应 **清零**）。
+
 | 项目 | 内容 |
 |------|------|
 | **记录时间** | 2026-05-08 22:06:15 +08:00（写入本条时采集） |
@@ -491,6 +493,49 @@ assign pde_cache_clear = regs_ptw_clr | tlboper_ptw_abort | pmp_regs_update;
 
 - **`pmp_regs_update` 脉冲后**：L1/L2 PDE 阵列 **不应**再命中变更前缓存条目（除非后续 walk 重新 refill）。  
 - 回归场景：**PMP 配置改写前后** 对 **同一 VPN/物理区域** 的访问，权限应与 **新 PMP** 一致；无「仅靠旧 PDE cache hit 绕过新规则」的路径。
+
+---
+
+## 调试记录 #14 — `ptw_mbuf.sv`：`tlboper_ptw_abort` 时 `mbuf_bus_error` 应清零而非拉高（修正 #12）
+
+| 项目 | 内容 |
+|------|------|
+| **记录时间** | 2026-05-15 15:30:00 +08:00（写入本条时采集；RTL 改动尚未 `git commit`） |
+| **版本号** | 基准：`51ce48ef1e8ae47c91b05c279c7536480b5d0bde`（`51ce48e`，提交说明：`ptw_uvm_updata`，提交时间：2026-05-15 14:56:31 +0800）— **`mmu/rtl/ptw_mbuf.sv` 相对该提交仍有工作区未提交改动** |
+| **涉及文件** | `mmu/rtl/ptw_mbuf.sv`（`mbuf_bus_error` 时序逻辑，`always_ff`，约 L613–L623） |
+| **关联记录** | **调试记录 #12** 曾按「abort 拍 `mbuf_bus_error <= 1'b1`」记述；本条为 **RTL 纠错**，以本条为准。 |
+
+### Bug 内容
+
+- **位置**：`mbuf_bus_error` 的 `always_ff` 中，`else if (tlboper_ptw_abort)` 分支（约 **L616–L617**）。
+- **错误行为**：`tlboper_ptw_abort` 有效时将 **`mbuf_bus_error <= 1'b1`**，在 **TLB 操作废止（中断/冲刷）** 窗口内 **误把总线异常上报脉冲拉高**，语义上像是「abort 同时对外宣告 bus error」，与 **废止应取消、扫尾未上报异常** 的设计意图相反。
+- **正确行为**：遇到 **`tlboper_ptw_abort`** 时应对 **`mbuf_bus_error` 做清空（`1'b0`）**，表示 **废止扫尾、不再保留/不再向外脉冲 bus error**；真正的 bus error 上报仍仅由 **`|mbuf_bus_error_grant`** 在 **非 abort 窗口** 置位；**`acc_err_mbuf_grant`** 分支继续负责在访问错误 grant 路径上拉低该脉冲。
+
+### 修改摘要
+
+- **`mmu/rtl/ptw_mbuf.sv` ~L617**：`tlboper_ptw_abort` 分支由 **`mbuf_bus_error <= 1'b1`** 改为 **`mbuf_bus_error <= 1'b0`**。
+
+### 代码锚点（写入本条时工作区）
+
+```systemverilog
+always_ff @(posedge mbuf_clk or negedge cpurst_b)begin
+    if(!cpurst_b)begin
+        mbuf_bus_error <= 1'b0;
+    end else if(tlboper_ptw_abort)
+        mbuf_bus_error <= 1'b0;   // 废止时清空，勿误拉高
+    else if(|mbuf_bus_error_grant[MBUF_ENTRY_NUM-1:0])begin
+        mbuf_bus_error <= 1'b1;
+    end else if(acc_err_mbuf_grant)begin
+        mbuf_bus_error <= 1'b0;
+    end
+end
+```
+
+### 验证关注点
+
+- **`tlboper_ptw_abort` 有效拍**：**`mbuf_bus_error` 应为 0**（除非同拍另有独立协议要求，以 TWU/`mbuf_entry_bus_err_req_mask` 连线为准）；**不应**因 abort 单独产生 **误报 bus error**。
+- 与 **调试记录 #6/#7/#8**（abort 禁止入队、禁止 refill、PDE 冲刷）及 **#12 原「取消未上报异常」文字意图** 端到端一致：废止后 TWU/PTW source 侧不应看到 **由 abort 触发的虚假 `lsu_mmu_bus_error` / bus error 完成**。
+- 定向：**abort 与 `mbuf_bus_error_grant` 相邻/重叠** 场景，确认仅 **grant 授权路径** 可置位 `mbuf_bus_error`，abort 路径只负责 **清零扫尾**。
 
 ---
 

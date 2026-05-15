@@ -88,6 +88,9 @@ class ptw_stage7_base extends ptw_source_directed_base;
 
   protected task stage7_write_satp(input ppn_t root_ppn, input asid_t asid);
     cp0_satp_switch_seq seq;
+    bit satp_changed;
+
+    satp_changed = (root_ppn != ptw_root_ppn) || (asid != ptw_root_asid);
     seq = cp0_satp_switch_seq::type_id::create("stage7_satp_switch_seq");
     seq.satp_sel = 1'b0;
     seq.satp_val = {4'h8, 16'(asid), 44'(root_ppn)};
@@ -95,6 +98,14 @@ class ptw_stage7_base extends ptw_source_directed_base;
     if ((m_env != null) && (m_env.m_ref != null))
       m_env.m_ref.sync_shadow_state();
     ptw_meta_add_context($sformatf("stage7_satp_write root_ppn=0x%07h asid=0x%04h", root_ppn, asid));
+
+    ptw_root_ppn = root_ppn;
+    ptw_root_asid = asid;
+    if (satp_changed) begin
+      ptw_drive_satp_change_asid_tlboper_abort(
+        asid,
+        $sformatf("stage7_satp_write_asid_tlboper_abort asid=0x%04h", asid));
+    end
   endtask
 
   protected task stage7_map_leaf(
@@ -159,6 +170,46 @@ class ptw_stage7_base extends ptw_source_directed_base;
       default:
         `uvm_fatal(get_type_name(), $sformatf("Unsupported stage7 request type=%0d", int'(req_type)))
     endcase
+  endtask
+
+  protected task stage7_wait_ptw_accept(
+    input string scenario_id,
+    input va_t va,
+    input int unsigned id,
+    input int unsigned max_cycles = 512
+  );
+    bit seen;
+    bit [26:0] vpn;
+
+    seen = 1'b0;
+    vpn = va[38:12];
+    if (m_stage7_probe_vif == null) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: MMU_DUT_PROBES_VIF unavailable; cannot prove PTW accept before SATP switch",
+          scenario_id))
+      ptw_meta_add_context({scenario_id, ": probe_vif_unavailable_ptw_accept_unproven"});
+      #25ns;
+      return;
+    end
+
+    repeat (max_cycles) begin
+      @(m_stage7_probe_vif.mon_cb);
+      if ((m_stage7_probe_vif.mon_cb.l2tlb_ptw_req === 1'b1)
+          && (m_stage7_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)
+          && (m_stage7_probe_vif.mon_cb.l2tlb_ptw_id == id[5:0])
+          && (m_stage7_probe_vif.mon_cb.l2tlb_ptw_vpn == vpn)) begin
+        seen = 1'b1;
+        break;
+      end
+    end
+
+    if (!seen)
+      `uvm_error(get_type_name(),
+        $sformatf("%s: did not observe matching PTW accept before SATP switch vpn=0x%07h id=0x%02h",
+          scenario_id, vpn, id[5:0]))
+    else
+      ptw_meta_add_context($sformatf("%s: observed_ptw_accept_before_satp_switch vpn=0x%07h id=0x%02h",
+        scenario_id, vpn, id[5:0]));
   endtask
 
   protected task stage7_finish_scenario(input string scenario_id);
@@ -234,19 +285,19 @@ class test_ptw_pde_satp_old_walk_reupdate_001 extends ptw_stage7_base;
     if (!ptw_get_pte_addr_for_level(va, 2, pte_pa))
       `uvm_fatal(get_type_name(), "cannot resolve fst PTE address")
     ptw_mem_delay_by_addr(pte_pa, 32);
-    ptw_meta_set_expected("satp write clears PDE only; in-flight old walk is not dropped");
+    ptw_meta_set_expected("satp process switch is followed by LSU INV_ASID_ALL; tlboper_ptw_abort drops the in-flight old walk");
     fork
       begin
         stage7_drive_req(PTW_SRC_TYPE_LOAD, va, 6'h01);
       end
       begin
-        #25ns;
+        stage7_wait_ptw_accept("stage7_satp_old_walk_reupdate", va, 6'h01);
         stage7_write_satp(STAGE7_ROOT_PPN + 28'h21, STAGE7_ROOT_ASID + 16'h21);
       end
     join
     stage7_finish_scenario("stage7_satp_old_walk_reupdate");
     stage7_close("PTW-ADD-010,PTW-FLOW-022", "stage7_satp_old_walk_reupdate",
-      "source_sb no-drop/refill match plus Stage7 ref_model satp_clear counter; old non-aborted walk may complete");
+      "SATP write clears PDE; process-switch LSU ASID invalidation raises tlboper_ptw_abort and source_sb matches abort drop");
 
     stage7_summary();
     #200ns;
@@ -314,7 +365,7 @@ class test_ptw_asid_refill_current_sample_001 extends ptw_stage7_base;
 
     va = 39'h0_30a0_2000;
     pa = 40'h0_03a0_2000;
-    ptw_meta_begin("TC-PTW-STAGE7-CTX", "stage7_asid_refill_current_sample");
+    ptw_meta_begin("TC-PTW-STAGE7-CTX", "stage7_asid_change_abort_constraint");
     ptw_meta_add_req("PTW-ADD-030");
     ptw_setup_sv39(STAGE7_ROOT_PPN + 28'h03, 16'h0710, PRIV_S, 1'b0, 1'b0, 1'b1);
     stage7_map_leaf(.va(va), .level(0), .pa(pa), .req_type(PTW_SRC_TYPE_LOAD),
@@ -323,19 +374,21 @@ class test_ptw_asid_refill_current_sample_001 extends ptw_stage7_base;
     if (!ptw_get_pte_addr_for_level(va, 0, pte_pa))
       `uvm_fatal(get_type_name(), "cannot resolve thd PTE address")
     ptw_mem_delay_by_addr(pte_pa, 48);
-    ptw_meta_set_expected("refill tag ASID samples current regs_ptw_cur_asid rather than request-accept ASID");
+    ptw_meta_set_expected("ASID-changing SATP process switch must be followed by LSU INV_ASID_ALL and abort; no stale old-root refill is legal");
     fork
       begin
         stage7_drive_req(PTW_SRC_TYPE_LOAD, va, 6'h03);
       end
       begin
-        #45ns;
+        stage7_wait_ptw_accept("stage7_asid_change_abort_constraint", va, 6'h03);
         stage7_write_satp(STAGE7_ROOT_PPN + 28'h03, 16'h07fe);
       end
     join
-    stage7_finish_scenario("stage7_asid_refill_current_sample");
-    stage7_close("PTW-ADD-030,MAEE-TP-012", "stage7_asid_refill_current_sample",
-      "source_sb tag ASID match with Stage7 ref_model current-ASID sampling");
+    stage7_finish_scenario("stage7_asid_change_abort_constraint");
+    stage7_illegal_blocked("PTW-ADD-030", "stage7_asid_change_abort_constraint",
+      "ASID change without subsequent tlboper_ptw_abort is constrained away by process-switch LSU INV_ASID_ALL");
+    stage7_close("PTW-FLOW-019,PTW-FLOW-022", "stage7_asid_change_abort_constraint",
+      "SATP ASID change drives LSU ASID invalidation and source_sb matches abort drop instead of stale refill");
     stage7_summary();
     #200ns;
   endtask

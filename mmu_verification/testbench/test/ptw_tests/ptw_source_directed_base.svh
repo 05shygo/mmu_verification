@@ -53,6 +53,43 @@ class ptw_directed_lsu_one_seq extends lsu_base_seq;
   endtask
 endclass : ptw_directed_lsu_one_seq
 
+class ptw_directed_lsu_inv_seq extends lsu_base_seq;
+  `uvm_object_utils(ptw_directed_lsu_inv_seq)
+
+  lsu_inv_kind_e req_inv_kind;
+  bit [26:0]     req_inv_va;
+  bit [15:0]     req_inv_asid;
+  bit            req_allow_busy;
+  int unsigned   req_idle;
+
+  function new(string name = "ptw_directed_lsu_inv_seq");
+    super.new(name);
+    num_txn = 1;
+    req_inv_kind = INV_ASID_ALL;
+    req_inv_va = '0;
+    req_inv_asid = '0;
+    req_allow_busy = 1'b0;
+    req_idle = 0;
+  endfunction
+
+  virtual task body();
+    lsu_txn tr;
+
+    `uvm_create(tr)
+    tr.c_kind_default.constraint_mode(0);
+    if (!tr.randomize() with {
+          kind        == LSU_INV;
+          inv_kind    == req_inv_kind;
+          inv_va      == req_inv_va;
+          inv_asid    == req_inv_asid;
+          idle_cycles == int'(req_idle);
+        })
+      `uvm_fatal(get_type_name(), "ptw_directed_lsu_inv_seq randomize failed")
+    tr.inv_allow_busy = req_allow_busy;
+    `uvm_send(tr)
+  endtask
+endclass : ptw_directed_lsu_inv_seq
+
 class ptw_directed_ifu_one_seq extends ifu_base_seq;
   `uvm_object_utils(ptw_directed_ifu_one_seq)
 
@@ -103,6 +140,7 @@ class ptw_source_directed_base extends test_base;
   bit          ptw_active_keys[string];
   ppn_t        ptw_root_ppn;
   asid_t       ptw_root_asid;
+  virtual mmu_dut_probes_if ptw_probe_vif;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -114,6 +152,12 @@ class ptw_source_directed_base extends test_base;
     ptw_allow_key_reuse         = 1'b0;
     ptw_root_ppn  = 28'h10;
     ptw_root_asid = 16'h0;
+  endfunction
+
+  virtual function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    void'(uvm_config_db#(virtual mmu_dut_probes_if)::get(
+      this, "", "MMU_DUT_PROBES_VIF", ptw_probe_vif));
   endfunction
 
   protected function string ptw_req_key(ptw_src_req_type_e req_type, int unsigned id);
@@ -509,6 +553,70 @@ class ptw_source_directed_base extends test_base;
       seq = ptw_mem_ooo_rsp_seq::type_id::create("ptw_mem_ooo_rsp_seq");
       seq.start(m_env.m_ptw_mem.m_sequencer);
     end
+  endtask
+
+  virtual task ptw_wait_for_tlboper_ptw_abort(
+    input string ctx = "ptw_wait_for_tlboper_ptw_abort",
+    input int unsigned max_cycles = 2048
+  );
+    bit seen;
+
+    seen = 1'b0;
+    if (ptw_probe_vif == null) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: MMU_DUT_PROBES_VIF unavailable; SATP process-switch constraint cannot prove tlboper_ptw_abort", ctx))
+      ptw_meta_add_context({ctx, ": probe_unavailable_abort_wait_skipped"});
+      return;
+    end
+
+    repeat (max_cycles) begin
+      @(ptw_probe_vif.mon_cb);
+      if (ptw_probe_vif.mon_cb.tlboper_ptw_abort === 1'b1) begin
+        seen = 1'b1;
+        break;
+      end
+    end
+
+    if (!seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: did not observe tlboper_ptw_abort within %0d cycles after LSU ASID invalidate",
+          ctx, max_cycles))
+    end else begin
+      ptw_meta_add_context({ctx, ": observed_lsu_asid_inv_tlboper_ptw_abort"});
+    end
+  endtask
+
+  virtual task ptw_drive_satp_change_asid_tlboper_abort(
+    input asid_t asid,
+    input string ctx = "ptw_satp_change_asid_tlboper_abort",
+    input int unsigned max_abort_wait_cycles = 2048
+  );
+    ptw_directed_lsu_inv_seq seq;
+
+    if ((m_env == null) || (m_env.m_lsu == null) || (m_env.m_lsu.m_sequencer == null))
+      `uvm_fatal(get_type_name(),
+        $sformatf("%s: LSU sequencer unavailable; cannot drive process-switch INV_ASID_ALL", ctx))
+
+    seq = ptw_directed_lsu_inv_seq::type_id::create("ptw_satp_change_asid_inv_seq");
+    seq.req_inv_kind = INV_ASID_ALL;
+    seq.req_inv_va = '0;
+    seq.req_inv_asid = asid;
+    seq.req_allow_busy = 1'b1;
+    seq.req_idle = 0;
+
+    fork
+      begin
+        ptw_wait_for_tlboper_ptw_abort(ctx, max_abort_wait_cycles);
+      end
+      begin
+        #0;
+        seq.start(m_env.m_lsu.m_sequencer);
+      end
+    join
+
+    if ((m_env != null) && (m_env.m_ref != null))
+      m_env.m_ref.sync_shadow_state();
+    ptw_meta_add_context($sformatf("satp_change_lsu_tlboper kind=INV_ASID_ALL asid=0x%04h allow_busy=1", asid));
   endtask
 
   virtual task ptw_drive_lsu(

@@ -33,10 +33,11 @@
 //   PMP deny on LSU data ports is a T1 access-fault event after the T0 PA
 //   response; L1DTLB spec SB owns that T1 token check, so this scoreboard waives
 //   only the T0 fault mismatch for modeled PMP-deny LSU responses.
-//   SATP root updates are reflected immediately in the software reference model,
-//   while an already-issued PTW walk may still complete from the old root. Waive
-//   that specific LSU current-SATP page-fault mismatch only when a recent SATP
-//   root change is followed by a matching PTW->L1D refill for {vpn,iid,ppn}.
+//   SATP root/ASID updates are treated as process switches in PTW stage-7
+//   source tests: the directed sequence must issue an LSU INV_ASID_ALL TLBOp
+//   and observe tlboper_ptw_abort before an old walk can refill stale state.
+//   The old-context acceptance path below is disabled by default and retained
+//   only behind +ALLOW_SATP_MIDWALK_OLD_ACCEPT for debug of legacy interleaves.
 // IFU: mmu_l1itlb can also complete a response on internal completion sources
 //   that the software ref does not observe cycle-accurately:
 //   - iutlb_acc_flt   : PTW/TWU access-fault completion. On this pulse
@@ -88,6 +89,7 @@ class mmu_translation_sb extends uvm_scoreboard;
   int unsigned m_lsu_satp_midwalk_waive_rsp;
   int unsigned m_ifu_accerr_waive_rsp;
   int unsigned m_ifu_refpgflt_waive_rsp;
+  bit          m_allow_satp_midwalk_old_accept;
 
   localparam int DTLB_EXPT_CAM_DEPTH = 8;
   localparam int PTW_REQ_SHADOW_DEPTH = 8;
@@ -161,6 +163,7 @@ class mmu_translation_sb extends uvm_scoreboard;
   bit [15:0]   m_cur_satp_asid;
   time         m_last_satp_change_time;
   longint unsigned m_last_satp_change_cycle;
+  longint unsigned m_last_tlboper_ptw_abort_cycle;
   bit          m_last_l1_refill_valid;
   bit [1:0]    m_last_l1_refill_src;
   bit [3:0]    m_last_l1_refill_idx;
@@ -188,6 +191,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_lsu_satp_midwalk_waive_rsp = 0;
     m_ifu_accerr_waive_rsp = 0;
     m_ifu_refpgflt_waive_rsp = 0;
+    m_allow_satp_midwalk_old_accept = 1'b0;
     m_last_l2_ref_valid = 1'b0;
     m_last_l2_ref_pavld = 1'b0;
     m_last_l2_ref_cmplt = 1'b0;
@@ -225,6 +229,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_cur_satp_asid = '0;
     m_last_satp_change_time = 0;
     m_last_satp_change_cycle = 0;
+    m_last_tlboper_ptw_abort_cycle = 0;
     m_last_l1_refill_valid = 1'b0;
     m_last_l1_refill_src = '0;
     m_last_l1_refill_idx = '0;
@@ -250,6 +255,7 @@ class mmu_translation_sb extends uvm_scoreboard;
       `uvm_info(get_type_name(),
         "MMU_DUT_PROBES_VIF not in config_db — LSU_P1 whitebox root-cause dump will be unavailable",
         UVM_LOW)
+    m_allow_satp_midwalk_old_accept = $test$plusargs("ALLOW_SATP_MIDWALK_OLD_ACCEPT");
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -288,6 +294,7 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_satp_snapshot_valid = 1'b0;
         m_satp_change_valid = 1'b0;
         m_last_satp_root_changed = 1'b0;
+        m_last_tlboper_ptw_abort_cycle = 0;
       end else if (!m_satp_snapshot_valid) begin
         m_satp_snapshot_valid = 1'b1;
         m_cur_satp_ppn = v_probe.mon_cb.regs_ptw_satp_ppn;
@@ -305,7 +312,16 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_last_satp_change_cycle = m_probe_cycle;
         m_satp_change_valid = 1'b1;
       end
-      if (v_probe.mon_cb.l2tlb_ptw_req && v_probe.mon_cb.ptw_jtlb_ready) begin
+      if (v_probe.mon_cb.tlboper_ptw_abort) begin
+        m_last_tlboper_ptw_abort_cycle = m_probe_cycle;
+        m_last_l2tlb_ptw_req_valid = 1'b0;
+        m_last_satp_root_changed = 1'b0;
+        m_prev_satp_ppn = m_cur_satp_ppn;
+        m_prev_satp_asid = m_cur_satp_asid;
+      end
+      if (v_probe.mon_cb.l2tlb_ptw_req
+          && v_probe.mon_cb.ptw_jtlb_ready
+          && !v_probe.mon_cb.tlboper_ptw_abort) begin
         m_last_l2tlb_ptw_req_valid = 1'b1;
         m_last_l2tlb_ptw_req_id    = v_probe.mon_cb.l2tlb_ptw_id;
         m_last_l2tlb_ptw_req_vpn   = v_probe.mon_cb.l2tlb_ptw_vpn;
@@ -497,7 +513,12 @@ class mmu_translation_sb extends uvm_scoreboard;
     output longint unsigned satp_age_cycles
   );
     satp_age_cycles = 0;
+    if (!m_allow_satp_midwalk_old_accept)
+      return 1'b0;
     if (!m_satp_change_valid || !m_last_satp_root_changed)
+      return 1'b0;
+    if ((m_last_tlboper_ptw_abort_cycle >= m_last_satp_change_cycle)
+        && (m_last_tlboper_ptw_abort_cycle <= m_probe_cycle))
       return 1'b0;
     if (m_probe_cycle < m_last_satp_change_cycle)
       return 1'b0;
@@ -513,7 +534,12 @@ class mmu_translation_sb extends uvm_scoreboard;
     input longint unsigned req_cycle,
     input bit [27:0]       req_satp_ppn
   );
+    if (!m_allow_satp_midwalk_old_accept)
+      return 1'b0;
     if (!m_satp_change_valid || !m_last_satp_root_changed)
+      return 1'b0;
+    if ((m_last_tlboper_ptw_abort_cycle >= m_last_satp_change_cycle)
+        && (m_last_tlboper_ptw_abort_cycle >= req_cycle))
       return 1'b0;
     if (req_cycle < m_last_satp_change_cycle)
       return ((m_last_satp_change_cycle - req_cycle)

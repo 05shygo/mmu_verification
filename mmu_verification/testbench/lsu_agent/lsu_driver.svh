@@ -630,9 +630,10 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       m_inv_busy = 1'b1;
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
-      // Avoid issuing a new invalidate when DTLB is still busy.  In that case
-      // the request can be delayed or merged by DUT side state machines.
-      if (vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)
+      // Normal directed invalidates avoid the busy window.  A process-switch
+      // SATP update is different: LSU must issue the ASID invalidate even while
+      // a walk is in flight so ct_mmu_tlboper raises tlboper_ptw_abort.
+      if ((tr.inv_allow_busy !== 1'b1) && (vif.driver_cb.mmu_lsu_tlb_busy === 1'b1))
         @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
       @(vif.driver_cb);
       vif.driver_cb.lsu_mmu_tlb_va   <= tr.inv_va;

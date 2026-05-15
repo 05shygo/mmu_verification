@@ -38,6 +38,7 @@ class lsu_txn extends uvm_sequence_item;
     `uvm_field_enum(lsu_inv_kind_e, inv_kind,   UVM_ALL_ON)
     `uvm_field_int(inv_va,           UVM_ALL_ON)
     `uvm_field_int(inv_asid,         UVM_ALL_ON)
+    `uvm_field_int(inv_allow_busy,   UVM_ALL_ON)
     `uvm_field_int(idle_cycles,      UVM_ALL_ON)
     `uvm_field_int(pa,               UVM_ALL_ON)
     `uvm_field_int(pgflt,            UVM_ALL_ON)
@@ -74,6 +75,7 @@ class lsu_txn extends uvm_sequence_item;
   rand lsu_inv_kind_e inv_kind;
   rand bit [26:0] inv_va;   // SFENCE.VMA VA operand (bits[38:12])
   rand bit [15:0] inv_asid; // SFENCE.VMA ASID operand
+  bit             inv_allow_busy; // Issue tlboper even while DTLB/PTW is busy
 
   // ── Timing ────────────────────────────────────────────────────────────────
   rand int idle_cycles;
@@ -107,6 +109,7 @@ class lsu_txn extends uvm_sequence_item;
 
   function new(string name = "lsu_txn");
     super.new(name);
+    inv_allow_busy = 1'b0;
   endfunction
 
   virtual function string convert2string();
@@ -122,8 +125,8 @@ class lsu_txn extends uvm_sequence_item;
         return $sformatf("kind=STAMO stamo_pa=0x%07h", stamo_pa);
       LSU_INV:
         return $sformatf(
-          "kind=INV inv_kind=%s va=0x%07h asid=0x%04h | inv_done=%0b",
-          inv_kind.name(), inv_va, inv_asid, inv_done);
+          "kind=INV inv_kind=%s va=0x%07h asid=0x%04h allow_busy=%0b | inv_done=%0b",
+          inv_kind.name(), inv_va, inv_asid, inv_allow_busy, inv_done);
       default:
         return $sformatf("kind=%s (unknown)", kind.name());
     endcase

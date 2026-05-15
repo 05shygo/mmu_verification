@@ -441,6 +441,21 @@ class mmu_translation_sb extends uvm_scoreboard;
     return -1;
   endfunction
 
+  protected function void _ptw_req_shadow_entry_clear(output ptw_req_shadow_entry_t ent);
+    ent.vld = 1'b0;
+    ent.id = '0;
+    ent.vpn = '0;
+    ent.satp_ppn = '0;
+    ent.asid = '0;
+    ent.priv_mode = '0;
+    ent.mxr = 1'b0;
+    ent.sum = 1'b0;
+    ent.mprv = 1'b0;
+    ent.mpp = PRIV_M;
+    ent.req_time = 0;
+    ent.req_cycle = 0;
+  endfunction
+
   protected function void _ptw_req_shadow_clear_all();
     for (int i = 0; i < PTW_REQ_SHADOW_DEPTH; i++)
       m_ptw_req_shadow[i].vld = 1'b0;
@@ -554,7 +569,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     output ptw_req_shadow_entry_t req_ent
   );
     int idx;
-    req_ent = '0;
+    _ptw_req_shadow_entry_clear(req_ent);
 
     if ((v_probe != null)
         && v_probe.l2tlb_ptw_req
@@ -626,7 +641,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     output longint unsigned refill_age_cycles,
     output longint unsigned satp_age_cycles
   );
-    req_ent = '0;
+    _ptw_req_shadow_entry_clear(req_ent);
     refill_age_cycles = 0;
     satp_age_cycles = 0;
 
@@ -659,7 +674,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     output longint unsigned refill_age_cycles,
     output longint unsigned satp_age_cycles
   );
-    req_ent = '0;
+    _ptw_req_shadow_entry_clear(req_ent);
     refill_match = 1'b0;
     refill_age_cycles = 0;
     satp_age_cycles = 0;

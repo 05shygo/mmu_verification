@@ -55,7 +55,7 @@ logic [4:0]           L1PDE_pmpflg      ;
 
 assign L1PDE_entry_clk_en = regs_ptw_clr | L1PDE_entry_upd;
 
-assign cp0_mach_mode = ptw_type[2:0] == 3'b011 ? cp0_yy_priv_mode[1:0] == 2'b11
+assign cp0_mach_mode = ptw_type[TYPE_WIDTH-1:0] == 3'b011 ? cp0_yy_priv_mode[1:0] == 2'b11
                                       : cp0_priv_mode[1:0] == 2'b11;
 
 // &Instance("gated_clk_cell", "x_iutlb_entry_gateclk"); @55

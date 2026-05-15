@@ -6,15 +6,13 @@ source tests, keeps P2 illegal/constraint tests isolated, and treats consumer
 logs as auxiliary evidence only.
 """
 
-from __future__ import annotations
-
 import argparse
 import csv
 import re
 import shlex
 import sys
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional, Set, Tuple
 
 
 CSV_FIELDS = [
@@ -64,7 +62,7 @@ KEYVAL_RE = re.compile(r"([A-Za-z_][A-Za-z0-9_]*)=([^\s]+)")
 
 
 def strip_inline_comment(line: str) -> str:
-    out: list[str] = []
+    out: List[str] = []
     in_single = False
     in_double = False
     for char in line:
@@ -78,8 +76,8 @@ def strip_inline_comment(line: str) -> str:
     return "".join(out).strip()
 
 
-def load_tests(list_path: Path) -> list[str]:
-    tests: list[str] = []
+def load_tests(list_path: Path) -> List[str]:
+    tests: List[str] = []
     for raw in list_path.read_text(encoding="utf-8", errors="ignore").splitlines():
         line = strip_inline_comment(raw)
         if not line:
@@ -90,7 +88,7 @@ def load_tests(list_path: Path) -> list[str]:
     return tests
 
 
-def parse_keyvals(line: str) -> dict[str, str]:
+def parse_keyvals(line: str) -> Dict[str, str]:
     return {match.group(1): match.group(2) for match in KEYVAL_RE.finditer(line)}
 
 
@@ -124,11 +122,11 @@ def has_scenario_metadata(text: str) -> bool:
     return any(marker in text for marker in markers)
 
 
-def read_log(log_path: Path) -> tuple[str | None, list[str]]:
+def read_log(log_path: Path) -> Tuple[Optional[str], List[str]]:
     if not log_path.is_file():
         return None, [f"missing log: {log_path}"]
     text = log_path.read_text(encoding="utf-8", errors="ignore")
-    errors: list[str] = []
+    errors: List[str] = []
     if ERROR_RE.search(text):
         errors.append(f"{log_path}: error/fatal/source-mismatch marker found")
     if ASSERT_FAIL_RE.search(text):
@@ -136,7 +134,7 @@ def read_log(log_path: Path) -> tuple[str | None, list[str]]:
     return text, errors
 
 
-def check_p0_log(log_path: Path, test: str) -> list[str]:
+def check_p0_log(log_path: Path, test: str) -> List[str]:
     text, errors = read_log(log_path)
     if text is None:
         return errors
@@ -149,7 +147,7 @@ def check_p0_log(log_path: Path, test: str) -> list[str]:
     return errors
 
 
-def check_stage7_log(log_path: Path, test: str, *, list_role: str) -> list[str]:
+def check_stage7_log(log_path: Path, test: str, *, list_role: str) -> List[str]:
     text, errors = read_log(log_path)
     if text is None:
         return errors
@@ -174,7 +172,7 @@ def check_stage7_log(log_path: Path, test: str, *, list_role: str) -> list[str]:
     return errors
 
 
-def check_consumer_log(log_path: Path) -> list[str]:
+def check_consumer_log(log_path: Path) -> List[str]:
     text, errors = read_log(log_path)
     if text is None:
         return errors
@@ -183,12 +181,12 @@ def check_consumer_log(log_path: Path) -> list[str]:
     return errors
 
 
-def required_ids(prefix: str, first: int, last: int) -> list[str]:
+def required_ids(prefix: str, first: int, last: int) -> List[str]:
     return [f"{prefix}-{idx:03d}" for idx in range(first, last + 1)]
 
 
-def load_closure_csv(csv_path: Path) -> tuple[list[dict[str, str]], list[str]]:
-    errors: list[str] = []
+def load_closure_csv(csv_path: Path) -> Tuple[List[Dict[str, str]], List[str]]:
+    errors: List[str] = []
     if not csv_path.is_file():
         return [], [f"missing closure csv: {csv_path}"]
     with csv_path.open(newline="", encoding="utf-8", errors="ignore") as handle:
@@ -215,7 +213,7 @@ def closed_enough(status: str) -> bool:
     return any(token in status for token in ["closed", "implemented", "strengthened"])
 
 
-def actionable_open(row: dict[str, str]) -> bool:
+def actionable_open(row: Dict[str, str]) -> bool:
     status = row["status"]
     family = row["requirement_family"]
     reason = row["waiver_or_open_reason"]
@@ -226,8 +224,8 @@ def actionable_open(row: dict[str, str]) -> bool:
     return "open" in status or "partial" in status or status == "open"
 
 
-def validate_closure_csv(rows: list[dict[str, str]]) -> list[str]:
-    errors: list[str] = []
+def validate_closure_csv(rows: List[Dict[str, str]]) -> List[str]:
+    errors: List[str] = []
     expected = (
         required_ids("PTW-AUD", 1, 23)
         + required_ids("PTW-ADD", 1, 36)
@@ -237,8 +235,8 @@ def validate_closure_csv(rows: list[dict[str, str]]) -> list[str]:
         + required_ids("MBUF-TP", 1, 12)
         + required_ids("MAEE-TP", 1, 13)
     )
-    by_id: dict[str, dict[str, str]] = {}
-    duplicates: set[str] = set()
+    by_id: Dict[str, Dict[str, str]] = {}
+    duplicates: Set[str] = set()
     for row in rows:
         rid = row["requirement_id"]
         if rid in by_id:
@@ -270,8 +268,8 @@ def validate_closure_csv(rows: list[dict[str, str]]) -> list[str]:
     return errors
 
 
-def parse_report_open_records(report_text: str) -> dict[str, dict[str, str]]:
-    records: dict[str, dict[str, str]] = {}
+def parse_report_open_records(report_text: str) -> Dict[str, Dict[str, str]]:
+    records: Dict[str, Dict[str, str]] = {}
     for line in report_text.splitlines():
         if "PTW_SIGNOFF_OPEN" not in line:
             continue
@@ -282,11 +280,11 @@ def parse_report_open_records(report_text: str) -> dict[str, dict[str, str]]:
     return records
 
 
-def validate_report(report_path: Path, rows: list[dict[str, str]]) -> list[str]:
+def validate_report(report_path: Path, rows: List[Dict[str, str]]) -> List[str]:
     if not report_path.is_file():
         return [f"missing signoff report: {report_path}"]
     text = report_path.read_text(encoding="utf-8", errors="ignore")
-    errors: list[str] = []
+    errors: List[str] = []
     required_markers = [
         "PTW_STAGE8_SIGNOFF_REPORT",
         "PTW_SIGNOFF_REGRESSION_LIST role=p0_smoke",
@@ -328,7 +326,7 @@ def validate_report(report_path: Path, rows: list[dict[str, str]]) -> list[str]:
     return errors
 
 
-def validate_legacy_freeze(legacy_path: Optional[Path], report_path: Path) -> list[str]:
+def validate_legacy_freeze(legacy_path: Optional[Path], report_path: Path) -> List[str]:
     if legacy_path is None:
         return []
     if not legacy_path.is_file():
@@ -342,7 +340,7 @@ def validate_legacy_freeze(legacy_path: Optional[Path], report_path: Path) -> li
         "obsolete-by-spec",
         "consumer-only",
     ]
-    errors: list[str] = []
+    errors: List[str] = []
     for token in required:
         if token not in legacy:
             errors.append(f"{legacy_path}: missing legacy freeze token {token}")
@@ -358,8 +356,8 @@ def check_list_logs(
     seed: str,
     role: str,
     allow_missing: bool = False,
-) -> tuple[int, list[str]]:
-    errors: list[str] = []
+) -> Tuple[int, List[str]]:
+    errors: List[str] = []
     tests = load_tests(list_path)
     if not tests:
         return 0, [f"no tests found in {list_path}"]
@@ -401,8 +399,8 @@ def main() -> int:
     parser.add_argument("--allow-missing-consumer-logs", action="store_true")
     args = parser.parse_args()
 
-    errors: list[str] = []
-    counts: dict[str, int] = {}
+    errors: List[str] = []
+    counts: Dict[str, int] = {}
 
     if args.p0_smoke_list is not None:
         counts["p0_smoke"], errs = check_list_logs(

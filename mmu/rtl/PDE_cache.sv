@@ -104,6 +104,7 @@ logic                                      pde_cache_clk_en       ;
 logic                                      pde_cache_clk          ;
 logic                                      L1PDE_miss_because_pmp_vld;
 logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_miss_because_pmp;
+logic [1:0]                                cp0_priv_mode          ;
 
 
 //assign pde_cache_clk_en = l2tlb_ptw_req | tlboper_ptw_abort | (!xbar_pde_ready);

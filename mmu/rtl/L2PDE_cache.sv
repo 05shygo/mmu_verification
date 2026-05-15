@@ -5,7 +5,8 @@ module L2PDE_cache #(
     parameter PGS_WIDTH  = 3,                           // Page Size
     parameter PTE_LEVEL  = 3,                           // Page Table Label
     parameter TAG_WIDTH  = 18,
-    parameter DATA_WIDTH = 64
+    parameter DATA_WIDTH = 64,
+    parameter TYPE_WIDTH = 3
 ) (
     input  logic                 forever_cpuclk,
     input  logic                 cpurst_b,
@@ -47,6 +48,7 @@ logic                 fetch_type        ;
 logic                 load_type         ;
 logic                 store_type        ;
 logic                 pref_type         ;
+logic [4:0]           L2PDE_pmpflg      ;
 
 
 assign L2PDE_entry_clk_en = regs_ptw_clr | L2PDE_entry_upd;

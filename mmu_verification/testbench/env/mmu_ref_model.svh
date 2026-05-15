@@ -190,6 +190,188 @@ class mmu_ref_model extends uvm_component;
     m_auto_sync_shadow_state = enable;
   endfunction
 
+  protected function bit twu_leaf_page_fault(
+    input pte_t      pte,
+    input acc_type_e acc,
+    input int        level,
+    input bit [1:0]  eff_priv,
+    input bit        mxr,
+    input bit        sum
+  );
+    bit fault;
+    fault = 1'b0;
+
+    if (!pte[PTE_V])
+      fault = 1'b1;
+    if (pte[PTE_W] && !(pte[PTE_R] || (mxr && pte[PTE_X])))
+      fault = 1'b1;
+
+    case (acc)
+      ACC_FETCH: begin
+        if (!pte[PTE_X])
+          fault = 1'b1;
+      end
+      ACC_LOAD: begin
+        if (!pte[PTE_R] && !(mxr && pte[PTE_X]))
+          fault = 1'b1;
+      end
+      ACC_PFU: begin
+        // TWU page-fault logic has no PFU-specific R/W/X permission term.
+      end
+      ACC_STORE: begin
+        if (!pte[PTE_W])
+          fault = 1'b1;
+      end
+    endcase
+
+    if ((eff_priv == PRIV_S) && pte[PTE_U] && !sum)
+      fault = 1'b1;
+    if ((eff_priv == PRIV_U) && !pte[PTE_U])
+      fault = 1'b1;
+    if (!pte[PTE_A])
+      fault = 1'b1;
+    if ((acc == ACC_STORE) && !pte[PTE_D])
+      fault = 1'b1;
+
+    if ((level == 2) && (pte[PTE_PPN_LSB +: 18] != 18'b0))
+      fault = 1'b1;
+    if ((level == 1) && (pte[PTE_PPN_LSB +: 9] != 9'b0))
+      fault = 1'b1;
+
+    return fault;
+  endfunction
+
+  protected function xlation_rsp_t translate_twu_core(
+    input va_t       va,
+    input acc_type_e acc,
+    input ppn_t      active_ppn,
+    input bit [3:0]  active_mode,
+    input bit [1:0]  priv,
+    input bit        mxr,
+    input bit        sum,
+    input bit        mprv,
+    input bit [1:0]  mpp,
+    input int        pmp_port_idx,
+    input string     ctx
+  );
+    xlation_rsp_t rsp;
+    bit [1:0] eff_priv;
+    int resolved_pmp_port_idx;
+    ppn_t cur_ppn;
+    bit found_leaf;
+
+    rsp = '{ppn: '0, exc: EXC_NONE,
+            sec: 0, ca: 0, buf_en: 0, sh: 0, so: 0, deny: 0};
+
+    eff_priv = priv;
+    if (mprv && (acc != ACC_FETCH))
+      eff_priv = mpp;
+
+    if ((active_mode != 4'h8) || (eff_priv == PRIV_M)) begin
+      rsp.ppn = va_t'(va) >> PAGE_OFFSET;
+      if (direct_map_access_fault(rsp.ppn, acc)) begin
+        rsp.deny = 1'b1;
+        rsp.exc  = (acc == ACC_FETCH) ? EXC_PMP_DENY : EXC_ACCESS_FAULT;
+      end
+      return rsp;
+    end
+
+    if (pmp_port_idx >= 0) begin
+      resolved_pmp_port_idx = pmp_port_idx;
+    end else begin
+      unique case (acc)
+        ACC_FETCH: resolved_pmp_port_idx = 2;
+        ACC_LOAD:  resolved_pmp_port_idx = 0;
+        ACC_STORE: resolved_pmp_port_idx = 0;
+        ACC_PFU:   resolved_pmp_port_idx = 4;
+        default:   resolved_pmp_port_idx = 0;
+      endcase
+    end
+
+    cur_ppn = active_ppn;
+    found_leaf = 1'b0;
+
+    for (int level = 2; level >= 0; level--) begin
+      logic [PT_LEVEL_BITS-1:0] vpn_idx;
+      pa_t pte_addr;
+      pte_t pte;
+      bit leaf_vld;
+      ppn_t leaf_ppn;
+      ppn_t final_ppn;
+
+      vpn_idx  = va_vpn_level(va, level);
+      pte_addr = pa_t'({cur_ppn, 12'b0}) + pa_t'({31'b0, vpn_idx, 3'b0});
+      pte      = m_pt.m_builder.read_pte_at(pte_addr);
+      leaf_vld = pte[PTE_V] && (pte[PTE_R] || pte[PTE_X]);
+
+      `uvm_info(get_type_name(),
+        $sformatf("translate_twu_core[%s] walk L%0d: vpn=0x%03h pte_addr=0x%010h pte=0x%016h leaf=%0b",
+          ctx, level, vpn_idx, pte_addr, pte, leaf_vld),
+        UVM_HIGH)
+
+      // RTL TWU gates fst/scd page_flt with leaf_vld and only reports a
+      // non-leaf-at-thd page fault at the final level.
+      if (leaf_vld) begin
+        found_leaf = 1'b1;
+        if (twu_leaf_page_fault(pte, acc, level, eff_priv, mxr, sum)) begin
+          rsp.exc = EXC_PAGE_FAULT;
+          m_n_page_faults++;
+          return rsp;
+        end
+
+        leaf_ppn = pte[PTE_PPN_LSB +: PPN_WIDTH];
+        final_ppn = leaf_ppn;
+        unique case (level)
+          2: final_ppn = {leaf_ppn[PPN_WIDTH-1:18], va[29:12]};
+          1: final_ppn = {leaf_ppn[PPN_WIDTH-1:9], va[20:12]};
+          default: final_ppn = leaf_ppn;
+        endcase
+        rsp.ppn = final_ppn;
+
+        begin
+          pa_t pa_full = pa_t'({rsp.ppn, va[11:0]});
+          if (!check_pmp_with_priv(pa_full, acc, resolved_pmp_port_idx, eff_priv)) begin
+            rsp.deny = 1'b1;
+            rsp.exc  = (acc == ACC_FETCH) ? EXC_PMP_DENY : EXC_ACCESS_FAULT;
+          end
+        end
+        return rsp;
+      end
+
+      if (level == 0) begin
+        rsp.exc = EXC_PAGE_FAULT;
+        m_n_page_faults++;
+        return rsp;
+      end
+
+      cur_ppn = pte[PTE_PPN_LSB +: PPN_WIDTH];
+    end
+
+    if (!found_leaf) begin
+      rsp.exc = EXC_PAGE_FAULT;
+      m_n_page_faults++;
+    end
+    return rsp;
+  endfunction
+
+  virtual function xlation_rsp_t translate_with_twu_context(
+    input va_t       va,
+    input acc_type_e acc,
+    input ppn_t      satp_ppn,
+    input bit [3:0]  satp_mode,
+    input bit [1:0]  priv,
+    input bit        mxr,
+    input bit        sum,
+    input bit        mprv,
+    input bit [1:0]  mpp,
+    input int        pmp_port_idx = -1,
+    input string     ctx = "external"
+  );
+    m_n_translate_calls++;
+    return translate_twu_core(va, acc, satp_ppn, satp_mode, priv, mxr, sum,
+                              mprv, mpp, pmp_port_idx, ctx);
+  endfunction
+
   // =========================================================================
   // Core API: translate()
   // =========================================================================
@@ -333,13 +515,13 @@ class mmu_ref_model extends uvm_component;
           return rsp;
         end
 
-        // ---- Check for reserved W/O encoding ---------------------------
-        // Decision: R=0, W=1 is reserved → page fault
-        if (!pte[PTE_R] && pte[PTE_W]) begin
+        // ---- Check for RTL write-only encoding -------------------------
+        // TWU allows W=1,R=0,X=1 when MXR makes X readable.
+        if (pte[PTE_W] && !(pte[PTE_R] || (m_mxr && pte[PTE_X]))) begin
           rsp.exc = EXC_PAGE_FAULT;
           m_n_page_faults++;
           `uvm_info(get_type_name(),
-            $sformatf("translate PAGE_FAULT (R=0,W=1): va=0x%010h L%0d",
+            $sformatf("translate PAGE_FAULT (write-only): va=0x%010h L%0d",
               va, level), UVM_MEDIUM)
           return rsp;
         end
@@ -390,7 +572,7 @@ class mmu_ref_model extends uvm_component;
                 return rsp;
               end
             end
-            ACC_LOAD, ACC_PFU: begin
+            ACC_LOAD: begin
               // Load: R=1; or MXR=1 and X=1 (readable via execute-only mapping)
               if (!pte[PTE_R] && !(m_mxr && pte[PTE_X])) begin
                 rsp.exc = EXC_PAGE_FAULT;
@@ -401,13 +583,19 @@ class mmu_ref_model extends uvm_component;
                 return rsp;
               end
             end
+            ACC_PFU: begin
+              // PFU follows TWU: no R/W/X permission term; write-only, U/S,
+              // A-bit, and alignment checks still apply.
+            end
             ACC_STORE: begin
-              // Store: R=1 AND W=1
-              if (!pte[PTE_R] || !pte[PTE_W]) begin
+              // Store follows the RTL TWU formula: W=1 is sufficient here;
+              // write-only reserved encodings are handled by the earlier
+              // R=0,W=1 check.
+              if (!pte[PTE_W]) begin
                 rsp.exc = EXC_PAGE_FAULT;
                 m_n_page_faults++;
                 `uvm_info(get_type_name(),
-                  $sformatf("translate PAGE_FAULT (STORE,R/W=0): va=0x%010h",va),
+                  $sformatf("translate PAGE_FAULT (STORE,W=0): va=0x%010h",va),
                   UVM_MEDIUM)
                 return rsp;
               end
@@ -506,9 +694,12 @@ class mmu_ref_model extends uvm_component;
   endfunction
 
   // =========================================================================
-  // PMP check (stub — Phase 5 for full 8-port check)
-  // =========================================================================
-  virtual function bit check_pmp(pa_t pa, acc_type_e acc, int port_idx);
+  protected function bit check_pmp_with_priv(
+    input pa_t      pa,
+    input acc_type_e acc,
+    input int       port_idx,
+    input bit [1:0] eff_priv
+  );
     bit [3:0] flg;
     // DUT-side semantics are allow bits:
     //   flg[0]=R allow, flg[1]=W allow, flg[2]=X allow, flg[3]=L/M-mode guard.
@@ -516,7 +707,7 @@ class mmu_ref_model extends uvm_component;
     if (port_idx < 0 || port_idx >= PMP_ENTRIES) return 1'b1;
     flg = m_pmp_flg[port_idx];
 
-    if ((m_priv == PRIV_M) && !flg[3]) return 1'b1;
+    if ((eff_priv == PRIV_M) && !flg[3]) return 1'b1;
 
     unique case (acc)
       ACC_FETCH: return flg[2];
@@ -525,6 +716,12 @@ class mmu_ref_model extends uvm_component;
       ACC_STORE: return flg[1];
       default:   return 1'b1;
     endcase
+  endfunction
+
+  // PMP check (stub — Phase 5 for full 8-port check)
+  // =========================================================================
+  virtual function bit check_pmp(pa_t pa, acc_type_e acc, int port_idx);
+    return check_pmp_with_priv(pa, acc, port_idx, m_priv);
   endfunction
 
   // =========================================================================

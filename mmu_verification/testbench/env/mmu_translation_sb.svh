@@ -110,6 +110,13 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit              vld;
     bit [5:0]        id;
     bit [26:0]       vpn;
+    bit [27:0]       satp_ppn;
+    bit [15:0]       asid;
+    bit [1:0]        priv_mode;
+    bit              mxr;
+    bit              sum;
+    bit              mprv;
+    bit [1:0]        mpp;
     time             req_time;
     longint unsigned req_cycle;
   } ptw_req_shadow_entry_t;
@@ -135,6 +142,13 @@ class mmu_translation_sb extends uvm_scoreboard;
   bit          m_last_l2tlb_ptw_req_valid;
   bit [5:0]    m_last_l2tlb_ptw_req_id;
   bit [26:0]   m_last_l2tlb_ptw_req_vpn;
+  bit [27:0]   m_last_l2tlb_ptw_req_satp_ppn;
+  bit [15:0]   m_last_l2tlb_ptw_req_asid;
+  bit [1:0]    m_last_l2tlb_ptw_req_priv_mode;
+  bit          m_last_l2tlb_ptw_req_mxr;
+  bit          m_last_l2tlb_ptw_req_sum;
+  bit          m_last_l2tlb_ptw_req_mprv;
+  bit [1:0]    m_last_l2tlb_ptw_req_mpp;
   time         m_last_l2tlb_ptw_req_time;
   longint unsigned m_last_l2tlb_ptw_req_cycle;
   longint unsigned m_last_ptw_ref_cycle;
@@ -192,6 +206,13 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_last_l2tlb_ptw_req_valid = 1'b0;
     m_last_l2tlb_ptw_req_id = '0;
     m_last_l2tlb_ptw_req_vpn = '0;
+    m_last_l2tlb_ptw_req_satp_ppn = '0;
+    m_last_l2tlb_ptw_req_asid = '0;
+    m_last_l2tlb_ptw_req_priv_mode = '0;
+    m_last_l2tlb_ptw_req_mxr = 1'b0;
+    m_last_l2tlb_ptw_req_sum = 1'b0;
+    m_last_l2tlb_ptw_req_mprv = 1'b0;
+    m_last_l2tlb_ptw_req_mpp = PRIV_M;
     m_last_l2tlb_ptw_req_time = 0;
     m_last_l2tlb_ptw_req_cycle = 0;
     m_last_ptw_ref_cycle = 0;
@@ -288,10 +309,24 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_last_l2tlb_ptw_req_valid = 1'b1;
         m_last_l2tlb_ptw_req_id    = v_probe.mon_cb.l2tlb_ptw_id;
         m_last_l2tlb_ptw_req_vpn   = v_probe.mon_cb.l2tlb_ptw_vpn;
+        m_last_l2tlb_ptw_req_satp_ppn = v_probe.mon_cb.regs_ptw_satp_ppn;
+        m_last_l2tlb_ptw_req_asid = v_probe.mon_cb.regs_ptw_cur_asid;
+        m_last_l2tlb_ptw_req_priv_mode = v_probe.mon_cb.ptw_cp0_priv_mode;
+        m_last_l2tlb_ptw_req_mxr = v_probe.mon_cb.ptw_cp0_mxr;
+        m_last_l2tlb_ptw_req_sum = v_probe.mon_cb.ptw_cp0_sum;
+        m_last_l2tlb_ptw_req_mprv = v_probe.mon_cb.ptw_cp0_mprv;
+        m_last_l2tlb_ptw_req_mpp = v_probe.mon_cb.ptw_cp0_mpp;
         m_last_l2tlb_ptw_req_time  = $time;
         m_last_l2tlb_ptw_req_cycle = m_probe_cycle;
         _ptw_req_shadow_write(v_probe.mon_cb.l2tlb_ptw_id,
-                              v_probe.mon_cb.l2tlb_ptw_vpn);
+                              v_probe.mon_cb.l2tlb_ptw_vpn,
+                              v_probe.mon_cb.regs_ptw_satp_ppn,
+                              v_probe.mon_cb.regs_ptw_cur_asid,
+                              v_probe.mon_cb.ptw_cp0_priv_mode,
+                              v_probe.mon_cb.ptw_cp0_mxr,
+                              v_probe.mon_cb.ptw_cp0_sum,
+                              v_probe.mon_cb.ptw_cp0_mprv,
+                              v_probe.mon_cb.ptw_cp0_mpp);
       end
       if (v_probe.mon_cb.l2_dtlb_ref_pavld || v_probe.mon_cb.l2_dtlb_ref_cmplt) begin
         m_last_l2_ref_valid = 1'b1;
@@ -411,7 +446,17 @@ class mmu_translation_sb extends uvm_scoreboard;
       m_ptw_req_shadow[i].vld = 1'b0;
   endfunction
 
-  protected function void _ptw_req_shadow_write(bit [5:0] id, bit [26:0] vpn);
+  protected function void _ptw_req_shadow_write(
+    bit [5:0]  id,
+    bit [26:0] vpn,
+    bit [27:0] satp_ppn,
+    bit [15:0] asid,
+    bit [1:0]  priv_mode,
+    bit        mxr,
+    bit        sum,
+    bit        mprv,
+    bit [1:0]  mpp
+  );
     int idx;
     idx = _ptw_req_shadow_find(id, vpn);
     if (idx < 0)
@@ -422,6 +467,13 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_ptw_req_shadow[idx].vld = 1'b1;
     m_ptw_req_shadow[idx].id = id;
     m_ptw_req_shadow[idx].vpn = vpn;
+    m_ptw_req_shadow[idx].satp_ppn = satp_ppn;
+    m_ptw_req_shadow[idx].asid = asid;
+    m_ptw_req_shadow[idx].priv_mode = priv_mode;
+    m_ptw_req_shadow[idx].mxr = mxr;
+    m_ptw_req_shadow[idx].sum = sum;
+    m_ptw_req_shadow[idx].mprv = mprv;
+    m_ptw_req_shadow[idx].mpp = mpp;
     m_ptw_req_shadow[idx].req_time = $time;
     m_ptw_req_shadow[idx].req_cycle = m_probe_cycle;
   endfunction
@@ -440,6 +492,22 @@ class mmu_translation_sb extends uvm_scoreboard;
       return 1'b0;
 
     return 1'b1;
+  endfunction
+
+  protected function bit _ptw_req_is_old_satp_context(
+    input longint unsigned req_cycle,
+    input bit [27:0]       req_satp_ppn
+  );
+    if (!m_satp_change_valid || !m_last_satp_root_changed)
+      return 1'b0;
+    if (req_cycle < m_last_satp_change_cycle)
+      return ((m_last_satp_change_cycle - req_cycle)
+              <= LSU_SATP_MIDWALK_REQ_CYCLE_WINDOW)
+          && (req_satp_ppn == m_prev_satp_ppn)
+          && (req_satp_ppn != m_cur_satp_ppn);
+    if (req_cycle == m_last_satp_change_cycle)
+      return (req_satp_ppn == m_prev_satp_ppn) && (req_satp_ppn != m_cur_satp_ppn);
+    return 1'b0;
   endfunction
 
   protected function bit _recent_ptw_l1d_refill_matches(
@@ -482,29 +550,65 @@ class mmu_translation_sb extends uvm_scoreboard;
 
   protected function bit _ptw_request_started_before_satp_change(
     input  bit [26:0] req_vpn,
-    input  bit [6:0]  lsu_iid
+    input  bit [6:0]  lsu_iid,
+    output ptw_req_shadow_entry_t req_ent
   );
     int idx;
+    req_ent = '0;
 
     if ((v_probe != null)
         && v_probe.l2tlb_ptw_req
         && v_probe.ptw_jtlb_ready
         && (v_probe.l2tlb_ptw_id == lsu_iid[5:0])
         && (v_probe.l2tlb_ptw_vpn == req_vpn)
-        && (m_probe_cycle < m_last_satp_change_cycle)
-        && ((m_last_satp_change_cycle - m_probe_cycle) <= LSU_SATP_MIDWALK_REQ_CYCLE_WINDOW))
+        && _ptw_req_is_old_satp_context(m_probe_cycle,
+                                        v_probe.regs_ptw_satp_ppn)) begin
+      req_ent.vld = 1'b1;
+      req_ent.id = v_probe.l2tlb_ptw_id;
+      req_ent.vpn = v_probe.l2tlb_ptw_vpn;
+      req_ent.satp_ppn = v_probe.regs_ptw_satp_ppn;
+      req_ent.asid = v_probe.regs_ptw_cur_asid;
+      req_ent.priv_mode = v_probe.ptw_cp0_priv_mode;
+      req_ent.mxr = v_probe.ptw_cp0_mxr;
+      req_ent.sum = v_probe.ptw_cp0_sum;
+      req_ent.mprv = v_probe.ptw_cp0_mprv;
+      req_ent.mpp = v_probe.ptw_cp0_mpp;
+      req_ent.req_time = $time;
+      req_ent.req_cycle = m_probe_cycle;
       return 1'b1;
+    end
 
     idx = _ptw_req_shadow_find(lsu_iid[5:0], req_vpn);
-    if (idx >= 0)
-      return (m_ptw_req_shadow[idx].req_cycle < m_last_satp_change_cycle)
-          && ((m_last_satp_change_cycle - m_ptw_req_shadow[idx].req_cycle) <= LSU_SATP_MIDWALK_REQ_CYCLE_WINDOW);
+    if (idx >= 0) begin
+      if (_ptw_req_is_old_satp_context(m_ptw_req_shadow[idx].req_cycle,
+                                       m_ptw_req_shadow[idx].satp_ppn)) begin
+        req_ent = m_ptw_req_shadow[idx];
+        return 1'b1;
+      end
+      return 1'b0;
+    end
 
-    return m_last_l2tlb_ptw_req_valid
+    if (m_last_l2tlb_ptw_req_valid
         && (m_last_l2tlb_ptw_req_id == lsu_iid[5:0])
         && (m_last_l2tlb_ptw_req_vpn == req_vpn)
-        && (m_last_l2tlb_ptw_req_cycle < m_last_satp_change_cycle)
-        && ((m_last_satp_change_cycle - m_last_l2tlb_ptw_req_cycle) <= LSU_SATP_MIDWALK_REQ_CYCLE_WINDOW);
+        && _ptw_req_is_old_satp_context(m_last_l2tlb_ptw_req_cycle,
+                                        m_last_l2tlb_ptw_req_satp_ppn)) begin
+      req_ent.vld = 1'b1;
+      req_ent.id = m_last_l2tlb_ptw_req_id;
+      req_ent.vpn = m_last_l2tlb_ptw_req_vpn;
+      req_ent.satp_ppn = m_last_l2tlb_ptw_req_satp_ppn;
+      req_ent.asid = m_last_l2tlb_ptw_req_asid;
+      req_ent.priv_mode = m_last_l2tlb_ptw_req_priv_mode;
+      req_ent.mxr = m_last_l2tlb_ptw_req_mxr;
+      req_ent.sum = m_last_l2tlb_ptw_req_sum;
+      req_ent.mprv = m_last_l2tlb_ptw_req_mprv;
+      req_ent.mpp = m_last_l2tlb_ptw_req_mpp;
+      req_ent.req_time = m_last_l2tlb_ptw_req_time;
+      req_ent.req_cycle = m_last_l2tlb_ptw_req_cycle;
+      return 1'b1;
+    end
+
+    return 1'b0;
   endfunction
 
   protected function bit _lsu_satp_midwalk_old_refill_waive(
@@ -518,9 +622,11 @@ class mmu_translation_sb extends uvm_scoreboard;
     input  bit          tr_mmu_en,
     input  bit          skip_ref_ppn_check,
     input  bit          skip_lsu_dtlb_ref_compare,
+    output ptw_req_shadow_entry_t req_ent,
     output longint unsigned refill_age_cycles,
     output longint unsigned satp_age_cycles
   );
+    req_ent = '0;
     refill_age_cycles = 0;
     satp_age_cycles = 0;
 
@@ -532,12 +638,95 @@ class mmu_translation_sb extends uvm_scoreboard;
       return 1'b0;
     if (!_recent_satp_root_change_seen(satp_age_cycles))
       return 1'b0;
-    if (!_ptw_request_started_before_satp_change(req_vpn, lsu_iid))
+    if (!_ptw_request_started_before_satp_change(req_vpn, lsu_iid, req_ent))
       return 1'b0;
     if (!_recent_ptw_l1d_refill_matches(req_vpn, lsu_iid, dut_pa, refill_age_cycles))
       return 1'b0;
 
     return 1'b1;
+  endfunction
+
+  protected function bit _lsu_satp_midwalk_ref_context(
+    input  string       channel,
+    input  bit [26:0]   req_vpn,
+    input  bit [6:0]    lsu_iid,
+    input  bit [27:0]   dut_pa,
+    input  bit          tr_mmu_en,
+    input  bit          skip_ref_ppn_check,
+    input  bit          skip_lsu_dtlb_ref_compare,
+    output ptw_req_shadow_entry_t req_ent,
+    output bit          refill_match,
+    output longint unsigned refill_age_cycles,
+    output longint unsigned satp_age_cycles
+  );
+    req_ent = '0;
+    refill_match = 1'b0;
+    refill_age_cycles = 0;
+    satp_age_cycles = 0;
+
+    if (!((channel == "LSU_P0") || (channel == "LSU_P1")))
+      return 1'b0;
+    if (!tr_mmu_en || skip_ref_ppn_check || skip_lsu_dtlb_ref_compare)
+      return 1'b0;
+    if (!_recent_satp_root_change_seen(satp_age_cycles))
+      return 1'b0;
+    if (!_ptw_request_started_before_satp_change(req_vpn, lsu_iid, req_ent))
+      return 1'b0;
+
+    // The reference context is defined by the accepted PTW request.  A matching
+    // PTW->L1D refill is useful evidence, but it can be sampled in a different
+    // delta from the LSU response.  Do not fall back to the current SATP root
+    // solely because that refill record is not visible to this scoreboard call.
+    refill_match = _recent_ptw_l1d_refill_matches(req_vpn, lsu_iid, dut_pa,
+                                                  refill_age_cycles);
+
+    return 1'b1;
+  endfunction
+
+  protected function xlation_rsp_t _translate_lsu_with_midwalk_context(
+    input string     channel,
+    input va_t       va,
+    input acc_type_e acc,
+    input bit [27:0] dut_pa,
+    input bit [6:0]  lsu_iid,
+    input bit        tr_mmu_en,
+    input bit        skip_ref_ppn_check,
+    output bit       used_midwalk_ctx
+  );
+    xlation_rsp_t ref_rsp;
+    ptw_req_shadow_entry_t req_ent;
+    bit refill_match;
+    longint unsigned refill_age_cycles;
+    longint unsigned satp_age_cycles;
+    int pmp_port_idx;
+
+    pmp_port_idx = (channel == "LSU_P1") ? 1 : 0;
+    used_midwalk_ctx = 1'b0;
+
+    // Drain CSR/PMP/SysMap FIFOs before either current-context or old-context
+    // translation so non-SATP attributes remain coherent with the monitor.
+    m_ref.sync_shadow_state();
+
+    if (_lsu_satp_midwalk_ref_context(channel, va[38:12], lsu_iid, dut_pa,
+                                      tr_mmu_en, skip_ref_ppn_check, 1'b0,
+                                      req_ent, refill_match,
+                                      refill_age_cycles, satp_age_cycles)) begin
+      ref_rsp = m_ref.translate_with_twu_context(
+        va, acc, req_ent.satp_ppn, 4'h8, req_ent.priv_mode,
+        req_ent.mxr, req_ent.sum, req_ent.mprv, req_ent.mpp, pmp_port_idx,
+        "satp_midwalk_old_accept");
+      used_midwalk_ctx = 1'b1;
+      `uvm_info(get_type_name(),
+        $sformatf("[%s] PTW_TRANSLATION_SB_REF_CONTEXT class=satp_midwalk_old_accept VA=0x%010h iid=%0d req_vpn=0x%07h satp_ppn=0x%07h asid=0x%04h refill_match=%0b refill_age_cycles=%0d satp_age_cycles=%0d ref.exc=%s ref.ppn=0x%07h dut.pa=0x%07h",
+          channel, {1'b0, va}, lsu_iid, va[38:12], req_ent.satp_ppn,
+          req_ent.asid, refill_match, refill_age_cycles, satp_age_cycles,
+          ref_rsp.exc.name(), ref_rsp.ppn, dut_pa),
+        UVM_MEDIUM)
+      return ref_rsp;
+    end
+
+    ref_rsp = m_ref.translate(va, acc, pmp_port_idx);
+    return ref_rsp;
   endfunction
 
   // =========================================================================
@@ -583,6 +772,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     va_t          va;
     acc_type_e    acc;
     bit           dut_fault;
+    bit           used_midwalk_ctx;
 
     if (tr.abort) begin
       `uvm_info(get_type_name(),
@@ -594,7 +784,9 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_total_checked++;
     va        = va_t'(tr.va[38:0]);
     acc       = tr.st_inst ? ACC_STORE : ACC_LOAD;
-    ref_rsp   = m_ref.translate(va, acc, 0);
+    ref_rsp   = _translate_lsu_with_midwalk_context("LSU_P0", va, acc, tr.pa,
+                                                    tr.id, tr.mmu_en, 1'b0,
+                                                    used_midwalk_ctx);
     dut_fault = tr.pgflt | tr.access_fault;
 
     _compare(.channel("LSU_P0"), .va(va), .ref_rsp(ref_rsp),
@@ -615,6 +807,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     va_t          va;
     acc_type_e    acc;
     bit           dut_fault;
+    bit           used_midwalk_ctx;
 
     if (tr.abort) begin
       `uvm_info(get_type_name(),
@@ -626,7 +819,10 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_total_checked++;
     va        = va_t'(tr.va[38:0]);
     acc       = tr.st_inst ? ACC_STORE : ACC_LOAD;
-    ref_rsp   = m_ref.translate(va, acc, 1);
+    ref_rsp   = _translate_lsu_with_midwalk_context("LSU_P1", va, acc, tr.pa,
+                                                    tr.id, tr.mmu_en,
+                                                    tr.stamo_vld_at_rsp,
+                                                    used_midwalk_ctx);
     dut_fault = tr.pgflt | tr.access_fault;
 
     if (tr.stamo_vld_at_rsp && (tr.pa !== tr.stamo_pa_at_rsp)) begin
@@ -784,6 +980,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit lsu_expt_orphan;
     bit lsu_pmp_t1_waive;
     bit lsu_satp_midwalk_waive;
+    ptw_req_shadow_entry_t lsu_satp_midwalk_req_ent;
     longint unsigned lsu_satp_midwalk_refill_age;
     longint unsigned lsu_satp_midwalk_satp_age;
     bit skip_ifu_accerr_fault_compare;
@@ -884,6 +1081,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     lsu_satp_midwalk_waive = _lsu_satp_midwalk_old_refill_waive(
       channel, ref_rsp, exp_fault, dut_fault, req_vpn[26:0], lsu_iid, dut_pa,
       tr_mmu_en, skip_ref_ppn_check, skip_lsu_dtlb_ref_compare,
+      lsu_satp_midwalk_req_ent,
       lsu_satp_midwalk_refill_age, lsu_satp_midwalk_satp_age);
 
     if (lsu_expt_replay_rsp)

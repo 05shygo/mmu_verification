@@ -241,7 +241,7 @@ class ptw_source_ref_model extends uvm_component;
   endfunction
 
   protected function bit is_leaf(input pte_t raw_pte);
-    return raw_pte[PTE_R] || raw_pte[PTE_X];
+    return raw_pte[PTE_V] && (raw_pte[PTE_R] || raw_pte[PTE_X]);
   endfunction
 
   protected function bit is_write_only_fault(input pte_t raw_pte, input bit mxr);
@@ -322,10 +322,9 @@ class ptw_source_ref_model extends uvm_component;
     input pte_t raw_pte,
     input ptw_src_level_e level
   );
-    if (!raw_pte[PTE_V])
-      return 1'b1;
-    if (is_write_only_fault(raw_pte, pending.mxr))
-      return 1'b1;
+    // RTL TWU gates FST/SCD page_flt with leaf_vld, so invalid or malformed
+    // non-leaf encodings at those levels are treated as next-level pointers.
+    // THD has no lower level and reports any non-leaf encoding as page fault.
     if (level == PTW_SRC_LEVEL_THD)
       return 1'b1;
     return 1'b0;

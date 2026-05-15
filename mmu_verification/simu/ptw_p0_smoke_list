@@ -1,0 +1,6 @@
+# PTW stage-8 P0 smoke list
+# This is a fast source-side sanity subset. Full P0 closure uses ptw_p0_list.
+
+test_ptw_p0_pte_layout_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_p0_pde_mbuf_pmp_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_p0_maee_sysmap_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV

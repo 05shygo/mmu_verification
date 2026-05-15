@@ -1,0 +1,11 @@
+# PTW stage-8 consumer-only evidence list
+# These tests prove downstream consumption of PTW-facing outputs only.
+# They must not be counted as PTW source-side PTE/PMP/PDE/MAEE/MBUF closure.
+
+test_mmu_l1dtlb_dtlb_refill_001
+test_mmu_l1dtlb_dtlb_mb_pgflt_001
+test_mmu_l1dtlb_dtlb_access_fault_source_parity_001
+test_mmu_l1dtlb_dtlb_refill_stale_id_001
+test_mmu_l1dtlb_dtlb_sysmap_001
+test_mmu_l1itlb_itlb_pgflt_001
+test_mmu_dir_l2tlb_bank_write_conflict_ptw_prior

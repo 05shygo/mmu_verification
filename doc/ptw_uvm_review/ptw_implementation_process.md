@@ -15,7 +15,8 @@ boundaries and exit criteria.
 | 4 | Source Reference Model and Scoreboard MVP | done | passed | User confirmed stage-4 task and exit-standard checks passed after bus-error/access-fault debug updates. |
 | 5 | P0 SVA and Cover Gate | done | passed | User confirmed stage-5 task and exit-standard checks passed. |
 | 6 | P0 Directed Tests and Legacy Conflict Fixes | done | passed | User confirmed stage-6 task and exit-standard checks passed after PFU direct-map and MAEE=0 SysMap refill debug updates. |
-| 7 | Reference/Scoreboard Complete P1/P2 Random Stress | implemented | pending_user_run | Stage-7 files, lists, closure matrix, and exit gate are updated; local full compile/regress is blocked by missing make/Python launcher. |
+| 7 | Reference/Scoreboard Complete P1/P2 Random Stress | done | passed | User confirmed stage-7 task and exit-standard checks passed after SATP old-walk, TWU/L1TLB permission, and MAEE=0 huge-page cross debug updates. |
+| 8 | Regression, Report, Signoff Freeze | implemented | pending user run | Stage-8 lists, signoff gate, frozen report, open register, and closure-matrix cleanup added; exit commands below must be run in the normal regression environment. |
 
 ## Stage 0 Completion Record
 
@@ -438,12 +439,14 @@ git diff --check -- \
 
 ```text
 PTW_STAGE_DONE stage=7 name=Reference/Scoreboard Complete P1/P2 Random Stress
-  status=implemented
-  exit_criteria=pending_user_run
-  confirmation=not_yet_run_in_full_regression
+  status=done
+  exit_criteria=passed
+  confirmation=user-confirmed
   changed_files=[
+    mmu_verification/testbench/env/mmu_ref_model.svh,
     mmu_verification/testbench/env/ptw_source_ref_model.svh,
     mmu_verification/testbench/env/ptw_source_sb.svh,
+    mmu_verification/testbench/env/mmu_translation_sb.svh,
     mmu_verification/testbench/test/ptw_tests/ptw_source_directed_base.svh,
     mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh,
     mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh,
@@ -466,7 +469,15 @@ PTW_STAGE_DONE stage=7 name=Reference/Scoreboard Complete P1/P2 Random Stress
     python3 mmu_verification/scripts/ptw_stage7_exit_gate.py --help
       result=blocked_in_local_powershell reason=python3_not_found_in_path,
     python mmu_verification/scripts/ptw_stage7_exit_gate.py --help
-      result=blocked_in_local_powershell reason=python_not_found_in_path
+      result=blocked_in_local_powershell reason=python_not_found_in_path,
+    make -C mmu_verification comp_fast
+      result=passed user_confirmed,
+    make -C mmu_verification regress LIST=simu/ptw_p1_list REGRESS_MODE=run_check REGRESS_NAME=ptw_stage7_p1 REGRESS_SEEDS="707" REGRESS_JOBS=1 REGRESS_FAIL_FAST=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+      result=passed user_confirmed,
+    make -C mmu_verification regress LIST=simu/ptw_random_list REGRESS_MODE=run_check REGRESS_NAME=ptw_stage7_random REGRESS_SEEDS="707" REGRESS_JOBS=1 REGRESS_FAIL_FAST=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+      result=passed user_confirmed,
+    python3 mmu_verification/scripts/ptw_stage7_exit_gate.py --list mmu_verification/simu/ptw_p1_list --list mmu_verification/simu/ptw_random_list --log-dir mmu_verification/output/logs --seed 707 --csv mmu_verification/simu/ptw_source_closure_matrix.csv
+      result=passed user_confirmed
   ]
   implementation_notes=[
     completed Stage7 source ref model precision for current context mirror,
@@ -516,8 +527,44 @@ PTW_STAGE_DONE stage=7 name=Reference/Scoreboard Complete P1/P2 Random Stress
       treated as DUT source functional failures,
     Stage7 random permission cross: 2M/1G random leaf PA is explicitly aligned
       before mapping so the random profile stresses permission/context/source
-      coverage rather than accidental huge-page misalignment
+      coverage rather than accidental huge-page misalignment,
+    test_ptw_pde_satp_old_walk_reupdate_001 SEED=707 first reported a
+      translation scoreboard page-fault mismatch on VA=0x0030a00000,
+    debug conclusion: the original UVM expectation applied generic Sv39
+      invalid/reserved PTE checks too early; RTL TWU gates FST/SCD page-fault
+      terms with leaf_vld and only THD non-leaf/invalid encodings become the
+      terminal page fault,
+    UVM fix: mmu_translation_sb old-context shadow entries were corrected to
+      use typed zero initialization, and mmu_ref_model/translation context
+      handling was aligned to TWU leaf-gated page-fault behavior,
+    Stage7 SATP/process-switch constraint was added: when satp changes for a
+      process switch, LSU must issue an ASID-based tlboper invalidation that
+      triggers PTW abort,
+    the directed SATP old-walk test no longer requires a matching PTW accept
+      before SATP switch as a hard failure; that observation is optional debug
+      evidence because the scenario is still valid when no request reaches PTW
+      before the process switch,
+    compile cleanup fixed ptw_source_directed_base.svh use of SystemVerilog
+      keyword context as an identifier and repaired an incomplete uvm_info macro
+      call in test_ptw_stage7_suite.svh,
+    test_ptw_random_pte_perm_cross_001 SEED=707 first reported LSU_P0 fault
+      and PA mismatches on VA=0x0031004000/0x0031006000/0x0031007000,
+    permission debug conclusion: for R=0,W=1,X=1,MXR=1, TWU may legally allow
+      the refill because X is readable through MXR, but L1TLB hit permission
+      logic still treats W=1,R=0 as a page fault; the UVM model must not use
+      the TWU relaxed rule for L1TLB hit responses,
+    huge-page cross debug conclusion: with MAEE=0, TWU may degrade 1G/2M
+      refills at SysMap region boundaries by replacing lower PPN fields with
+      VPN fields; LSU_P0/P1 mmu_l1dtlb_hit_rd exposes the installed L1DTLB
+      entry PPN, while IFU/PFU paths expand the entry PPN according to pgs,
+    UVM fix: mmu_ref_model now separates TWU walk fault semantics from L1TLB
+      hit permission semantics, models MAEE=0 1G/2M SysMap cross/degrade PPN
+      and page-size effects, keeps default translate() as final-output PPN,
+      and lets LSU translation scoreboard request L1DTLB entry-PPN semantics
   ]
+  source_sb_summary=stage7_exit_passed_user_confirmed PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 unexpected_illegal=0
+  translation_sb_summary=stage7_exit_passed_user_confirmed Translation SB mismatch=0
+  sva_summary=stage7_exit_passed_user_confirmed assert_fail=0 required_cover_gate_passed
   closure_delta=[
     PTW-ADD-010 and PTW-FLOW-022 now have Stage7 satp old-walk re-update
       evidence; PMP cfg clear no-flush remains partial because pmp_regs_update
@@ -548,6 +595,10 @@ PTW_STAGE_DONE stage=7 name=Reference/Scoreboard Complete P1/P2 Random Stress
       directed evidence to close fully,
     Stage8 final report/parser/signoff and consumer evidence list remain out
       of Stage7 scope
+  ]
+  next_stage_blockers=[
+    none for Stage 7 exit; Stage 8 can start from report/parser/signoff and
+      remaining accepted open/waiver cleanup
   ]
 ```
 
@@ -593,5 +644,161 @@ git diff --check -- \
   mmu_verification/simu/ptw_random_list \
   mmu_verification/simu/ptw_source_closure_matrix.csv \
   mmu_verification/scripts/ptw_stage7_exit_gate.py \
+  doc/ptw_uvm_review/ptw_implementation_process.md
+```
+
+## Stage 8 Implementation Record
+
+```text
+PTW_STAGE_DONE stage=8 name=Regression Report Signoff Freeze
+  status=implemented
+  exit_criteria=pending_user_run
+  confirmation=not_yet_user_confirmed
+  changed_files=[
+    mmu_verification/simu/ptw_p0_smoke_list,
+    mmu_verification/simu/ptw_p2_illegal_list,
+    mmu_verification/simu/ptw_random_list,
+    mmu_verification/simu/ptw_consumer_evidence_list,
+    mmu_verification/simu/ptw_source_closure_matrix.csv,
+    mmu_verification/scripts/ptw_stage8_signoff_gate.py,
+    doc/ptw_uvm_review/ptw_source_signoff_report.md,
+    doc/ptw_uvm_review/ptw_implementation_process.md
+  ]
+  tests_run=[
+    CSV_FIELD_CHECK for mmu_verification/simu/ptw_source_closure_matrix.csv
+      result=passed rows=129 fields=15,
+    REPORT_OPEN_CHECK for doc/ptw_uvm_review/ptw_source_signoff_report.md
+      result=passed open_records=59,
+    rg marker checks for PTW_STAGE8_SIGNOFF_REPORT, PTW_SIGNOFF_OPEN,
+      PTW_SIGNOFF_NO_GLOBAL_WAIVER, PTW_SIGNOFF_CLOSURE_MATRIX,
+      obsolete-by-spec legacy freeze tokens, and gate script entry points
+      result=passed,
+    git diff --check -- stage8_touched_files
+      result=passed,
+    python/python3 --version
+      result=blocked_in_local_powershell reason=WindowsApps logon-session error,
+    make -C mmu_verification comp_fast and Stage8 regressions
+      result=not_run_in_local_powershell reason=make_not_available
+  ]
+  implementation_notes=[
+    no temporary phase split plan was needed because Stage8 created fewer than 15 files,
+    no digital IC verification skill was available in the current skill list, so implementation used the staged plan and existing scripts as the source of process,
+    added ptw_p0_smoke_list as a fast P0 source sanity subset while retaining ptw_p0_list as the full P0 gate,
+    separated P2/illegal constraints into ptw_p2_illegal_list so ptw_random_list is random/stress only,
+    added ptw_consumer_evidence_list for downstream L1D/L1I/L2 evidence that cannot close PTW source-side requirements,
+    added ptw_stage8_signoff_gate.py to validate P0 source scoreboard summaries, P0 SVA cover hits, P1/P2/random status, closure CSV integrity, final signoff report markers, open records, legacy freeze, and waiver rules,
+    added ptw_source_signoff_report.md with regression package, flow status, no-waiver statement, consumer-only register, debug semantic freeze, and machine-readable PTW_SIGNOFF_OPEN records,
+    fixed PTW-INFRA rows in ptw_source_closure_matrix.csv to have exactly the frozen 15 CSV fields and Stage8-readable status/action/reason columns
+  ]
+  source_sb_summary=stage8_gate_requires P0 PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0
+  sva_summary=stage8_gate_requires P0 PTW_SVA_COVER hits>0 and assert_fail=0
+  closure_delta=[
+    PTW-INFRA-009 implemented by mmu_verification/scripts/ptw_stage8_signoff_gate.py,
+    final regression lists frozen for p0_smoke, p0_full, p1_directed, p2_illegal, random_stress, and consumer_only roles,
+    PTW-FLOW-001..023 status is reviewable in the signoff report and every open/partial flow has an explicit PTW_SIGNOFF_OPEN owner and next action,
+    waiver register frozen with count=0 and explicit prohibition on global waiver for flg/page_size/ppn/fault_kind/target mismatches,
+    obsolete-by-spec legacy tests are frozen as not counted for PTW source closure,
+    consumer-only evidence is separated from source-side closure in list/report/gate
+  ]
+  open_items=[
+    P0/P1/P2/random/consumer regressions and ptw_stage8_signoff_gate.py must be run in the normal Linux/VCS environment,
+    all open/partial items listed in doc/ptw_uvm_review/ptw_source_signoff_report.md remain open by design and are not waived,
+    no global source waiver exists; any future waiver must be narrow and must not cover flg/page_size/ppn/fault_kind/target mismatches
+  ]
+  next_stage_blockers=[
+    none within Stage8 scope; remaining open items are explicitly tracked as post-Stage8 closure work
+  ]
+```
+
+## Stage 8 Exit Commands
+
+```bash
+make -C mmu_verification comp_fast
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_p0_smoke_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage8_p0_smoke \
+  REGRESS_SEEDS="606" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_p0_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage8_p0_full \
+  REGRESS_SEEDS="606" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_p1_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage8_p1 \
+  REGRESS_SEEDS="707" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_p2_illegal_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage8_p2_illegal \
+  REGRESS_SEEDS="707" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_random_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage8_random \
+  REGRESS_SEEDS="707" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+make -C mmu_verification regress \
+  LIST=simu/ptw_consumer_evidence_list \
+  REGRESS_MODE=run_check \
+  REGRESS_NAME=ptw_stage8_consumer \
+  REGRESS_SEEDS="707" \
+  REGRESS_JOBS=1 \
+  REGRESS_FAIL_FAST=1 \
+  UVM_CONFIG_DB_TRACE=0 \
+  UVM_ERR_ONLY=1
+
+python3 mmu_verification/scripts/ptw_stage8_signoff_gate.py \
+  --p0-smoke-list mmu_verification/simu/ptw_p0_smoke_list \
+  --p0-list mmu_verification/simu/ptw_p0_list \
+  --p1-list mmu_verification/simu/ptw_p1_list \
+  --p2-list mmu_verification/simu/ptw_p2_illegal_list \
+  --random-list mmu_verification/simu/ptw_random_list \
+  --consumer-list mmu_verification/simu/ptw_consumer_evidence_list \
+  --log-dir mmu_verification/output/logs \
+  --p0-seed 606 \
+  --stage7-seed 707 \
+  --consumer-seed 707 \
+  --csv mmu_verification/simu/ptw_source_closure_matrix.csv \
+  --report doc/ptw_uvm_review/ptw_source_signoff_report.md \
+  --legacy doc/ptw_uvm_review/ptw_legacy_test_action_list.md
+
+git diff --check -- \
+  mmu_verification/simu/ptw_p0_smoke_list \
+  mmu_verification/simu/ptw_p0_list \
+  mmu_verification/simu/ptw_p1_list \
+  mmu_verification/simu/ptw_p2_illegal_list \
+  mmu_verification/simu/ptw_random_list \
+  mmu_verification/simu/ptw_consumer_evidence_list \
+  mmu_verification/simu/ptw_source_closure_matrix.csv \
+  mmu_verification/scripts/ptw_stage8_signoff_gate.py \
+  doc/ptw_uvm_review/ptw_source_signoff_report.md \
   doc/ptw_uvm_review/ptw_implementation_process.md
 ```

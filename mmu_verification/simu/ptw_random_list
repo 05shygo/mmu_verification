@@ -1,7 +1,4 @@
-# PTW stage-7 random/P2 constraint list
-# P2 entries prove illegal constraints without issuing illegal DUT stimulus.
+# PTW stage-8 random/stress list
+# P2/illegal constraint entries are frozen separately in ptw_p2_illegal_list.
 
 test_ptw_random_pte_perm_cross_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
-test_ptw_same_id_no_reuse_constraint_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
-test_ptw_bare_mode_no_request_constraint_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
-test_ptw_p2_illegal_constraint_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV

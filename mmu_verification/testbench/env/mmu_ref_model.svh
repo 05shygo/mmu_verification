@@ -15,18 +15,17 @@
 // In Phase 4 the FIFOs are created but not yet connected; tests set CSR
 // mirror fields directly (m_ref.m_mmu_en = 1, etc.) for directed testing.
 //
-// translate() algorithm (Sv39, 3-level walk):
-//   [Decision 1] If !m_mmu_en or satp_mode==0 → passthrough (PA = {1'b0,VA})
-//   [Decision 2] Walk levels 2→1→0:
-//     · PTE[V]=0            → EXC_PAGE_FAULT
-//     · PTE[W]=1, PTE[R]=0  → EXC_PAGE_FAULT (RISC-V W/O reserved)
-//     · PTE[R]||PTE[X]      → leaf (current level)
-//     · else                → pointer → recurse next level
-//   [Decision 3] At leaf:
-//     · Privilege check (U bit vs priv_mode)
-//     · Permission check (R/W/X per acc_type_e)
-//     · A/D bit enforcement (A=0 faults; store with D=0 faults)
-//     · Assemble PA from leaf PPN + VA page offset
+// translate() algorithm (Sv39, RTL-aligned 3-level walk):
+//   [Decision 1] If effective MMU is disabled -> passthrough.
+//   [Decision 2] Walk levels 2->1->0.  FST/SCD page-fault terms are gated by
+//                TWU leaf_vld, so malformed non-leaf entries there are followed
+//                as pointers.  THD non-leaf/invalid encodings fault.
+//   [Decision 3] TWU leaf checks decide whether a refill exists.  L1TLB hit
+//                permission is then applied for observable LSU/IFU responses;
+//                this is stricter than TWU for W=1,R=0,X=1,MXR=1.
+//   [Decision 4] MAEE=0 SysMap cross can degrade 1G/2M refill entries.
+//                Default callers get page-size-expanded output PPN; LSU_P0/P1
+//                can request the L1DTLB entry PPN that mmu_l1dtlb_hit_rd drives.
 // =============================================================================
 `ifndef MMU_REF_MODEL_SVH
 `define MMU_REF_MODEL_SVH
@@ -241,6 +240,147 @@ class mmu_ref_model extends uvm_component;
     return fault;
   endfunction
 
+  protected function bit l1tlb_leaf_page_fault(
+    input pte_t      pte,
+    input acc_type_e acc,
+    input bit [1:0]  eff_priv,
+    input bit        mxr,
+    input bit        sum
+  );
+    bit fault;
+    fault = 1'b0;
+
+    if (!pte[PTE_V])
+      fault = 1'b1;
+    // L1TLB hit permission logic treats W=1,R=0 as a page fault even when
+    // TWU allowed the refill because MXR made an executable page readable.
+    if (pte[PTE_W] && !pte[PTE_R])
+      fault = 1'b1;
+
+    case (acc)
+      ACC_FETCH: begin
+        if (!pte[PTE_X])
+          fault = 1'b1;
+      end
+      ACC_LOAD: begin
+        if (!pte[PTE_R] && !(mxr && pte[PTE_X]))
+          fault = 1'b1;
+      end
+      ACC_PFU: begin
+        // PFU does not consume L1DTLB hit R/W/X permission in this model.
+      end
+      ACC_STORE: begin
+        if (!pte[PTE_W])
+          fault = 1'b1;
+      end
+    endcase
+
+    if ((eff_priv == PRIV_S) && pte[PTE_U] && !sum)
+      fault = 1'b1;
+    if ((eff_priv == PRIV_U) && !pte[PTE_U])
+      fault = 1'b1;
+    if (!pte[PTE_A])
+      fault = 1'b1;
+    if ((acc == ACC_STORE) && !pte[PTE_D])
+      fault = 1'b1;
+
+    return fault;
+  endfunction
+
+  protected function int rtl_default_sysmap_region(input ppn_t ppn, output bit hit);
+    hit = 1'b1;
+`ifdef SYSMAP_BASE_ADDR0
+    if (ppn < `SYSMAP_BASE_ADDR0) return 0;
+    if (ppn < `SYSMAP_BASE_ADDR1) return 1;
+    if (ppn < `SYSMAP_BASE_ADDR2) return 2;
+    if (ppn < `SYSMAP_BASE_ADDR3) return 3;
+    if (ppn < `SYSMAP_BASE_ADDR4) return 4;
+    if (ppn < `SYSMAP_BASE_ADDR5) return 5;
+    if (ppn < `SYSMAP_BASE_ADDR6) return 6;
+    if (ppn < `SYSMAP_BASE_ADDR7) return 7;
+`else
+    if (ppn < 28'h0012100) return 0;
+    if (ppn < 28'h0080000) return 1;
+    if (ppn < 28'h00E0000) return 2;
+    if (ppn < 28'h0200000) return 3;
+    if (ppn < 28'h0400000) return 4;
+    if (ppn < 28'h0800000) return 5;
+    if (ppn < 28'h1000000) return 6;
+    if (ppn < 28'hF000000) return 7;
+`endif
+    hit = 1'b0;
+    return -1;
+  endfunction
+
+  protected function bit rtl_same_sysmap_region(input ppn_t first_ppn, input ppn_t last_ppn);
+    bit first_hit;
+    bit last_hit;
+    int first_region;
+    int last_region;
+
+    first_region = rtl_default_sysmap_region(first_ppn, first_hit);
+    last_region = rtl_default_sysmap_region(last_ppn, last_hit);
+    return (first_hit == last_hit) && (first_region == last_region);
+  endfunction
+
+  protected function ppn_t tlb_output_ppn_from_entry(
+    input va_t      va,
+    input ppn_t     entry_ppn,
+    input bit [2:0] pgs
+  );
+    if (pgs[2])
+      return {entry_ppn[PPN_WIDTH-1:18], va[29:12]};
+    if (pgs[1])
+      return {entry_ppn[PPN_WIDTH-1:9], va[20:12]};
+    return entry_ppn;
+  endfunction
+
+  protected function ppn_t l1dtlb_refill_ppn(
+    input va_t  va,
+    input ppn_t leaf_ppn,
+    input int   level,
+    input bit   maee,
+    output bit [2:0] refill_pgs
+  );
+    ppn_t ppn;
+    ppn_t first_ppn;
+    ppn_t last_ppn;
+
+    ppn = leaf_ppn;
+    unique case (level)
+      2: refill_pgs = 3'b100;
+      1: refill_pgs = 3'b010;
+      default: refill_pgs = 3'b001;
+    endcase
+
+    if (maee)
+      return ppn;
+
+    if (level == 2) begin
+      first_ppn = leaf_ppn;
+      last_ppn = {leaf_ppn[PPN_WIDTH-1:18], 18'h3ffff};
+      if (!rtl_same_sysmap_region(first_ppn, last_ppn)) begin
+        ppn = {leaf_ppn[PPN_WIDTH-1:18], va[29:21], 9'b0};
+        refill_pgs = 3'b010;
+        first_ppn = ppn;
+        last_ppn = {ppn[PPN_WIDTH-1:9], 9'h1ff};
+        if (!rtl_same_sysmap_region(first_ppn, last_ppn)) begin
+          ppn = {leaf_ppn[PPN_WIDTH-1:18], va[29:12]};
+          refill_pgs = 3'b001;
+        end
+      end
+    end else if (level == 1) begin
+      first_ppn = leaf_ppn;
+      last_ppn = {leaf_ppn[PPN_WIDTH-1:9], 9'h1ff};
+      if (!rtl_same_sysmap_region(first_ppn, last_ppn)) begin
+        ppn = {leaf_ppn[PPN_WIDTH-1:9], va[20:12]};
+        refill_pgs = 3'b001;
+      end
+    end
+
+    return ppn;
+  endfunction
+
   protected function xlation_rsp_t translate_twu_core(
     input va_t       va,
     input acc_type_e acc,
@@ -375,38 +515,17 @@ class mmu_ref_model extends uvm_component;
   // =========================================================================
   // Core API: translate()
   // =========================================================================
-  // Perform a software Sv39 3-level page walk for the given VA and access type.
-  //
-  // [Decision 1] Passthrough conditions:
-  //   a) m_mmu_en == 0 (satp_mode == 0 or M-mode): PA = {1'b0, VA[38:0]}
-  //   b) M-mode with MPRV=0: passthrough (access uses M-mode effective priv)
-  //
-  // [Decision 2] Select active SATP:
-  //   m_satp_sel=0 → satp0; m_satp_sel=1 → satp1
-  //
-  // [Decision 3] 3-level walk (level 2 → 1 → 0):
-  //   · pte_addr = active_ppn_page_base + vpn_level(va, level) * 8
-  //   · pte = m_pt.m_builder.read_pte_at(pte_addr)
-  //   · V=0 → EXC_PAGE_FAULT
-  //   · W=1, R=0 (reserved) → EXC_PAGE_FAULT
-  //   · R=1 or X=1 → leaf (check permissions)
-  //   · else → pointer (continue to next level)
-  //
-  // [Decision 4] Leaf permission checks:
-  //   · U-bit vs privilege mode (SUM handling)
-  //   · R/W/X permission vs acc_type_e (MXR for ACC_LOAD with X=1)
-  //   · A/D bit: A=0 faults all accesses; D=0 faults stores
-  //
-  // [Decision 5] Assemble PA:
-  //   level 0 (4K): PA[39:12] = leaf_ppn[27:0]
-  //   level 1 (2M): PA[39:12] = {leaf_ppn[27:9],  VA[20:12]}
-  //   level 2 (1G): PA[39:12] = {leaf_ppn[27:18], VA[29:12]}
-  //   Misaligned superpages (leaf lower PPN bits non-zero) fault per Sv39.
-  //
-  // Returns xlation_rsp_t with ppn, exc, and attribute bits.
-  // sec/ca/buf_en/sh/so are set to 0 in Phase 4 (Phase 5: drive from SysMap)
+  // Perform the RTL-facing Sv39 walk for scoreboards.  return_l1dtlb_entry_ppn
+  // selects the LSU_P0/P1 observable PPN path: mmu_l1dtlb_hit_rd drives the
+  // installed entry PPN directly, while IFU/PFU/L2 paths expand the entry with
+  // VA VPN bits according to the refill page size.
   // =========================================================================
-  virtual function xlation_rsp_t translate(va_t va, acc_type_e acc, int pmp_port_idx = -1);
+  virtual function xlation_rsp_t translate(
+    va_t va,
+    acc_type_e acc,
+    int pmp_port_idx = -1,
+    bit return_l1dtlb_entry_ppn = 1'b0
+  );
     xlation_rsp_t rsp;
     ppn_t   active_ppn;
     bit [3:0] active_mode;
@@ -489,7 +608,9 @@ class mmu_ref_model extends uvm_component;
       automatic pte_t  pte;
       automatic bit    is_leaf;
       automatic ppn_t  leaf_ppn;
+      automatic ppn_t  entry_ppn;
       automatic ppn_t  final_ppn;
+      automatic bit [2:0] refill_pgs;
 
       is_leaf = 0;
 
@@ -504,155 +625,50 @@ class mmu_ref_model extends uvm_component;
           $sformatf("  walk L%0d: vpn=0x%03h pte_addr=0x%010h pte=0x%016h",
             level, vpn_idx, pte_addr, pte), UVM_HIGH)
 
-        // ---- Check V bit -----------------------------------------------
-        // Decision: PTE[V]=0 → page fault
-        if (!pte[PTE_V]) begin
-          rsp.exc = EXC_PAGE_FAULT;
-          m_n_page_faults++;
-          `uvm_info(get_type_name(),
-            $sformatf("translate PAGE_FAULT (V=0): va=0x%010h L%0d pte_addr=0x%010h",
-              va, level, pte_addr), UVM_MEDIUM)
-          return rsp;
-        end
-
-        // ---- Check for RTL write-only encoding -------------------------
-        // TWU allows W=1,R=0,X=1 when MXR makes X readable.
-        if (pte[PTE_W] && !(pte[PTE_R] || (m_mxr && pte[PTE_X]))) begin
-          rsp.exc = EXC_PAGE_FAULT;
-          m_n_page_faults++;
-          `uvm_info(get_type_name(),
-            $sformatf("translate PAGE_FAULT (write-only): va=0x%010h L%0d",
-              va, level), UVM_MEDIUM)
-          return rsp;
-        end
-
         // ---- Leaf detection --------------------------------------------
-        // Decision: R=1 or X=1 → leaf PTE at this level
-        if (pte[PTE_R] || pte[PTE_X]) begin
+        // RTL TWU treats FST/SCD malformed non-leaf entries as next-level
+        // pointers and only applies PTE permission/alignment checks to a valid
+        // leaf.  The final L1TLB hit permission check below is intentionally
+        // stricter for W=1,R=0 than the TWU walk check.
+        if (pte[PTE_V] && (pte[PTE_R] || pte[PTE_X])) begin
           is_leaf  = 1;
           leaf_ppn = pte[PTE_PPN_LSB +: PPN_WIDTH];
 
-          // ---- [Decision 4] Permission checks -------------------------
-          // Privilege vs U-bit
+          // ---- [Decision 4] TWU walk and L1TLB hit permission checks ---
           begin
             bit [1:0] eff_priv = m_priv;
             if (m_mprv && (acc != ACC_FETCH)) eff_priv = m_mpp;
 
-            if ((eff_priv == PRIV_U) && !pte[PTE_U]) begin
-              // U-mode accessing S-page → page fault
+            if (twu_leaf_page_fault(pte, acc, level, eff_priv, m_mxr, m_sum)) begin
               rsp.exc = EXC_PAGE_FAULT;
               m_n_page_faults++;
               `uvm_info(get_type_name(),
-                $sformatf("translate PAGE_FAULT (U-mode,U=0): va=0x%010h",va),
+                $sformatf("translate PAGE_FAULT (TWU leaf check): va=0x%010h L%0d pte=0x%016h acc=%s",
+                  va, level, pte, acc.name()),
                 UVM_MEDIUM)
               return rsp;
             end
-            if ((eff_priv == PRIV_S) && pte[PTE_U] && !m_sum) begin
-              // S-mode accessing U-page without SUM → page fault
+
+            if (l1tlb_leaf_page_fault(pte, acc, eff_priv, m_mxr, m_sum)) begin
               rsp.exc = EXC_PAGE_FAULT;
               m_n_page_faults++;
               `uvm_info(get_type_name(),
-                $sformatf("translate PAGE_FAULT (S-mode,U=1,SUM=0): va=0x%010h",va),
+                $sformatf("translate PAGE_FAULT (L1TLB hit permission): va=0x%010h L%0d pte=0x%016h acc=%s",
+                  va, level, pte, acc.name()),
                 UVM_MEDIUM)
               return rsp;
             end
-          end
-
-          // R/W/X permission vs access type
-          // Decision branch: check permission per acc_type_e
-          case (acc)
-            ACC_FETCH: begin
-              // Instruction fetch requires X=1
-              if (!pte[PTE_X]) begin
-                rsp.exc = EXC_PAGE_FAULT;
-                m_n_page_faults++;
-                `uvm_info(get_type_name(),
-                  $sformatf("translate PAGE_FAULT (FETCH,X=0): va=0x%010h",va),
-                  UVM_MEDIUM)
-                return rsp;
-              end
-            end
-            ACC_LOAD: begin
-              // Load: R=1; or MXR=1 and X=1 (readable via execute-only mapping)
-              if (!pte[PTE_R] && !(m_mxr && pte[PTE_X])) begin
-                rsp.exc = EXC_PAGE_FAULT;
-                m_n_page_faults++;
-                `uvm_info(get_type_name(),
-                  $sformatf("translate PAGE_FAULT (LOAD,R=0): va=0x%010h",va),
-                  UVM_MEDIUM)
-                return rsp;
-              end
-            end
-            ACC_PFU: begin
-              // PFU follows TWU: no R/W/X permission term; write-only, U/S,
-              // A-bit, and alignment checks still apply.
-            end
-            ACC_STORE: begin
-              // Store follows the RTL TWU formula: W=1 is sufficient here;
-              // write-only reserved encodings are handled by the earlier
-              // R=0,W=1 check.
-              if (!pte[PTE_W]) begin
-                rsp.exc = EXC_PAGE_FAULT;
-                m_n_page_faults++;
-                `uvm_info(get_type_name(),
-                  $sformatf("translate PAGE_FAULT (STORE,W=0): va=0x%010h",va),
-                  UVM_MEDIUM)
-                return rsp;
-              end
-            end
-          endcase
-
-          // A/D bit check: A=0 faults all accesses; D=0 faults stores.
-          if (!pte[PTE_A]) begin
-            rsp.exc = EXC_PAGE_FAULT;
-            m_n_page_faults++;
-            `uvm_info(get_type_name(),
-              $sformatf("translate PAGE_FAULT (A=0): va=0x%010h",va),
-              UVM_MEDIUM)
-            return rsp;
-          end
-          if ((acc == ACC_STORE) && !pte[PTE_D]) begin
-            rsp.exc = EXC_PAGE_FAULT;
-            m_n_page_faults++;
-            `uvm_info(get_type_name(),
-              $sformatf("translate PAGE_FAULT (STORE,D=0): va=0x%010h",va),
-              UVM_MEDIUM)
-            return rsp;
           end
 
           // ---- [Decision 5] Assemble PA --------------------------------
-          // Sv39 superpages splice lower PA PPN bits from the VA VPN fields.
-          // The leaf PTE must therefore be aligned at the corresponding level.
-          final_ppn = leaf_ppn;
-          unique case (level)
-            2: begin
-              if (leaf_ppn[17:0] != '0) begin
-                rsp.exc = EXC_PAGE_FAULT;
-                m_n_page_faults++;
-                `uvm_info(get_type_name(),
-                  $sformatf("translate PAGE_FAULT (misaligned 1G leaf): va=0x%010h leaf_ppn=0x%07h",
-                    va, leaf_ppn),
-                  UVM_MEDIUM)
-                return rsp;
-              end
-              final_ppn = {leaf_ppn[PPN_WIDTH-1:18], va[29:12]};
-            end
-            1: begin
-              if (leaf_ppn[8:0] != '0) begin
-                rsp.exc = EXC_PAGE_FAULT;
-                m_n_page_faults++;
-                `uvm_info(get_type_name(),
-                  $sformatf("translate PAGE_FAULT (misaligned 2M leaf): va=0x%010h leaf_ppn=0x%07h",
-                    va, leaf_ppn),
-                  UVM_MEDIUM)
-                return rsp;
-              end
-              final_ppn = {leaf_ppn[PPN_WIDTH-1:9], va[20:12]};
-            end
-            default: begin
-              final_ppn = leaf_ppn;
-            end
-          endcase
+          // TWU installs a refill entry PPN.  When MAEE=0, 1G/2M refills may be
+          // degraded at SysMap boundaries by replacing lower PPN fields with
+          // VPN fields.  IFU/PFU compare against the page-size-expanded output
+          // PPN, while LSU_P0/P1 L1DTLB hit_rd exposes the installed entry PPN.
+          entry_ppn = l1dtlb_refill_ppn(va, leaf_ppn, level, m_maee, refill_pgs);
+          final_ppn = return_l1dtlb_entry_ppn
+                    ? entry_ppn
+                    : tlb_output_ppn_from_entry(va, entry_ppn, refill_pgs);
           rsp.ppn = final_ppn;
 
           // PMP deny is modeled as fault-class outcome so translation_sb can
@@ -671,8 +687,9 @@ class mmu_ref_model extends uvm_component;
           end
 
           `uvm_info(get_type_name(),
-            $sformatf("translate OK: va=0x%010h → ppn=0x%07h leaf_ppn=0x%07h L%0d pte=0x%016h",
-              va, rsp.ppn, leaf_ppn, level, pte), UVM_MEDIUM)
+            $sformatf("translate OK: va=0x%010h -> ppn=0x%07h leaf_ppn=0x%07h entry_ppn=0x%07h L%0d refill_pgs=0x%0h maee=%0b l1d_entry_mode=%0b pte=0x%016h",
+              va, rsp.ppn, leaf_ppn, entry_ppn, level, refill_pgs, m_maee,
+              return_l1dtlb_entry_ppn, pte), UVM_MEDIUM)
           return rsp;
         end
 

@@ -766,7 +766,7 @@ class mmu_translation_sb extends uvm_scoreboard;
       return ref_rsp;
     end
 
-    ref_rsp = m_ref.translate(va, acc, pmp_port_idx);
+    ref_rsp = m_ref.translate(va, acc, pmp_port_idx, 1'b1);
     return ref_rsp;
   endfunction
 

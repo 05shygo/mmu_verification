@@ -329,6 +329,43 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(8);
   endtask
 
+  protected task wait_l1d_expt_writes(
+    string ctx,
+    int unsigned target_count,
+    int unsigned max_cycles = 524288
+  );
+    int unsigned seen;
+    seen = 0;
+    if (target_count == 0)
+      return;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for exception writes"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (seen < target_count) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_expt_wr0_vld)
+            seen++;
+          if (m_probe_vif.mon_cb.l1d_expt_wr1_vld)
+            seen++;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (seen < target_count)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for %0d L1DTLB exception writes, seen=%0d",
+              ctx, target_count, seen))
+        seen = target_count;
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
   protected task wait_pipe0_terminal(
     string ctx,
     bit expect_success,
@@ -1142,7 +1179,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     send_lsu_item(LSU_PIPE1, va_page(47), 7'd7, 1'b1);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_fault_refill_before_replay", 524288, 16);
     raw_pipe01(va_page(46), va_page(47), 7'd6, 7'd7, 1'b0, 1'b1);
-    wait_lsu_cycles(80);
+    wait_l1d_expt_writes("l1dtlb_fault_refill_second_expt_entries", 2);
+    // The raw pair above creates a fresh pair of faulted MB entries.  Model the
+    // LSU replay that consumes the L1DTLB exception CAM before final idle.
+    send_lsu_item(LSU_PIPE0, va_page(46), 7'd6, 1'b0);
+    send_lsu_item(LSU_PIPE1, va_page(47), 7'd7, 1'b1);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_fault_refill_after_second_replay", 524288, 16);
     send_rtu_flush();
     configure_ptw_delay(1, 4);
   endtask

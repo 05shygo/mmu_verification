@@ -622,6 +622,25 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif.driver_cb.lsu_mmu_abort0 <= 1'b0;
   endtask
 
+  protected task raw_pipe1(
+    va_t va,
+    bit [6:0] iid,
+    bit st_inst = 1'b1,
+    bit abort = 1'b0
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va1      <= canon_va(va);
+    m_lsu_vif.driver_cb.lsu_mmu_id1      <= iid;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst1 <= st_inst;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1   <= abort;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf1   <= vabuf_for(va);
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1 <= 1'b0;
+  endtask
+
   protected task raw_pipe0_back_to_back(
     va_t va0,
     bit [6:0] iid0,
@@ -1175,6 +1194,22 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     map_special_page(46, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
     map_special_page(47, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0);
     configure_ptw_delay(8, 24);
+    if (tc_id == "DTLB_MB_PGFLT_001") begin
+      raw_pipe0(va_page(46), 7'd6, 1'b0);
+      wait_l1d_expt_write("l1dtlb_mb_pgflt_p0_entry");
+      raw_pipe0(va_page(46), 7'd6, 1'b0);
+      wait_lsu_cycles(8);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_mb_pgflt_p0_consumed", 524288, 16);
+
+      raw_pipe1(va_page(47), 7'd7, 1'b1);
+      wait_l1d_expt_write("l1dtlb_mb_pgflt_p1_entry");
+      raw_pipe1(va_page(47), 7'd7, 1'b1);
+      wait_lsu_cycles(8);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_mb_pgflt_p1_consumed", 524288, 16);
+
+      configure_ptw_delay(1, 4);
+      return;
+    end
     send_lsu_item(LSU_PIPE0, va_page(46), 7'd6, 1'b0);
     send_lsu_item(LSU_PIPE1, va_page(47), 7'd7, 1'b1);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_fault_refill_before_replay", 524288, 16);

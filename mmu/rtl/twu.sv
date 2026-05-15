@@ -85,7 +85,7 @@ module twu #(
     output logic [ID_WIDTH-1:0]    twu_mbuf_id,
     output logic [PTE_LEVEL-1:0]   twu_mbuf_lvl,
     output logic [3:0]             twu_mbuf_twu_idx,
-    output logic [4:0]             twu_mbuf_pmpflg,
+    output logic [3:0]             twu_mbuf_pmpflg,
 //output logic		twu_mbuf_mask,
 
 //!******************************************
@@ -1317,28 +1317,28 @@ always_comb begin
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = thd_pmp_vpn[VPN_WIDTH-1:0];
 			twu_mbuf_type[TYPE_WIDTH-1:0] = thd_pmp_type[TYPE_WIDTH-1:0];
 			twu_mbuf_id[ID_WIDTH-1:0] = thd_pmp_id[ID_WIDTH-1:0];
-			twu_mbuf_pmpflg[4:0] = pmp_mmu_flg[4:0];
+			twu_mbuf_pmpflg[3:0] = pmp_mmu_flg[3:0];
 		end	
 		3'b010	: begin
 			twu_mbuf_paddr[PADDR_WIDTH-1:0] = scd_pmp_pa[PADDR_WIDTH-1:0];
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = scd_pmp_vpn[VPN_WIDTH-1:0];
 			twu_mbuf_type[TYPE_WIDTH-1:0] = scd_pmp_type[TYPE_WIDTH-1:0];
 			twu_mbuf_id[ID_WIDTH-1:0] = scd_pmp_id[ID_WIDTH-1:0];
-			twu_mbuf_pmpflg[4:0] = pmp_mmu_flg[4:0];
+			twu_mbuf_pmpflg[3:0] = pmp_mmu_flg[3:0];
 		end
 		3'b100	: begin
 			twu_mbuf_paddr[PADDR_WIDTH-1:0] = fst_pmp_pa[PADDR_WIDTH-1:0];
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = fst_pmp_vpn[VPN_WIDTH-1:0];
 			twu_mbuf_type[TYPE_WIDTH-1:0] = fst_pmp_type[TYPE_WIDTH-1:0];
 			twu_mbuf_id[ID_WIDTH-1:0] = fst_pmp_id[ID_WIDTH-1:0];
-			twu_mbuf_pmpflg[4:0] = pmp_mmu_flg[4:0];
+			twu_mbuf_pmpflg[3:0] = pmp_mmu_flg[3:0];
 		end
 		default : begin
 			twu_mbuf_paddr[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = {VPN_WIDTH{1'b0}};
 			twu_mbuf_type[TYPE_WIDTH-1:0] = {TYPE_WIDTH{1'b0}};
 			twu_mbuf_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
-			twu_mbuf_pmpflg[4:0] = 5'b0;
+			twu_mbuf_pmpflg[3:0] = 4'b0;
 		end
 	endcase
 end

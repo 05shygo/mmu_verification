@@ -45,7 +45,7 @@ module PDE_cache #(
     input  logic [PTE_LEVEL-2:0]  mbuf_cache_upd_lvl,
     input  logic [PPN_WIDTH-1:0]  mbuf_cache_upd_ppn,
     input  logic [VPN_WIDTH-1:0]  mbuf_cache_upd_vpn,
-    input  logic [4:0]            mbuf_cache_upd_pmpflg,
+    input  logic [3:0]            mbuf_cache_upd_pmpflg,
 
 //!******************************************
 //! Regs Request
@@ -194,7 +194,7 @@ generate
 		.L1PDE_entry_before_upd_vpn	    (mbuf_cache_upd_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)]	),
 		.L1PDE_upd_vpn					(mbuf_cache_upd_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)]	),
 		.L1PDE_upd_ppn					(mbuf_cache_upd_ppn[PPN_WIDTH-1:0]   ),
-		.L1PDE_upd_pmpflg				(mbuf_cache_upd_pmpflg[4:0]   ),
+		.L1PDE_upd_pmpflg				(mbuf_cache_upd_pmpflg[3:0]   ),
 		.L1PDE_entry_before_upd_hit	    (L1PDE_entry_before_upd_hit[L1PDE_ent]	),
 
 		.L1PDE_entry_ppn				(L1PDE_entry_ppn[L1PDE_ent] ),
@@ -232,7 +232,7 @@ generate
 		.L2PDE_entry_before_upd_vpn	    (mbuf_cache_upd_vpn[VPN_WIDTH-1:VPN_PERLEL]	),
 		.L2PDE_upd_vpn					(mbuf_cache_upd_vpn[VPN_WIDTH-1:VPN_PERLEL]	),
 		.L2PDE_upd_ppn					(mbuf_cache_upd_ppn[PPN_WIDTH-1:0]   ),
-		.L2PDE_upd_pmpflg				(mbuf_cache_upd_pmpflg[4:0]   ),
+		.L2PDE_upd_pmpflg				(mbuf_cache_upd_pmpflg[3:0]   ),
 		.L2PDE_entry_before_upd_hit	    (L2PDE_entry_before_upd_hit[L2PDE_ent]	),
 
 		.L2PDE_entry_ppn				(L2PDE_entry_ppn[L2PDE_ent] ),

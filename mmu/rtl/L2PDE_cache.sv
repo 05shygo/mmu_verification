@@ -24,7 +24,7 @@ module L2PDE_cache #(
     output logic                 L2PDE_entry_before_upd_hit,
     input  logic [TAG_WIDTH-1:0] L2PDE_upd_vpn,
     input  logic [PPN_WIDTH-1:0] L2PDE_upd_ppn,
-    input  logic [4:0]           L2PDE_upd_pmpflg,
+    input  logic [3:0]           L2PDE_upd_pmpflg,
 
     output logic [PPN_WIDTH-1:0] L2PDE_entry_ppn,
     output logic                 L2PDE_entry_vld,
@@ -48,7 +48,7 @@ logic                 fetch_type        ;
 logic                 load_type         ;
 logic                 store_type        ;
 logic                 pref_type         ;
-logic [4:0]           L2PDE_pmpflg      ;
+logic [3:0]           L2PDE_pmpflg      ;
 
 
 assign L2PDE_entry_clk_en = regs_ptw_clr | L2PDE_entry_upd;
@@ -90,11 +90,11 @@ always @(posedge L2PDE_entry_clk or negedge cpurst_b)begin
     if(!cpurst_b)begin
 		L2PDE_tag[TAG_WIDTH-1:0] <= {TAG_WIDTH{1'b0}};
 		L2PDE_ppn[PPN_WIDTH-1:0] <= {PPN_WIDTH{1'b0}};
-		L2PDE_pmpflg[4:0] <= 5'b0;
+		L2PDE_pmpflg[3:0] <= 4'b0;
     end else if(L2PDE_entry_upd)begin
 		L2PDE_tag[TAG_WIDTH-1:0] <= L2PDE_upd_vpn[TAG_WIDTH-1:0];
 		L2PDE_ppn[PPN_WIDTH-1:0] <= L2PDE_upd_ppn[PPN_WIDTH-1:0];
-		L2PDE_pmpflg[4:0] <= L2PDE_upd_pmpflg[4:0];
+		L2PDE_pmpflg[3:0] <= L2PDE_upd_pmpflg[3:0];
 	end
 end
 

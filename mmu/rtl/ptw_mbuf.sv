@@ -37,7 +37,7 @@ module ptw_mbuf #(
     input  logic [3:0][ID_WIDTH-1:0]    twu_mbuf_id,
     input  logic [3:0][PTE_LEVEL-1:0]   twu_mbuf_lvl,
     input  logic [3:0][3:0]             twu_mbuf_twu_idx,
-    input  logic [3:0][4:0]             twu_mbuf_pmpflg,
+    input  logic [3:0][3:0]             twu_mbuf_pmpflg,
 //input logic	 [3:0]      twu_mbuf_mask,
 
 //!******************************************
@@ -70,7 +70,7 @@ module ptw_mbuf #(
     output logic [PPN_WIDTH-1:0]        mbuf_cache_upd_ppn,
     output logic [PTE_LEVEL-2:0]        mbuf_cache_upd_lvl,
     output logic [VPN_WIDTH-1:0]        mbuf_cache_upd_vpn,
-    output logic [4:0]                  mbuf_cache_upd_pmpflg,
+    output logic [3:0]                  mbuf_cache_upd_pmpflg,
 
     input  logic                        tlboper_ptw_abort,
     input  logic [3:0][PTE_LEVEL-1:0]   twu_data_ready,
@@ -175,10 +175,10 @@ logic [MBUF_ENTRY_NUM-1:0]  mbuf_ptr_one_reg;
 logic                       mmu_lsu_data_req_fst_time;
 logic                       tlboper_ptw_abort_reg;
 //logic   [TYPE_WIDTH-1:0]	    mbuf_bus_error_type                 ;
-logic [4:0]                 mbuf_upd_pmpflg;
-logic [MBUF_ENTRY_NUM-1:0][4:0]                 mbuf_entry_pmpflg;
-logic [4:0]                 pde_updata_pmpflg;
-logic [4:0]                 mbuf_twu_pmpflg;
+logic [3:0]                 mbuf_upd_pmpflg;
+logic [MBUF_ENTRY_NUM-1:0][3:0]                 mbuf_entry_pmpflg;
+logic [3:0]                 pde_updata_pmpflg;
+logic [3:0]                 mbuf_twu_pmpflg;
 
 assign mbuf_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
@@ -264,7 +264,7 @@ always_comb begin
             mbuf_upd_id[ID_WIDTH-1:0] = twu_mbuf_id[3][ID_WIDTH-1:0];
             mbuf_upd_twu_idx[3:0] = twu_mbuf_twu_idx[3][3:0];
             mbuf_upd_lvl[PTE_LEVEL-1:0] = twu_mbuf_lvl[3][PTE_LEVEL-1:0];
-            mbuf_upd_pmpflg[4:0] = twu_mbuf_pmpflg[3][4:0];
+            mbuf_upd_pmpflg[3:0] = twu_mbuf_pmpflg[3][3:0];
 		end
 		4'b0100 : begin
 			mbuf_upd_padder[PADDR_WIDTH-1:0] = twu_mbuf_paddr[2][PADDR_WIDTH-1:0];
@@ -273,7 +273,7 @@ always_comb begin
             mbuf_upd_id[ID_WIDTH-1:0] = twu_mbuf_id[2][ID_WIDTH-1:0];
             mbuf_upd_twu_idx[3:0] = twu_mbuf_twu_idx[2][3:0];
             mbuf_upd_lvl[PTE_LEVEL-1:0] = twu_mbuf_lvl[2][PTE_LEVEL-1:0];
-            mbuf_upd_pmpflg[4:0] = twu_mbuf_pmpflg[2][4:0];
+            mbuf_upd_pmpflg[3:0] = twu_mbuf_pmpflg[2][3:0];
 		end
 		4'b0010 : begin
 			mbuf_upd_padder[PADDR_WIDTH-1:0] = twu_mbuf_paddr[1][PADDR_WIDTH-1:0];
@@ -282,7 +282,7 @@ always_comb begin
             mbuf_upd_id[ID_WIDTH-1:0] = twu_mbuf_id[1][ID_WIDTH-1:0];
             mbuf_upd_twu_idx[3:0] = twu_mbuf_twu_idx[1][3:0];
             mbuf_upd_lvl[PTE_LEVEL-1:0] = twu_mbuf_lvl[1][PTE_LEVEL-1:0];
-            mbuf_upd_pmpflg[4:0] = twu_mbuf_pmpflg[1][4:0];
+            mbuf_upd_pmpflg[3:0] = twu_mbuf_pmpflg[1][3:0];
 		end
 		4'b0001 : begin
 			mbuf_upd_padder[PADDR_WIDTH-1:0] = twu_mbuf_paddr[0][PADDR_WIDTH-1:0];
@@ -291,7 +291,7 @@ always_comb begin
             mbuf_upd_id[ID_WIDTH-1:0] = twu_mbuf_id[0][ID_WIDTH-1:0];
             mbuf_upd_twu_idx[3:0] = twu_mbuf_twu_idx[0][3:0];
             mbuf_upd_lvl[PTE_LEVEL-1:0] = twu_mbuf_lvl[0][PTE_LEVEL-1:0];
-            mbuf_upd_pmpflg[4:0] = twu_mbuf_pmpflg[0][4:0];
+            mbuf_upd_pmpflg[3:0] = twu_mbuf_pmpflg[0][3:0];
 		end
 		default : begin
 			mbuf_upd_padder[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
@@ -300,7 +300,7 @@ always_comb begin
             mbuf_upd_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
             mbuf_upd_twu_idx[3:0] = 4'b0;
             mbuf_upd_lvl[PTE_LEVEL-1:0] = {PTE_LEVEL{1'b0}};
-            mbuf_upd_pmpflg[4:0] = 5'b0;
+            mbuf_upd_pmpflg[3:0] = 4'b0;
 		end
 	endcase
 end
@@ -569,7 +569,7 @@ generate
 			.mbuf_upd_id				(mbuf_upd_id[ID_WIDTH-1:0]					 ),
 			.mbuf_upd_twu_idx			(mbuf_upd_twu_idx[3:0]				 		 ),
 			.mbuf_upd_lvl				(mbuf_upd_lvl[PTE_LEVEL-1:0]				 ),
-			.mbuf_upd_pmpflg			(mbuf_upd_pmpflg[4:0]					 	 ),
+			.mbuf_upd_pmpflg			(mbuf_upd_pmpflg[3:0]					 	 ),
 			.twu_data_ready             (twu_data_ready                              ),
             .write_back_grant           (write_back_grant[MBUF_ent]                  ),
             .mbuf_entry_bus_err_req_mask(mbuf_entry_bus_err_req_mask                 ),
@@ -673,7 +673,7 @@ always_comb begin
 			mbuf_twu_id[ID_WIDTH-1:0] = mbuf_entry_id[i];
 			mbuf_twu_idx[3:0] = mbuf_entry_twu_idx[i];
 			mbuf_twu_lvl[PTE_LEVEL-1:0] = mbuf_entry_lvl[i];
-			mbuf_twu_pmpflg[4:0] = mbuf_entry_pmpflg[i];
+			mbuf_twu_pmpflg[3:0] = mbuf_entry_pmpflg[i];
             mbuf_twu_data[DATA_WIDTH-1:0] = mbuf_entry_data[i];
         end
     end
@@ -701,7 +701,7 @@ always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
         pde_updata_data_flop[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
         pde_updata_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
         pde_updata_lvl[PTE_LEVEL-1:0] <= mbuf_twu_lvl[PTE_LEVEL-1:0];
-        pde_updata_pmpflg[4:0] <= mbuf_twu_pmpflg[4:0];
+        pde_updata_pmpflg[3:0] <= mbuf_twu_pmpflg[3:0];
     end
 end
 
@@ -720,7 +720,7 @@ assign mbuf_cache_upd = pde_updata_data_vld
 assign mbuf_cache_upd_ppn[PPN_WIDTH-1:0] = pde_updata_data_flop[PPN_WIDTH+9:10];
 assign mbuf_cache_upd_lvl[PTE_LEVEL-2:0] = pde_updata_lvl[PTE_LEVEL-1:1];
 assign mbuf_cache_upd_vpn[VPN_WIDTH-1:0] = pde_updata_vpn[VPN_WIDTH-1:0];
-assign mbuf_cache_upd_pmpflg[4:0] = pde_updata_pmpflg[4:0];
+assign mbuf_cache_upd_pmpflg[3:0] = pde_updata_pmpflg[3:0];
 
 
 

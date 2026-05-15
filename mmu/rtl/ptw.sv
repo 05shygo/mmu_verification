@@ -182,6 +182,7 @@ logic                  mbuf_cache_upd    ;
 logic [PTE_LEVEL-2:0]  mbuf_cache_upd_lvl;
 logic [PPN_WIDTH-1:0]  mbuf_cache_upd_ppn;
 logic [VPN_WIDTH-1:0]  mbuf_cache_upd_vpn;
+logic [3:0]            mbuf_cache_upd_pmpflg;
 logic                  L2PDE_xbar_hit_vld;
 logic                  L1PDE_xbar_hit_vld;
 logic [PPN_WIDTH-1:0]  PDE_xbar_ppn      ;
@@ -252,7 +253,7 @@ logic                      acc_err_rant       ;
 logic                      ref_rant           ;
 logic                      l2tlb_miss         ;
 logic                      l2tlb_miss_cnt     ;
-logic [3:0][4:0]           twu_mbuf_pmpflg    ;
+logic [3:0][3:0]           twu_mbuf_pmpflg    ;
 
 
 
@@ -316,6 +317,7 @@ PDE_cache #(
 .mbuf_cache_upd_lvl					(mbuf_cache_upd_lvl	),
 .mbuf_cache_upd_ppn					(mbuf_cache_upd_ppn	),
 .mbuf_cache_upd_vpn					(mbuf_cache_upd_vpn	),
+.mbuf_cache_upd_pmpflg				(mbuf_cache_upd_pmpflg),
 							
 .regs_ptw_clr						(regs_ptw_clr		),
 						
@@ -792,6 +794,7 @@ ptw_mbuf #(
 .twu_mbuf_id						(twu_mbuf_id[3:0]			),
 .twu_mbuf_lvl						(twu_mbuf_lvl[3:0]			),
 .twu_mbuf_twu_idx					(twu_mbuf_twu_idx[3:0]		),
+.twu_mbuf_pmpflg					(twu_mbuf_pmpflg[3:0]		),
 //.twu_mbuf_mask						(twu_mbuf_mask[3:0]			),
 		
 .lsu_mmu_data_vld					(lsu_mmu_data_vld			),     
@@ -816,6 +819,7 @@ ptw_mbuf #(
 .mbuf_cache_upd_ppn                 (mbuf_cache_upd_ppn			),
 .mbuf_cache_upd_lvl                 (mbuf_cache_upd_lvl			),
 .mbuf_cache_upd_vpn                 (mbuf_cache_upd_vpn			),
+.mbuf_cache_upd_pmpflg              (mbuf_cache_upd_pmpflg		),
                                                                  
 .tlboper_ptw_abort	                (tlboper_ptw_abort			),
 .twu_data_ready                     (twu_data_ready             ),

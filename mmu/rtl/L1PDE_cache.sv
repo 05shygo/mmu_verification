@@ -5,7 +5,8 @@ module L1PDE_cache #(
     parameter PGS_WIDTH  = 3,                           // Page Size
     parameter PTE_LEVEL  = 3,                           // Page Table Label
     parameter TAG_WIDTH  = 9,
-    parameter DATA_WIDTH = 64
+    parameter DATA_WIDTH = 64,
+    parameter TYPE_WIDTH = 3
 ) (
     input  logic                 forever_cpuclk,
     input  logic                 cpurst_b,
@@ -16,7 +17,7 @@ module L1PDE_cache #(
     input  logic [1:0]           cp0_priv_mode,
 
     input  logic [TAG_WIDTH-1:0] ptw_vpn,
-    input  logic [2:0]           ptw_type,
+    input  logic [TYPE_WIDTH-1:0] ptw_type,
     input  logic                 L1PDE_entry_upd,
     input  logic [TAG_WIDTH-1:0] L1PDE_entry_before_upd_vpn,
     output logic                 L1PDE_entry_before_upd_hit,
@@ -54,7 +55,7 @@ logic [4:0]           L1PDE_pmpflg      ;
 
 assign L1PDE_entry_clk_en = regs_ptw_clr | L1PDE_entry_upd;
 
-assign cp0_mach_mode = ptw_type[TYPE_WIDTH-1:0] == 3'b011 ? cp0_yy_priv_mode[1:0] == 2'b11
+assign cp0_mach_mode = ptw_type[2:0] == 3'b011 ? cp0_yy_priv_mode[1:0] == 2'b11
                                       : cp0_priv_mode[1:0] == 2'b11;
 
 // &Instance("gated_clk_cell", "x_iutlb_entry_gateclk"); @55
@@ -115,7 +116,7 @@ end
 //------------------------------------------------------------
 //                  Entry Hit
 //------------------------------------------------------------
-assing L1PDE_short_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
+assign L1PDE_short_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
 assign L1PDE_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]) & (pmp_ok | cp0_mach_mode & L1PDE_pmpflg[3]);
 assign L1PDE_miss_because_pmp = L1PDE_short_hit ^ L1PDE_hit;
 assign L1PDE_entry_before_upd_hit = (L1PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);

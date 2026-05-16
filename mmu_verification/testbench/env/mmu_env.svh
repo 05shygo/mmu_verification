@@ -292,6 +292,8 @@ class mmu_env extends uvm_env;
 
     if ((m_ptw_source_mon != null) && (m_ptw_source_sb != null)) begin
       m_ptw_source_mon.ap_req_accept.connect(m_ptw_source_sb.af_req.analysis_export);
+      m_ptw_source_mon.ap_ctx.connect(m_ptw_source_sb.af_ctx.analysis_export);
+      m_ptw_source_mon.ap_pde.connect(m_ptw_source_sb.af_pde.analysis_export);
       m_ptw_source_mon.ap_actual_rsp.connect(m_ptw_source_sb.af_actual.analysis_export);
       m_ptw_source_mon.ap_drop.connect(m_ptw_source_sb.af_drop.analysis_export);
     end

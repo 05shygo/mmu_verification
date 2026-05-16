@@ -2,7 +2,7 @@
 
 更新时间：2026-05-16
 
-本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 4 已完成；阶段 5 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
+本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 5 已完成；阶段 6 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
 
 ## 总体状态
 
@@ -13,7 +13,7 @@
 | 2 | probe wiring and monitor sampling | done | probe if、`tb_top.sv`、`ptw_source_monitor.svh` |
 | 3 | pde cache abstract model refactor | done | `ptw_pde_cache_model.svh` |
 | 4 | reference model integration | done | `ptw_source_ref_model.svh` |
-| 5 | scoreboard and coverage enhancement | not started | 未开始 |
+| 5 | scoreboard and coverage enhancement | done | `ptw_source_sb.svh`、必要 `mmu_env.svh` fanout |
 | 6 | SVA and cover | not started | 未开始 |
 | 7 | directed helper and legacy PDE tests update | not started | 未开始 |
 | 8 | new P0 directed tests A | not started | 未开始 |
@@ -28,6 +28,7 @@ PMPFLG_STAGE_DONE stage=1 name=common_types_and_transaction_schema
 PMPFLG_STAGE_DONE stage=2 name=probe_wiring_and_monitor_sampling
 PMPFLG_STAGE_DONE stage=3 name=pde_cache_abstract_model_refactor
 PMPFLG_STAGE_DONE stage=4 name=source_reference_model_integration
+PMPFLG_STAGE_DONE stage=5 name=scoreboard_coverage_no_extra_lsu
 ```
 
 ## 阶段 0 进度
@@ -218,11 +219,45 @@ Reference model 行为：
 | `pde_update_mismatch` | unmatched or mismatched PDE update payload 数量。 |
 | `pde_duplicate_direct_accerr` | lookup/direct-accerr 双 event 去重数量。 |
 
+## 阶段 5 进度
+
+状态：done
+
+本阶段只完成 source scoreboard、coverage 和 no-extra-LSU checker 增强；未新增 tests，未新增 SVA，未修改 directed base，未修改 regression list。
+
+修改文件：
+
+| 文件 | 修改内容 |
+| --- | --- |
+| `mmu_verification/testbench/env/ptw_source_sb.svh` | 新增 context/PDE event FIFO；扩展 completion compare 的 PDE pmpflg root-cause 校验；新增 PDE pmpflg coverage counters 和 `PTW_SOURCE_SB_PDE_PMP_COVERAGE` banner；新增 L2 direct-accerr no-extra-LSU window checker。 |
+| `mmu_verification/testbench/env/mmu_env.svh` | 将已有 `ptw_source_monitor.ap_ctx/ap_pde` fanout 到 source scoreboard，用于覆盖和 root-cause 影子比对。 |
+
+Scoreboard 行为：
+
+| 场景 | 行为 |
+| --- | --- |
+| `pde_direct_accerr` expected | 要求 expected 为 access fault，`access_src=PDE_CACHE_PMP_DENY`，`pde_reason` 为 L2 cached PMP deny 类，且不被误归类为 bus error。 |
+| PDE root-cause event 与 expected 同步 | 使用 monitor PDE event 对 `access_src/pde_reason/pde_direct_accerr/pde_l1pmpflg/pde_l2pmpflg` 做影子比对，并在 mismatch debug 中打印可读 reason。 |
+| PDE event 晚于 expected | 暂存 expected root-cause，后续 PDE event 到达时比对；最终仍缺 event 时记 `probe_gap_pde_root_missing`，不把旧 smoke 误报为功能 mismatch。 |
+| L2 direct accerr no-extra-LSU | direct accerr window 打开后到 visible completion/drop 前检查 PTW memory req；单 outstanding 严格报错，多 pending 记 `probe_gap_no_extra_lsu_ambiguous`。 |
+| Active key retire | visible completion/drop 到达时继续立即 retire `{type,id}`，保持合法复用窗口规则。 |
+
+新增 coverage/banner 字段：
+
+| 字段 | 含义 |
+| --- | --- |
+| `l1_allow` / `l1_deny_miss` | L1 tag hit allow 与 L1 cached PMP deny miss 证据。 |
+| `l2_allow` / `l2_l1deny` / `l2_l2deny` / `l2_bothdeny` | L2 allow 与 L2 cached PMP deny direct accerr 分类。 |
+| `update_l1` / `update_l2` | PDE cache update pmpflg payload 覆盖。 |
+| `direct_accerr_load/store/fetch/pfu` | Direct accerr request type 覆盖。 |
+| `mmode_bypass` / `mmode_lock_deny` | Effective M-mode bypass 和 lock deny 证据。 |
+| `no_extra_lsu` | L2 direct accerr 后无额外 PTW memory request 的关闭证据。 |
+| `probe_gap_no_extra_lsu_ambiguous` | PTW memory request 无 `{type,id}` 且多 pending 时的不可严格归属计数。 |
+
 ## 当前未关闭项
 
 | Item | 后续阶段 |
 | --- | --- |
-| Scoreboard 尚未比较 `access_src/pde_reason/direct_accerr` | 阶段 5 |
 | Permission-qualified hit、direct accerr pending/type-id/priority/valid gate SVA/cover 尚未实现 | 阶段 6 |
 | Directed helper 和旧 PDE directed tests 尚未按 cached pmpflg 语义修正 | 阶段 7 |
 | `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed closure 尚未开始 | 阶段 8 |
@@ -246,6 +281,9 @@ Reference model 行为：
 | 阶段 4 ref model pmpflg/direct-accerr 关键词 `rg` | pass |
 | 阶段 4 SV/SVH 修改边界 | pass，仅 `ptw_source_ref_model.svh` |
 | 阶段 4 scoreboard/SVA/test 边界 | pass，无相关文件修改 |
+| 阶段 5 scoreboard pmpflg/no-extra-LSU 关键词 `rg` | pass |
+| 阶段 5 SV/SVH 修改边界 | pass，仅 `ptw_source_sb.svh` 和必要 `mmu_env.svh` fanout |
+| 阶段 5 test/SVA/regression 边界 | pass，无相关文件修改 |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |
 | `make -C mmu_verification run_check ...` | blocked，当前 PowerShell 环境找不到 `make` |
@@ -268,6 +306,7 @@ rg -n "ptw_src_pde_reason_e|ptw_src_access_src_e|ptw_src_pde_pmp_allow|pde_direc
 rg -n "pde_cache_update_l1pmpflg|pde_cache_update_l2pmpflg|pde_cache_acc_err|ptw_mbuf_twu_pmpflg|ptw_twu_mbuf_pmpflg" mmu_verification\testbench\env\mmu_dut_probes_if.sv mmu_verification\testbench\top\tb_top.sv mmu_verification\testbench\env\ptw_source_monitor.svh
 rg -n "l1pmpflg|l2pmpflg|lookup_detail|pde_lookup_result|direct_accerr|L2_L.*DENY" mmu_verification\testbench\env\ptw_pde_cache_model.svh
 rg -n "pde_direct_accerr|PDE_CACHE_PMP_DENY|pde_l1_pmp|pde_l2|lookup_detail|effective_machine|commit_update_with_pmpflg|record_predicted_pde_update|pde_update_match|pde_mmode" mmu_verification\testbench\env\ptw_source_ref_model.svh
+rg -n "PTW_SOURCE_SB_PDE_PMP_COVERAGE|no_extra_lsu|access_src|pde_reason|pde_direct_accerr|af_pde|af_ctx" mmu_verification\testbench\env\ptw_source_sb.svh mmu_verification\testbench\env\mmu_env.svh
 
 # 工作区和格式检查
 git status --short

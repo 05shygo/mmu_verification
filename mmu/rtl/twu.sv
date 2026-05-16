@@ -484,7 +484,7 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 		fst_chk_type[TYPE_WIDTH-1:0] <= {TYPE_WIDTH{1'b0}};
 		fst_chk_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
 		fst_chk_data[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
-		fst_chk_l1pmmpflg[3:0] <= {4'b0};
+		fst_chk_l1pmpflg[3:0] <= {4'b0};
 	end else if(mbuf_twu_data_vld & mbuf_twu_lvl[2] & (!fst_chk_wait))begin
 		fst_chk_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
 		fst_chk_type[TYPE_WIDTH-1:0] <= mbuf_twu_type[TYPE_WIDTH-1:0];

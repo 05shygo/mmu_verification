@@ -907,10 +907,10 @@ end
 //==============================================================================
 //                access fault arbiter
 //==============================================================================
-assign twu_acc_err_sel[3] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & (!twu_l2tlb_ref_acc_err[2]) & (twu_l2tlb_ref_acc_err[3]) & acc_err_grant;
-assign twu_acc_err_sel[2] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & twu_l2tlb_ref_acc_err[2] & acc_err_grant;
-assign twu_acc_err_sel[1] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & twu_l2tlb_ref_acc_err[1] & acc_err_grant;
-assign twu_acc_err_sel[0] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & twu_l2tlb_ref_acc_err[0] & acc_err_grant;
+assign twu_acc_err_sel[3] = (!mbuf_bus_error) & (!PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & (!twu_l2tlb_ref_acc_err[2]) & (twu_l2tlb_ref_acc_err[3]) & acc_err_grant;
+assign twu_acc_err_sel[2] = (!mbuf_bus_error) & (!PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & twu_l2tlb_ref_acc_err[2] & acc_err_grant;
+assign twu_acc_err_sel[1] = (!mbuf_bus_error) & (!PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & twu_l2tlb_ref_acc_err[1] & acc_err_grant;
+assign twu_acc_err_sel[0] = (!mbuf_bus_error) & (!PDE_cache_acc_err_vld) & twu_l2tlb_ref_acc_err[0] & acc_err_grant;
 assign twu_acc_err_sel[4] = (!PDE_cache_acc_err_vld) & (mbuf_bus_error) & acc_err_grant;
 assign twu_acc_err_sel[5] = PDE_cache_acc_err_vld & acc_err_grant;
 assign acc_err_twu_grant[5:0] = twu_acc_err_sel[5:0];

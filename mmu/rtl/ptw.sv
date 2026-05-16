@@ -227,7 +227,7 @@ logic [3:0]                  twu_l2tlb_ref_acc_err     ;
 logic [3:0][TYPE_WIDTH-1:0]  twu_l2tlb_ref_acc_err_type;
 logic [3:0][ID_WIDTH-1:0]    twu_l2tlb_ref_acc_err_id  ;
 //logic	[3:0]			mbuf_twu_have           	;
-logic [4:0]                acc_err_twu_grant  ;
+logic [5:0]                acc_err_twu_grant  ;
 logic [3:0]                pgflt_twu_grant    ;
 logic                      mbuf_entry_on_vld  ;
 logic                      fst_twu_itlb_sel   ;
@@ -333,7 +333,11 @@ PDE_cache #(
 .tlboper_ptw_abort					(tlboper_ptw_abort	),
 .pmp_regs_update					(pmp_regs_update	),
 .xbar_pde_ready						(xbar_pde_ready		),
-.pde_cache_ready                    (pde_cache_ready    )
+.pde_cache_ready                    (pde_cache_ready    ),
+.PDE_cache_acc_err_vld              (PDE_cache_acc_err_vld	),
+.PDE_cache_acc_err_type             (PDE_cache_acc_err_type	),
+.PDE_cache_acc_err_id               (PDE_cache_acc_err_id	),
+.PDE_cache_acc_err_grant            (acc_err_twu_grant[5])
 );
 
 one_to_four_xbar #(
@@ -834,7 +838,7 @@ ptw_mbuf #(
 
 
 assign pgflt_vld = |twu_l2tlb_ref_pgflt[3:0];
-assign acc_err_vld = (|twu_l2tlb_ref_acc_err[3:0]) | mbuf_bus_error;
+assign acc_err_vld = (|twu_l2tlb_ref_acc_err[3:0]) | mbuf_bus_error | PDE_cache_acc_err_vld;
 assign ref_vld = |twu_arb_ref_req[3:0];
 
 assign acc_err_grant = acc_err_vld;
@@ -891,44 +895,49 @@ end
 //==============================================================================
 //                access fault arbiter
 //==============================================================================
-assign twu_acc_err_sel[3] = (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & (!twu_l2tlb_ref_acc_err[2]) & (twu_l2tlb_ref_acc_err[3]) & acc_err_grant;
-assign twu_acc_err_sel[2] = (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & twu_l2tlb_ref_acc_err[2] & acc_err_grant;
-assign twu_acc_err_sel[1] = (!twu_l2tlb_ref_acc_err[0]) & twu_l2tlb_ref_acc_err[1] & acc_err_grant;
-assign twu_acc_err_sel[0] = (!mbuf_bus_error) & twu_l2tlb_ref_acc_err[0] & acc_err_grant;
-assign twu_acc_err_sel[4] = mbuf_bus_error & acc_err_grant;
-
-assign acc_err_twu_grant[4:0] = twu_acc_err_sel[4:0];
+assign twu_acc_err_sel[3] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & (!twu_l2tlb_ref_acc_err[2]) & (twu_l2tlb_ref_acc_err[3]) & acc_err_grant;
+assign twu_acc_err_sel[2] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & (!twu_l2tlb_ref_acc_err[1]) & twu_l2tlb_ref_acc_err[2] & acc_err_grant;
+assign twu_acc_err_sel[1] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & (!twu_l2tlb_ref_acc_err[0]) & twu_l2tlb_ref_acc_err[1] & acc_err_grant;
+assign twu_acc_err_sel[0] = (!mbuf_bus_error) & (PDE_cache_acc_err_vld) & twu_l2tlb_ref_acc_err[0] & acc_err_grant;
+assign twu_acc_err_sel[4] = (!PDE_cache_acc_err_vld) & (mbuf_bus_error) & acc_err_grant;
+assign twu_acc_err_sel[5] = PDE_cache_acc_err_vld & acc_err_grant;
+assign acc_err_twu_grant[5:0] = twu_acc_err_sel[5:0];
 
 logic [ID_WIDTH-1:0]   ptw_l2tlb_acc_err_id  ;
 logic [TYPE_WIDTH-1:0] ptw_l2tlb_acc_err_type;
 
 always_comb begin
-	case(acc_err_twu_grant[4:0])
-		5'b00001	: begin		
+	case(acc_err_twu_grant[5:0])
+		6'b000001	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
 			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[0][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[0][ID_WIDTH-1:0];
 		end
-		5'b00010	: begin		
+		6'b000010	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
 			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[1][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[1][ID_WIDTH-1:0];
 		end
-		5'b00100	: begin		
+		6'b000100	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
 			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[2][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[2][ID_WIDTH-1:0];
 		end
-		5'b01000	: begin		
+		6'b001000	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
 			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = twu_l2tlb_ref_acc_err_type[3][TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = twu_l2tlb_ref_acc_err_id[3][ID_WIDTH-1:0];
 		end
-		5'b10000	: begin		
+		6'b010000	: begin		
 			//ptw_l2tlb_ref_acc_err = 1'b1;
 			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = mbuf_bus_error_type[TYPE_WIDTH-1:0];
 			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = mbuf_bus_error_id[ID_WIDTH-1:0];
-		end		
+		end	
+        6'b100000	: begin		
+			//ptw_l2tlb_ref_acc_err = 1'b1;
+			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = PDE_cache_acc_err_type[TYPE_WIDTH-1:0];
+			ptw_l2tlb_acc_err_id[ID_WIDTH-1:0] = PDE_cache_acc_err_id[ID_WIDTH-1:0];
+		end
 		default 	: begin
 			//ptw_l2tlb_ref_acc_err = 1'b0;
 			ptw_l2tlb_acc_err_type[TYPE_WIDTH-1:0] = {TYPE_WIDTH{1'b0}};

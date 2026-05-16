@@ -60,6 +60,7 @@ module twu #(
     input  logic [TYPE_WIDTH-1:0]  mbuf_twu_type,
     input  logic [ID_WIDTH-1:0]    mbuf_twu_id,
     input  logic [DATA_WIDTH-1:0]  mbuf_twu_data,
+	input  logic [7:0]             mbuf_twu_pmpflg,
     input  logic                   mbuf_twu_data_vld,
     input  logic                   mbuf_grant,
     input  logic [PTE_LEVEL-1:0]   mbuf_twu_lvl,
@@ -481,11 +482,13 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 		fst_chk_type[TYPE_WIDTH-1:0] <= {TYPE_WIDTH{1'b0}};
 		fst_chk_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
 		fst_chk_data[DATA_WIDTH-1:0] <= {DATA_WIDTH{1'b0}};
+		fst_chk_l1pmmpflg[3:0] <= {4'b0};
 	end else if(mbuf_twu_data_vld & mbuf_twu_lvl[2] & (!fst_chk_wait))begin
 		fst_chk_vpn[VPN_WIDTH-1:0] <= mbuf_twu_vpn[VPN_WIDTH-1:0];
 		fst_chk_type[TYPE_WIDTH-1:0] <= mbuf_twu_type[TYPE_WIDTH-1:0];
 		fst_chk_id[ID_WIDTH-1:0] <= mbuf_twu_id[ID_WIDTH-1:0];
 		fst_chk_data[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
+		fst_chk_l1pmmpflg[3:0] <= mbuf_twu_pmpflg[3:0];
 	end
 end
 
@@ -569,16 +572,19 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 		scd_pmp_type[TYPE_WIDTH-1:0] <= {TYPE_WIDTH{1'b0}};
 		scd_pmp_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
 		scd_pmp_ppn[PPN_WIDTH-1:0] <= {PPN_WIDTH{1'b0}};
+		scd_pmp_l1pmpflg[3:0] <= {4'b0};
 	end	else if(xbar_twu_req & (xbar_twu_hit_level == 2'b10) & (!scd_pmp_wait))begin
 		scd_pmp_vpn[VPN_WIDTH-1:0] <= xbar_twu_vpn[VPN_WIDTH-1:0];
 		scd_pmp_type[TYPE_WIDTH-1:0] <= xbar_twu_type[TYPE_WIDTH-1:0];
 		scd_pmp_id[ID_WIDTH-1:0] <= xbar_twu_id[ID_WIDTH-1:0];
 		scd_pmp_ppn[PPN_WIDTH-1:0] <= xbar_twu_ppn[PPN_WIDTH-1:0];
+		scd_pmp_l1pmpflg[3:0] <= {4'b0};
 	end else if(fst_chk_vld & (!fst_chk_leaf_vld) & (!fst_chk_page_flt) & (!scd_pmp_wait))begin
 		scd_pmp_vpn[VPN_WIDTH-1:0] <= fst_chk_vpn[VPN_WIDTH-1:0];
 		scd_pmp_type[TYPE_WIDTH-1:0] <= fst_chk_type[TYPE_WIDTH-1:0];
 		scd_pmp_id[ID_WIDTH-1:0] <= fst_chk_id[ID_WIDTH-1:0];
 		scd_pmp_ppn[PPN_WIDTH-1:0] <= fst_chk_data[37:10];
+		scd_pmp_l1pmpflg[3:0] <= fst_chk_l1pmmpflg[3:0];
 	end
 end		
 
@@ -1317,28 +1323,28 @@ always_comb begin
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = thd_pmp_vpn[VPN_WIDTH-1:0];
 			twu_mbuf_type[TYPE_WIDTH-1:0] = thd_pmp_type[TYPE_WIDTH-1:0];
 			twu_mbuf_id[ID_WIDTH-1:0] = thd_pmp_id[ID_WIDTH-1:0];
-			twu_mbuf_pmpflg[3:0] = pmp_mmu_flg[3:0];
+			twu_mbuf_pmpflg[7:0] = 8'b0;
 		end	
 		3'b010	: begin
 			twu_mbuf_paddr[PADDR_WIDTH-1:0] = scd_pmp_pa[PADDR_WIDTH-1:0];
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = scd_pmp_vpn[VPN_WIDTH-1:0];
 			twu_mbuf_type[TYPE_WIDTH-1:0] = scd_pmp_type[TYPE_WIDTH-1:0];
 			twu_mbuf_id[ID_WIDTH-1:0] = scd_pmp_id[ID_WIDTH-1:0];
-			twu_mbuf_pmpflg[3:0] = pmp_mmu_flg[3:0];
+			twu_mbuf_pmpflg[7:0] = {pmp_mmu_flg[3:0],scd_pmp_l1pmpflg[3:0]};
 		end
 		3'b100	: begin
 			twu_mbuf_paddr[PADDR_WIDTH-1:0] = fst_pmp_pa[PADDR_WIDTH-1:0];
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = fst_pmp_vpn[VPN_WIDTH-1:0];
 			twu_mbuf_type[TYPE_WIDTH-1:0] = fst_pmp_type[TYPE_WIDTH-1:0];
 			twu_mbuf_id[ID_WIDTH-1:0] = fst_pmp_id[ID_WIDTH-1:0];
-			twu_mbuf_pmpflg[3:0] = pmp_mmu_flg[3:0];
+			twu_mbuf_pmpflg[7:0] = {4'b0,pmp_mmu_flg[3:0]};
 		end
 		default : begin
 			twu_mbuf_paddr[PADDR_WIDTH-1:0] = {PADDR_WIDTH{1'b0}};
 			twu_mbuf_vpn[VPN_WIDTH-1:0] = {VPN_WIDTH{1'b0}};
 			twu_mbuf_type[TYPE_WIDTH-1:0] = {TYPE_WIDTH{1'b0}};
 			twu_mbuf_id[ID_WIDTH-1:0] = {ID_WIDTH{1'b0}};
-			twu_mbuf_pmpflg[3:0] = 4'b0;
+			twu_mbuf_pmpflg[7:0] = 8'b0;
 		end
 	endcase
 end

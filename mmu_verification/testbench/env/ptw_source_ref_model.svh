@@ -60,6 +60,7 @@ class ptw_source_ref_model extends uvm_component;
     bit                    sum;
     logic [1:0]            mpp;
     logic [1:0]            priv_mode;
+    bit                    ctx_sample_seen;
     int unsigned           accept_cycle;
     int unsigned           last_cycle;
     ptw_src_level_e        last_level;
@@ -75,12 +76,46 @@ class ptw_source_ref_model extends uvm_component;
     bit                    expected_access_fault;
     bit                    bus_error_seen;
     bit                    pmp_deny_seen;
+    bit                    pde_direct_accerr_seen;
+    ptw_src_access_src_e   access_src;
+    ptw_src_pde_reason_e   pde_reason;
+    logic [3:0]            pde_l1pmpflg;
+    logic [3:0]            pde_l2pmpflg;
+    bit                    pde_l1_tag_hit_deny_seen;
+    bit                    pde_l2_tag_hit_deny_seen;
+    int unsigned           pde_lookup_cycle;
+    int unsigned           pde_direct_accerr_cycle;
     bit                    refill_source_seen;
     bit                    expected_emitted;
     bit                    drop_emitted;
   } pending_req_s;
 
+  typedef struct {
+    bit                valid;
+    bit                committed;
+    ptw_src_level_e    level;
+    vpn_t              vpn;
+    ppn_t              ppn;
+    logic [3:0]        l1pmpflg;
+    logic [3:0]        l2pmpflg;
+    int unsigned       cycle;
+  } pde_update_info_s;
+
+  typedef struct {
+    bit                valid;
+    ptw_src_req_type_e req_type;
+    logic [5:0]        id;
+    int unsigned       cycle;
+  } pde_direct_accerr_info_s;
+
+  localparam int unsigned PDE_UPDATE_MATCH_WINDOW = 8;
+  localparam int unsigned PDE_DIRECT_ACCERR_DUP_WINDOW = 8;
+
   pending_req_s m_pending[string];
+  pde_update_info_s m_pde_expected_update_q[$];
+  pde_update_info_s m_pde_observed_update_q[$];
+  pde_direct_accerr_info_s m_pde_recent_direct_accerr_q[$];
+  ptw_src_pde_evt_txn m_deferred_pde_lookup_q[$];
   bit [3:0]     m_pmp_flg [8];
   bit           m_sysmap_enable [8];
   bit [27:0]    m_sysmap_base [8];
@@ -109,6 +144,16 @@ class ptw_source_ref_model extends uvm_component;
   int unsigned m_level_count;
   int unsigned m_pde_event_count;
   int unsigned m_pde_update_count;
+  int unsigned m_pde_l1_pmp_deny_miss_count;
+  int unsigned m_pde_l2_l1pmp_deny_accerr_count;
+  int unsigned m_pde_l2_l2pmp_deny_accerr_count;
+  int unsigned m_pde_pmpflg_update_l1_count;
+  int unsigned m_pde_pmpflg_update_l2_count;
+  int unsigned m_pde_mmode_bypass_count;
+  int unsigned m_pde_mmode_lock_deny_count;
+  int unsigned m_pde_update_match_count;
+  int unsigned m_pde_update_mismatch_count;
+  int unsigned m_pde_duplicate_direct_accerr_event_count;
   int unsigned m_probe_gap_count;
   int unsigned m_satp_clear_count;
   int unsigned m_pmp_clear_count;
@@ -280,6 +325,334 @@ class ptw_source_ref_model extends uvm_component;
       return (pending.mpp == PRIV_S);
     return (pending.priv_mode == PRIV_S);
   endfunction
+
+  protected function ptw_src_level_e pde_update_level_from_bits(input logic [1:0] update_level);
+    if (update_level == 2'b10)
+      return PTW_SRC_LEVEL_FST;
+    if (update_level == 2'b01)
+      return PTW_SRC_LEVEL_SCD;
+    return PTW_SRC_LEVEL_NONE;
+  endfunction
+
+  protected function string pde_update_info2string(input pde_update_info_s info);
+    return $sformatf(
+      "valid=%0b committed=%0b level=%s vpn=0x%07h ppn=0x%07h pmp={l1=0x%0h,l2=0x%0h} cycle=%0d",
+      info.valid, info.committed, info.level.name(), info.vpn, info.ppn,
+      info.l1pmpflg, info.l2pmpflg, info.cycle);
+  endfunction
+
+  protected function bit pde_update_info_matches(
+    input pde_update_info_s exp,
+    input pde_update_info_s obs
+  );
+    return exp.valid && obs.valid
+        && (exp.level == obs.level)
+        && (exp.vpn == obs.vpn)
+        && (exp.ppn == obs.ppn)
+        && (exp.l1pmpflg == obs.l1pmpflg)
+        && (exp.l2pmpflg == obs.l2pmpflg);
+  endfunction
+
+  protected function bit pde_reason_is_pmp_deny(input ptw_src_pde_reason_e reason);
+    return (reason == PTW_SRC_PDE_REASON_L1_PMP_DENY)
+        || (reason == PTW_SRC_PDE_REASON_L2_L1PMP_DENY)
+        || (reason == PTW_SRC_PDE_REASON_L2_L2PMP_DENY)
+        || (reason == PTW_SRC_PDE_REASON_L2_BOTH_PMP_DENY);
+  endfunction
+
+  protected function bit cycle_is_older_than(
+    input int unsigned cycle,
+    input int unsigned old_cycle,
+    input int unsigned window
+  );
+    return (cycle >= old_cycle) && ((cycle - old_cycle) > window);
+  endfunction
+
+  protected function void prune_observed_pde_update_q(input int unsigned cycle);
+    while ((m_pde_observed_update_q.size() > 0)
+           && cycle_is_older_than(cycle, m_pde_observed_update_q[0].cycle,
+             PDE_UPDATE_MATCH_WINDOW)) begin
+      m_pde_update_mismatch_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_UPDATE_UNMATCHED_OBSERVED observed=%s predicted_q=%0d",
+          pde_update_info2string(m_pde_observed_update_q[0]),
+          m_pde_expected_update_q.size()))
+      void'(m_pde_observed_update_q.pop_front());
+    end
+  endfunction
+
+  protected function void prune_pde_direct_accerr_history(input int unsigned cycle);
+    while ((m_pde_recent_direct_accerr_q.size() > 0)
+           && cycle_is_older_than(cycle, m_pde_recent_direct_accerr_q[0].cycle,
+             PDE_DIRECT_ACCERR_DUP_WINDOW)) begin
+      void'(m_pde_recent_direct_accerr_q.pop_front());
+    end
+  endfunction
+
+  protected function bit pde_direct_accerr_event_is_recent(
+    input ptw_src_req_type_e req_type,
+    input logic [5:0]        id,
+    input int unsigned       cycle,
+    input bit                count_duplicate = 1'b1
+  );
+    prune_pde_direct_accerr_history(cycle);
+    foreach (m_pde_recent_direct_accerr_q[i]) begin
+      if ((m_pde_recent_direct_accerr_q[i].req_type == req_type)
+          && (m_pde_recent_direct_accerr_q[i].id == id)) begin
+        if (count_duplicate)
+          m_pde_duplicate_direct_accerr_event_count++;
+        return 1'b1;
+      end
+    end
+    return 1'b0;
+  endfunction
+
+  protected function bit note_pde_direct_accerr_event(
+    input ptw_src_req_type_e req_type,
+    input logic [5:0]        id,
+    input int unsigned       cycle
+  );
+    pde_direct_accerr_info_s info;
+
+    if (pde_direct_accerr_event_is_recent(req_type, id, cycle))
+      return 1'b0;
+
+    info.valid = 1'b1;
+    info.req_type = req_type;
+    info.id = id;
+    info.cycle = cycle;
+    m_pde_recent_direct_accerr_q.push_back(info);
+    return 1'b1;
+  endfunction
+
+  protected function void clear_pde_pmpflg_shadow();
+    m_pde_expected_update_q.delete();
+    m_pde_observed_update_q.delete();
+    m_pde_recent_direct_accerr_q.delete();
+    m_deferred_pde_lookup_q.delete();
+  endfunction
+
+  protected function void record_predicted_pde_update(
+    input ptw_src_level_e level,
+    input vpn_t           vpn,
+    input ppn_t           ppn,
+    input logic [3:0]     l1pmpflg,
+    input logic [3:0]     l2pmpflg,
+    input int unsigned    cycle
+  );
+    pde_update_info_s info;
+
+    info.valid = 1'b1;
+    info.committed = 1'b0;
+    info.level = level;
+    info.vpn = vpn;
+    info.ppn = ppn;
+    info.l1pmpflg = l1pmpflg;
+    info.l2pmpflg = (level == PTW_SRC_LEVEL_FST) ? 4'h0 : l2pmpflg;
+    info.cycle = cycle;
+
+    prune_observed_pde_update_q(cycle);
+    foreach (m_pde_observed_update_q[i]) begin
+      if (pde_update_info_matches(info, m_pde_observed_update_q[i])) begin
+        m_pde_update_match_count++;
+        m_pde_observed_update_q.delete(i);
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_LATE_PREDICT_MATCH %s",
+            pde_update_info2string(info)),
+          UVM_HIGH)
+        return;
+      end
+    end
+
+    m_pde_expected_update_q.push_back(info);
+    `uvm_info(get_type_name(),
+      $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_PREDICT_UPDATE %s",
+        pde_update_info2string(info)),
+      UVM_HIGH)
+
+    while ((m_pde_expected_update_q.size() > 0)
+           && cycle_is_older_than(cycle, m_pde_expected_update_q[0].cycle,
+             PDE_UPDATE_MATCH_WINDOW)
+           && !m_pde_expected_update_q[0].committed) begin
+      m_pde_update_mismatch_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_UPDATE_TIMEOUT predicted=%s observed_q=%0d",
+          pde_update_info2string(m_pde_expected_update_q[0]),
+          m_pde_observed_update_q.size()))
+      void'(m_pde_expected_update_q.pop_front());
+    end
+  endfunction
+
+  protected function void commit_pde_update_from_observed(input pde_update_info_s obs);
+    int match_idx;
+
+    match_idx = -1;
+    foreach (m_pde_expected_update_q[i]) begin
+      if (pde_update_info_matches(m_pde_expected_update_q[i], obs)) begin
+        match_idx = int'(i);
+        break;
+      end
+    end
+
+    if (match_idx >= 0) begin
+      m_pde_expected_update_q.delete(match_idx);
+      m_pde_update_match_count++;
+    end else begin
+      m_pde_observed_update_q.push_back(obs);
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_OBSERVED_UPDATE_PENDING_MATCH observed=%s predicted_q=%0d",
+          pde_update_info2string(obs), m_pde_expected_update_q.size()),
+        UVM_HIGH)
+    end
+
+    m_pde_model.commit_update_with_pmpflg(obs.level, obs.vpn, obs.ppn,
+      obs.l1pmpflg, obs.l2pmpflg);
+    if (obs.level == PTW_SRC_LEVEL_FST)
+      m_pde_pmpflg_update_l1_count++;
+    else if (obs.level == PTW_SRC_LEVEL_SCD)
+      m_pde_pmpflg_update_l2_count++;
+  endfunction
+
+  protected function void finalize_pde_update_matching();
+    while (m_pde_expected_update_q.size() > 0) begin
+      m_pde_update_mismatch_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_UPDATE_UNMATCHED_PREDICTED predicted=%s observed_q=%0d",
+          pde_update_info2string(m_pde_expected_update_q[0]),
+          m_pde_observed_update_q.size()))
+      void'(m_pde_expected_update_q.pop_front());
+    end
+
+    while (m_pde_observed_update_q.size() > 0) begin
+      m_pde_update_mismatch_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_UPDATE_UNMATCHED_OBSERVED observed=%s",
+          pde_update_info2string(m_pde_observed_update_q[0])))
+      void'(m_pde_observed_update_q.pop_front());
+    end
+  endfunction
+
+  protected task process_pde_lookup_event(input ptw_src_pde_evt_txn tr);
+    string key;
+    pending_req_s pending;
+    ptw_pde_cache_model::pde_lookup_result_s lookup;
+
+    if (tr.direct_accerr
+        && pde_direct_accerr_event_is_recent(tr.req_type, tr.id, tr.cycle)) begin
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_DUP_DIRECT_ACCERR_IGNORED %s",
+          tr.convert2string()),
+        UVM_HIGH)
+      return;
+    end
+
+    if (!resolve_pending_key(tr.req_type, tr.id, key)) begin
+      m_probe_gap_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_LOOKUP_NO_PENDING %s", tr.convert2string()))
+      return;
+    end
+
+    pending = m_pending[key];
+    lookup = m_pde_model.lookup_detail(pending.vpn, pending.req_type,
+      effective_machine(pending));
+
+    if ((lookup.l1_hit != tr.l1_hit) || (lookup.l2_hit != tr.l2_hit)
+        || (lookup.l1_tag_hit != tr.l1_tag_hit)
+        || (lookup.l2_tag_hit != tr.l2_tag_hit)) begin
+      m_probe_gap_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf({"PTW_SOURCE_REF_PDE_LOOKUP_MISMATCH model={%s} ",
+                   "actual={hit_l1=%0b hit_l2=%0b tag_l1=%0b tag_l2=%0b direct=%0b reason=%s}"},
+          m_pde_model.lookup_result2string(lookup),
+          tr.l1_hit, tr.l2_hit, tr.l1_tag_hit, tr.l2_tag_hit,
+          tr.direct_accerr, ptw_src_pde_reason_name(tr.reason)))
+    end
+
+    if ((tr.cached_l1pmpflg != lookup.cached_l1pmpflg)
+        || (tr.cached_l2pmpflg != lookup.cached_l2pmpflg)) begin
+      if (lookup.l1_tag_hit || lookup.l2_tag_hit) begin
+        m_probe_gap_count++;
+        `uvm_warning(get_type_name(),
+          $sformatf({"PTW_SOURCE_REF_PDE_PMPFLG_MISMATCH model={l1=0x%0h,l2=0x%0h} ",
+                     "actual={l1=0x%0h,l2=0x%0h} key=%s"},
+            lookup.cached_l1pmpflg, lookup.cached_l2pmpflg,
+            tr.cached_l1pmpflg, tr.cached_l2pmpflg, key))
+      end
+    end
+
+    pending.pde_lookup_cycle = tr.cycle;
+    pending.pde_reason = lookup.reason;
+    pending.pde_l1pmpflg = lookup.cached_l1pmpflg;
+    pending.pde_l2pmpflg = lookup.cached_l2pmpflg;
+
+    if (effective_machine(pending)
+        && ((lookup.cached_l1pmpflg[3] == 1'b0)
+            || (lookup.cached_l2pmpflg[3] == 1'b0))
+        && (lookup.lookup_hit || lookup.l1_tag_hit || lookup.l2_tag_hit))
+      m_pde_mmode_bypass_count++;
+    if (effective_machine(pending) && pde_reason_is_pmp_deny(lookup.reason))
+      m_pde_mmode_lock_deny_count++;
+
+    if (lookup.l1_deny_miss) begin
+      pending.pde_l1_tag_hit_deny_seen = 1'b1;
+      m_pde_l1_pmp_deny_miss_count++;
+      m_pending[key] = pending;
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_L1_PMP_DENY_MISS key=%s %s",
+          key, m_pde_model.lookup_result2string(lookup)),
+        UVM_MEDIUM)
+    end else if (lookup.l2_direct_accerr) begin
+      pending.pde_l2_tag_hit_deny_seen = 1'b1;
+      pending.pde_direct_accerr_seen = 1'b1;
+      pending.pde_direct_accerr_cycle = tr.cycle;
+      pending.expected_access_fault = 1'b1;
+      pending.access_src = PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY;
+      pending.pde_reason = (lookup.reason != PTW_SRC_PDE_REASON_NONE)
+                         ? lookup.reason : tr.reason;
+      pending.pde_l1pmpflg = (lookup.l2_tag_hit || lookup.l1_tag_hit)
+                           ? lookup.cached_l1pmpflg : tr.cached_l1pmpflg;
+      pending.pde_l2pmpflg = lookup.l2_tag_hit
+                           ? lookup.cached_l2pmpflg : tr.cached_l2pmpflg;
+
+      if (note_pde_direct_accerr_event(pending.req_type, pending.id, tr.cycle)) begin
+        if (pending.pde_reason == PTW_SRC_PDE_REASON_L2_L1PMP_DENY)
+          m_pde_l2_l1pmp_deny_accerr_count++;
+        else if (pending.pde_reason == PTW_SRC_PDE_REASON_L2_L2PMP_DENY)
+          m_pde_l2_l2pmp_deny_accerr_count++;
+        else if (pending.pde_reason == PTW_SRC_PDE_REASON_L2_BOTH_PMP_DENY) begin
+          m_pde_l2_l1pmp_deny_accerr_count++;
+          m_pde_l2_l2pmp_deny_accerr_count++;
+        end
+
+        m_pending[key] = pending;
+        build_and_emit_completion(key, pending, PTW_SRC_EXP_ACCESS_FAULT,
+          PTW_SRC_FAULT_ACCESS, pending.last_pte, 1'b0, tr.cycle,
+          PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY, pending.pde_reason,
+          pending.pde_l1pmpflg, pending.pde_l2pmpflg, 1'b1);
+      end else if (m_pending.exists(key)) begin
+        m_pending[key] = pending;
+      end
+    end else begin
+      m_pending[key] = pending;
+    end
+  endtask
+
+  protected task drain_deferred_pde_lookup_events();
+    ptw_src_pde_evt_txn tr;
+    string key;
+
+    while (m_deferred_pde_lookup_q.size() > 0) begin
+      tr = m_deferred_pde_lookup_q[0];
+      key = key_string(tr.req_type, tr.id);
+      if (m_pending.exists(key) && m_pending[key].ctx_sample_seen) begin
+        void'(m_deferred_pde_lookup_q.pop_front());
+        process_pde_lookup_event(tr);
+      end else begin
+        break;
+      end
+    end
+  endtask
 
   protected function bit leaf_page_fault(
     input pending_req_s pending,
@@ -480,7 +853,12 @@ class ptw_source_ref_model extends uvm_component;
     input ptw_src_fault_kind_e fault_kind,
     input pte_t raw_pte,
     input bit use_pte,
-    input int unsigned cycle
+    input int unsigned cycle,
+    input ptw_src_access_src_e access_src = PTW_SRC_ACCESS_SRC_NONE,
+    input ptw_src_pde_reason_e pde_reason = PTW_SRC_PDE_REASON_NONE,
+    input logic [3:0] pde_l1pmpflg = 4'h0,
+    input logic [3:0] pde_l2pmpflg = 4'h0,
+    input bit pde_direct_accerr = 1'b0
   );
     ptw_src_expected_rsp_txn exp;
     ptw_src_page_size_e pgs;
@@ -505,6 +883,11 @@ class ptw_source_ref_model extends uvm_component;
     exp.target_pfu = (pending.req_type == PTW_SRC_TYPE_PFU);
     exp.fault_kind = fault_kind;
     exp.drop_reason = PTW_SRC_DROP_NONE;
+    exp.access_src = access_src;
+    exp.pde_reason = pde_reason;
+    exp.pde_l1pmpflg = pde_l1pmpflg;
+    exp.pde_l2pmpflg = pde_l2pmpflg;
+    exp.pde_direct_accerr = pde_direct_accerr;
     exp.completion_or_seen = 1'b0;
     exp.raw_tag = '0;
     exp.raw_data = '0;
@@ -565,6 +948,11 @@ class ptw_source_ref_model extends uvm_component;
     exp.ppn = '0;
     exp.global_bit = 1'b0;
     exp.flg = '0;
+    exp.access_src = PTW_SRC_ACCESS_SRC_NONE;
+    exp.pde_reason = PTW_SRC_PDE_REASON_NONE;
+    exp.pde_l1pmpflg = 4'h0;
+    exp.pde_l2pmpflg = 4'h0;
+    exp.pde_direct_accerr = 1'b0;
     exp.raw_tag = '0;
     exp.raw_data = '0;
     exp.completion_or_seen = 1'b0;
@@ -624,6 +1012,7 @@ class ptw_source_ref_model extends uvm_component;
       pending.sum = m_cur_sum;
       pending.mpp = m_cur_mpp;
       pending.priv_mode = m_cur_priv_mode;
+      pending.ctx_sample_seen = 1'b0;
       pending.accept_cycle = tr.cycle;
       pending.last_cycle = tr.cycle;
       pending.last_level = PTW_SRC_LEVEL_NONE;
@@ -639,6 +1028,15 @@ class ptw_source_ref_model extends uvm_component;
       pending.expected_access_fault = 1'b0;
       pending.bus_error_seen = 1'b0;
       pending.pmp_deny_seen = 1'b0;
+      pending.pde_direct_accerr_seen = 1'b0;
+      pending.access_src = PTW_SRC_ACCESS_SRC_NONE;
+      pending.pde_reason = PTW_SRC_PDE_REASON_NONE;
+      pending.pde_l1pmpflg = 4'h0;
+      pending.pde_l2pmpflg = 4'h0;
+      pending.pde_l1_tag_hit_deny_seen = 1'b0;
+      pending.pde_l2_tag_hit_deny_seen = 1'b0;
+      pending.pde_lookup_cycle = 0;
+      pending.pde_direct_accerr_cycle = 0;
       pending.refill_source_seen = 1'b0;
       pending.expected_emitted = 1'b0;
       pending.drop_emitted = 1'b0;
@@ -672,9 +1070,11 @@ class ptw_source_ref_model extends uvm_component;
         pending.sum = tr.sum;
         pending.mpp = tr.mpp;
         pending.priv_mode = tr.priv_mode;
+        pending.ctx_sample_seen = 1'b1;
         pending.last_cycle = tr.cycle;
         m_pending[key] = pending;
       end
+      drain_deferred_pde_lookup_events();
       m_ctx_count++;
     end
   endtask
@@ -708,6 +1108,7 @@ class ptw_source_ref_model extends uvm_component;
         pending.sum = m_cur_sum;
         pending.mpp = m_cur_mpp;
         pending.priv_mode = m_cur_priv_mode;
+        pending.ctx_sample_seen = 1'b1;
         m_context_current_sample_count++;
       end
       pending.last_cycle = tr.cycle;
@@ -719,9 +1120,12 @@ class ptw_source_ref_model extends uvm_component;
       if (tr.pmp_deny) begin
         pending.pmp_deny_seen = 1'b1;
         pending.expected_access_fault = 1'b1;
+        pending.access_src = PTW_SRC_ACCESS_SRC_TWU_PMP;
       end
       if (tr.access_fault) begin
         pending.expected_access_fault = 1'b1;
+        if (pending.access_src == PTW_SRC_ACCESS_SRC_NONE)
+          pending.access_src = PTW_SRC_ACCESS_SRC_TWU_PMP;
       end
 
       if (tr.mbuf_data_vld) begin
@@ -758,8 +1162,13 @@ class ptw_source_ref_model extends uvm_component;
           pending.expected_page_size = PTW_SRC_PGS_NONE;
           page_fault = nonleaf_page_fault(pending, tr.pte_data, tr.level);
           if (!page_fault && ((tr.level == PTW_SRC_LEVEL_FST) || (tr.level == PTW_SRC_LEVEL_SCD))) begin
-            m_pde_model.queue_update(tr.level, pending.vpn,
-              tr.pte_data[PTE_PPN_LSB +: PPN_WIDTH]);
+            record_predicted_pde_update(
+              tr.level,
+              pending.vpn,
+              tr.pte_data[PTE_PPN_LSB +: PPN_WIDTH],
+              tr.mbuf_pmpflg[3:0],
+              (tr.level == PTW_SRC_LEVEL_SCD) ? tr.mbuf_pmpflg[7:4] : 4'h0,
+              tr.cycle);
           end
         end
 
@@ -776,7 +1185,10 @@ class ptw_source_ref_model extends uvm_component;
       if (pending.expected_access_fault) begin
         build_and_emit_completion(key, pending, PTW_SRC_EXP_ACCESS_FAULT,
           pending.bus_error_seen ? PTW_SRC_FAULT_BUS_ERROR : PTW_SRC_FAULT_ACCESS,
-          pending.last_pte, 1'b0, tr.cycle);
+          pending.last_pte, 1'b0, tr.cycle,
+          pending.access_src, pending.pde_reason,
+          pending.pde_l1pmpflg, pending.pde_l2pmpflg,
+          pending.pde_direct_accerr_seen);
       end else if (pending.expected_page_fault) begin
         build_and_emit_completion(key, pending, PTW_SRC_EXP_PAGE_FAULT,
           PTW_SRC_FAULT_PAGE, pending.last_pte, 1'b0, tr.cycle);
@@ -784,8 +1196,6 @@ class ptw_source_ref_model extends uvm_component;
         build_and_emit_completion(key, pending, PTW_SRC_EXP_REFILL,
           PTW_SRC_FAULT_NONE, pending.last_pte, 1'b1, tr.cycle);
       end
-
-      m_pde_model.tick();
     end
   endtask
 
@@ -820,11 +1230,15 @@ class ptw_source_ref_model extends uvm_component;
         pending.sum = m_cur_sum;
         pending.mpp = m_cur_mpp;
         pending.priv_mode = m_cur_priv_mode;
+        pending.ctx_sample_seen = 1'b1;
         pending.bus_error_seen = 1'b1;
         pending.expected_access_fault = 1'b1;
+        pending.access_src = PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR;
         m_pending[selected_key] = pending;
         build_and_emit_completion(selected_key, pending, PTW_SRC_EXP_ACCESS_FAULT,
-          PTW_SRC_FAULT_BUS_ERROR, pending.last_pte, 1'b0, pending.last_cycle);
+          PTW_SRC_FAULT_BUS_ERROR, pending.last_pte, 1'b0, pending.last_cycle,
+          pending.access_src, pending.pde_reason, pending.pde_l1pmpflg,
+          pending.pde_l2pmpflg, pending.pde_direct_accerr_seen);
       end else begin
         m_probe_gap_count++;
         `uvm_warning(get_type_name(),
@@ -861,30 +1275,56 @@ class ptw_source_ref_model extends uvm_component;
       ptw_src_abort_txn tr;
       af_abort.get(tr);
       m_pde_model.abort_flush();
+      clear_pde_pmpflg_shadow();
     end
   endtask
 
   protected task collect_pde();
     forever begin
       ptw_src_pde_evt_txn tr;
-      ptw_src_level_e hit_level;
-      ppn_t hit_ppn;
-      bit l1_hit;
-      bit l2_hit;
 
       af_pde.get(tr);
       m_pde_event_count++;
       if (tr.kind == PTW_SRC_PDE_EVT_CLEAR) begin
         m_pde_model.clear();
+        clear_pde_pmpflg_shadow();
       end else if (tr.kind == PTW_SRC_PDE_EVT_UPDATE) begin
+        pde_update_info_s obs;
+
         m_pde_update_count++;
-        m_pde_model.commit_update(
-          (tr.update_level == 2'b10) ? PTW_SRC_LEVEL_FST : PTW_SRC_LEVEL_SCD,
-          tr.update_vpn,
-          tr.update_ppn);
+        obs.valid = 1'b1;
+        obs.committed = 1'b0;
+        obs.level = pde_update_level_from_bits(tr.update_level);
+        obs.vpn = tr.update_vpn;
+        obs.ppn = tr.update_ppn;
+        obs.l1pmpflg = tr.update_l1pmpflg;
+        obs.l2pmpflg = (obs.level == PTW_SRC_LEVEL_FST) ? 4'h0 : tr.update_l2pmpflg;
+        obs.cycle = tr.cycle;
+        if ((obs.level == PTW_SRC_LEVEL_FST)
+            || (obs.level == PTW_SRC_LEVEL_SCD)) begin
+          commit_pde_update_from_observed(obs);
+        end else begin
+          m_probe_gap_count++;
+          `uvm_warning(get_type_name(),
+            $sformatf("PTW_SOURCE_REF_PDE_PMPFLG_UPDATE_BAD_LEVEL update_level=0x%0h %s",
+              tr.update_level, tr.convert2string()))
+        end
       end else if ((tr.kind == PTW_SRC_PDE_EVT_HIT) || (tr.kind == PTW_SRC_PDE_EVT_MISS)) begin
-        bit lookup_hit;
-        lookup_hit = m_pde_model.lookup(tr.vpn, hit_level, hit_ppn, l1_hit, l2_hit);
+        string key;
+
+        if (tr.direct_accerr
+            && pde_direct_accerr_event_is_recent(tr.req_type, tr.id, tr.cycle)) begin
+          `uvm_info(get_type_name(),
+            $sformatf("PTW_SOURCE_REF_PDE_DUP_DIRECT_ACCERR_IGNORED %s",
+              tr.convert2string()),
+            UVM_HIGH)
+          continue;
+        end
+
+        m_deferred_pde_lookup_q.push_back(tr);
+        key = key_string(tr.req_type, tr.id);
+        if (m_pending.exists(key) && m_pending[key].ctx_sample_seen)
+          drain_deferred_pde_lookup_events();
       end
     end
   endtask
@@ -905,10 +1345,12 @@ class ptw_source_ref_model extends uvm_component;
           m_cur_priv_mode = tr.priv_mode;
           m_satp_clear_count++;
           m_pde_model.clear();
+          clear_pde_pmpflg_shadow();
         end
         CP0_TLB_ALL_INV: begin
           m_satp_clear_count++;
           m_pde_model.clear();
+          clear_pde_pmpflg_shadow();
         end
         CP0_SET_PRIV: m_cur_priv_mode = tr.priv_mode;
         CP0_SET_MXR: m_cur_mxr = tr.mxr;
@@ -932,6 +1374,7 @@ class ptw_source_ref_model extends uvm_component;
           m_pmp_flg[i] = tr.flg[i];
         m_pmp_clear_count++;
         m_pde_model.clear();
+        clear_pde_pmpflg_shadow();
       end
     end
   endtask
@@ -966,6 +1409,16 @@ class ptw_source_ref_model extends uvm_component;
   endtask
 
   virtual function void report_phase(uvm_phase phase);
+    while (m_deferred_pde_lookup_q.size() > 0) begin
+      m_probe_gap_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_PDE_DEFERRED_LOOKUP_UNMATCHED %s",
+          m_deferred_pde_lookup_q[0].convert2string()))
+      void'(m_deferred_pde_lookup_q.pop_front());
+    end
+
+    finalize_pde_update_matching();
+
     `uvm_info(get_type_name(),
       $sformatf({"PTW_SOURCE_REF_SUMMARY stage=7 req_accept=%0d expected=%0d ",
                  "refill=%0d page_fault=%0d access_fault=%0d drop=%0d ",
@@ -974,7 +1427,12 @@ class ptw_source_ref_model extends uvm_component;
                  "probe_gap=%0d satp_clear=%0d pmp_clear=%0d ",
                  "asid_current_refill=%0d context_current_sample=%0d maee0_sysmap=%0d ",
                  "degrade_1g_2m=%0d degrade_1g_4k=%0d degrade_2m_4k=%0d ",
-                 "pre_existing_exception_grant=%0d provisional=0"},
+                 "pre_existing_exception_grant=%0d ",
+                 "pde_l1_pmp_deny_miss=%0d pde_l2_l1pmp_deny_accerr=%0d ",
+                 "pde_l2_l2pmp_deny_accerr=%0d pde_pmpflg_update_l1=%0d ",
+                 "pde_pmpflg_update_l2=%0d pde_mmode_bypass=%0d ",
+                 "pde_mmode_lock_deny=%0d pde_update_match=%0d ",
+                 "pde_update_mismatch=%0d pde_duplicate_direct_accerr=%0d provisional=0"},
         m_req_accept_count, m_expected_count, m_refill_expected_count,
         m_page_fault_expected_count, m_access_fault_expected_count,
         m_drop_expected_count, m_pending.num(), m_duplicate_req_count,
@@ -985,7 +1443,17 @@ class ptw_source_ref_model extends uvm_component;
         m_maee0_sysmap_refill_count,
         m_maee0_degrade_1g_to_2m_count, m_maee0_degrade_1g_to_4k_count,
         m_maee0_degrade_2m_to_4k_count,
-        m_pre_existing_exception_grant_count),
+        m_pre_existing_exception_grant_count,
+        m_pde_l1_pmp_deny_miss_count,
+        m_pde_l2_l1pmp_deny_accerr_count,
+        m_pde_l2_l2pmp_deny_accerr_count,
+        m_pde_pmpflg_update_l1_count,
+        m_pde_pmpflg_update_l2_count,
+        m_pde_mmode_bypass_count,
+        m_pde_mmode_lock_deny_count,
+        m_pde_update_match_count,
+        m_pde_update_mismatch_count,
+        m_pde_duplicate_direct_accerr_event_count),
       UVM_NONE)
 
     `uvm_info(get_type_name(),

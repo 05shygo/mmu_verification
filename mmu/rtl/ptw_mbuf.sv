@@ -179,7 +179,8 @@ logic                       tlboper_ptw_abort_reg;
 //logic   [TYPE_WIDTH-1:0]	    mbuf_bus_error_type                 ;
 logic [3:0]                 mbuf_upd_pmpflg;
 logic [MBUF_ENTRY_NUM-1:0][3:0]                 mbuf_entry_pmpflg;
-logic [3:0]                 pde_updata_pmpflg;
+logic [3:0]                 pde_updata_l1pmpflg;
+logic [3:0]                 pde_updata_l2pmpflg;
 logic [3:0]                 mbuf_twu_pmpflg;
 
 assign mbuf_clk_en = 1'b1; 

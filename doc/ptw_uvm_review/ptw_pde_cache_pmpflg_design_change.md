@@ -23,7 +23,7 @@
 | fetch                 | `3'b011`       | `pmpflg[2]`       |
 | PFU/prefetch          | `3'b100`       | `pmpflg[0]`       |
 | store                 | `3'b110`       | `pmpflg[1]`       |
-| machine-mode override | effective M-mode | `pmpflg[3]`       |
+| machine-mode lock/deny | effective M-mode | `pmpflg[3]`，0 表示 M-mode 可 bypass，1 表示不 bypass |
 
 因此，某个 fetch 请求读第一级页表时 PMP 通过，只能证明 `pmpflg[2]` 或 machine override 条件满足，不能证明后续 load/store/PFU 请求也可以复用该 PDE cache entry 并跳过对应 level 的 PMP 检查。
 
@@ -72,7 +72,7 @@ vpn_tag_match &&
 (
   l1pmp_ok(current_type, cached_l1pmpflg)
   ||
-  (effective_machine_mode && cached_l1pmpflg[3])
+  (effective_machine_mode && !cached_l1pmpflg[3])
 )
 ```
 
@@ -84,7 +84,7 @@ vpn_tag_match &&
   l1pmp_ok(current_type, cached_l1pmpflg) &&
   l2pmp_ok(current_type, cached_l2pmpflg)
   ||
-  (effective_machine_mode && cached_l1pmpflg[3] && cached_l2pmpflg[3])
+  (effective_machine_mode && !cached_l1pmpflg[3] && !cached_l2pmpflg[3])
 )
 ```
 
@@ -158,7 +158,7 @@ Hit 条件：
 ```systemverilog
 L1PDE_hit =
   (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]) &&
-  (l1pmp_ok || (cp0_mach_mode && L1PDE_l1pmpflg[3]));
+  (l1pmp_ok || (cp0_mach_mode && !L1PDE_l1pmpflg[3]));
 ```
 
 设计含义：
@@ -219,7 +219,7 @@ L2PDE_hit =
   (
     (l1pmp_ok && l2pmp_ok)
     ||
-    (cp0_mach_mode && L2PDE_l1pmpflg[3] && L2PDE_l2pmpflg[3])
+    (cp0_mach_mode && !L2PDE_l1pmpflg[3] && !L2PDE_l2pmpflg[3])
   );
 ```
 
@@ -240,7 +240,7 @@ L2PDE_acc_err =
   !(
     (l1pmp_ok && l2pmp_ok)
     ||
-    (cp0_mach_mode && L2PDE_l1pmpflg[3] && L2PDE_l2pmpflg[3])
+    (cp0_mach_mode && !L2PDE_l1pmpflg[3] && !L2PDE_l2pmpflg[3])
   );
 ```
 
@@ -573,8 +573,8 @@ ptw_l2tlb_acc_err_id   = PDE_cache_acc_err_id;
 | load 建 L2 PDE，store 同 VPN 且 L1 allow 但 `l2pmpflg[1]=0` | L2 PDE acc_err，不发 LSU                                             |
 | L2 tag hit but PMP deny                                       | `PDE_cache_acc_err_vld=1`，PTW 返回 access fault，`type/id` 正确 |
 | PMP config update 后再查旧 PDE                                | PDE cache miss，不能使用旧 entry                                     |
-| effective M-mode 且 cached `[3]` 允许                       | 可命中对应 PDE cache                                                 |
-| effective M-mode 但任一级 cached `[3]=0`                    | L2 不 hit并触发 acc_err，L1 不 hit或进入 PMP path                    |
+| effective M-mode 且 cached `[3]=0` lock 未置位              | 可按 M-mode bypass 命中对应 PDE cache                                |
+| effective M-mode 但任一级 cached `[3]=1` lock/deny 置位     | 不能仅靠 M-mode bypass；仍需对应 R/W/X bit 允许，否则 L2 direct acc_err，L1 回 fst path |
 
 ### 11.4 Scoreboard 需要避免的错误预期
 
@@ -640,3 +640,169 @@ ptw_l2tlb_acc_err_id   = PDE_cache_acc_err_id;
 8. L2 PDE hit 条件要求当前 type 同时通过 cached `l1pmpflg` 和 `l2pmpflg`。如果当前 type 不通过 L1 但通过 L2，是否也统一作为 PDE cache direct access fault，而不是回退到 FST PMP path？文档当前倾向于 “任一级不通过都 direct acc_err”，这里需要确认无例外。答：统一作为 PDE cache direct access fault。
 9. THD level 请求的 MBUF pmpflg 当前文档定义为 `8'b0` 且 PDE cache 不使用。请确认 THD leaf 或 final PTE 相关 access fault 仍完全由 TWU PMP stage / MBUF bus error 路径处理，UVM 不需要为 THD pmpflg 建 PDE cache 语义。答：因为第三级页表一般情况下必定是叶子页表，不会更新入pde cache，所以不需要携带pmpflg，统一为0即可。
 10. PDE cache update 时，如果同一 VPN 已有 entry 但新请求携带不同 PMP flag，当前策略是通过 `entry_before_upd_hit` 避免 refill，还是应该更新 entry 中保存的 PMP flag？这个决定会影响 “先 fetch 建 cache、后 load 因 L1 miss 重新走 FST PMP 并拿到同一 non-leaf PDE” 后 cache evidence 是否会扩展到 load 权限。答：不可能出现同一 VPN 已有 entry但新请求携带不同 PMP flag，因为同一vpn的情况下其生成的访问页表ppn是要求一样的，必然pmpflg也一样。
+
+## 16. 基于 `ptwspec.md` 的 PTW 测试点审查
+
+本节只审查 `ptwspec.md` 中 PTW source-side 相关测试点、scoreboard、monitor、SVA 和覆盖要求，不审查 L1DTLB/L2TLB consumer-only 或 system sysmap/direct-map 自身测试点。审查基准采用本文第 15 节回答后的最终语义：
+
+1. PDE cache entry 除 tag/data 之外，还保存生成该 non-leaf PDE 时 page-table memory 访问返回的 PMP evidence。
+2. PMP flag bit 语义为 `pmpflg[0]=R`、`pmpflg[1]=W`、`pmpflg[2]=X`、`pmpflg[3]=M-mode lock/deny`。
+3. 当前请求 type 对 cached PMP flag 的允许函数为：
+
+```text
+pde_pmp_allow(type, flg, effective_m) =
+    (type == fetch && flg[2])
+ || (type == load  && flg[0])
+ || (type == store && flg[1])
+ || (type == pfu   && flg[0])
+ || (effective_m && !flg[3])
+```
+
+4. L1 PDE cache hit 需要 `valid && tag_match && pde_pmp_allow(current_type, l1pmpflg, effective_m)`。
+5. L2 PDE cache hit 需要 `valid && tag_match && pde_pmp_allow(current_type, l1pmpflg, effective_m) && pde_pmp_allow(current_type, l2pmpflg, effective_m)`。
+6. L1 tag hit 但 PMP deny 只表现为 L1 PDE miss，后续进入 `fst_pmp`，由正常 PMP path 触发 access fault。
+7. L2 tag hit 但任一级 PMP deny 直接产生 PDE cache access fault，不再发 LSU page-table read。
+8. L2 PDE cache direct access fault 的处理和普通 PTW access fault 一致，携带原始 `type/id`，释放对应 L2TLB miss buffer，并按 type 上报 L1ITLB/L1DTLB/PFU 目标。
+
+### 16.1 `ptwspec.md` 中需要修正的 PTW 规则
+
+| 位置 | 当前 `ptwspec.md` 规则 | 审查结论 | 需要修改为 |
+| --- | --- | --- | --- |
+| §3.1 PDE cache 结构 | PDE cache entry 不包含权限、PMA 属性、RSW、A/D 等字段 | `modify` | 保留“不存 ASID/G/RSW/A/D/leaf permission/PMA leaf attr”的结论，但必须新增保存 page-table memory PMP evidence：L1 entry 保存 `l1pmpflg`，L2 entry 保存 `l1pmpflg/l2pmpflg`。 |
+| §3.2 Lookup | valid + tag match 即 hit，被跳过级别合法性依赖填入时通过 PMP/CHK | `modify` | hit 还必须按当前 `type` 和 effective mode 重新解释 cached PMP flag。PMP 配置未变也不能跨 type 无条件复用。 |
+| §3.3 Update | update 只记录 tag 和 PPN | `modify` | L1 update 必须记录第一级 `l1pmpflg`；L2 update 必须记录 `{l2pmpflg,l1pmpflg}`。 |
+| §12.15/12.16 L1 PDE hit flow | L1 hit 后必然跳过 fst 进入 scd | `modify` | 只有 L1 tag hit 且当前 type 被 cached `l1pmpflg` 允许时才跳过 fst；否则进入 fst PMP path。 |
+| §12.17 L2 PDE hit flow | L2 hit 后必然跳过 fst/scd 进入 thd | `modify` | 只有 L2 tag hit 且当前 type 同时通过 cached L1/L2 PMP flag 时才进入 thd；任一级 deny 时直接 PDE cache access fault。 |
+| §13.1.2 Reference Model 输入 | PMP state 只描述实时 PMP port observation；PDE cache model 不记录 PMP evidence | `modify` | reference model 还必须记录 PDE cache entry 的 cached `l1pmpflg/l2pmpflg`，并在 lookup 时用当前 type/effective mode 重新判断。 |
+| §13.1.8 PDE Cache Reference Model | `pde_cache_entry_t` 只有 `valid/tag/ppn` | `modify` | L1 entry 增加 `logic [3:0] l1pmpflg`；L2 entry 增加 `logic [3:0] l1pmpflg,l2pmpflg`。 |
+| §13.1.8 PDE cache rules | miss/L1 hit/L2 hit 只按 tag 决定 skip level | `modify` | 增加 L1 permission-qualified miss 和 L2 direct access fault 建模。 |
+| §13.2 Assertion/Monitor | PDE cache hit/update/clear 未包含 PMP flag 与 PDE direct access fault | `modify` | 新增 pmpflg propagation、permission-qualified hit、L2 tag-hit deny direct accerr、type/id priority 的断言和 cover。 |
+| §13.4 必须覆盖功能场景 | 覆盖 L1 hit、L2 hit、PMP access fault，但没有 PDE cached PMP deny 场景 | `add` | 新增 L1 tag hit but PMP deny、L2 tag hit but L1/L2 PMP deny、PDE accerr priority、cached PMP flag propagation、effective M lock/deny matrix。 |
+| §13.12 PDE cache 类测试点最小矩阵 | `PDE-TP-001..012` 没有 pmpflg | `modify + add` | 修改 `PDE-TP-001..004/010/012`，新增 `PDE-TP-013..018`。 |
+| §13.21.3 PDE cache SVA | 断言只检查 tag/data/hit level/update/clear | `modify + add` | 修改现有 `PTW-SVA-PDE-003/004/005/006/010`，新增 permission-qualified hit、pmpflg update、direct accerr、valid gate、priority SVA。 |
+
+### 16.2 现有 PTW 测试点需要修改的内容
+
+| 现有测试点或矩阵项 | 当前归属 | 审查结论 | 必须修改的内容 |
+| --- | --- | --- | --- |
+| `PTW-AUD-005` PDE cache hit/miss/双命中选择 | `modify` | `modify` | hit 判定从 tag-only 改为 tag + cached PMP allow。L1/L2 success flow 必须证明当前 type 允许；双命中仍选 L2，但 L2 也必须 permission-qualified。 |
+| `PTW-AUD-006` PDE cache update 条件与时序 | `add` | `modify` | update 条件除 non-leaf/no-page-fault/no-abort 外，还要检查 update payload 中 `l1pmpflg/l2pmpflg` 是否来自正确 level 的 MBUF entry。 |
+| `PTW-AUD-007` reset/satp/PMP/abort 清理差异 | `split` | `modify` | PMP config change 仍清空 PDE cache；同时需要证明清空后不会复用旧 cached pmpflg。旧 in-flight walk 重新 update 时应写入其 MBUF entry 保存的 pmpflg。 |
+| `PTW-AUD-010` PMP 权限使用原始 request type | `modify` | `modify` | 原始 type 权限不仅要覆盖 TWU PMP stage，也要覆盖 PDE cache lookup 的 cached pmpflg 解释。 |
+| `PTW-AUD-011` MPRV/MPP effective privilege | `add` | `modify` | `MPRV=1 && MPP=M` 的 effective M-mode 必须同时覆盖 TWU PMP 检查和 PDE cache cached pmpflg hit/deny。 |
+| `PTW-ADD-007` double hit L2 wins | P0 | `modify` | 构造双命中时必须让 L2 cached L1/L2 pmpflg 均允许当前 type；另需新增 L2 tag hit but PMP deny 场景，不能复用该 positive test。 |
+| `PTW-ADD-008` lookup/update race | P1 | `modify` | race 检查不仅包含 tag/data，还要包含 pmpflg next-state。lookup 当拍使用旧 pmpflg，update 下一拍才改变 hit/deny 结果。 |
+| `PTW-ADD-009` update condition | P0 | `modify` | expected 增加 L1 update 保存 `mbuf_twu_pmpflg[3:0]`，L2 update 保存低 4bit 为 L1、高 4bit 为 L2；leaf/thd leaf/bus error/page fault/abort 不更新 pmpflg。 |
+| `PTW-ADD-010` satp/PMP clear no abort | P0 | `modify` | PMP config clear 后旧 entry valid 清零；后续同 VPN 请求不能命中旧 pmpflg。旧 in-flight non-leaf 允许重新 update，并以其 MBUF entry 的 pmpflg 作为新 evidence。 |
+| `PTW-ADD-011` abort/reset matrix | P0 | `modify` | abort/reset 不仅屏蔽 tag/data update，也必须屏蔽 pmpflg update 和 PDE direct accerr pending 的 stale 可见性。 |
+| `PTW-ADD-014` PMP original type permission | P0 | `modify` | 增加 PDE-cache-hit reuse 子场景：fetch 建 L1/L2 PDE 后 load/store/PFU 复用时按 load/store/PFU 重新解释 cached flag。 |
+| `PTW-ADD-015` MPRV MPP M effective mode | P0 | `modify` | 增加 cached pmpflg bit3 lock/deny 矩阵：effective M 且 `flg[3]=0` 可 bypass type bit；`flg[3]=1` 时仍按 type bit 判断。 |
+| `PTW-MOD-007` PDE cache smoke tests | `modify` | `modify` | 旧 smoke 不能只证明第二次访问更快或最终 PA 正确；必须补 cached pmpflg、L1 permission miss、L2 direct accerr、no extra LSU request、type/id completion。 |
+| `PDE-001/test_pde_cache_l2_single_entry` | `modify` | `modify` | 单 entry L2 hit 必须区分 tag hit allow 和 tag hit deny；deny 不能走普通 miss 或发 LSU。 |
+| `PDE-002/test_pde_cache_l1_single_entry` | `modify` | `modify` | 单 entry L1 tag hit deny 应表现为 L1 miss，进入 fst PMP path；不得期待 PDE direct accerr。 |
+| `test_ptw_l1_pde_hit.svh` | `modify` | `modify` | 增加当前 type 被 `l1pmpflg` 允许的 positive hit；增加当前 type 不允许时回到 fst PMP 的 negative path。 |
+| `test_ptw_l2_pde_hit_direct.svh` | `modify` | `modify` | 增加 L2 cached L1/L2 pmpflg 均允许的 positive hit；新增 L1 deny 和 L2 deny 两个 direct access fault 子场景或拆分测试。 |
+| `test_ptw_l1_pde_miss_walk.svh` | `modify` | `modify` | L1 tag hit but PMP deny 也会表现为 miss；测试名和 coverage 需要区分 tag miss 与 permission-qualified miss。 |
+| `test_ptw_l2_pde_miss_walk.svh` | `modify` | `modify` | L2 tag hit but PMP deny 不能归入普通 miss walk；必须改 expected 为 PDE direct access fault。 |
+| `test_pde_cache_l1_single_entry.svh` | `modify` | `modify` | 增加 `l1pmpflg` update/hit check；tag-only hit expected 作废。 |
+| `test_pde_cache_l2_single_entry.svh` | `modify` | `modify` | 增加 `l1pmpflg/l2pmpflg` update/hit/direct accerr check；tag-only hit expected 作废。 |
+| `test_mmu_pde_cache_hit_l2_skip_scd.svh` | `modify` | `modify` | 二级 PDE hit 只有 PMP-qualified hit 时才 skip fst/scd；若 tag hit deny，expected 改为 direct access fault。 |
+| `test_mmu_pde_cache_full_miss_full_ptw.svh` | `keep + modify` | `modify` | full miss smoke 建 cache 时必须记录 pmpflg，并在后续 hit/reuse 场景中用 source-side monitor 校验。 |
+| `test_bug_001_twu_fst_fetch_type.svh` | `modify` | `modify` | fetch/data/PFU original type 不只验证 TWU PMP，也要覆盖 cached pmpflg reuse，尤其 fetch 建 cache 后 load/store 不得无条件 hit。 |
+
+### 16.3 需要新增的 PTW directed 测试点
+
+以下新增测试点应追加到 `ptwspec.md` §13.9 的 `PTW-ADD-*` 或后续实现计划中，编号从当前 `PTW-ADD-036` 之后继续。
+
+| Testpoint ID | 建议测试名 | 绑定需求 | 必须驱动的场景 | Expected behavior / 必须观察点 | 优先级 |
+| --- | --- | --- | --- | --- | --- |
+| `PTW-ADD-037` | `test_ptw_pde_l1_pmp_tag_deny_fst_fault_001` | `PDE-TP-013`、`PTW-FLOW-024` | 先用 fetch 或 load 建立 L1 PDE entry，后续同 `vpn[2]` 不同 type tag match 但 `l1pmpflg` 不允许当前 type。 | L1 PDE 不输出 hit；请求进入 `fst_pmp`；若实时 FST PMP 也 deny，则正常 TWU access fault；不得产生 PDE direct accerr。 |
+| `PTW-ADD-038` | `test_ptw_pde_l1_pmp_tag_allow_reuse_001` | `PDE-TP-013` | L1 tag match 且当前 type 被 cached `l1pmpflg` 允许，包括 load/PFU 共用 R bit、fetch 使用 X bit、store 使用 W bit。 | L1 PDE hit；跳过 fst；进入 scd；无额外 fst LSU read。 |
+| `PTW-ADD-039` | `test_ptw_pde_l2_pmp_l1_deny_accerr_001` | `PDE-TP-014`、`PTW-FLOW-025` | L2 entry tag match，cached `l2pmpflg` 允许当前 type，但 cached `l1pmpflg` deny。 | 不输出 L2 hit；`PDE_cache_acc_err_vld=1`；PTW 返回 access fault，`type/id` 为当前请求；不得发新的 LSU page-table read。 |
+| `PTW-ADD-040` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001` | `PDE-TP-015`、`PTW-FLOW-026` | L2 entry tag match，cached `l1pmpflg` 允许当前 type，但 cached `l2pmpflg` deny。 | 直接 PDE cache access fault；不回退 scd PMP，不发 LSU；释放对应 L2TLB miss buffer。 |
+| `PTW-ADD-041` | `test_ptw_pde_pmpflg_propagation_update_001` | `PDE-TP-016` | 分别执行 FST non-leaf update L1、SCD non-leaf update L2、THD leaf no update。 | FST MBUF payload 为 `{4'b0,l1pmpflg}`；SCD MBUF payload 为 `{l2pmpflg,l1pmpflg}`；L1/L2 cache update 保存正确 pmpflg；THD pmpflg 为 0 且不更新 PDE cache。 |
+| `PTW-ADD-042` | `test_ptw_pde_accerr_priority_type_id_001` | `PDE-TP-017`、`PTW-INFRA-008` | PDE cache direct accerr 与 MBUF bus error、TWU access fault 或 page fault 同周期候选。 | PDE cache access fault 优先级最高；输出 fault class 为 access fault；`type/id` 来自 PDE cache 当前请求。 |
+| `PTW-ADD-043` | `test_ptw_pde_mmode_lock_matrix_001` | `PDE-TP-018`、`PTW-ADD-015` | effective M-mode 下，cached `pmpflg[3]` 分别为 0/1，并交叉当前 type bit allow/deny。 | `flg[3]=0` 时 M-mode bypass type bit；`flg[3]=1` 时仍按 type bit 决定 hit 或 direct accerr/fst path。 |
+| `PTW-ADD-044` | `test_ptw_pde_l2_accerr_valid_gate_001` | `PDE-TP-019` | L2 entry invalid 但 tag reset/旧值巧合匹配，或 `ptw_req=0` 时 tag match。 | 不得产生 `L2PDE_entry_acc_err/PDE_cache_acc_err_vld`；direct accerr 必须 gated by entry valid and request valid。 |
+| `PTW-ADD-045` | `test_ptw_pde_pmp_clear_repopulate_001` | `PDE-TP-010/016` | PMP config update 清空 PDE cache，随后旧 in-flight 或新 walk 返回 non-leaf。 | clear 后旧 entry 不可命中；重新 update 的 entry 使用返回请求 MBUF 中保存的 pmpflg。 |
+
+### 16.4 `PDE-TP-*` 最小矩阵修改与新增
+
+| Testpoint | 原结论 | 审查动作 | 更新后的 Expected |
+| --- | --- | --- | --- |
+| `PDE-TP-001` | PDE miss -> fst 非叶 no-fault 更新 L1 | `modify` | 更新 L1 PDE cache 的同时保存 `l1pmpflg=mbuf_twu_pmpflg[3:0]`，且 `mbuf_twu_pmpflg[7:4]==4'b0`。 |
+| `PDE-TP-002` | 一级 hit -> scd 非叶 no-fault，更新 L2 | `modify` | 一级 hit 必须 permission-qualified；SCD non-leaf update L2 时保存 inherited `l1pmpflg` 和 current `l2pmpflg`。 |
+| `PDE-TP-003` | 二级 hit 跳 fst/scd | `modify` | 二级 hit 必须同时通过 cached L1/L2 pmpflg；否则不允许进入 thd。 |
+| `PDE-TP-004` | 一级和二级同时 hit 选择二级 | `modify` | 双命中选择二级的前提是二级 permission-qualified hit。若二级 tag match 但 PMP deny，应 direct accerr，而不是回退使用一级 hit。 |
+| `PDE-TP-005..008` | leaf/page fault/bus error/abort 不 update | `keep + modify` | 除不更新 tag/data 外，还必须不更新 cached pmpflg。 |
+| `PDE-TP-009` | lookup/update race | `modify` | lookup 当拍使用旧 tag/data/pmpflg；新 tag/data/pmpflg 下一拍才可影响 hit 或 direct accerr。 |
+| `PDE-TP-010` | satp/PMP change clear | `modify` | PMP change 清空 entry valid 后，旧 cached pmpflg 不能再被 lookup 使用；旧 in-flight non-leaf 返回可重新 update 新 pmpflg。 |
+| `PDE-TP-011` | reset/tlboper abort | `modify` | reset/abort 必须同时清空或屏蔽 tag/data/pmpflg/direct accerr pending 的 stale 可见性。 |
+| `PDE-TP-012` | PLRU hit/write/victim | `modify` | PLRU read-hit 只能由 permission-qualified hit 更新；tag match but PMP deny 不应更新 read-hit PLRU。 |
+| `PDE-TP-013` | N/A | `add` | L1 valid tag match but cached `l1pmpflg` denies current type：L1 hit=0，作为 miss 进入 fst path，不产生 PDE direct accerr。 |
+| `PDE-TP-014` | N/A | `add` | L2 valid tag match but cached `l1pmpflg` denies current type：产生 PDE direct access fault，不发 LSU，不回退 fst/scd。 |
+| `PDE-TP-015` | N/A | `add` | L2 valid tag match but cached `l2pmpflg` denies current type：产生 PDE direct access fault，不发 LSU，不回退 scd。 |
+| `PDE-TP-016` | N/A | `add` | TWU->MBUF->PDE cache pmpflg propagation 正确：FST `{0,l1}`，SCD `{l2,l1}`，THD `0`。 |
+| `PDE-TP-017` | N/A | `add` | PDE cache direct accerr 返回原始 `type/id`，处理语义等同普通 access fault，并且优先级高于 MBUF bus error 和 TWU accerr。 |
+| `PDE-TP-018` | N/A | `add` | effective M-mode 下 cached `pmpflg[3]` lock/deny 语义正确：`flg[3]=0` bypass，`flg[3]=1` 不 bypass。 |
+| `PDE-TP-019` | N/A | `add` | L2 direct accerr 必须 gated by `L2PDE_vld && ptw_req && tag_match`，invalid entry 或 idle 周期不得误报。 |
+
+### 16.5 `PTW-FLOW-*` 需要新增的完整流程
+
+| Flow ID | 流程 | 必须 evidence |
+| --- | --- | --- |
+| `PTW-FLOW-024` | L1 PDE tag hit 但 cached PMP deny | L1 PDE 不 hit；走 fst PMP；若实时 PMP deny，返回普通 TWU access fault；无 PDE direct accerr。 |
+| `PTW-FLOW-025` | L2 PDE tag hit，但 cached L1 PMP deny | PDE cache direct access fault；无 xbar hit、无 thd/scd/fst LSU page-table read；`type/id` 正确。 |
+| `PTW-FLOW-026` | L2 PDE tag hit，但 cached L2 PMP deny | PDE cache direct access fault；无 xbar hit、无 LSU page-table read；`type/id` 正确。 |
+| `PTW-FLOW-027` | PDE cache pmpflg 允许跨 type 复用 | load/PFU 共用 R bit、fetch 使用 X bit、store 使用 W bit；允许时仍按 L1/L2 hit skip-level 流程。 |
+| `PTW-FLOW-028` | effective M-mode cached pmpflg lock matrix | `flg[3]=0` 时 bypass type bit；`flg[3]=1` 时仍要求对应 R/W/X bit。 |
+
+### 16.6 需要删除或作废的旧 expected
+
+本次修改不要求删除整个 PTW 测试文件，但以下旧 expected 必须从 PTW source-side closure 中删除或改写：
+
+| 旧 expected | 处理 | 原因 |
+| --- | --- | --- |
+| PDE cache entry 只由 VPN tag 决定 hit | `delete expected` | 新设计要求 tag + cached PMP flag allow。 |
+| PMP 配置改变清 PDE cache 已经足以解决所有跨 type 复用权限问题 | `delete expected` | PMP config 未变但 type 改变时仍可能不能复用 cached PDE。 |
+| L1 PDE tag hit but PMP deny 直接由 PDE cache 上报 access fault | `delete expected` | L1 deny 只转为 miss，进入 fst PMP path。 |
+| L2 PDE tag hit but PMP deny 被当成普通 PDE miss 并重新访问 LSU | `delete expected` | L2 deny 必须 direct access fault，避免额外 LSU page-table read。 |
+| L2 tag hit但二级 PMP deny时回退使用一级 PDE hit | `delete expected` | 二级 tag match 已经说明两级 non-leaf evidence 存在，任一级 deny 都 direct accerr。 |
+| `PTW-SVA-PDE-010` 中 “PDE cache entry 不携带 permission/flg” 的绝对表述 | `modify expected` | 应改成“不携带 leaf permission/PMA/RSW/G/ASID，但携带 page-table memory PMP evidence”。 |
+| 通过 L1DTLB 最终 fault/replay 证明 PDE cached PMP deny 正确 | `re-scope/consumer-only` | L1DTLB 只能证明消费，不能关闭 PTW source-side L1 miss/L2 direct accerr/no-LSU 行为。 |
+| 同 VPN 已有 entry 时要求用不同 pmpflg 覆盖 entry | `delete expected` | 同 VPN 在 PMP 配置稳定时 page-table PA 相同，pmpflg 必然相同；PMP 配置变化会先清 PDE cache。 |
+
+### 16.7 Reference model、scoreboard、monitor 和 SVA 必改项
+
+| 范围 | 审查动作 | 必须支持的内容 |
+| --- | --- | --- |
+| `ptw_source_ref_model` / `pde_cache_model` | `modify` | `pde_cache_entry_t` 增加 `l1pmpflg/l2pmpflg`；lookup 使用当前 type/effective mode 计算 permission-qualified hit；L2 tag-hit deny 生成 `PTW_EXP_ACCESS_FAULT(pde_cache_pmp_deny)`。 |
+| expected transaction | `modify` | `levels[]` 或 `pde{}` trace 增加 `lookup_tag_hit`、`lookup_perm_allow`、`cached_l1pmpflg`、`cached_l2pmpflg`、`pde_direct_accerr`、`pde_accerr_reason=l1pmp_deny/l2pmp_deny`。 |
+| PTW memory channel checker | `modify` | L2 direct accerr 场景不得出现新的 LSU PTE read；L1 permission miss 场景允许重新进入 fst PMP 并可能发 LSU 或由 PMP deny 终止。 |
+| `ptw_source_sb` | `modify` | access fault 来源新增 PDE cache direct accerr；仍按 `{type,id}` 匹配，并检查目标和 miss buffer release。 |
+| PDE cache monitor | `modify` | 捕获 update 时 `mbuf_cache_upd_l1pmpflg/l2pmpflg`，lookup 时 hit level、tag match、permission-qualified hit、L2 accerr valid/type/id。 |
+| PMP monitor | `modify` | cached pmpflg allow 函数必须和实时 PMP deny 函数使用同一 type/effective-mode 语义；bit3 按 lock/deny。 |
+| coverage | `add` | cross `cache_level(L1/L2) x request_type(fetch/load/store/PFU) x cached_allow/deny x deny_level(L1/L2/both) x effective_m x pmpflg[3]`。 |
+| regression grouping | `modify` | `ptw_audit_pde_xbar_list` 加入 `PTW-ADD-037..045`；`ptw_audit_pmp_list` 加入 `PTW-ADD-043`；signoff gate 必须统计 `PDE-TP-013..019`。 |
+
+新增或修改的 source-side SVA/cover 建议如下：
+
+| SVA ID | 断言要求 | 绑定测试点 |
+| --- | --- | --- |
+| `PTW-SVA-PDE-011` | L1 entry hit iff `valid && tag_match && pde_pmp_allow(type,l1pmpflg,effective_m)`；tag match but deny 不得拉高 L1 hit。 | `PDE-TP-013`、`PTW-ADD-037/038` |
+| `PTW-SVA-PDE-012` | L2 entry hit iff `valid && tag_match && allow(l1pmpflg) && allow(l2pmpflg)`。 | `PDE-TP-014/015`、`PTW-ADD-039/040` |
+| `PTW-SVA-PDE-013` | L2 valid tag match but either cached PMP deny 时，`PDE_cache_acc_err_vld/type/id` 必须产生，且不得同时产生 `L2PDE_xbar_hit_vld`。 | `PDE-TP-014/015/017` |
+| `PTW-SVA-PDE-014` | L2 direct accerr 必须 gated by entry valid and `ptw_req`；invalid/idle tag match 不得误报。 | `PDE-TP-019`、`PTW-ADD-044` |
+| `PTW-SVA-PDE-015` | FST/SCD MBUF request 和 PDE cache update 的 pmpflg payload 必须符合 `{4'b0,l1}`、`{l2,l1}`；THD 为 0 且不更新 PDE cache。 | `PDE-TP-016`、`PTW-ADD-041` |
+| `PTW-SVA-PDE-016` | L1/L2 tag match but permission deny 不得更新对应 PLRU read-hit；只有 permission-qualified hit 可更新 read-hit PLRU。 | `PDE-TP-012/013/014/015` |
+| `PTW-SVA-PDE-017` | PDE cache direct accerr grant 后清 pending；pending 时不得覆盖未授权的 `type/id`。 | `PDE-TP-017`、`PTW-ADD-042` |
+| `PTW-SVA-ARB-010` | PDE cache direct access fault 优先级高于 MBUF bus error 和 TWU access fault；输出 `type/id` 来自 PDE cache accerr。 | `PDE-TP-017`、`PTW-ADD-042` |
+
+### 16.8 签核准则更新
+
+1. `PTW-AUD-005/006/007/010/011` 和 `PDE-TP-001..019` 的关闭必须同时具备 source-side scoreboard match 与 PDE/PMP monitor 或 SVA cover hit。
+2. L1 permission-qualified miss 必须能证明后续实际进入 fst path；仅看到最终 access fault 不足以关闭，因为该 fault 可能来自错误的 PDE direct accerr。
+3. L2 tag-hit deny 必须能证明没有新的 LSU page-table read；仅看到 access fault 不足以关闭，因为错误实现可能多访问一次 LSU 后才 fault。
+4. `PTW-ADD-037..045` 不能被普通 PDE cache hit smoke、L1DTLB exception replay 或 end-to-end VA->PA fault 替代。
+5. 如果某些 cached pmpflg 或 `PDE_cache_acc_err_*` 信号不可观测，必须登记 monitor/probe 缺口；不能降级为 consumer-only closure。
+6. 随机测试只有在报告中输出 `PDE-TP-013..019` 对应 cover bin 命中，并能追溯到 source expected match 时，才能作为本次设计变更的 closure evidence。

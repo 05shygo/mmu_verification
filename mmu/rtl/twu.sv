@@ -359,6 +359,8 @@ logic [ID_WIDTH-1:0]    twu_ref_id;
 logic [PADDR_WIDTH-1:0] twu_sysmap_adderx1;
 logic [PADDR_WIDTH-1:0] twu_sysmap_adderx2;
 logic [4:0] 			sysmap_mmu_flg;
+logic [3:0]             fst_chk_l1pmpflg;
+logic [3:0]             scd_pmp_l1pmpflg;
 
 assign twu_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
@@ -488,7 +490,7 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 		fst_chk_type[TYPE_WIDTH-1:0] <= mbuf_twu_type[TYPE_WIDTH-1:0];
 		fst_chk_id[ID_WIDTH-1:0] <= mbuf_twu_id[ID_WIDTH-1:0];
 		fst_chk_data[DATA_WIDTH-1:0] <= mbuf_twu_data[DATA_WIDTH-1:0];
-		fst_chk_l1pmmpflg[3:0] <= mbuf_twu_pmpflg[3:0];
+		fst_chk_l1pmpflg[3:0] <= mbuf_twu_pmpflg[3:0];
 	end
 end
 
@@ -584,7 +586,7 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 		scd_pmp_type[TYPE_WIDTH-1:0] <= fst_chk_type[TYPE_WIDTH-1:0];
 		scd_pmp_id[ID_WIDTH-1:0] <= fst_chk_id[ID_WIDTH-1:0];
 		scd_pmp_ppn[PPN_WIDTH-1:0] <= fst_chk_data[37:10];
-		scd_pmp_l1pmpflg[3:0] <= fst_chk_l1pmmpflg[3:0];
+		scd_pmp_l1pmpflg[3:0] <= fst_chk_l1pmpflg[3:0];
 	end
 end		
 

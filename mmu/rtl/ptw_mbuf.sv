@@ -177,11 +177,11 @@ logic [MBUF_ENTRY_NUM-1:0]  mbuf_ptr_one_reg;
 logic                       mmu_lsu_data_req_fst_time;
 logic                       tlboper_ptw_abort_reg;
 //logic   [TYPE_WIDTH-1:0]	    mbuf_bus_error_type                 ;
-logic [3:0]                 mbuf_upd_pmpflg;
-logic [MBUF_ENTRY_NUM-1:0][3:0]                 mbuf_entry_pmpflg;
+logic [7:0]                 mbuf_upd_pmpflg;
+logic [MBUF_ENTRY_NUM-1:0][7:0]                 mbuf_entry_pmpflg;
 logic [3:0]                 pde_updata_l1pmpflg;
 logic [3:0]                 pde_updata_l2pmpflg;
-logic [3:0]                 mbuf_twu_pmpflg;
+logic [7:0]                 mbuf_twu_pmpflg;
 
 assign mbuf_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
@@ -572,7 +572,7 @@ generate
 			.mbuf_upd_id				(mbuf_upd_id[ID_WIDTH-1:0]					 ),
 			.mbuf_upd_twu_idx			(mbuf_upd_twu_idx[3:0]				 		 ),
 			.mbuf_upd_lvl				(mbuf_upd_lvl[PTE_LEVEL-1:0]				 ),
-			.mbuf_upd_pmpflg			(mbuf_upd_pmpflg[3:0]					 	 ),
+			.mbuf_upd_pmpflg			(mbuf_upd_pmpflg[7:0]					 	 ),
 			.twu_data_ready             (twu_data_ready                              ),
             .write_back_grant           (write_back_grant[MBUF_ent]                  ),
             .mbuf_entry_bus_err_req_mask(mbuf_entry_bus_err_req_mask                 ),

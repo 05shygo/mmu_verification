@@ -86,7 +86,7 @@ module twu #(
     output logic [ID_WIDTH-1:0]    twu_mbuf_id,
     output logic [PTE_LEVEL-1:0]   twu_mbuf_lvl,
     output logic [3:0]             twu_mbuf_twu_idx,
-    output logic [3:0]             twu_mbuf_pmpflg,
+    output logic [7:0]             twu_mbuf_pmpflg,
 //output logic		twu_mbuf_mask,
 
 //!******************************************

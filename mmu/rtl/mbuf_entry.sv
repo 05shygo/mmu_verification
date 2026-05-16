@@ -67,7 +67,7 @@ logic                   mbuf_get         ;
 logic                   mbuf_bus_err_flop;
 logic                   mbuf_entry_clk_en;
 logic                   mbuf_entry_clk   ;
-logic [3:0]             mbuf_pmpflg      ;
+logic [7:0]             mbuf_pmpflg      ;
 
 assign mbuf_entry_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59

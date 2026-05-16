@@ -38,9 +38,13 @@ class ptw_source_monitor extends uvm_monitor;
   int unsigned m_ctx_count;
   int unsigned m_level_count;
   int unsigned m_pde_count;
+  int unsigned m_pde_pmpflg_update_count;
+  int unsigned m_pde_l1_deny_miss_count;
+  int unsigned m_pde_direct_accerr_count;
   int unsigned m_gap_late_data_count;
   int unsigned m_gap_abort_bus_error_count;
   int unsigned m_gap_pre_existing_exception_count;
+  bit          m_prev_pde_cache_acc_err_vld;
 
   typedef struct {
     bit                valid;
@@ -66,9 +70,13 @@ class ptw_source_monitor extends uvm_monitor;
     m_ctx_count = 0;
     m_level_count = 0;
     m_pde_count = 0;
+    m_pde_pmpflg_update_count = 0;
+    m_pde_l1_deny_miss_count = 0;
+    m_pde_direct_accerr_count = 0;
     m_gap_late_data_count = 0;
     m_gap_abort_bus_error_count = 0;
     m_gap_pre_existing_exception_count = 0;
+    m_prev_pde_cache_acc_err_vld = 1'b0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -106,6 +114,7 @@ class ptw_source_monitor extends uvm_monitor;
       m_cycle++;
 
       if (v_probe.rst_ni !== 1'b1) begin
+        m_prev_pde_cache_acc_err_vld = 1'b0;
         emit_reset_drops();
         continue;
       end
@@ -152,6 +161,99 @@ class ptw_source_monitor extends uvm_monitor;
       PTW_SRC_TYPE_PFU:   return PTW_SRC_TARGET_PFU;
       default:            return PTW_SRC_TARGET_L2TLB;
     endcase
+  endfunction
+
+  protected function bit any_one16(input logic [15:0] vec);
+    for (int unsigned i = 0; i < 16; i++) begin
+      if (vec[i] === 1'b1)
+        return 1'b1;
+    end
+    return 1'b0;
+  endfunction
+
+  protected function logic [3:0] select_pmpflg16(
+    input logic [15:0]      sel_vec,
+    input logic [15:0][3:0] pmpflg_vec
+  );
+    logic [3:0] selected;
+
+    selected = 4'h0;
+    for (int unsigned i = 0; i < 16; i++) begin
+      if (sel_vec[i] === 1'b1)
+        selected = pmpflg_vec[i];
+    end
+    return selected;
+  endfunction
+
+  protected function bit effective_machine_for_type(input ptw_src_req_type_e req_type);
+    logic [1:0] effective_priv;
+
+    if (req_type == PTW_SRC_TYPE_FETCH)
+      effective_priv = v_probe.mon_cb.ptw_cp0_priv_mode;
+    else if (v_probe.mon_cb.ptw_cp0_mprv === 1'b1)
+      effective_priv = v_probe.mon_cb.ptw_cp0_mpp;
+    else
+      effective_priv = v_probe.mon_cb.ptw_cp0_priv_mode;
+
+    return (effective_priv == 2'b11);
+  endfunction
+
+  protected function void fill_pde_probe_fields(input ptw_src_pde_evt_txn tr);
+    bit effective_m;
+
+    tr.l1_tag_hit_vec = v_probe.mon_cb.pde_l1_tag_hit_vec;
+    tr.l2_tag_hit_vec = v_probe.mon_cb.pde_l2_tag_hit_vec;
+    tr.l2_accerr_vec = v_probe.mon_cb.pde_l2_entry_acc_err_vec;
+    tr.l1_tag_hit = any_one16(tr.l1_tag_hit_vec);
+    tr.l2_tag_hit = any_one16(tr.l2_tag_hit_vec);
+
+    if (tr.l1_tag_hit)
+      tr.cached_l1pmpflg = select_pmpflg16(tr.l1_tag_hit_vec,
+        v_probe.mon_cb.pde_l1_cached_l1pmpflg_vec);
+    if (tr.l2_tag_hit) begin
+      tr.cached_l1pmpflg = select_pmpflg16(tr.l2_tag_hit_vec,
+        v_probe.mon_cb.pde_l2_cached_l1pmpflg_vec);
+      tr.cached_l2pmpflg = select_pmpflg16(tr.l2_tag_hit_vec,
+        v_probe.mon_cb.pde_l2_cached_l2pmpflg_vec);
+    end
+
+    effective_m = effective_machine_for_type(tr.req_type);
+    if (tr.l1_tag_hit)
+      tr.l1_perm_allow = ptw_src_pde_pmp_allow(tr.req_type,
+        tr.cached_l1pmpflg, effective_m);
+    if (tr.l2_tag_hit) begin
+      tr.l2_l1_perm_allow = ptw_src_pde_pmp_allow(tr.req_type,
+        tr.cached_l1pmpflg, effective_m);
+      tr.l2_l2_perm_allow = ptw_src_pde_pmp_allow(tr.req_type,
+        tr.cached_l2pmpflg, effective_m);
+      tr.l2_perm_allow = tr.l2_l1_perm_allow && tr.l2_l2_perm_allow;
+    end
+
+    tr.direct_accerr = (v_probe.mon_cb.pde_cache_acc_err_vld === 1'b1)
+                    || any_one16(tr.l2_accerr_vec);
+    if (tr.direct_accerr) begin
+      tr.access_src = PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY;
+      if (v_probe.mon_cb.pde_cache_acc_err_vld === 1'b1) begin
+        tr.accerr_type = cast_req_type(v_probe.mon_cb.pde_cache_acc_err_type);
+        tr.accerr_id = v_probe.mon_cb.pde_cache_acc_err_id;
+      end else begin
+        tr.accerr_type = tr.req_type;
+        tr.accerr_id = tr.id;
+      end
+      tr.accerr_grant = v_probe.mon_cb.pde_cache_acc_err_grant;
+      if (tr.l2_tag_hit && !tr.l2_l1_perm_allow && !tr.l2_l2_perm_allow)
+        tr.reason = PTW_SRC_PDE_REASON_L2_BOTH_PMP_DENY;
+      else if (tr.l2_tag_hit && !tr.l2_l1_perm_allow)
+        tr.reason = PTW_SRC_PDE_REASON_L2_L1PMP_DENY;
+      else if (tr.l2_tag_hit && !tr.l2_l2_perm_allow)
+        tr.reason = PTW_SRC_PDE_REASON_L2_L2PMP_DENY;
+      else
+        tr.reason = PTW_SRC_PDE_REASON_UNMODELED;
+    end else if (tr.l1_tag_hit && !tr.l1_hit && !tr.l2_hit && !tr.l1_perm_allow) begin
+      tr.reason = PTW_SRC_PDE_REASON_L1_PMP_DENY;
+    end else if (!tr.l1_tag_hit && !tr.l2_tag_hit && !tr.l1_hit && !tr.l2_hit) begin
+      tr.reason = PTW_SRC_PDE_REASON_L1_TAG_MISS;
+    end
   endfunction
 
   protected function void fill_key_from_pending(
@@ -254,6 +356,10 @@ class ptw_source_monitor extends uvm_monitor;
         tr.pmp_grant = |v_probe.mon_cb.p13_pmp_grant_vec[twu];
         tr.pmp_deny = |v_probe.mon_cb.p13_pmp_deny_vec[twu];
         tr.pmp_wait = |v_probe.mon_cb.p13_pmp_wait_vec[twu];
+        if (tr.pmp_vld || tr.pmp_grant || tr.pmp_deny)
+          tr.selected_pmpflg = v_probe.mon_cb.p13_pmp_flg_vec[twu];
+        tr.twu_mbuf_pmpflg = v_probe.mon_cb.ptw_twu_mbuf_pmpflg[twu];
+        tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
         tr.sysmap_hit = |v_probe.mon_cb.p13_sysmap_hit_vec[twu];
         tr.sysmap_flg = v_probe.mon_cb.p13_sysmap_flg_vec[twu];
 
@@ -284,6 +390,11 @@ class ptw_source_monitor extends uvm_monitor;
   endtask
 
   protected task sample_pde_events();
+    bit direct_accerr_rise;
+
+    direct_accerr_rise = (v_probe.mon_cb.pde_cache_acc_err_vld === 1'b1)
+                      && (m_prev_pde_cache_acc_err_vld !== 1'b1);
+
     if ((v_probe.mon_cb.pde_cache_req === 1'b1)
         && (v_probe.mon_cb.pde_cache_ready === 1'b1)) begin
       ptw_src_pde_evt_txn tr;
@@ -298,7 +409,10 @@ class ptw_source_monitor extends uvm_monitor;
       tr.ppn = v_probe.mon_cb.pde_xbar_ppn;
       tr.l1_hit = v_probe.mon_cb.pde_l1_hit_vld;
       tr.l2_hit = v_probe.mon_cb.pde_l2_hit_vld;
+      fill_pde_probe_fields(tr);
 
+      if (tr.reason == PTW_SRC_PDE_REASON_L1_PMP_DENY)
+        m_pde_l1_deny_miss_count++;
       m_pde_count++;
       ap_pde.write(tr);
       `uvm_info(get_type_name(), {"PTW_PDE_EVT ", tr.convert2string()}, UVM_HIGH)
@@ -314,9 +428,13 @@ class ptw_source_monitor extends uvm_monitor;
       tr.update_level = v_probe.mon_cb.pde_cache_update_level;
       tr.update_vpn = v_probe.mon_cb.pde_cache_update_vpn;
       tr.update_ppn = v_probe.mon_cb.pde_cache_update_ppn;
+      tr.update_l1pmpflg = v_probe.mon_cb.pde_cache_update_l1pmpflg;
+      tr.update_l2pmpflg = v_probe.mon_cb.pde_cache_update_l2pmpflg;
+      tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
       tr.l1_update_vec = v_probe.mon_cb.pde_l1_update_vec;
       tr.l2_update_vec = v_probe.mon_cb.pde_l2_update_vec;
 
+      m_pde_pmpflg_update_count++;
       m_pde_count++;
       ap_pde.write(tr);
       `uvm_info(get_type_name(), {"PTW_PDE_EVT ", tr.convert2string()}, UVM_HIGH)
@@ -334,6 +452,34 @@ class ptw_source_monitor extends uvm_monitor;
       ap_pde.write(tr);
       `uvm_info(get_type_name(), {"PTW_PDE_EVT ", tr.convert2string()}, UVM_HIGH)
     end
+
+    if (direct_accerr_rise) begin
+      ptw_src_pde_evt_txn tr;
+
+      tr = ptw_src_pde_evt_txn::type_id::create("ptw_pde_direct_accerr_evt");
+      tr.cycle = m_cycle;
+      tr.kind = PTW_SRC_PDE_EVT_MISS;
+      tr.req_type = cast_req_type(v_probe.mon_cb.pde_cache_acc_err_type);
+      tr.id = v_probe.mon_cb.pde_cache_acc_err_id;
+      tr.vpn = v_probe.mon_cb.pde_xbar_vpn;
+      tr.ppn = v_probe.mon_cb.pde_xbar_ppn;
+      tr.l1_hit = v_probe.mon_cb.pde_l1_hit_vld;
+      tr.l2_hit = v_probe.mon_cb.pde_l2_hit_vld;
+      fill_pde_probe_fields(tr);
+      tr.direct_accerr = 1'b1;
+      tr.access_src = PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY;
+      tr.accerr_type = tr.req_type;
+      tr.accerr_id = v_probe.mon_cb.pde_cache_acc_err_id;
+      tr.accerr_grant = v_probe.mon_cb.pde_cache_acc_err_grant;
+
+      m_pde_direct_accerr_count++;
+      m_pde_count++;
+      ap_pde.write(tr);
+      `uvm_info(get_type_name(), {"PTW_PDE_EVT ", tr.convert2string()}, UVM_HIGH)
+    end
+
+    m_prev_pde_cache_acc_err_vld =
+      (v_probe.mon_cb.pde_cache_acc_err_vld === 1'b1);
   endtask
 
   protected task sample_abort_and_drops();
@@ -528,11 +674,15 @@ class ptw_source_monitor extends uvm_monitor;
       $sformatf({"PTW_SOURCE_MONITOR_SUMMARY stage=3 req_accept=%0d actual_rsp=%0d ",
                  "refill=%0d page_fault=%0d access_fault=%0d abort=%0d drop=%0d ",
                  "ctx=%0d level=%0d pde=%0d pending=%0d gap_late_data=%0d ",
-                 "gap_abort_bus_error=%0d gap_pre_existing_exception=%0d provisional=1"},
+                 "pde_pmpflg_update=%0d pde_l1_deny_miss=%0d ",
+                 "pde_direct_accerr=%0d gap_abort_bus_error=%0d ",
+                 "gap_pre_existing_exception=%0d provisional=1"},
         m_req_accept_count, m_actual_rsp_count, m_refill_count,
         m_page_fault_count, m_access_fault_count, m_abort_count, m_drop_count,
         m_ctx_count, m_level_count, m_pde_count, m_pending.num(),
-        m_gap_late_data_count, m_gap_abort_bus_error_count,
+        m_gap_late_data_count, m_pde_pmpflg_update_count,
+        m_pde_l1_deny_miss_count, m_pde_direct_accerr_count,
+        m_gap_abort_bus_error_count,
         m_gap_pre_existing_exception_count),
       UVM_NONE)
 

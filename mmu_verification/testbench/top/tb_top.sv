@@ -545,6 +545,9 @@ module tb_top;
   assign dut_probes_if.ptw_twu_mbuf_type = u_dut.x_ct_mmu_ptw.twu_mbuf_type;
   assign dut_probes_if.ptw_twu_mbuf_id   = u_dut.x_ct_mmu_ptw.twu_mbuf_id;
   assign dut_probes_if.ptw_twu_mbuf_lvl  = u_dut.x_ct_mmu_ptw.twu_mbuf_lvl;
+  assign dut_probes_if.ptw_twu_mbuf_pmpflg = u_dut.x_ct_mmu_ptw.twu_mbuf_pmpflg;
+  assign dut_probes_if.ptw_mbuf_twu_pmpflg = u_dut.x_ct_mmu_ptw.mbuf_twu_pmpflg;
+  assign dut_probes_if.ptw_mbuf_entry_pmpflg = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_pmpflg;
   assign dut_probes_if.pde_cache_req     = u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_xbar_req;
   assign dut_probes_if.pde_cache_ready   = u_dut.x_ct_mmu_ptw.u_PDE_cache.pde_cache_ready;
   assign dut_probes_if.pde_cache_clear   = u_dut.x_ct_mmu_ptw.u_PDE_cache.pde_cache_clear;
@@ -558,8 +561,35 @@ module tb_top;
   assign dut_probes_if.pde_cache_update_level = u_dut.x_ct_mmu_ptw.mbuf_cache_upd_lvl;
   assign dut_probes_if.pde_cache_update_ppn = u_dut.x_ct_mmu_ptw.mbuf_cache_upd_ppn;
   assign dut_probes_if.pde_cache_update_vpn = u_dut.x_ct_mmu_ptw.mbuf_cache_upd_vpn;
+  assign dut_probes_if.pde_cache_update_l1pmpflg = u_dut.x_ct_mmu_ptw.mbuf_cache_upd_l1pmpflg;
+  assign dut_probes_if.pde_cache_update_l2pmpflg = u_dut.x_ct_mmu_ptw.mbuf_cache_upd_l2pmpflg;
   assign dut_probes_if.pde_l1_update_vec = u_dut.x_ct_mmu_ptw.u_PDE_cache.L1PDE_entry_upd;
   assign dut_probes_if.pde_l2_update_vec = u_dut.x_ct_mmu_ptw.u_PDE_cache.L2PDE_entry_upd;
+  assign dut_probes_if.pde_cache_acc_err_vld = u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_cache_acc_err_vld;
+  assign dut_probes_if.pde_cache_acc_err_type = u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_cache_acc_err_type;
+  assign dut_probes_if.pde_cache_acc_err_id = u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_cache_acc_err_id;
+  assign dut_probes_if.pde_cache_acc_err_grant = u_dut.x_ct_mmu_ptw.acc_err_twu_grant[5];
+  assign dut_probes_if.pde_l2_entry_acc_err_vec = u_dut.x_ct_mmu_ptw.u_PDE_cache.L2PDE_entry_acc_err;
+  assign dut_probes_if.ptw_acc_err_grant_vec = u_dut.x_ct_mmu_ptw.acc_err_twu_grant;
+  genvar tb_pde_i;
+  generate
+    for (tb_pde_i = 0; tb_pde_i < 16; tb_pde_i++) begin : gen_pde_pmp_probe_assign
+      assign dut_probes_if.pde_l1_tag_hit_vec[tb_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_pde_i].u_L1PDE_cache.L1PDE_vld
+        & (u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_xbar_vpn[26:18]
+           == u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_pde_i].u_L1PDE_cache.L1PDE_tag);
+      assign dut_probes_if.pde_l2_tag_hit_vec[tb_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_vld
+        & (u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_xbar_vpn[26:9]
+           == u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_tag);
+      assign dut_probes_if.pde_l1_cached_l1pmpflg_vec[tb_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_pde_i].u_L1PDE_cache.L1PDE_l1pmpflg;
+      assign dut_probes_if.pde_l2_cached_l1pmpflg_vec[tb_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_l1pmpflg;
+      assign dut_probes_if.pde_l2_cached_l2pmpflg_vec[tb_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_l2pmpflg;
+    end
+  endgenerate
   assign dut_probes_if.pmp_regs_update_probe = 1'b0;
   // MAEE path/leaf is inferred from per-TWU leaf request outputs because
   // the RTL does not expose a single encoded MAEE-path/leaf signal.

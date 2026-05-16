@@ -136,6 +136,19 @@ Stage 6 应优先使用以下 bind 方案补足 monitor 不适合采样的 per-e
 | PMPFLG-ST0-GAP-007 | PDE direct accerr 与 TWU/MBUF access fault 的 root-cause priority 当前没有专用 monitor/SVA。 | PDE-TP-017, PTW-ADD-042 | Stage 6 扩展 `mmu_ptw_top_sva` 或新增 PTW accerr priority SVA，检查 `acc_err_twu_grant[5]`、type/id 和 pending clear。 |
 | PMPFLG-ST0-GAP-008 | L1 tag-hit deny 进入 `fst_pmp` 需要 raw-tag evidence 与后续 level event 关联，当前没有单个 transaction 表达。 | PDE-TP-013, PTW-FLOW-024, PTW-ADD-037 | Stage 1/2 扩展 transaction/monitor；Stage 4/5 ref/SB 用 request key 关联 L1 deny miss 和后续 FST event。 |
 
+### Stage 2 Gap Update
+
+| Gap ID | Stage 2 状态 | 备注 |
+| --- | --- | --- |
+| PMPFLG-ST0-GAP-001 | closed for monitor probe | `pde_cache_update_l1pmpflg/l2pmpflg` 已接入 probe 和 `PTW_PDE_EVT` update。 |
+| PMPFLG-ST0-GAP-002 | partially closed | `twu_mbuf_pmpflg`、`mbuf_twu_pmpflg`、`mbuf_entry_pmpflg` 已接入 probe；Stage 6 仍需 SVA/bind 证明 payload 编码和继承。 |
+| PMPFLG-ST0-GAP-003 | partially closed | `pde_cache_acc_err_vld/type/id/grant` 和 `L2PDE_entry_acc_err` 已接入 probe/monitor；Stage 6 仍需 pending/type-id/valid-gate/priority SVA。 |
+| PMPFLG-ST0-GAP-004 | partially closed | Stage 2 通过 `tb_top` 白盒层级 assign 生成 monitor raw tag hit vector；Stage 6 仍需 bind 做严格 assertion。 |
+| PMPFLG-ST0-GAP-005 | partially closed | Stage 2 已将 child internal cached pmpflg vector 接到 monitor probe；Stage 6 仍需 bind assertion 覆盖 per-entry 语义。 |
+| PMPFLG-ST0-GAP-006 | open | `pmp_regs_update` 仍为 testbench tie-off，本阶段未修改。 |
+| PMPFLG-ST0-GAP-007 | open for SVA | Stage 2 只采样 `acc_err_twu_grant[5:0]` 和 direct accerr event；priority assertion 留到 Stage 6。 |
+| PMPFLG-ST0-GAP-008 | partially closed | Stage 2 PDE event 可表达 L1 tag-hit deny miss；ref/SB 关联留到 Stage 4/5。 |
+
 ## 8. 阶段 1 到阶段 6 文件边界
 
 | 阶段 | 文件边界 | 本阶段审计结论 |

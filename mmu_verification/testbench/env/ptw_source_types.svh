@@ -88,6 +88,25 @@ typedef enum int unsigned {
   PTW_SRC_PDE_EVT_MISS   = 4
 } ptw_src_pde_evt_kind_e;
 
+typedef enum int unsigned {
+  PTW_SRC_PDE_REASON_NONE             = 0,
+  PTW_SRC_PDE_REASON_L1_TAG_MISS      = 1,
+  PTW_SRC_PDE_REASON_L2_TAG_MISS      = 2,
+  PTW_SRC_PDE_REASON_L1_PMP_DENY      = 3,
+  PTW_SRC_PDE_REASON_L2_L1PMP_DENY    = 4,
+  PTW_SRC_PDE_REASON_L2_L2PMP_DENY    = 5,
+  PTW_SRC_PDE_REASON_L2_BOTH_PMP_DENY = 6,
+  PTW_SRC_PDE_REASON_UNMODELED        = 7
+} ptw_src_pde_reason_e;
+
+typedef enum int unsigned {
+  PTW_SRC_ACCESS_SRC_NONE               = 0,
+  PTW_SRC_ACCESS_SRC_TWU_PMP            = 1,
+  PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR     = 2,
+  PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY = 3,
+  PTW_SRC_ACCESS_SRC_UNMODELED          = 4
+} ptw_src_access_src_e;
+
 typedef struct packed {
   ptw_src_req_type_e req_type;
   logic [5:0]        id;
@@ -138,10 +157,66 @@ function automatic bit ptw_src_is_legal_req_type(input logic [2:0] req_type);
       || (req_type == PTW_SRC_TYPE_STORE);
 endfunction
 
+function automatic bit ptw_src_is_data_type(input logic [2:0] req_type);
+  return (req_type == PTW_SRC_TYPE_LOAD)
+      || (req_type == PTW_SRC_TYPE_STORE);
+endfunction
+
 function automatic bit ptw_src_is_legal_page_size(input logic [2:0] page_size);
   return (page_size == PTW_SRC_PGS_4K)
       || (page_size == PTW_SRC_PGS_2M)
       || (page_size == PTW_SRC_PGS_1G);
+endfunction
+
+function automatic bit ptw_src_pde_pmp_type_bit_allow(
+  input ptw_src_req_type_e req_type,
+  input logic [3:0]        pmpflg
+);
+  case (req_type)
+    PTW_SRC_TYPE_LOAD,
+    PTW_SRC_TYPE_PFU:   return (pmpflg[0] === 1'b1);
+    PTW_SRC_TYPE_STORE: return (pmpflg[1] === 1'b1);
+    PTW_SRC_TYPE_FETCH: return (pmpflg[2] === 1'b1);
+    default:            return 1'b0;
+  endcase
+endfunction
+
+function automatic bit ptw_src_pde_pmp_allow(
+  input ptw_src_req_type_e req_type,
+  input logic [3:0]        pmpflg,
+  input bit                effective_m
+);
+  return ptw_src_pde_pmp_type_bit_allow(req_type, pmpflg)
+      || (effective_m && (pmpflg[3] === 1'b0));
+endfunction
+
+function automatic string ptw_src_pde_reason_name(
+  input ptw_src_pde_reason_e reason
+);
+  case (reason)
+    PTW_SRC_PDE_REASON_NONE:             return "NONE";
+    PTW_SRC_PDE_REASON_L1_TAG_MISS:      return "L1_TAG_MISS";
+    PTW_SRC_PDE_REASON_L2_TAG_MISS:      return "L2_TAG_MISS";
+    PTW_SRC_PDE_REASON_L1_PMP_DENY:      return "L1_PMP_DENY";
+    PTW_SRC_PDE_REASON_L2_L1PMP_DENY:    return "L2_L1PMP_DENY";
+    PTW_SRC_PDE_REASON_L2_L2PMP_DENY:    return "L2_L2PMP_DENY";
+    PTW_SRC_PDE_REASON_L2_BOTH_PMP_DENY: return "L2_BOTH_PMP_DENY";
+    PTW_SRC_PDE_REASON_UNMODELED:        return "UNMODELED";
+    default:                             return "UNKNOWN";
+  endcase
+endfunction
+
+function automatic string ptw_src_access_src_name(
+  input ptw_src_access_src_e access_src
+);
+  case (access_src)
+    PTW_SRC_ACCESS_SRC_NONE:               return "NONE";
+    PTW_SRC_ACCESS_SRC_TWU_PMP:            return "TWU_PMP";
+    PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR:     return "MBUF_BUS_ERROR";
+    PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY: return "PDE_CACHE_PMP_DENY";
+    PTW_SRC_ACCESS_SRC_UNMODELED:          return "UNMODELED";
+    default:                               return "UNKNOWN";
+  endcase
 endfunction
 
 function automatic bit ptw_src_is_leaf_pte(input pte_t raw_pte);
@@ -302,12 +377,17 @@ class ptw_src_expected_rsp_txn extends uvm_sequence_item;
   ptw_src_target_kind_e  target;
   ptw_src_fault_kind_e   fault_kind;
   ptw_src_drop_reason_e  drop_reason;
+  ptw_src_access_src_e   access_src;
+  ptw_src_pde_reason_e   pde_reason;
   logic [47:0]           raw_tag;
   logic [41:0]           raw_data;
   logic                  completion_or_seen;
   logic                  refill_valid;
   logic                  page_fault;
   logic                  access_fault;
+  logic [3:0]            pde_l1pmpflg;
+  logic [3:0]            pde_l2pmpflg;
+  bit                    pde_direct_accerr;
   logic                  target_l2tlb;
   logic                  target_l1i;
   logic                  target_l1d;
@@ -322,15 +402,22 @@ class ptw_src_expected_rsp_txn extends uvm_sequence_item;
 
   function new(string name = "ptw_src_expected_rsp_txn");
     super.new(name);
+    access_src = PTW_SRC_ACCESS_SRC_NONE;
+    pde_reason = PTW_SRC_PDE_REASON_NONE;
+    pde_l1pmpflg = 4'h0;
+    pde_l2pmpflg = 4'h0;
+    pde_direct_accerr = 1'b0;
   endfunction
 
   virtual function string convert2string();
     return $sformatf(
-      "cycle=%0d kind=%s type=%s id=0x%02h vpn=0x%07h asid=0x%04h pgs=%s ppn=0x%07h global=%0b flg=0x%04h target=%s target_mask={l2=%0b,l1i=%0b,l1d=%0b,pfu=%0b} fault=%s drop=%s cmplt_or=%0b refill=%0b pf=%0b af=%0b raw_tag=0x%012h raw_data=0x%011h drop_flags={has=%0b,reset=%0b,abort=%0b,late=%0b,abort_bus_error=%0b,pre_existing=%0b}",
+      "cycle=%0d kind=%s type=%s id=0x%02h vpn=0x%07h asid=0x%04h pgs=%s ppn=0x%07h global=%0b flg=0x%04h target=%s target_mask={l2=%0b,l1i=%0b,l1d=%0b,pfu=%0b} fault=%s drop=%s access_src=%s pde={reason=%s l1pmp=0x%0h l2pmp=0x%0h direct_accerr=%0b} cmplt_or=%0b refill=%0b pf=%0b af=%0b raw_tag=0x%012h raw_data=0x%011h drop_flags={has=%0b,reset=%0b,abort=%0b,late=%0b,abort_bus_error=%0b,pre_existing=%0b}",
       cycle,
       kind.name(), req_type.name(), id, vpn, asid, page_size.name(), ppn,
       global_bit, flg, target.name(), target_l2tlb, target_l1i, target_l1d,
-      target_pfu, fault_kind.name(), drop_reason.name(), completion_or_seen,
+      target_pfu, fault_kind.name(), drop_reason.name(),
+      ptw_src_access_src_name(access_src), ptw_src_pde_reason_name(pde_reason),
+      pde_l1pmpflg, pde_l2pmpflg, pde_direct_accerr, completion_or_seen,
       refill_valid, page_fault, access_fault, raw_tag, raw_data,
       has_drop_key, reset_drop, abort_drop, late_data, abort_bus_error,
       pre_existing_exception_grant);
@@ -427,17 +514,24 @@ class ptw_src_level_evt_txn extends uvm_sequence_item;
   bit                pmp_wait;
   bit                sysmap_hit;
   logic [4:0]        sysmap_flg;
+  logic [7:0]        twu_mbuf_pmpflg;
+  logic [7:0]        mbuf_pmpflg;
+  logic [3:0]        selected_pmpflg;
 
   function new(string name = "ptw_src_level_evt_txn");
     super.new(name);
+    twu_mbuf_pmpflg = 8'h00;
+    mbuf_pmpflg = 8'h00;
+    selected_pmpflg = 4'h0;
   endfunction
 
   virtual function string convert2string();
     return $sformatf(
-      "cycle=%0d twu=%0d level=%s type=%s id=0x%02h vpn=0x%07h pte_pa=0x%010h pte=0x%016h mbuf_req=%0b data_vld=%0b refill_req=%0b pf=%0b af=%0b pmp{vld=%0b grant=%0b deny=%0b wait=%0b} sysmap{hit=%0b flg=0x%02h}",
+      "cycle=%0d twu=%0d level=%s type=%s id=0x%02h vpn=0x%07h pte_pa=0x%010h pte=0x%016h mbuf_req=%0b data_vld=%0b refill_req=%0b pf=%0b af=%0b pmp{vld=%0b grant=%0b deny=%0b wait=%0b selected=0x%0h twu_mbuf=0x%02h mbuf=0x%02h} sysmap{hit=%0b flg=0x%02h}",
       cycle, twu_idx, level.name(), req_type.name(), id, vpn, pte_pa,
       pte_data, mbuf_req, mbuf_data_vld, refill_req, page_fault, access_fault,
-      pmp_vld, pmp_grant, pmp_deny, pmp_wait, sysmap_hit, sysmap_flg);
+      pmp_vld, pmp_grant, pmp_deny, pmp_wait, selected_pmpflg,
+      twu_mbuf_pmpflg, mbuf_pmpflg, sysmap_hit, sysmap_flg);
   endfunction
 endclass : ptw_src_level_evt_txn
 
@@ -452,24 +546,69 @@ class ptw_src_pde_evt_txn extends uvm_sequence_item;
   ppn_t                  ppn;
   bit                    l1_hit;
   bit                    l2_hit;
+  bit                    l1_tag_hit;
+  bit                    l2_tag_hit;
+  bit                    l1_perm_allow;
+  bit                    l2_l1_perm_allow;
+  bit                    l2_l2_perm_allow;
+  bit                    l2_perm_allow;
   bit                    clear;
   bit                    update;
   logic [1:0]            update_level;
   vpn_t                  update_vpn;
   ppn_t                  update_ppn;
+  logic [3:0]            cached_l1pmpflg;
+  logic [3:0]            cached_l2pmpflg;
+  logic [3:0]            update_l1pmpflg;
+  logic [3:0]            update_l2pmpflg;
+  logic [7:0]            mbuf_pmpflg;
+  bit                    direct_accerr;
+  ptw_src_pde_reason_e   reason;
+  ptw_src_access_src_e   access_src;
+  ptw_src_req_type_e     accerr_type;
+  logic [5:0]            accerr_id;
+  bit                    accerr_grant;
+  logic [15:0]           l1_tag_hit_vec;
+  logic [15:0]           l2_tag_hit_vec;
+  logic [15:0]           l2_accerr_vec;
   logic [15:0]           l1_update_vec;
   logic [15:0]           l2_update_vec;
 
   function new(string name = "ptw_src_pde_evt_txn");
     super.new(name);
+    l1_tag_hit = 1'b0;
+    l2_tag_hit = 1'b0;
+    l1_perm_allow = 1'b0;
+    l2_l1_perm_allow = 1'b0;
+    l2_l2_perm_allow = 1'b0;
+    l2_perm_allow = 1'b0;
+    cached_l1pmpflg = 4'h0;
+    cached_l2pmpflg = 4'h0;
+    update_l1pmpflg = 4'h0;
+    update_l2pmpflg = 4'h0;
+    mbuf_pmpflg = 8'h00;
+    direct_accerr = 1'b0;
+    reason = PTW_SRC_PDE_REASON_NONE;
+    access_src = PTW_SRC_ACCESS_SRC_NONE;
+    accerr_type = PTW_SRC_TYPE_UNKNOWN;
+    accerr_id = 6'h00;
+    accerr_grant = 1'b0;
+    l1_tag_hit_vec = 16'h0000;
+    l2_tag_hit_vec = 16'h0000;
+    l2_accerr_vec = 16'h0000;
   endfunction
 
   virtual function string convert2string();
     return $sformatf(
-      "cycle=%0d kind=%s type=%s id=0x%02h vpn=0x%07h ppn=0x%07h hit{l1=%0b,l2=%0b} clear=%0b update=%0b upd_level=0x%0h upd_vpn=0x%07h upd_ppn=0x%07h l1_upd=0x%04h l2_upd=0x%04h",
+      "cycle=%0d kind=%s type=%s id=0x%02h vpn=0x%07h ppn=0x%07h hit{l1=%0b,l2=%0b,l1_tag=%0b,l2_tag=%0b,l1_allow=%0b,l2_l1_allow=%0b,l2_l2_allow=%0b,l2_allow=%0b} pmp{cached_l1=0x%0h,cached_l2=0x%0h,upd_l1=0x%0h,upd_l2=0x%0h,mbuf=0x%02h} direct_accerr=%0b reason=%s access_src=%s accerr{type=%s,id=0x%02h,grant=%0b} clear=%0b update=%0b upd_level=0x%0h upd_vpn=0x%07h upd_ppn=0x%07h vec{l1_tag=0x%04h,l2_tag=0x%04h,l2_accerr=0x%04h,l1_upd=0x%04h,l2_upd=0x%04h}",
       cycle, kind.name(), req_type.name(), id, vpn, ppn, l1_hit, l2_hit,
-      clear, update, update_level, update_vpn, update_ppn,
-      l1_update_vec, l2_update_vec);
+      l1_tag_hit, l2_tag_hit, l1_perm_allow, l2_l1_perm_allow,
+      l2_l2_perm_allow, l2_perm_allow, cached_l1pmpflg, cached_l2pmpflg,
+      update_l1pmpflg, update_l2pmpflg, mbuf_pmpflg, direct_accerr,
+      ptw_src_pde_reason_name(reason), ptw_src_access_src_name(access_src),
+      accerr_type.name(), accerr_id, accerr_grant, clear, update,
+      update_level, update_vpn, update_ppn, l1_tag_hit_vec, l2_tag_hit_vec,
+      l2_accerr_vec, l1_update_vec, l2_update_vec);
   endfunction
 endclass : ptw_src_pde_evt_txn
 

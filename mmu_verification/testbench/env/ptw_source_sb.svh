@@ -323,6 +323,91 @@ class ptw_source_sb extends uvm_scoreboard;
     return msg;
   endfunction
 
+  protected function bit completion_identity_matches(
+    input ptw_src_expected_rsp_txn exp,
+    input ptw_src_actual_rsp_txn   actual
+  );
+    if (exp.kind != actual.kind)
+      return 1'b0;
+    if (exp.req_type != actual.req_type)
+      return 1'b0;
+    if (exp.id != actual.id)
+      return 1'b0;
+
+    if (exp.kind == PTW_SRC_EXP_REFILL) begin
+      if (exp.vpn != actual.vpn)
+        return 1'b0;
+      if (exp.asid != actual.asid)
+        return 1'b0;
+      if (exp.page_size != actual.page_size)
+        return 1'b0;
+    end else if ((exp.kind == PTW_SRC_EXP_PAGE_FAULT)
+                 || (exp.kind == PTW_SRC_EXP_ACCESS_FAULT)) begin
+      if ((exp.vpn != '0) && (actual.vpn != '0) && (exp.vpn != actual.vpn))
+        return 1'b0;
+    end
+
+    return 1'b1;
+  endfunction
+
+  protected function int find_best_actual_match(
+    input string                   key,
+    input ptw_src_expected_rsp_txn exp
+  );
+    if (!m_actual_q.exists(key))
+      return -1;
+    for (int i = 0; i < m_actual_q[key].size(); i++) begin
+      if (completion_identity_matches(exp, m_actual_q[key][i]))
+        return i;
+    end
+    return -1;
+  endfunction
+
+  protected function bit actual_has_match_for_expected(
+    input string                   key,
+    input ptw_src_expected_rsp_txn exp
+  );
+    return (find_best_actual_match(key, exp) >= 0);
+  endfunction
+
+  protected function int find_best_expected_match(input string key);
+    if (!m_expected_q.exists(key))
+      return -1;
+    for (int i = 0; i < m_expected_q[key].size(); i++) begin
+      if (actual_has_match_for_expected(key, m_expected_q[key][i]))
+        return i;
+    end
+    return -1;
+  endfunction
+
+  protected function void match_pair(
+    input string                   key,
+    input ptw_src_expected_rsp_txn exp,
+    input ptw_src_actual_rsp_txn   actual
+  );
+    string diff;
+
+    sample_expected_coverage(exp);
+    sample_actual_coverage(actual);
+    diff = compare_completion(exp, actual);
+    if (diff == "") begin
+      n_matched++;
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_SOURCE_MATCH key=%s %s", key, actual.convert2string()),
+        UVM_MEDIUM)
+    end else begin
+      n_mismatch++;
+      if (exp.kind != actual.kind)
+        n_class_mismatch++;
+      else
+        n_field_mismatch++;
+      `uvm_error(get_type_name(),
+        $sformatf("PTW_SOURCE_MISMATCH key=%s diff={%s} exp={%s} act={%s}",
+          key, diff, exp.convert2string(), actual.convert2string()))
+    end
+    retire_active_key(exp.req_type, exp.id);
+  endfunction
+
   protected function void sample_req_type(input ptw_src_req_type_e req_type);
     case (req_type)
       PTW_SRC_TYPE_FETCH: n_cov_type_fetch++;
@@ -780,29 +865,21 @@ class ptw_source_sb extends uvm_scoreboard;
            && (m_actual_q.exists(key) && (m_actual_q[key].size() != 0))) begin
       ptw_src_expected_rsp_txn exp;
       ptw_src_actual_rsp_txn actual;
-      string diff;
+      int exp_idx;
+      int actual_idx;
 
-      exp = m_expected_q[key].pop_front();
-      actual = m_actual_q[key].pop_front();
-      sample_expected_coverage(exp);
-      sample_actual_coverage(actual);
-      diff = compare_completion(exp, actual);
-      if (diff == "") begin
-        n_matched++;
-        `uvm_info(get_type_name(),
-          $sformatf("PTW_SOURCE_MATCH key=%s %s", key, actual.convert2string()),
-          UVM_MEDIUM)
-      end else begin
-        n_mismatch++;
-        if (exp.kind != actual.kind)
-          n_class_mismatch++;
-        else
-          n_field_mismatch++;
-        `uvm_error(get_type_name(),
-          $sformatf("PTW_SOURCE_MISMATCH key=%s diff={%s} exp={%s} act={%s}",
-            key, diff, exp.convert2string(), actual.convert2string()))
-      end
-      retire_active_key(exp.req_type, exp.id);
+      exp_idx = find_best_expected_match(key);
+      if (exp_idx < 0)
+        break;
+      exp = m_expected_q[key][exp_idx];
+
+      actual_idx = find_best_actual_match(key, exp);
+      if (actual_idx < 0)
+        break;
+      m_expected_q[key].delete(exp_idx);
+      actual = m_actual_q[key][actual_idx];
+      m_actual_q[key].delete(actual_idx);
+      match_pair(key, exp, actual);
     end
   endtask
 
@@ -1074,8 +1151,45 @@ class ptw_source_sb extends uvm_scoreboard;
     return oldest_age;
   endfunction
 
+  protected function void flush_unmatched_completion_pairs();
+    bit progress;
+
+    progress = 1'b1;
+    while (progress) begin
+      progress = 1'b0;
+      foreach (m_expected_q[key]) begin
+        int exp_idx;
+        int actual_idx;
+        ptw_src_expected_rsp_txn exp;
+        ptw_src_actual_rsp_txn actual;
+
+        if (!m_actual_q.exists(key) || (m_actual_q[key].size() == 0))
+          continue;
+        if (m_expected_q[key].size() == 0)
+          continue;
+
+        exp_idx = find_best_expected_match(key);
+        if (exp_idx < 0)
+          exp_idx = 0;
+        exp = m_expected_q[key][exp_idx];
+        m_expected_q[key].delete(exp_idx);
+
+        actual_idx = find_best_actual_match(key, exp);
+        if (actual_idx < 0)
+          actual_idx = 0;
+        actual = m_actual_q[key][actual_idx];
+        m_actual_q[key].delete(actual_idx);
+
+        match_pair(key, exp, actual);
+        progress = 1'b1;
+      end
+    end
+  endfunction
+
   virtual function void report_phase(uvm_phase phase);
     n_pending = 0;
+
+    flush_unmatched_completion_pairs();
 
     foreach (m_pde_root_pending_q[key]) begin
       for (int i = 0; i < m_pde_root_pending_q[key].size(); i++) begin

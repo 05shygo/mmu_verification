@@ -137,6 +137,7 @@ class ptw_source_ref_model extends uvm_component;
   int unsigned m_access_fault_expected_count;
   int unsigned m_drop_expected_count;
   int unsigned m_duplicate_req_count;
+  int unsigned m_multi_pending_count;
   int unsigned m_mem_req_count;
   int unsigned m_mem_rsp_count;
   int unsigned m_mem_drop_count;
@@ -232,6 +233,31 @@ class ptw_source_ref_model extends uvm_component;
     return $sformatf("%0h:%0h", req_type, id);
   endfunction
 
+  protected function string pending_key_string(
+    input logic [2:0]  req_type,
+    input logic [5:0]  id,
+    input vpn_t        vpn,
+    input int unsigned cycle
+  );
+    return $sformatf("%s:%07h:%0d", key_string(req_type, id), vpn, cycle);
+  endfunction
+
+  protected function bit pending_key_matches(
+    input pending_req_s      pending,
+    input ptw_src_req_type_e req_type,
+    input logic [5:0]        id,
+    input bit                use_vpn,
+    input vpn_t              vpn
+  );
+    if ((req_type != PTW_SRC_TYPE_UNKNOWN) && (pending.req_type != req_type))
+      return 1'b0;
+    if (pending.id != id)
+      return 1'b0;
+    if (use_vpn && (pending.vpn != vpn))
+      return 1'b0;
+    return 1'b1;
+  endfunction
+
   protected function ptw_src_target_kind_e target_from_type(input ptw_src_req_type_e req_type);
     case (req_type)
       PTW_SRC_TYPE_FETCH: return PTW_SRC_TARGET_L1I;
@@ -254,34 +280,47 @@ class ptw_source_ref_model extends uvm_component;
   protected function bit resolve_pending_key(
     input  ptw_src_req_type_e req_type,
     input  logic [5:0]        id,
-    output string             key
+    output string             key,
+    input  bit                use_vpn = 1'b0,
+    input  vpn_t              vpn = '0,
+    input  bit                warn_on_fail = 1'b1
   );
+    string base_key;
     string candidate;
     string iter_key;
     int unsigned match_count;
 
-    key = key_string(req_type, id);
-    if (m_pending.exists(key))
+    base_key = key_string(req_type, id);
+    key = base_key;
+    if (m_pending.exists(base_key)
+        && pending_key_matches(m_pending[base_key], req_type, id, use_vpn, vpn))
       return 1'b1;
 
     match_count = 0;
     foreach (m_pending[iter_key]) begin
-      if ((req_type != PTW_SRC_TYPE_UNKNOWN)
-          && (m_pending[iter_key].req_type != req_type))
+      if (!pending_key_matches(m_pending[iter_key], req_type, id, use_vpn, vpn))
         continue;
       candidate = iter_key;
       match_count++;
     end
 
-    if (match_count == 1) begin
+    if (match_count != 0) begin
       key = candidate;
+      if (match_count > 1) begin
+        m_probe_gap_count++;
+        `uvm_warning(get_type_name(),
+          $sformatf("PTW_STAGE7_OPEN_GAP kind=ambiguous_pending_key type=%s id=0x%02h use_vpn=%0b vpn=0x%07h match_count=%0d pending=%0d selected=%s",
+            req_type.name(), id, use_vpn, vpn, match_count, m_pending.num(), key))
+      end
       return 1'b1;
     end
 
-    m_probe_gap_count++;
-    `uvm_warning(get_type_name(),
-      $sformatf("PTW_STAGE7_OPEN_GAP kind=ambiguous_pending_key type=%s id=0x%02h match_count=%0d pending=%0d",
-        req_type.name(), id, match_count, m_pending.num()))
+    if (warn_on_fail) begin
+      m_probe_gap_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_STAGE7_OPEN_GAP kind=pending_key_not_found type=%s id=0x%02h use_vpn=%0b vpn=0x%07h pending=%0d",
+          req_type.name(), id, use_vpn, vpn, m_pending.num()))
+    end
     return 1'b0;
   endfunction
 
@@ -546,8 +585,7 @@ class ptw_source_ref_model extends uvm_component;
       return;
     end
 
-    if (!resolve_pending_key(tr.req_type, tr.id, key)) begin
-      m_probe_gap_count++;
+    if (!resolve_pending_key(tr.req_type, tr.id, key, 1'b1, tr.vpn)) begin
       `uvm_warning(get_type_name(),
         $sformatf("PTW_SOURCE_REF_PDE_LOOKUP_NO_PENDING %s", tr.convert2string()))
       return;
@@ -644,8 +682,8 @@ class ptw_source_ref_model extends uvm_component;
 
     while (m_deferred_pde_lookup_q.size() > 0) begin
       tr = m_deferred_pde_lookup_q[0];
-      key = key_string(tr.req_type, tr.id);
-      if (m_pending.exists(key) && m_pending[key].ctx_sample_seen) begin
+      if (resolve_pending_key(tr.req_type, tr.id, key, 1'b1, tr.vpn, 1'b0)
+          && m_pending[key].ctx_sample_seen) begin
         void'(m_deferred_pde_lookup_q.pop_front());
         process_pde_lookup_event(tr);
       end else begin
@@ -988,15 +1026,20 @@ class ptw_source_ref_model extends uvm_component;
       ptw_src_req_accept_txn tr;
       pending_req_s pending;
       string key;
+      string base_key;
 
       af_req_accept.get(tr);
-      key = key_string(tr.req_type, tr.id);
+      base_key = key_string(tr.req_type, tr.id);
+      key = base_key;
       if (m_pending.exists(key)) begin
-        m_duplicate_req_count++;
-        `uvm_warning(get_type_name(),
-          $sformatf("PTW_SOURCE_REF_ILLEGAL duplicate_request key=%s old_vpn=0x%07h new_vpn=0x%07h",
-            key, m_pending[key].vpn, tr.vpn))
-        continue;
+        m_multi_pending_count++;
+        key = pending_key_string(tr.req_type, tr.id, tr.vpn, tr.cycle);
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_SOURCE_REF_MULTI_PENDING base_key=%s new_key=%s old_vpn=0x%07h new_vpn=0x%07h",
+            base_key, key, m_pending[base_key].vpn, tr.vpn),
+          UVM_HIGH)
+        while (m_pending.exists(key))
+          key = {key, "_r"};
       end
 
       pending.valid = 1'b1;
@@ -1060,7 +1103,7 @@ class ptw_source_ref_model extends uvm_component;
       m_cur_sum = tr.sum;
       m_cur_mpp = tr.mpp;
       m_cur_priv_mode = tr.priv_mode;
-      if (resolve_pending_key(tr.req_type, tr.id, key)) begin
+      if (resolve_pending_key(tr.req_type, tr.id, key, 1'b1, tr.vpn)) begin
         pending = m_pending[key];
         pending.asid = tr.asid;
         pending.satp_ppn = tr.satp_ppn;
@@ -1092,7 +1135,7 @@ class ptw_source_ref_model extends uvm_component;
       bit refill_degraded;
 
       af_level.get(tr);
-      if (!resolve_pending_key(tr.req_type, tr.id, key)) begin
+      if (!resolve_pending_key(tr.req_type, tr.id, key, 1'b1, tr.vpn)) begin
         m_level_count++;
         continue;
       end
@@ -1263,7 +1306,9 @@ class ptw_source_ref_model extends uvm_component;
       end
       emit_drop_expected(tr);
       if (tr.has_key) begin
-        key = key_string(tr.key.req_type, tr.key.id);
+        if (!resolve_pending_key(tr.key.req_type, tr.key.id,
+              key, 1'b1, tr.vpn, 1'b0))
+          key = key_string(tr.key.req_type, tr.key.id);
         if (m_pending.exists(key))
           m_pending.delete(key);
       end
@@ -1322,8 +1367,8 @@ class ptw_source_ref_model extends uvm_component;
         end
 
         m_deferred_pde_lookup_q.push_back(tr);
-        key = key_string(tr.req_type, tr.id);
-        if (m_pending.exists(key) && m_pending[key].ctx_sample_seen)
+        if (resolve_pending_key(tr.req_type, tr.id, key, 1'b1, tr.vpn, 1'b0)
+            && m_pending[key].ctx_sample_seen)
           drain_deferred_pde_lookup_events();
       end
     end
@@ -1422,7 +1467,8 @@ class ptw_source_ref_model extends uvm_component;
     `uvm_info(get_type_name(),
       $sformatf({"PTW_SOURCE_REF_SUMMARY stage=7 req_accept=%0d expected=%0d ",
                  "refill=%0d page_fault=%0d access_fault=%0d drop=%0d ",
-                 "pending=%0d duplicate_req=%0d mem_req=%0d mem_rsp=%0d ",
+                 "pending=%0d duplicate_req=%0d multi_pending=%0d ",
+                 "mem_req=%0d mem_rsp=%0d ",
                  "mem_drop=%0d ctx=%0d level=%0d pde=%0d pde_update=%0d ",
                  "probe_gap=%0d satp_clear=%0d pmp_clear=%0d ",
                  "asid_current_refill=%0d context_current_sample=%0d maee0_sysmap=%0d ",
@@ -1436,6 +1482,7 @@ class ptw_source_ref_model extends uvm_component;
         m_req_accept_count, m_expected_count, m_refill_expected_count,
         m_page_fault_expected_count, m_access_fault_expected_count,
         m_drop_expected_count, m_pending.num(), m_duplicate_req_count,
+        m_multi_pending_count,
         m_mem_req_count, m_mem_rsp_count, m_mem_drop_count, m_ctx_count,
         m_level_count, m_pde_event_count, m_pde_update_count,
         m_probe_gap_count, m_satp_clear_count, m_pmp_clear_count,

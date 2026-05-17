@@ -2,7 +2,7 @@
 
 更新时间：2026-05-17
 
-本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 6 已完成；阶段 7 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
+本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
 
 ## 总体状态
 
@@ -15,7 +15,7 @@
 | 4 | reference model integration | done | `ptw_source_ref_model.svh` |
 | 5 | scoreboard and coverage enhancement | done | `ptw_source_sb.svh`、必要 `mmu_env.svh` fanout |
 | 6 | SVA and cover | done | `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 bind 显式连接 |
-| 7 | directed helper and legacy PDE tests update | not started | 未开始 |
+| 7 | directed helper and legacy PDE tests update | done | `ptw_source_directed_base.svh` helper、旧 PDE tests metadata/allow 前提修正 |
 | 8 | new P0 directed tests A | not started | 未开始 |
 | 9 | new P0/P1 directed tests B | not started | 未开始 |
 | 10 | regression and signoff freeze | not started | 未开始 |
@@ -30,6 +30,7 @@ PMPFLG_STAGE_DONE stage=3 name=pde_cache_abstract_model_refactor
 PMPFLG_STAGE_DONE stage=4 name=source_reference_model_integration
 PMPFLG_STAGE_DONE stage=5 name=scoreboard_coverage_no_extra_lsu
 PMPFLG_STAGE_DONE stage=6 name=sva_and_cover
+PMPFLG_STAGE_DONE stage=7 name=directed_helper_and_legacy_pde_tests_update
 ```
 
 ## 阶段 0 进度
@@ -293,11 +294,55 @@ Scoreboard 行为：
 | Regression list | 未修改，符合阶段 6 禁止项。 |
 | Probe interface | 未修改；本阶段只补 SVA bind 需要的 whitebox 连接。 |
 
+## 阶段 7 进度
+
+状态：done
+
+本阶段只完成 directed helper 扩展和已有 PDE/相关旧 wrapper 的 pmpflg 语义修正；未新增 `PTW-ADD-037..045` directed test 文件，未修改 regression list，未修改 signoff gate，未关闭新增 `PTW-ADD-037..045`。
+
+修改文件：
+
+| 文件 | 修改内容 |
+| --- | --- |
+| `mmu_verification/testbench/test/ptw_tests/ptw_source_directed_base.svh` | 新增 pmpflg helper、PMP flag 配置 helper、真实 PTW walk prime helper、按 source type 发请求 helper、no PTW memory request window checker。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_l1_pde_hit.svh` | positive L1 PDE hit 显式加入 all-allow pmpflg 前提，checker 描述改为 permission-qualified hit。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_l2_pde_hit_direct.svh` | positive L2 PDE hit 显式加入 all-allow pmpflg 前提，删除 tag-only hit 口径。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_l1_pde_miss_walk.svh` | miss 口径标为 tag-miss profile，并说明 L1 cached-pmpflg deny 是 permission-qualified miss。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_l2_pde_miss_walk.svh` | miss 口径标为 tag-miss profile，并说明 L2 cached-pmpflg deny 是 direct accerr，不是普通 miss。 |
+| `mmu_verification/testbench/test/ptw_tests/test_pde_cache_l1_single_entry.svh` | 补 L1 pmpflg update evidence 和 permission-qualified lookup 说明。 |
+| `mmu_verification/testbench/test/ptw_tests/test_pde_cache_l2_single_entry.svh` | 补 L1/L2 pmpflg update evidence 和 permission-qualified lookup 说明。 |
+| `mmu_verification/testbench/test/ptw_tests/test_mmu_pde_cache_hit_l2_skip_scd.svh` | run body 显式 `phase12_set_pmp_allow_all()`；skip SCD 只在 permission-qualified L1 PDE hit 下成立。 |
+| `mmu_verification/testbench/test/ptw_tests/test_mmu_pde_cache_hit_l3_skip_thd.svh` | run body 显式 `phase12_set_pmp_allow_all()`；skip THD/PDE hit 口径改为 permission-qualified。 |
+| `mmu_verification/testbench/test/ptw_tests/test_mmu_pde_cache_full_miss_full_ptw.svh` | full miss 建 cache 前显式 all-allow，并补 pmpflg update payload evidence 说明。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_l1_pde_cache_replace.svh` | replacement metadata 标明 PLRU 只由 qualified hit 更新，tag-hit deny 不更新 PLRU。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_l2_pde_cache_replace.svh` | replacement metadata 标明 direct accerr 不更新 PLRU/victim。 |
+| `mmu_verification/testbench/test/ptw_tests/test_pde_cache_clear_on_ptw_reset.svh` | clear/reset metadata 标明旧 cached pmpflg 不可产生 hit/direct accerr。 |
+| `mmu_verification/testbench/test/bug_hunt_tests/test_bug_001_twu_fst_fetch_type.svh` | fetch-type 旧 wrapper 显式 all-allow pmpflg，并把 checker 口径扩展到 cached execute allow。 |
+
+新增 directed base helper：
+
+| Helper | 用途 |
+| --- | --- |
+| `ptw_make_pmpflg()` | 按 `{lock,x,w,r}` 生成 cached PMP flag。 |
+| `ptw_config_page_table_pmp_region()` | 通过现有 PMP agent 配置 TWU ports `{3,5,6,7}` flag，并记录 base/mask metadata；当前 agent 为 flag-only，无地址 region 字段。 |
+| `ptw_prime_l1_pde_cache_with_type()` | 写入 FST nonleaf，通过真实 PTW walk 建立 L1 PDE cache entry，不直接写 DUT cache。 |
+| `ptw_prime_l2_pde_cache_with_type()` | 写入 FST/SCD nonleaf，通过真实 PTW walk 建立 L2 PDE cache entry，不直接写 DUT cache。 |
+| `ptw_drive_source_req_by_type()` | 按 `LOAD/STORE/FETCH/PFU` 统一发 source request，并沿用 active key guard。 |
+| `ptw_expect_no_ptw_mem_req_window()` | 用 probe 检查一段窗口内没有 PTW LSU data request 或 TWU->MBUF request，用于后续 L2 direct accerr no-extra-LSU 场景。 |
+
+实现边界：
+
+| 边界 | 结果 |
+| --- | --- |
+| 新 directed test | 未新增，符合阶段 7 禁止项。 |
+| `PTW-ADD-037..045` closure | 未关闭，仅准备 helper。 |
+| Regression/signoff | 未修改。 |
+| 临时子阶段计划 | 未创建；本阶段未新增文件，修改文件数 14 个，低于 15 文件拆分阈值。 |
+
 ## 当前未关闭项
 
 | Item | 后续阶段 |
 | --- | --- |
-| Directed helper 和旧 PDE directed tests 尚未按 cached pmpflg 语义修正 | 阶段 7 |
 | `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed closure 尚未开始 | 阶段 8 |
 | `PDE-TP-017..019`、`PTW-FLOW-028`、`PTW-ADD-042..045` directed closure 尚未开始 | 阶段 9 |
 | `pmp_regs_update` testbench tie-off 未处理 | 后续涉及 PMP config clear/repopulate 的阶段 |
@@ -326,6 +371,9 @@ Scoreboard 行为：
 | 阶段 6 修改边界 | pass，仅 `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 `tb_top.sv` bind |
 | 阶段 6 directed/ref/SB/regression 边界 | pass，无 test/ref/SB/regression list 修改 |
 | 阶段 6 SVA standalone syntax | pass，`vlog -sv mmu_pde_cache_sva.sv mmu_ptw_top_sva.sv` 为 0 errors / 0 warnings |
+| 阶段 7 helper 关键词 `rg` | pass，6 个 helper 和 `PTW_STAGE7_HELPER` metadata 均可检索 |
+| 阶段 7 旧 PDE tests pmpflg/permission-qualified metadata `rg` | pass，旧 hit/miss/replacement/clear/bug wrapper 均有新语义描述或 all-allow 前提 |
+| 阶段 7 修改边界 | pass，仅 test/bug wrapper 和 directed base；无 regression/signoff 修改 |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |
 | `make -C mmu_verification run_check ...` | blocked，当前 PowerShell 环境找不到 `make` |
@@ -351,6 +399,9 @@ rg -n "pde_direct_accerr|PDE_CACHE_PMP_DENY|pde_l1_pmp|pde_l2|lookup_detail|effe
 rg -n "PTW_SOURCE_SB_PDE_PMP_COVERAGE|no_extra_lsu|access_src|pde_reason|pde_direct_accerr|af_pde|af_ctx" mmu_verification\testbench\env\ptw_source_sb.svh mmu_verification\testbench\env\mmu_env.svh
 rg -n "PTW-SVA-PDE-011|PTW-SVA-PDE-012|PTW-SVA-PDE-013|PTW-SVA-PDE-014|PTW-SVA-PDE-015|PTW-SVA-PDE-016|PTW-SVA-PDE-017|PTW-SVA-ARB-010|PTW-SVA-ARB-011|PTW-SVA-ARB-012" mmu_verification\testbench\top
 rg -n "bind PDE_cache|L1PDE_tag_hit|L2PDE_tag_hit|L1PDE_l1pmpflg|L2PDE_l1pmpflg|L2PDE_l2pmpflg" mmu_verification\testbench\top\tb_top.sv
+rg -n "ptw_make_pmpflg|ptw_config_page_table_pmp_region|ptw_prime_l1_pde_cache_with_type|ptw_prime_l2_pde_cache_with_type|ptw_drive_source_req_by_type|ptw_expect_no_ptw_mem_req_window|PTW_STAGE7_HELPER" mmu_verification\testbench\test\ptw_tests\ptw_source_directed_base.svh
+rg -n "pmpflg|permission-qualified|tag-only|direct accerr|PLRU|stale pmpflg|all-allow" mmu_verification\testbench\test\ptw_tests\test_ptw_l1_pde_hit.svh mmu_verification\testbench\test\ptw_tests\test_ptw_l2_pde_hit_direct.svh mmu_verification\testbench\test\ptw_tests\test_ptw_l1_pde_miss_walk.svh mmu_verification\testbench\test\ptw_tests\test_ptw_l2_pde_miss_walk.svh mmu_verification\testbench\test\ptw_tests\test_pde_cache_l1_single_entry.svh mmu_verification\testbench\test\ptw_tests\test_pde_cache_l2_single_entry.svh mmu_verification\testbench\test\ptw_tests\test_mmu_pde_cache_hit_l2_skip_scd.svh mmu_verification\testbench\test\ptw_tests\test_mmu_pde_cache_hit_l3_skip_thd.svh mmu_verification\testbench\test\ptw_tests\test_mmu_pde_cache_full_miss_full_ptw.svh mmu_verification\testbench\test\ptw_tests\test_ptw_l1_pde_cache_replace.svh mmu_verification\testbench\test\ptw_tests\test_ptw_l2_pde_cache_replace.svh mmu_verification\testbench\test\ptw_tests\test_pde_cache_clear_on_ptw_reset.svh mmu_verification\testbench\test\bug_hunt_tests\test_bug_001_twu_fst_fetch_type.svh
+git diff --name-only -- mmu_verification\testbench\test mmu_verification\simu doc\ptw_uvm_review
 vlog -sv mmu_verification\testbench\top\mmu_pde_cache_sva.sv mmu_verification\testbench\top\mmu_ptw_top_sva.sv
 
 # 工作区和格式检查
@@ -359,6 +410,12 @@ git diff --check
 
 # 环境具备 make 后再执行编译/运行检查
 make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke
+make -C mmu_verification build TEST_NAME=test_ptw_l1_pde_hit
+make -C mmu_verification run_check TEST_NAME=test_ptw_l1_pde_hit SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make -C mmu_verification run_check TEST_NAME=test_ptw_l2_pde_hit_direct SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make -C mmu_verification run_check TEST_NAME=test_pde_cache_l1_single_entry SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make -C mmu_verification run_check TEST_NAME=test_pde_cache_l2_single_entry SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make -C mmu_verification run_check TEST_NAME=test_mmu_pde_cache_hit_l2_skip_scd SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
 make -C mmu_verification run_check TEST_NAME=test_ptw_source_stage2_smoke SEED=404 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
 ```
 

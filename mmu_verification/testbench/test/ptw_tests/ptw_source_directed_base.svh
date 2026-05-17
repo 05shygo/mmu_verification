@@ -187,6 +187,15 @@ class ptw_source_directed_base extends test_base;
       root_ppn, asid, priv, mxr, sum, maee, mprv, mpp);
   endfunction
 
+  protected function logic [3:0] ptw_make_pmpflg(
+    input bit r,
+    input bit w,
+    input bit x,
+    input bit lock
+  );
+    return {lock, x, w, r};
+  endfunction
+
   virtual function void ptw_meta_begin(string tc_id, string scenario_id);
     if (ptw_current_scenario_open)
       ptw_meta_print();
@@ -386,6 +395,34 @@ class ptw_source_directed_base extends test_base;
     if ((m_env != null) && (m_env.m_ref != null))
       m_env.m_ref.sync_shadow_state();
     ptw_meta_add_context($sformatf("pmp=deny_ptw_read deny_twu_mask=0x%0h", deny_twu_mask));
+  endtask
+
+  protected virtual task ptw_config_page_table_pmp_region(
+    input pa_t base,
+    input pa_t mask_or_size,
+    input logic [3:0] pmpflg,
+    input string region_name
+  );
+    pmp_flg_raw_seq seq;
+
+    seq = pmp_flg_raw_seq::type_id::create("ptw_pmp_page_table_region_seq");
+    foreach (seq.raw_flg[i])
+      seq.raw_flg[i] = 4'h7;
+    seq.raw_flg[3] = pmpflg;
+    seq.raw_flg[5] = pmpflg;
+    seq.raw_flg[6] = pmpflg;
+    seq.raw_flg[7] = pmpflg;
+    seq.start(m_env.m_pmp.m_sequencer);
+    if ((m_env != null) && (m_env.m_ref != null))
+      m_env.m_ref.sync_shadow_state();
+
+    ptw_meta_add_context($sformatf(
+      "pmp_page_table_region name=%s base=0x%010h mask_or_size=0x%010h twu_ports={3,5,6,7} pmpflg=0x%0h flag_only_agent=1",
+      region_name, base, mask_or_size, pmpflg));
+    `uvm_info(get_type_name(),
+      $sformatf("PTW_STAGE7_HELPER pmp_region name=%s base=0x%010h mask_or_size=0x%010h twu_ports={3,5,6,7} pmpflg=0x%0h",
+        region_name, base, mask_or_size, pmpflg),
+      UVM_LOW)
   endtask
 
   virtual task ptw_sysmap_disable_all();
@@ -664,6 +701,167 @@ class ptw_source_directed_base extends test_base;
     seq.req_abort = abort;
     seq.req_idle = 0;
     seq.start(m_env.m_ifu.m_sequencer);
+  endtask
+
+  protected virtual task ptw_drive_source_req_by_type(
+    input ptw_src_req_type_e req_type,
+    input va_t va,
+    input int unsigned id,
+    input int unsigned idle = 0
+  );
+    bit [6:0] req_id;
+
+    req_id = id[6:0];
+    case (req_type)
+      PTW_SRC_TYPE_FETCH: begin
+        ptw_directed_ifu_one_seq seq;
+        ptw_guard_start_key(PTW_SRC_TYPE_FETCH, 0);
+        seq = ptw_directed_ifu_one_seq::type_id::create("ptw_directed_fetch_by_type_seq");
+        seq.req_va = va;
+        seq.req_abort = 1'b0;
+        seq.req_idle = idle;
+        seq.start(m_env.m_ifu.m_sequencer);
+      end
+      PTW_SRC_TYPE_LOAD,
+      PTW_SRC_TYPE_STORE,
+      PTW_SRC_TYPE_PFU: begin
+        ptw_directed_lsu_one_seq seq;
+        ptw_guard_start_key(req_type, req_id);
+        seq = ptw_directed_lsu_one_seq::type_id::create("ptw_directed_lsu_by_type_seq");
+        seq.req_kind  = (req_type == PTW_SRC_TYPE_PFU) ? LSU_PIPE2 : LSU_PIPE0;
+        seq.req_va    = va;
+        seq.req_id    = req_id;
+        seq.req_store = (req_type == PTW_SRC_TYPE_STORE);
+        seq.req_abort = 1'b0;
+        seq.req_idle  = idle;
+        seq.start(m_env.m_lsu.m_sequencer);
+      end
+      default:
+        `uvm_fatal(get_type_name(), $sformatf("Unsupported PTW source request type=%0d", int'(req_type)))
+    endcase
+
+    ptw_meta_add_context($sformatf("drive_source_req_by_type type=%s id=%0d va=0x%010h idle=%0d",
+      ptw_src_type_name(req_type), id, va, idle));
+  endtask
+
+  protected virtual task ptw_prime_l1_pde_cache_with_type(
+    input ptw_src_req_type_e req_type,
+    input va_t va,
+    input pte_t fst_nonleaf,
+    input logic [3:0] l1pmpflg,
+    input int unsigned id
+  );
+    pa_t pte_pa;
+
+    if (!ptw_src_pde_pmp_type_bit_allow(req_type, l1pmpflg))
+      `uvm_warning(get_type_name(),
+        $sformatf("ptw_prime_l1_pde_cache_with_type: type=%s is denied by l1pmpflg=0x%0h unless effective M-mode bypass applies",
+          ptw_src_type_name(req_type), l1pmpflg))
+
+    if (!ptw_write_raw_pte_level(va, 2, fst_nonleaf, pte_pa, 1'b0))
+      `uvm_fatal(get_type_name(),
+        $sformatf("ptw_prime_l1_pde_cache_with_type failed to write fst nonleaf va=0x%010h", va))
+
+    ptw_meta_add_level(req_type, id, va, 2, fst_nonleaf, pte_pa,
+      $sformatf("prime_l1_pde_fst_nonleaf_l1pmpflg=0x%0h", l1pmpflg));
+    ptw_config_page_table_pmp_region(pte_pa, pa_t'(8), l1pmpflg, "prime_l1_pde_fst");
+    `uvm_info(get_type_name(),
+      $sformatf("PTW_STAGE7_HELPER prime_l1 type=%s id=%0d va=0x%010h fst_pte=0x%016h l1pmpflg=0x%0h",
+        ptw_src_type_name(req_type), id, va, fst_nonleaf, l1pmpflg),
+      UVM_LOW)
+    ptw_drive_source_req_by_type(req_type, va, id);
+    ptw_quiescent_wait($sformatf("prime_l1_pde_type_%s_id_%0d", ptw_src_type_name(req_type), id));
+  endtask
+
+  protected virtual task ptw_prime_l2_pde_cache_with_type(
+    input ptw_src_req_type_e req_type,
+    input va_t va,
+    input pte_t fst_nonleaf,
+    input pte_t scd_nonleaf,
+    input logic [3:0] l1pmpflg,
+    input logic [3:0] l2pmpflg,
+    input int unsigned id
+  );
+    pa_t fst_pte_pa;
+    pa_t scd_pte_pa;
+    logic [3:0] prime_pmpflg;
+
+    prime_pmpflg = l1pmpflg;
+    if (l1pmpflg != l2pmpflg)
+      `uvm_warning(get_type_name(),
+        $sformatf("ptw_prime_l2_pde_cache_with_type: current PMP agent is flag-only; l1pmpflg=0x%0h l2pmpflg=0x%0h cannot be region-distinguished in one walk",
+          l1pmpflg, l2pmpflg))
+
+    if (!ptw_src_pde_pmp_type_bit_allow(req_type, l1pmpflg)
+        || !ptw_src_pde_pmp_type_bit_allow(req_type, l2pmpflg))
+      `uvm_warning(get_type_name(),
+        $sformatf("ptw_prime_l2_pde_cache_with_type: type=%s is denied by l1/l2 pmpflg unless effective M-mode bypass applies l1=0x%0h l2=0x%0h",
+          ptw_src_type_name(req_type), l1pmpflg, l2pmpflg))
+
+    if (!ptw_write_raw_pte_level(va, 2, fst_nonleaf, fst_pte_pa, 1'b0))
+      `uvm_fatal(get_type_name(),
+        $sformatf("ptw_prime_l2_pde_cache_with_type failed to write fst nonleaf va=0x%010h", va))
+    if (!ptw_write_raw_pte_level(va, 1, scd_nonleaf, scd_pte_pa, 1'b0))
+      `uvm_fatal(get_type_name(),
+        $sformatf("ptw_prime_l2_pde_cache_with_type failed to write scd nonleaf va=0x%010h", va))
+
+    ptw_meta_add_level(req_type, id, va, 2, fst_nonleaf, fst_pte_pa,
+      $sformatf("prime_l2_pde_fst_nonleaf_l1pmpflg=0x%0h", l1pmpflg));
+    ptw_meta_add_level(req_type, id, va, 1, scd_nonleaf, scd_pte_pa,
+      $sformatf("prime_l2_pde_scd_nonleaf_l2pmpflg=0x%0h", l2pmpflg));
+    ptw_config_page_table_pmp_region(fst_pte_pa, pa_t'(8), prime_pmpflg, "prime_l2_pde_walk");
+    `uvm_info(get_type_name(),
+      $sformatf("PTW_STAGE7_HELPER prime_l2 type=%s id=%0d va=0x%010h fst_pte=0x%016h scd_pte=0x%016h l1pmpflg=0x%0h l2pmpflg=0x%0h driven_pmpflg=0x%0h",
+        ptw_src_type_name(req_type), id, va, fst_nonleaf, scd_nonleaf,
+        l1pmpflg, l2pmpflg, prime_pmpflg),
+      UVM_LOW)
+    ptw_drive_source_req_by_type(req_type, va, id);
+    ptw_quiescent_wait($sformatf("prime_l2_pde_type_%s_id_%0d", ptw_src_type_name(req_type), id));
+  endtask
+
+  protected virtual task ptw_expect_no_ptw_mem_req_window(
+    input string scenario_id,
+    input int unsigned min_cycles,
+    input int unsigned max_cycles
+  );
+    bit seen_req;
+    int unsigned cycle;
+
+    if (max_cycles < min_cycles)
+      `uvm_fatal(get_type_name(),
+        $sformatf("%s: max_cycles=%0d is smaller than min_cycles=%0d",
+          scenario_id, max_cycles, min_cycles))
+
+    if (ptw_probe_vif == null) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: MMU_DUT_PROBES_VIF unavailable; cannot prove no PTW memory request window", scenario_id))
+      ptw_meta_add_context({scenario_id, ": no_ptw_mem_req_window_probe_unavailable"});
+      return;
+    end
+
+    seen_req = 1'b0;
+    for (cycle = 0; cycle < max_cycles; cycle++) begin
+      @(ptw_probe_vif.mon_cb);
+      if ((ptw_probe_vif.mon_cb.ptw_lsu_data_req === 1'b1)
+          || (|ptw_probe_vif.mon_cb.ptw_twu_mbuf_req)) begin
+        seen_req = 1'b1;
+        `uvm_error(get_type_name(),
+          $sformatf("%s: unexpected PTW memory activity at cycle=%0d lsu_req=%0b twu_mbuf_req=0x%0h",
+            scenario_id, cycle,
+            ptw_probe_vif.mon_cb.ptw_lsu_data_req,
+            ptw_probe_vif.mon_cb.ptw_twu_mbuf_req))
+        break;
+      end
+    end
+
+    if (!seen_req) begin
+      ptw_meta_add_context($sformatf("%s: no_ptw_mem_req_window cycles=%0d..%0d observed=0",
+        scenario_id, min_cycles, max_cycles));
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_STAGE7_HELPER no_ptw_mem_req_window scenario=%s cycles=%0d..%0d observed=0",
+          scenario_id, min_cycles, max_cycles),
+        UVM_LOW)
+    end
   endtask
 
   virtual task ptw_quiescent_wait(

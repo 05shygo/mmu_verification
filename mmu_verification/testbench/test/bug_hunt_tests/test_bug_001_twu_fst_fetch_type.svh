@@ -20,11 +20,12 @@ class test_bug_001_twu_fst_fetch_type extends phase11_generated_test_base;
     p11_fid      = "F4.NEW.2";
     p11_priority = "P1";
     p11_status   = "Functional";
-    p11_seq_desc = "ifu_sequential_fetch_seq + mmu_ptw_thrash_vseq";
-    p11_checker  = "positive guard for twu fetch type";
+    p11_seq_desc = "pmp_flg_normal_seq(all-allow pmpflg) + ifu_sequential_fetch_seq + mmu_ptw_thrash_vseq";
+    p11_checker  = "positive guard for TWU fetch type and cached pmpflg execute allow";
     p11_reviewer = "A+B";
     num_txn      = 64;
     m_post_drain = 500ns;
+    m_pmp_seq_names.push_back("pmp_flg_normal_seq");
     m_ifu_seq_names.push_back("ifu_sequential_fetch_seq");
     m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction

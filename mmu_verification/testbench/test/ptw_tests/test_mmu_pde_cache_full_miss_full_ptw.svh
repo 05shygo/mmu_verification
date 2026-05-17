@@ -20,8 +20,8 @@ class test_mmu_pde_cache_full_miss_full_ptw extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.8";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "ptw_mem_normal_rsp_seq + mmu_ptw_thrash_vseq";
-    p12_checker  = "cg_xbar_hit_level";
+    p12_seq_desc = "all-allow pmpflg + ptw_mem_normal_rsp_seq + mmu_ptw_thrash_vseq";
+    p12_checker  = "cg_xbar_hit_level + pmpflg update payload evidence on full miss";
     p12_reviewer = "A+B";
     num_txn      = 128;
     m_post_drain = 800ns;
@@ -35,6 +35,7 @@ class test_mmu_pde_cache_full_miss_full_ptw extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
+    phase12_set_pmp_allow_all();
     phase12_map_hugepage_fixture();
     phase12_drive_lsu_rr(39'h0_3000_1000, 1, 1, LSU_PIPE0, 1'b0);
     phase12_cp0_tlb_allinv(1'b1, 1'b1);

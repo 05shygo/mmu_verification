@@ -20,8 +20,8 @@ class test_mmu_pde_cache_hit_l2_skip_scd extends phase12_generated_test_base;
     p12_fid      = "F4.NEW.8";
     p12_priority = "P1";
     p12_status   = "Implemented";
-    p12_seq_desc = "ptw_page_table_build_2m_seq + mmu_huge_page_mix_vseq";
-    p12_checker  = "sva_twu_skip_stage_on_hit + cg_xbar_hit_level";
+    p12_seq_desc = "all-allow pmpflg + ptw_page_table_build_2m_seq + mmu_huge_page_mix_vseq";
+    p12_checker  = "sva_twu_skip_stage_on_hit + cg_xbar_hit_level + permission-qualified L1 PDE hit";
     p12_reviewer = "A+B";
     num_txn      = 96;
     m_post_drain = 800ns;
@@ -35,6 +35,7 @@ class test_mmu_pde_cache_hit_l2_skip_scd extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
+    phase12_set_pmp_allow_all();
     phase12_map_hugepage_fixture();
     phase12_drive_lsu_rr(39'h0_2200_0000, 1, 1, LSU_PIPE0, 1'b0);
     phase12_cp0_tlb_allinv(1'b1, 1'b1);

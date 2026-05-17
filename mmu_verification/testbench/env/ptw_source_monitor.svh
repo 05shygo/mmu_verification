@@ -343,10 +343,19 @@ class ptw_source_monitor extends uvm_monitor;
         tr = ptw_src_level_evt_txn::type_id::create("ptw_level_evt");
         tr.cycle = m_cycle;
         tr.twu_idx = twu;
-        tr.req_type = cast_req_type(v_probe.mon_cb.ptw_twu_mbuf_type[twu]);
-        tr.id = v_probe.mon_cb.ptw_twu_mbuf_id[twu];
-        tr.vpn = v_probe.mon_cb.ptw_twu_mbuf_vpn[twu];
-        tr.pte_pa = v_probe.mon_cb.ptw_twu_mbuf_paddr[twu];
+        if (v_probe.mon_cb.ptw_mbuf_twu_data_vld[twu] === 1'b1) begin
+          // Data return identity is carried by the selected mbuf entry.  The
+          // per-TWU twu_mbuf_* signals can already hold the next memory request.
+          tr.req_type = cast_req_type(v_probe.mon_cb.ptw_mbuf_twu_type);
+          tr.id = v_probe.mon_cb.ptw_mbuf_twu_id;
+          tr.vpn = v_probe.mon_cb.ptw_mbuf_twu_vpn;
+          tr.pte_pa = '0;
+        end else begin
+          tr.req_type = cast_req_type(v_probe.mon_cb.ptw_twu_mbuf_type[twu]);
+          tr.id = v_probe.mon_cb.ptw_twu_mbuf_id[twu];
+          tr.vpn = v_probe.mon_cb.ptw_twu_mbuf_vpn[twu];
+          tr.pte_pa = v_probe.mon_cb.ptw_twu_mbuf_paddr[twu];
+        end
         tr.mbuf_req = v_probe.mon_cb.ptw_twu_mbuf_req[twu];
         tr.mbuf_data_vld = v_probe.mon_cb.ptw_mbuf_twu_data_vld[twu];
         tr.refill_req = v_probe.mon_cb.ptw_twu_ref_req[twu];
@@ -363,7 +372,10 @@ class ptw_source_monitor extends uvm_monitor;
         tr.sysmap_hit = |v_probe.mon_cb.p13_sysmap_hit_vec[twu];
         tr.sysmap_flg = v_probe.mon_cb.p13_sysmap_flg_vec[twu];
 
-        level_vec = v_probe.mon_cb.ptw_twu_mbuf_lvl[twu];
+        if (tr.mbuf_data_vld)
+          level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
+        else
+          level_vec = v_probe.mon_cb.ptw_twu_mbuf_lvl[twu];
         if (level_vec == 3'b000)
           level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
         if ((level_vec == 3'b000) && (|v_probe.mon_cb.p13_pmp_vld_vec[twu]))

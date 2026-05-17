@@ -192,8 +192,9 @@ class test_ptw_pde_l1_pmp_tag_deny_fst_fault_001 extends ptw_pde_pmpflg_stage8_b
     ptw_meta_add_req("PTW-FLOW-024");
     ptw_setup_sv39(STAGE8_ROOT_PPN + 28'h01, STAGE8_ROOT_ASID + 16'h01,
       PRIV_S, 1'b0, 1'b0, 1'b1);
-    stage8_map_2m_and_read_fst(prime_va, prime_pa, fst_nonleaf, scd_leaf,
-      "stage8_l1_deny_prime_fetch_2m", .r(1), .w(1), .x(1),
+    stage8_map_2m_and_read_fst(.va(prime_va), .pa(prime_pa),
+      .fst_nonleaf(fst_nonleaf), .scd_leaf(scd_leaf),
+      .kind("stage8_l1_deny_prime_fetch_2m"), .r(1), .w(1), .x(1),
       .meta_req_type(PTW_SRC_TYPE_FETCH), .meta_id(0));
     if (!ptw_map_raw_leaf_pa(.va(deny_va), .level(1), .pa(deny_pa),
           .raw_pte(scd_leaf), .pte_pa(tmp_pte_pa),

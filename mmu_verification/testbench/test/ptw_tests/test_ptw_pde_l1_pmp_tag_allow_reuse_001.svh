@@ -39,8 +39,9 @@ class test_ptw_pde_l1_pmp_tag_allow_reuse_001 extends ptw_pde_pmpflg_stage8_base
     ptw_meta_add_req("PTW-FLOW-027");
     ptw_setup_sv39(STAGE8_ROOT_PPN + ppn_t'(id), STAGE8_ROOT_ASID + asid_t'(id),
       PRIV_S, 1'b0, 1'b0, 1'b1);
-    stage8_map_2m_and_read_fst(base_va, base_pa, fst_nonleaf, scd_leaf,
-      {scenario_id, "_prime_2m"}, .r(1), .w(1), .x(1),
+    stage8_map_2m_and_read_fst(.va(base_va), .pa(base_pa),
+      .fst_nonleaf(fst_nonleaf), .scd_leaf(scd_leaf),
+      .kind({scenario_id, "_prime_2m"}), .r(1), .w(1), .x(1),
       .meta_req_type(prime_type), .meta_id(prime_id));
     if (!ptw_map_raw_leaf_pa(.va(reuse_va), .level(1), .pa(reuse_pa),
           .raw_pte(scd_leaf), .pte_pa(tmp_pte_pa),

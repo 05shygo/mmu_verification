@@ -28,8 +28,9 @@ class test_ptw_pde_pmpflg_propagation_update_001 extends ptw_pde_pmpflg_stage8_b
     ptw_meta_add_req("PDE-TP-016");
     ptw_setup_sv39(STAGE8_ROOT_PPN + 28'h40, STAGE8_ROOT_ASID + 16'h40,
       PRIV_S, 1'b0, 1'b0, 1'b1);
-    stage8_map_2m_and_read_fst(va, pa, fst_nonleaf, scd_leaf,
-      "stage8_fst_update_payload_2m", .r(1), .w(1), .x(0),
+    stage8_map_2m_and_read_fst(.va(va), .pa(pa),
+      .fst_nonleaf(fst_nonleaf), .scd_leaf(scd_leaf),
+      .kind("stage8_fst_update_payload_2m"), .r(1), .w(1), .x(0),
       .meta_req_type(PTW_SRC_TYPE_LOAD), .meta_id(6'h20));
     ptw_config_page_table_pmp_region(40'h0, 40'h0, load_allow_pmpflg,
       "stage8_fst_update_payload_all_twu_ports");
@@ -55,8 +56,10 @@ class test_ptw_pde_pmpflg_propagation_update_001 extends ptw_pde_pmpflg_stage8_b
     ptw_meta_add_req("PDE-TP-016");
     ptw_setup_sv39(STAGE8_ROOT_PPN + 28'h41, STAGE8_ROOT_ASID + 16'h41,
       PRIV_S, 1'b0, 1'b0, 1'b1);
-    stage8_map_4k_and_read_path(va, pa, fst_nonleaf, scd_nonleaf, thd_leaf,
-      "stage8_scd_update_payload", .r(1), .w(1), .x(0),
+    stage8_map_4k_and_read_path(.va(va), .pa(pa),
+      .fst_nonleaf(fst_nonleaf), .scd_nonleaf(scd_nonleaf),
+      .thd_leaf(thd_leaf), .kind("stage8_scd_update_payload"),
+      .r(1), .w(1), .x(0),
       .meta_req_type(PTW_SRC_TYPE_LOAD), .meta_id(6'h21));
     ptw_config_page_table_pmp_region(40'h0, 40'h0, load_allow_pmpflg,
       "stage8_scd_update_payload_all_twu_ports");
@@ -87,8 +90,9 @@ class test_ptw_pde_pmpflg_propagation_update_001 extends ptw_pde_pmpflg_stage8_b
     ptw_meta_add_req("PDE-TP-016");
     ptw_setup_sv39(STAGE8_ROOT_PPN + 28'h42, STAGE8_ROOT_ASID + 16'h42,
       PRIV_S, 1'b0, 1'b0, 1'b1);
-    stage8_map_4k_and_read_path(prime_va, prime_pa, fst_nonleaf, scd_nonleaf,
-      thd_leaf, "stage8_thd_leaf_no_update_prime_l2",
+    stage8_map_4k_and_read_path(.va(prime_va), .pa(prime_pa),
+      .fst_nonleaf(fst_nonleaf), .scd_nonleaf(scd_nonleaf),
+      .thd_leaf(thd_leaf), .kind("stage8_thd_leaf_no_update_prime_l2"),
       .r(1), .w(1), .x(0),
       .meta_req_type(PTW_SRC_TYPE_LOAD), .meta_id(6'h22));
     if (!ptw_map_raw_leaf_pa(.va(thd_va), .level(0), .pa(thd_pa),

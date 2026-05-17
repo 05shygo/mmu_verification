@@ -1,8 +1,8 @@
 # PTW PDE Cache PMP Flag All Stages Progress
 
-更新时间：2026-05-17
+更新时间：2026-05-18
 
-本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 directed test 实现已完成，仿真证据待在具备 `make` 的环境中收集；阶段 9 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
+本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 directed test 实现已完成，静态接入检查通过，仿真证据待在具备 `make` 的环境中收集；阶段 9 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
 
 ## 总体状态
 
@@ -16,7 +16,7 @@
 | 5 | scoreboard and coverage enhancement | done | `ptw_source_sb.svh`、必要 `mmu_env.svh` fanout |
 | 6 | SVA and cover | done | `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 bind 显式连接 |
 | 7 | directed helper and legacy PDE tests update | done | `ptw_source_directed_base.svh` helper、旧 PDE tests metadata/allow 前提修正 |
-| 8 | new P0 directed tests A | implemented, pending sim | 5 个 directed tests、suite include、`ptw_pde_pmpflg_list` |
+| 8 | new P0 directed tests A | implemented, static pass, pending sim | 5 个 directed tests、suite include、`ptw_pde_pmpflg_list` |
 | 9 | new P0/P1 directed tests B | not started | 未开始 |
 | 10 | regression and signoff freeze | not started | 未开始 |
 
@@ -342,7 +342,7 @@ Scoreboard 行为：
 
 ## 阶段 8 进度
 
-状态：implemented，pending simulation evidence
+状态：implemented，static pass，pending simulation evidence
 
 本阶段只完成 `PTW-ADD-037..041` 第一组 P0 directed tests、suite include 和阶段专用 regression list；未新增 `PTW-ADD-042..045`，未修改 signoff gate，未修改随机 regression closure，未修改 P0 smoke list。
 
@@ -413,9 +413,10 @@ Scoreboard 行为：
 | 阶段 7 helper 关键词 `rg` | pass，6 个 helper 和 `PTW_STAGE7_HELPER` metadata 均可检索 |
 | 阶段 7 旧 PDE tests pmpflg/permission-qualified metadata `rg` | pass，旧 hit/miss/replacement/clear/bug wrapper 均有新语义描述或 all-allow 前提 |
 | 阶段 7 修改边界 | pass，仅 test/bug wrapper 和 directed base；无 regression/signoff 修改 |
-| 阶段 8 新 test/list/suite 关键词 `rg` | pending |
-| 阶段 8 修改边界 | pending |
-| 阶段 8 `git diff --check` | pending |
+| 阶段 8 新 test/list/suite 关键词 `rg` | pass，5 个 test 均已在 `ptw_tests_suite.svh` 和 `ptw_pde_pmpflg_list` 中出现 |
+| 阶段 8 修改边界 | pass，仅阶段 8 directed tests、suite/list/progress 相关接入；未新增阶段 9 tests，未修改 signoff gate |
+| 阶段 8 `stage8_map_*` 调用参数风格 | pass，阶段 8 新增 test 中 `stage8_map_2m_and_read_fst` / `stage8_map_4k_and_read_path` 调用已统一为 named argument，避免 SV positional/named 混用 |
+| 阶段 8 `git diff --check` | pass，仅有 Git line-ending warning |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |
 | `make -C mmu_verification run_check ...` | blocked，当前 PowerShell 环境找不到 `make` |

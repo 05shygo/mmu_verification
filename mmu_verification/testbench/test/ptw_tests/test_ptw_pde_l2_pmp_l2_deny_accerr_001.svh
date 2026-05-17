@@ -40,8 +40,9 @@ class test_ptw_pde_l2_pmp_l2_deny_accerr_001 extends ptw_pde_pmpflg_stage8_base;
     ptw_meta_add_req("PTW-FLOW-026");
     ptw_setup_sv39(STAGE8_ROOT_PPN + 28'h30, STAGE8_ROOT_ASID + 16'h30,
       PRIV_S, 1'b0, 1'b0, 1'b1, 1'b1, PRIV_M);
-    stage8_map_2m_and_read_fst(prime_va, prime_pa, fst_nonleaf, thd_leaf,
-      "stage8_l2_l2deny_l1_prime_2m", .r(1), .w(1), .x(1),
+    stage8_map_2m_and_read_fst(.va(prime_va), .pa(prime_pa),
+      .fst_nonleaf(fst_nonleaf), .scd_leaf(thd_leaf),
+      .kind("stage8_l2_l2deny_l1_prime_2m"), .r(1), .w(1), .x(1),
       .meta_req_type(PTW_SRC_TYPE_FETCH), .meta_id(0));
     if (!ptw_map_raw_leaf_pa(.va(l2_prime_va), .level(0), .pa(l2_prime_pa),
           .raw_pte(thd_leaf), .pte_pa(tmp_pte_pa),

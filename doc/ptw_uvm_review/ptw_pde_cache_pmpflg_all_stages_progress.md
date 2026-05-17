@@ -2,7 +2,7 @@
 
 更新时间：2026-05-17
 
-本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
+本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 directed test 实现已完成，仿真证据待在具备 `make` 的环境中收集；阶段 9 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
 
 ## 总体状态
 
@@ -16,7 +16,7 @@
 | 5 | scoreboard and coverage enhancement | done | `ptw_source_sb.svh`、必要 `mmu_env.svh` fanout |
 | 6 | SVA and cover | done | `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 bind 显式连接 |
 | 7 | directed helper and legacy PDE tests update | done | `ptw_source_directed_base.svh` helper、旧 PDE tests metadata/allow 前提修正 |
-| 8 | new P0 directed tests A | not started | 未开始 |
+| 8 | new P0 directed tests A | implemented, pending sim | 5 个 directed tests、suite include、`ptw_pde_pmpflg_list` |
 | 9 | new P0/P1 directed tests B | not started | 未开始 |
 | 10 | regression and signoff freeze | not started | 未开始 |
 
@@ -31,6 +31,7 @@ PMPFLG_STAGE_DONE stage=4 name=source_reference_model_integration
 PMPFLG_STAGE_DONE stage=5 name=scoreboard_coverage_no_extra_lsu
 PMPFLG_STAGE_DONE stage=6 name=sva_and_cover
 PMPFLG_STAGE_DONE stage=7 name=directed_helper_and_legacy_pde_tests_update
+PMPFLG_STAGE_IMPL_DONE stage=8 name=new_p0_directed_tests_a
 ```
 
 ## 阶段 0 进度
@@ -339,11 +340,49 @@ Scoreboard 行为：
 | Regression/signoff | 未修改。 |
 | 临时子阶段计划 | 未创建；本阶段未新增文件，修改文件数 14 个，低于 15 文件拆分阈值。 |
 
+## 阶段 8 进度
+
+状态：implemented，pending simulation evidence
+
+本阶段只完成 `PTW-ADD-037..041` 第一组 P0 directed tests、suite include 和阶段专用 regression list；未新增 `PTW-ADD-042..045`，未修改 signoff gate，未修改随机 regression closure，未修改 P0 smoke list。
+
+修改文件：
+
+| 文件 | 修改内容 |
+| --- | --- |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l1_pmp_tag_deny_fst_fault_001.svh` | 新增 stage8 base helper 与 `PTW-ADD-037` L1 cached PMP deny miss test。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l1_pmp_tag_allow_reuse_001.svh` | 新增 `PTW-ADD-038` L1 R/X/W allow reuse matrix。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l1_deny_accerr_001.svh` | 新增 `PTW-ADD-039` L2 tag hit cached L1 PMP deny direct-accerr test。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh` | 新增 `PTW-ADD-040` L2 tag hit cached L2 PMP deny direct-accerr test。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_pmpflg_propagation_update_001.svh` | 新增 `PTW-ADD-041` FST/SCD/THD pmpflg propagation/update test。 |
+| `mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh` | include 阶段 8 的 5 个 test 文件。 |
+| `mmu_verification/simu/ptw_pde_pmpflg_list` | 新增阶段 8 directed list，包含 5 个 tests 和 source monitor/ref/SB/cov plusargs。 |
+
+测试构造：
+
+| Requirement | 实现方式 | 当前证据状态 |
+| --- | --- | --- |
+| `PTW-ADD-037` / `PDE-TP-013` / `PTW-FLOW-024` | 用 fetch + X-only cached pmpflg 建立 L1 PDE；后续同 `vpn[2]` 不同 `vpn[1]` 的 load 被 cached L1 R deny，回退 FST 并由实时 PMP 产生普通 TWU access fault。 | implemented，待仿真确认 source-SB clean 与 L1 deny miss coverage。 |
+| `PTW-ADD-038` / `PDE-TP-013` / `PTW-FLOW-027` | 3 个 L1 allow reuse 子场景：load->PFU 共享 R、fetch 使用 X、store 使用 W；均用 2M prime 避免 L2 entry 抢先命中。 | implemented，待仿真确认 L1 permission-qualified hit coverage。 |
+| `PTW-ADD-039` / `PDE-TP-014` / `PTW-FLOW-025` | 先用 2M fetch 建 L1，再通过 L1 hit 进入 SCD nonleaf 更新 L2，形成 cached `l1pmpflg=0/l2pmpflg=RX`；后续 load 命中 L2 tag 且仅 L1 cached PMP deny。 | implemented，标 partial evidence：当前 PMP agent 为 flag-only，无法用普通 full-walk 按 PTE region 精确区分 FST/SCD pmpflg；该 test 利用 RTL L1-hit-to-SCD direct path 构造精确 cached L1 deny。 |
+| `PTW-ADD-040` / `PDE-TP-015` / `PTW-FLOW-026` | 用 locked X-only 建 L1/L2，后续 data request 通过 `MPRV=1/MPP=M` 让 cached L1 `0` 走 M-mode bypass，而 locked cached L2 deny R，隔离 `L2_L2PMP_DENY`。 | implemented，标 partial evidence：M-mode 仅作为构造手段；完整 effective-M lock/bypass matrix 仍属阶段 9。 |
+| `PTW-ADD-041` / `PDE-TP-016` | 分别覆盖 FST nonleaf L1 update、SCD nonleaf L2 update、THD leaf no PDE update，检查 `{0,l1}`、`{l2,l1}`、THD `0/no update` 语义。 | implemented，待仿真确认 update payload coverage。 |
+
+实现边界：
+
+| 边界 | 结果 |
+| --- | --- |
+| 新增文件数量 | 5 个 test 文件 + 1 个 list，低于 15 文件拆分阈值；未创建临时阶段拆分计划。 |
+| Stage 9 tests | 未新增 `PTW-ADD-042..045`。 |
+| Signoff gate | 未修改。 |
+| P0 smoke list | 未修改，阶段计划中该项为可选。 |
+| Closure matrix | 未改成最终 closed；L2 分离类在 test metadata/progress 中保留 partial evidence 说明。 |
+
 ## 当前未关闭项
 
 | Item | 后续阶段 |
 | --- | --- |
-| `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed closure 尚未开始 | 阶段 8 |
+| `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed tests 已实现，run log/source-SB/SVA cover 证据待收集；`PTW-ADD-039/040` 保留 partial evidence 限制说明 | 阶段 8/10 |
 | `PDE-TP-017..019`、`PTW-FLOW-028`、`PTW-ADD-042..045` directed closure 尚未开始 | 阶段 9 |
 | `pmp_regs_update` testbench tie-off 未处理 | 后续涉及 PMP config clear/repopulate 的阶段 |
 | Regression/signoff list、CSV、gate、报告尚未冻结 | 阶段 10 |
@@ -374,6 +413,9 @@ Scoreboard 行为：
 | 阶段 7 helper 关键词 `rg` | pass，6 个 helper 和 `PTW_STAGE7_HELPER` metadata 均可检索 |
 | 阶段 7 旧 PDE tests pmpflg/permission-qualified metadata `rg` | pass，旧 hit/miss/replacement/clear/bug wrapper 均有新语义描述或 all-allow 前提 |
 | 阶段 7 修改边界 | pass，仅 test/bug wrapper 和 directed base；无 regression/signoff 修改 |
+| 阶段 8 新 test/list/suite 关键词 `rg` | pending |
+| 阶段 8 修改边界 | pending |
+| 阶段 8 `git diff --check` | pending |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |
 | `make -C mmu_verification run_check ...` | blocked，当前 PowerShell 环境找不到 `make` |

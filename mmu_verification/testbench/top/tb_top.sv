@@ -854,7 +854,99 @@ bind mmu_l2tlb    mmu_l2tlb_rrpv_sva  u_l2tlb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
 bind twu          mmu_twu_sva         u_twu_sva   (.*);
 bind ptw          mmu_ptw_top_sva     u_ptw_top_sva (.*);
-bind PDE_cache    mmu_pde_cache_sva   u_pde_cache_sva (.*);
+bind PDE_cache    mmu_pde_cache_sva   u_pde_cache_sva (
+  .*,
+  .L1PDE_tag_hit({
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[15].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[14].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[13].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[12].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[11].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[10].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[9].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[8].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[7].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[6].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[5].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[4].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[3].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[2].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[1].u_L1PDE_cache.L1PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[0].u_L1PDE_cache.L1PDE_tag)
+  }),
+  .L2PDE_tag_hit({
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[15].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[14].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[13].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[12].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[11].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[10].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[9].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[8].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[7].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[6].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[5].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[4].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[3].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[2].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[1].u_L2PDE_cache.L2PDE_tag),
+    (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[0].u_L2PDE_cache.L2PDE_tag)
+  }),
+  .L1PDE_l1pmpflg({
+    u_L1PDE_ent[15].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[14].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[13].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[12].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[11].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[10].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[9].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[8].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[7].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[6].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[5].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[4].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[3].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[2].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[1].u_L1PDE_cache.L1PDE_l1pmpflg,
+    u_L1PDE_ent[0].u_L1PDE_cache.L1PDE_l1pmpflg
+  }),
+  .L2PDE_l1pmpflg({
+    u_L2PDE_ent[15].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[14].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[13].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[12].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[11].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[10].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[9].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[8].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[7].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[6].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[5].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[4].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[3].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[2].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[1].u_L2PDE_cache.L2PDE_l1pmpflg,
+    u_L2PDE_ent[0].u_L2PDE_cache.L2PDE_l1pmpflg
+  }),
+  .L2PDE_l2pmpflg({
+    u_L2PDE_ent[15].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[14].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[13].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[12].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[11].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[10].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[9].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[8].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[7].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[6].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[5].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[4].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[3].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[2].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[1].u_L2PDE_cache.L2PDE_l2pmpflg,
+    u_L2PDE_ent[0].u_L2PDE_cache.L2PDE_l2pmpflg
+  })
+);
 bind one_to_four_xbar mmu_ptw_xbar_sva u_ptw_xbar_sva (.*);
 bind twu          mmu_twu_chk_sva     u_twu_chk_sva (.*);
 bind twu          mmu_maee_twu_sva    u_maee_twu_sva (.*);

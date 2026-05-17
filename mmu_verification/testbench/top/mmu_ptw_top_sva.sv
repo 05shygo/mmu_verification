@@ -1,5 +1,5 @@
 // =============================================================================
-// PTW top-level source-side SVA - Stage 5
+// PTW top-level source-side SVA - Stage 6
 // Bind target: ptw
 // =============================================================================
 `timescale 1ns/1ps
@@ -37,6 +37,16 @@ module mmu_ptw_top_sva #(
     input logic                   acc_err_vld,
     input logic                   pgflt_vld,
     input logic                   ref_vld,
+    input logic [3:0]             twu_l2tlb_ref_acc_err,
+    input logic [3:0][TYPE_WIDTH-1:0] twu_l2tlb_ref_acc_err_type,
+    input logic [3:0][ID_WIDTH-1:0]   twu_l2tlb_ref_acc_err_id,
+    input logic                   mbuf_bus_error,
+    input logic [TYPE_WIDTH-1:0]  mbuf_bus_error_type,
+    input logic [ID_WIDTH-1:0]    mbuf_bus_error_id,
+    input logic                   PDE_cache_acc_err_vld,
+    input logic [TYPE_WIDTH-1:0]  PDE_cache_acc_err_type,
+    input logic [ID_WIDTH-1:0]    PDE_cache_acc_err_id,
+    input logic [5:0]             acc_err_twu_grant,
     input logic                   ptw_l2tlb_ref_acc_err,
     input logic                   ptw_l2tlb_ref_pgflt,
     input logic                   ptw_l2tlb_ref_data_vld,
@@ -78,6 +88,9 @@ module mmu_ptw_top_sva #(
   int unsigned cp_target_fetch_hits;
   int unsigned cp_target_pfu_hits;
   int unsigned cp_refill_layout_hits;
+  int unsigned cp_pde_accerr_priority_hits;
+  int unsigned cp_pde_accerr_class_hits;
+  int unsigned cp_pde_accerr_no_dup_hits;
 
   function automatic bit legal_ptw_type(input logic [TYPE_WIDTH-1:0] typ);
     legal_ptw_type = (typ == PTW_TYPE_LOAD)
@@ -246,6 +259,58 @@ module mmu_ptw_top_sva #(
     cp_refill_layout_hits++;
   end
 
+  // PTW-SVA-ARB-010: PDE cache direct accerr has priority and routes its type/id.
+  a_ptw_pde_accerr_priority_grant: assert property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    PDE_cache_acc_err_vld |-> (acc_err_twu_grant[5] && !(|acc_err_twu_grant[4:0])));
+
+  a_ptw_pde_accerr_priority_type_id: assert property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    PDE_cache_acc_err_vld && (mbuf_bus_error || (|twu_l2tlb_ref_acc_err))
+    |-> (ptw_l2tlb_ref_acc_err
+      && (ptw_l2tlb_type == PDE_cache_acc_err_type)
+      && (ptw_l2tlb_id == PDE_cache_acc_err_id)));
+
+  cp_ptw_pde_accerr_priority: cover property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    PDE_cache_acc_err_vld && (mbuf_bus_error || (|twu_l2tlb_ref_acc_err))
+    && ptw_l2tlb_ref_acc_err
+    && (ptw_l2tlb_type == PDE_cache_acc_err_type)
+    && (ptw_l2tlb_id == PDE_cache_acc_err_id)) begin
+    cp_pde_accerr_priority_hits++;
+  end
+
+  // PTW-SVA-ARB-011: PDE direct accerr returns a single visible completion class.
+  a_ptw_pde_accerr_completion_class_onehot: assert property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    PDE_cache_acc_err_vld
+    |-> (ptw_l2tlb_ref_acc_err
+      && !ptw_l2tlb_ref_pgflt
+      && !ptw_l2tlb_ref_data_vld
+      && $onehot({ptw_l2tlb_ref_acc_err, ptw_l2tlb_ref_pgflt, ptw_l2tlb_ref_data_vld})));
+
+  cp_ptw_pde_accerr_class: cover property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    PDE_cache_acc_err_vld && ptw_l2tlb_ref_acc_err
+    && !ptw_l2tlb_ref_pgflt && !ptw_l2tlb_ref_data_vld) begin
+    cp_pde_accerr_class_hits++;
+  end
+
+  // PTW-SVA-ARB-012: a granted PDE direct accerr must not be returned again as the same pending fault.
+  a_ptw_pde_accerr_no_same_pending_duplicate_grant: assert property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    acc_err_twu_grant[5]
+    |=> !(acc_err_twu_grant[5]
+       && (PDE_cache_acc_err_type == $past(PDE_cache_acc_err_type))
+       && (PDE_cache_acc_err_id == $past(PDE_cache_acc_err_id))
+       && !$past(l2tlb_ptw_req && ptw_jtlb_ready)));
+
+  cp_ptw_pde_accerr_no_dup: cover property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    acc_err_twu_grant[5] ##1 !acc_err_twu_grant[5]) begin
+    cp_pde_accerr_no_dup_hits++;
+  end
+
   final begin
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_req_ready_hold req=PTW-SVA-REQ-001 hits=%0d", cp_req_ready_hold_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_req_accept_type req=PTW-SVA-REQ-003,PTW-SVA-REQ-004 hits=%0d", cp_req_accept_type_hits);
@@ -258,6 +323,9 @@ module mmu_ptw_top_sva #(
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_target_fetch req=PTW-SVA-ARB-006 hits=%0d", cp_target_fetch_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_target_pfu_l2_only req=PTW-SVA-ARB-007 hits=%0d", cp_target_pfu_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_refill_layout req=PTW-SVA-ARB-008 hits=%0d", cp_refill_layout_hits);
+    $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_pde_accerr_priority req=PTW-SVA-ARB-010 hits=%0d", cp_pde_accerr_priority_hits);
+    $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_pde_accerr_class req=PTW-SVA-ARB-011 hits=%0d", cp_pde_accerr_class_hits);
+    $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_pde_accerr_no_dup req=PTW-SVA-ARB-012 hits=%0d", cp_pde_accerr_no_dup_hits);
   end
 
 endmodule

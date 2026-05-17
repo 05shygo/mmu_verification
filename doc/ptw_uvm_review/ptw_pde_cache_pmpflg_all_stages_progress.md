@@ -1,8 +1,8 @@
 # PTW PDE Cache PMP Flag All Stages Progress
 
-更新时间：2026-05-16
+更新时间：2026-05-17
 
-本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 5 已完成；阶段 6 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
+本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 6 已完成；阶段 7 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
 
 ## 总体状态
 
@@ -14,7 +14,7 @@
 | 3 | pde cache abstract model refactor | done | `ptw_pde_cache_model.svh` |
 | 4 | reference model integration | done | `ptw_source_ref_model.svh` |
 | 5 | scoreboard and coverage enhancement | done | `ptw_source_sb.svh`、必要 `mmu_env.svh` fanout |
-| 6 | SVA and cover | not started | 未开始 |
+| 6 | SVA and cover | done | `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 bind 显式连接 |
 | 7 | directed helper and legacy PDE tests update | not started | 未开始 |
 | 8 | new P0 directed tests A | not started | 未开始 |
 | 9 | new P0/P1 directed tests B | not started | 未开始 |
@@ -29,6 +29,7 @@ PMPFLG_STAGE_DONE stage=2 name=probe_wiring_and_monitor_sampling
 PMPFLG_STAGE_DONE stage=3 name=pde_cache_abstract_model_refactor
 PMPFLG_STAGE_DONE stage=4 name=source_reference_model_integration
 PMPFLG_STAGE_DONE stage=5 name=scoreboard_coverage_no_extra_lsu
+PMPFLG_STAGE_DONE stage=6 name=sva_and_cover
 ```
 
 ## 阶段 0 进度
@@ -254,11 +255,48 @@ Scoreboard 行为：
 | `no_extra_lsu` | L2 direct accerr 后无额外 PTW memory request 的关闭证据。 |
 | `probe_gap_no_extra_lsu_ambiguous` | PTW memory request 无 `{type,id}` 且多 pending 时的不可严格归属计数。 |
 
+## 阶段 6 进度
+
+状态：done
+
+本阶段只完成 SVA 与 cover 增强；未新增 directed tests，未修改 ref model/SB 行为，未修改 regression list。由于 `PDE_cache` bind target 本层没有 cached pmpflg/tag raw arrays，同阶段允许范围内仅在 bind 处增加显式 whitebox 连接，没有改 RTL。
+
+修改文件：
+
+| 文件 | 修改内容 |
+| --- | --- |
+| `mmu_verification/testbench/top/mmu_pde_cache_sva.sv` | 新增 pmp allow helper、effective M-mode helper、PDE pmpflg/tag-hit/accerr ports；新增 `PTW-SVA-PDE-011..017` 及对应 `PTW_SVA_COVER` banner；旧 hit/update SVA 收紧为 permission-qualified hit/update 语义。 |
+| `mmu_verification/testbench/top/mmu_ptw_top_sva.sv` | 新增 PDE direct accerr priority、completion class、no duplicate grant SVA；新增 `PTW-SVA-ARB-010..012` 对应 cover banner。 |
+| `mmu_verification/testbench/top/tb_top.sv` | 仅为 SVA 编译/观测需要，将 `PDE_cache` bind 改为显式连接 L1/L2 raw tag hit 与 cached pmpflg whitebox 信号。 |
+
+新增 SVA/cover：
+
+| SVA ID | 覆盖内容 |
+| --- | --- |
+| `PTW-SVA-PDE-011` | L1 entry hit 等价于 `valid && tag_hit && allow(type,l1pmpflg,effective_m)`，tag hit deny 不 hit。 |
+| `PTW-SVA-PDE-012` | L2 entry hit 等价于 `valid && tag_hit && allow(l1pmpflg) && allow(l2pmpflg)`。 |
+| `PTW-SVA-PDE-013` | L2 tag hit deny 产生 PDE direct accerr，且不产生 xbar hit。 |
+| `PTW-SVA-PDE-014` | L2 direct accerr vector 由 `ptw_req && valid && tag_hit && deny` gate。 |
+| `PTW-SVA-PDE-015` | FST/SCD/THD PDE update payload 与 cached pmpflg 保存检查。 |
+| `PTW-SVA-PDE-016` | tag hit deny 不更新 PLRU/read-hit；PLRU read-hit 只由 qualified hit 驱动。 |
+| `PTW-SVA-PDE-017` | direct accerr pending type/id stable，grant 后 clear。 |
+| `PTW-SVA-ARB-010` | PDE direct accerr 优先级高于 MBUF bus error/TWU accerr，并输出 PDE type/id。 |
+| `PTW-SVA-ARB-011` | PDE direct accerr visible 时 completion class onehot。 |
+| `PTW-SVA-ARB-012` | PDE direct accerr grant 后不重复返回同一 pending fault。 |
+
+实现边界：
+
+| 边界 | 结果 |
+| --- | --- |
+| Directed tests | 未新增，符合阶段 6 禁止项。 |
+| Ref model/SB 行为 | 未修改，符合阶段 6 禁止项。 |
+| Regression list | 未修改，符合阶段 6 禁止项。 |
+| Probe interface | 未修改；本阶段只补 SVA bind 需要的 whitebox 连接。 |
+
 ## 当前未关闭项
 
 | Item | 后续阶段 |
 | --- | --- |
-| Permission-qualified hit、direct accerr pending/type-id/priority/valid gate SVA/cover 尚未实现 | 阶段 6 |
 | Directed helper 和旧 PDE directed tests 尚未按 cached pmpflg 语义修正 | 阶段 7 |
 | `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed closure 尚未开始 | 阶段 8 |
 | `PDE-TP-017..019`、`PTW-FLOW-028`、`PTW-ADD-042..045` directed closure 尚未开始 | 阶段 9 |
@@ -284,6 +322,10 @@ Scoreboard 行为：
 | 阶段 5 scoreboard pmpflg/no-extra-LSU 关键词 `rg` | pass |
 | 阶段 5 SV/SVH 修改边界 | pass，仅 `ptw_source_sb.svh` 和必要 `mmu_env.svh` fanout |
 | 阶段 5 test/SVA/regression 边界 | pass，无相关文件修改 |
+| 阶段 6 SVA ID/banner `rg` | pass，`PTW-SVA-PDE-011..017`、`PTW-SVA-ARB-010..012` 均可检索 |
+| 阶段 6 修改边界 | pass，仅 `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 `tb_top.sv` bind |
+| 阶段 6 directed/ref/SB/regression 边界 | pass，无 test/ref/SB/regression list 修改 |
+| 阶段 6 SVA standalone syntax | pass，`vlog -sv mmu_pde_cache_sva.sv mmu_ptw_top_sva.sv` 为 0 errors / 0 warnings |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |
 | `make -C mmu_verification run_check ...` | blocked，当前 PowerShell 环境找不到 `make` |
@@ -307,6 +349,9 @@ rg -n "pde_cache_update_l1pmpflg|pde_cache_update_l2pmpflg|pde_cache_acc_err|ptw
 rg -n "l1pmpflg|l2pmpflg|lookup_detail|pde_lookup_result|direct_accerr|L2_L.*DENY" mmu_verification\testbench\env\ptw_pde_cache_model.svh
 rg -n "pde_direct_accerr|PDE_CACHE_PMP_DENY|pde_l1_pmp|pde_l2|lookup_detail|effective_machine|commit_update_with_pmpflg|record_predicted_pde_update|pde_update_match|pde_mmode" mmu_verification\testbench\env\ptw_source_ref_model.svh
 rg -n "PTW_SOURCE_SB_PDE_PMP_COVERAGE|no_extra_lsu|access_src|pde_reason|pde_direct_accerr|af_pde|af_ctx" mmu_verification\testbench\env\ptw_source_sb.svh mmu_verification\testbench\env\mmu_env.svh
+rg -n "PTW-SVA-PDE-011|PTW-SVA-PDE-012|PTW-SVA-PDE-013|PTW-SVA-PDE-014|PTW-SVA-PDE-015|PTW-SVA-PDE-016|PTW-SVA-PDE-017|PTW-SVA-ARB-010|PTW-SVA-ARB-011|PTW-SVA-ARB-012" mmu_verification\testbench\top
+rg -n "bind PDE_cache|L1PDE_tag_hit|L2PDE_tag_hit|L1PDE_l1pmpflg|L2PDE_l1pmpflg|L2PDE_l2pmpflg" mmu_verification\testbench\top\tb_top.sv
+vlog -sv mmu_verification\testbench\top\mmu_pde_cache_sva.sv mmu_verification\testbench\top\mmu_ptw_top_sva.sv
 
 # 工作区和格式检查
 git status --short

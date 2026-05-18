@@ -689,7 +689,7 @@ end
 always_ff @(posedge mbuf_clk or negedge cpurst_b) begin
     if(!cpurst_b)
         pde_updata_data_vld <= 1'b0;
-    else if(|write_back_grant[MBUF_ENTRY_NUM-1:0] & (tlboper_ptw_abort))
+    else if(|write_back_grant[MBUF_ENTRY_NUM-1:0] & (!tlboper_ptw_abort))
         pde_updata_data_vld <= 1'b1;
     else 
         pde_updata_data_vld <= 1'b0;

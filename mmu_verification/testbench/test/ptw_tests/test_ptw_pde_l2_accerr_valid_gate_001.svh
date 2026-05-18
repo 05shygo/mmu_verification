@@ -83,8 +83,8 @@ class test_ptw_pde_l2_accerr_valid_gate_001 extends ptw_pde_pmpflg_stage9_base;
 
     ptw_prime_l2_pde_cache_with_type(PTW_SRC_TYPE_LOAD, prime_va,
       fst_nonleaf, scd_nonleaf, locked_r_only, locked_r_only, 6'h39);
-    stage9_cp0_tlb_allinv("stage9_l2_accerr_invalid_stale_tag_clear");
-    ptw_meta_add_context("after clear, old locked R-only L2 tag/pmpflg bits may physically remain but valid=0; same-tag STORE must not produce PDE direct accerr and should fall through to live TWU PMP behavior");
+    stage9_satp_rewrite_pde_clear("stage9_l2_accerr_invalid_stale_tag_clear");
+    ptw_meta_add_context("after SATP rewrite clear, old locked R-only L2 tag/pmpflg bits may physically remain but valid=0; same-tag STORE must not produce PDE direct accerr and should fall through to live TWU PMP behavior");
     ptw_meta_set_expected("Invalid stale L2 entry must not assert L2PDE_entry_acc_err/PDE_cache_acc_err_vld; direct accerr is valid-gated by entry valid and ptw_req");
     fork
       begin

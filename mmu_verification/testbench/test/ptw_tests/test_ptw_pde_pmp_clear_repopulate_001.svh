@@ -52,10 +52,10 @@ class test_ptw_pde_pmp_clear_repopulate_001 extends ptw_pde_pmpflg_stage9_base;
 
     ptw_prime_l2_pde_cache_with_type(PTW_SRC_TYPE_STORE, prime_va,
       fst_nonleaf, scd_nonleaf, locked_w_only, locked_w_only, 6'h3c);
-    stage9_cp0_tlb_allinv("stage9_pmp_clear_repopulate_tlb_clear");
+    stage9_satp_rewrite_pde_clear("stage9_pmp_clear_repopulate_tlb_clear");
     ptw_config_page_table_pmp_region(40'h0, 40'h0, load_allow_pmpflg,
       "stage9_repopulate_new_load_allow_pmpflg");
-    ptw_meta_add_context("TB currently ties pmp_regs_update_probe to 0; this test uses the available regs_ptw_clr/tlboper clear path to prove stale cached pmpflg is invalidated and a later walk repopulates with new MBUF pmpflg");
+    ptw_meta_add_context("TB currently ties pmp_regs_update_probe to 0; this test uses the available SATP rewrite regs_ptw_clr path to prove stale cached pmpflg is invalidated and a later walk repopulates with new MBUF pmpflg");
     ptw_meta_set_expected("After clear, old locked-W L2 pmpflg must not be reused for LOAD; request must full-walk and repopulate PDE cache with load-allow MBUF pmpflg");
 
     fork

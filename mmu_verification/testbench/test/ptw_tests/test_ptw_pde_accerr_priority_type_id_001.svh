@@ -85,13 +85,57 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     ptw_meta_print();
   endtask
 
-  protected task stage9_cp0_tlb_allinv(input string scenario_id);
-    cp0_tlb_allinv_seq cp0_inv;
+  protected task stage9_satp_rewrite_pde_clear(
+    input string       scenario_id,
+    input int unsigned max_cycles = 64
+  );
+    cp0_satp_switch_seq satp_seq;
+    bit clear_seen;
+    int unsigned clear_cycle;
 
-    cp0_inv = cp0_tlb_allinv_seq::type_id::create({scenario_id, "_cp0_tlb_allinv"});
-    cp0_inv.start(m_env.m_cp0.m_sequencer);
-    ptw_meta_add_context({scenario_id, ": cp0_tlb_allinv issued; PDE clear expected through regs_ptw_clr/tlboper path"});
-    stage8_wait_cycles(8);
+    satp_seq = cp0_satp_switch_seq::type_id::create({scenario_id, "_satp_rewrite"});
+    satp_seq.satp_sel = 1'b0;
+    satp_seq.satp_val = {4'h8, 16'(ptw_root_asid), 44'(ptw_root_ppn)};
+
+    clear_seen = 1'b0;
+    clear_cycle = 0;
+
+    if (ptw_probe_vif == null) begin
+      satp_seq.start(m_env.m_cp0.m_sequencer);
+      ptw_meta_add_context({scenario_id,
+        ": satp rewrite issued; pde_cache_clear probe unavailable"});
+      stage8_wait_cycles(8);
+      return;
+    end
+
+    fork
+      begin
+        satp_seq.start(m_env.m_cp0.m_sequencer);
+      end
+      begin
+        for (int unsigned cycle = 0; cycle < max_cycles; cycle++) begin
+          @(ptw_probe_vif.mon_cb);
+          if (ptw_probe_vif.mon_cb.pde_cache_clear === 1'b1) begin
+            clear_seen = 1'b1;
+            clear_cycle = cycle;
+            break;
+          end
+        end
+      end
+    join
+
+    if (!clear_seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: SATP rewrite did not observe pde_cache_clear within %0d cycles",
+          scenario_id, max_cycles))
+      ptw_meta_add_context({scenario_id, ": satp_rewrite_pde_clear_not_observed"});
+    end else begin
+      ptw_meta_add_context($sformatf("%s: satp_rewrite_pde_clear_seen cycle_offset=%0d",
+        scenario_id, clear_cycle));
+    end
+
+    // L1/L2 PDE valid bits clear on the clock following pde_cache_clear.
+    stage8_wait_cycles(2);
   endtask
 
   protected task stage9_wait_for_pde_accerr(

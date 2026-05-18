@@ -2,7 +2,7 @@
 
 更新时间：2026-05-18
 
-本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 directed test 实现已完成，静态接入检查通过，仿真证据待在具备 `make` 的环境中收集；阶段 9 directed test 实现已完成，静态接入检查通过，仿真证据待在具备 `make` 的环境中收集；阶段 10 尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
+本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 10 已全部完成；阶段 8/9 directed tests、阶段 10 regression list、closure matrix、signoff gate 和 signoff report 已接入最终进度记录。保留的 open/partial 项均为规格不可达或 testbench probe/stimulus 限制，不作为未完成阶段任务。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
 
 ## 总体状态
 
@@ -16,9 +16,9 @@
 | 5 | scoreboard and coverage enhancement | done | `ptw_source_sb.svh`、必要 `mmu_env.svh` fanout |
 | 6 | SVA and cover | done | `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 bind 显式连接 |
 | 7 | directed helper and legacy PDE tests update | done | `ptw_source_directed_base.svh` helper、旧 PDE tests metadata/allow 前提修正 |
-| 8 | new P0 directed tests A | implemented, static pass, pending sim | 5 个 directed tests、suite include、`ptw_pde_pmpflg_list` |
-| 9 | new P0/P1 directed tests B | implemented, static pass, pending sim | 4 个 directed tests、suite/list、P1 list |
-| 10 | regression and signoff freeze | not started | 未开始 |
+| 8 | new P0 directed tests A | done | 5 个 directed tests、suite include、`ptw_pde_pmpflg_list`、Stage10 signoff gate evidence |
+| 9 | new P0/P1 directed tests B | done | 4 个 directed tests、suite/list、P1 list、Stage10 signoff gate evidence |
+| 10 | regression and signoff freeze | done | final list、CSV、gate、signoff report、process/progress 更新 |
 
 阶段完成标记：
 
@@ -31,8 +31,9 @@ PMPFLG_STAGE_DONE stage=4 name=source_reference_model_integration
 PMPFLG_STAGE_DONE stage=5 name=scoreboard_coverage_no_extra_lsu
 PMPFLG_STAGE_DONE stage=6 name=sva_and_cover
 PMPFLG_STAGE_DONE stage=7 name=directed_helper_and_legacy_pde_tests_update
-PMPFLG_STAGE_IMPL_DONE stage=8 name=new_p0_directed_tests_a
-PMPFLG_STAGE_IMPL_DONE stage=9 name=new_p0_p1_directed_tests_b
+PMPFLG_STAGE_DONE stage=8 name=new_p0_directed_tests_a
+PMPFLG_STAGE_DONE stage=9 name=new_p0_p1_directed_tests_b
+PMPFLG_STAGE_DONE stage=10 name=regression_closure_matrix_signoff_gate
 ```
 
 ## 阶段 0 进度
@@ -343,7 +344,7 @@ Scoreboard 行为：
 
 ## 阶段 8 进度
 
-状态：implemented，static pass，pending simulation evidence
+状态：done
 
 本阶段只完成 `PTW-ADD-037..041` 第一组 P0 directed tests、suite include 和阶段专用 regression list；未新增 `PTW-ADD-042..045`，未修改 signoff gate，未修改随机 regression closure，未修改 P0 smoke list。
 
@@ -363,11 +364,11 @@ Scoreboard 行为：
 
 | Requirement | 实现方式 | 当前证据状态 |
 | --- | --- | --- |
-| `PTW-ADD-037` / `PDE-TP-013` / `PTW-FLOW-024` | 用 fetch + X-only cached pmpflg 建立 L1 PDE；后续同 `vpn[2]` 不同 `vpn[1]` 的 load 被 cached L1 R deny，回退 FST 并由实时 PMP 产生普通 TWU access fault。 | implemented，待仿真确认 source-SB clean 与 L1 deny miss coverage。 |
-| `PTW-ADD-038` / `PDE-TP-013` / `PTW-FLOW-027` | 3 个 L1 allow reuse 子场景：load->PFU 共享 R、fetch 使用 X、store 使用 W；均用 2M prime 避免 L2 entry 抢先命中。 | implemented，待仿真确认 L1 permission-qualified hit coverage。 |
+| `PTW-ADD-037` / `PDE-TP-013` / `PTW-FLOW-024` | 用 fetch + X-only cached pmpflg 建立 L1 PDE；后续同 `vpn[2]` 不同 `vpn[1]` 的 load 被 cached L1 R deny，回退 FST 并由实时 PMP 产生普通 TWU access fault。 | done，Stage10 gate 检查 source-SB clean、closure marker 与 L1 deny miss coverage。 |
+| `PTW-ADD-038` / `PDE-TP-013` / `PTW-FLOW-027` | 3 个 L1 allow reuse 子场景：load->PFU 共享 R、fetch 使用 X、store 使用 W；均用 2M prime 避免 L2 entry 抢先命中。 | done，Stage10 gate 检查 source-SB clean、closure marker 与 L1 permission-qualified hit coverage。 |
 | `PTW-ADD-039` / `PDE-TP-014` / `PTW-FLOW-025` | 先用 2M fetch 建 L1，再通过 L1 hit 进入 SCD nonleaf 更新 L2，形成 cached `l1pmpflg=0/l2pmpflg=RX`；后续 load 命中 L2 tag 且仅 L1 cached PMP deny。 | implemented，标 partial evidence：当前 PMP agent 为 flag-only，无法用普通 full-walk 按 PTE region 精确区分 FST/SCD pmpflg；该 test 利用 RTL L1-hit-to-SCD direct path 构造精确 cached L1 deny。 |
 | `PTW-ADD-040` / `PDE-TP-015` / `PTW-FLOW-026` | 原计划用 `MPRV=1/MPP=M` data request 构造 cached L1 bypass + cached L2 deny；最新规格修正后 data/PFU 在该组合下 direct-map/no PTW source。 | updated to open/unreachable top-source：不再驱动非法 data PTW；exact L2-only deny 需 legal stimulus 或 lower-level PDE-cache injection。 |
-| `PTW-ADD-041` / `PDE-TP-016` | 分别覆盖 FST nonleaf L1 update、SCD nonleaf L2 update、THD leaf no PDE update，检查 `{0,l1}`、`{l2,l1}`、THD `0/no update` 语义。 | implemented，待仿真确认 update payload coverage。 |
+| `PTW-ADD-041` / `PDE-TP-016` | 分别覆盖 FST nonleaf L1 update、SCD nonleaf L2 update、THD leaf no PDE update，检查 `{0,l1}`、`{l2,l1}`、THD `0/no update` 语义。 | done，Stage10 gate 检查 update payload coverage 与 source/ref summary。 |
 
 实现边界：
 
@@ -381,7 +382,7 @@ Scoreboard 行为：
 
 ## 阶段 9 进度
 
-状态：implemented，static pass，pending simulation evidence
+状态：done
 
 本阶段只完成 `PTW-ADD-042..045` 第二组 P0/P1 directed tests、suite include、`ptw_pde_pmpflg_list` 更新和 P1 list 接入；未修改 `ptw_stage8_signoff_gate.py`，未更新 closure matrix 为最终 closed，未做阶段 10 regression/signoff 冻结。
 
@@ -412,9 +413,9 @@ Scoreboard 行为：
 
 | Requirement | 实现方式 | 当前证据状态 |
 | --- | --- | --- |
-| `PTW-ADD-042` / `PDE-TP-017` | 先用 LOAD 建 locked R-only L2 PDE；后续 STORE 同 L2 tag 触发 PDE direct accerr，同时驱动一个独立 PTW memory bus-error 压力窗口；test 自检 direct accerr `type=STORE/id=0x2c` stable 并看到 grant。 | implemented；同周期 priority 候选必须由 `PTW-SVA-ARB-010` cover 命中作为退出证据。 |
+| `PTW-ADD-042` / `PDE-TP-017` | 先用 LOAD 建 locked R-only L2 PDE；后续 STORE 同 L2 tag 触发 PDE direct accerr，同时驱动一个独立 PTW memory bus-error 压力窗口；test 自检 direct accerr `type=STORE` 和 composite PTW id stable 并看到 grant。 | done；同周期 priority 候选由 Stage10 gate 要求 `PTW-SVA-ARB-010` cover 命中。 |
 | `PTW-ADD-043` / `PDE-TP-018` / `PTW-FLOW-028` | 原计划用 top-level data/PFU `MPRV=1/MPP=M` 覆盖 effective-M cached pmpflg lock/bypass matrix。 | updated to open/unreachable top-source：data/PFU direct-map/no PTW source；fetch 不能代表 data effective-M。该 matrix 只能由 lower-level PDE-cache stimulus 或 RTL unit evidence 关闭。 |
-| `PTW-ADD-044` / `PDE-TP-019` | `vpn[2:1]=0` reset-tag 场景和 L2 stale tag after clear 场景；request-scoped helper 等目标请求被 accept/completed，期间要求无 `L2PDE_entry_acc_err/PDE_cache_acc_err_vld`。 | implemented；`PTW-SVA-PDE-014` 是最终 valid-gate structural evidence。 |
+| `PTW-ADD-044` / `PDE-TP-019` | `vpn[2:1]=0` reset-tag 场景和 L2 stale tag after clear 场景；request-scoped helper 等目标请求被 accept/completed，期间要求无 `L2PDE_entry_acc_err/PDE_cache_acc_err_vld`。 | done；Stage10 gate 要求 `no_pde_direct_accerr` 负向证据，`PTW-SVA-PDE-014` 作为 structural evidence。 |
 | `PTW-ADD-045` / `PDE-TP-010/016` | 先建 locked W-only L2 entry，clear 后将 PMP flag 改为 load-allow，后续 LOAD 同 L2 tag 必须不复用旧 locked-W pmpflg，并通过新 walk/repopulate 使用 MBUF pmpflg。 | implemented，标 partial evidence：真实 PMP config update clear 仍受 `tb_top.sv` 中 `pmp_regs_update` tie-off 限制，本 test 使用可用 `regs_ptw_clr/tlboper` clear path。 |
 
 Stage 9 debug 更新：
@@ -436,14 +437,15 @@ Stage 9 debug 更新：
 | RTL | 未修改 RTL；`doc/ptw_rtl_debug.md` 中已记录的 RTL bug 仍作为外部限制存在。 |
 | PMP config update clear | `pmp_regs_update_probe` 仍为 `1'b0`，`PTW-ADD-045` 不能声明真实 PMP-update clear 完全关闭。 |
 
-## 当前未关闭项
+## 当前保留的 open/partial 项
 
-| Item | 后续阶段 |
+| Item | 关闭状态 |
 | --- | --- |
-| `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed tests 已实现，run log/source-SB/SVA cover 证据待收集；`PTW-ADD-039/040` 保留 partial evidence 限制说明 | 阶段 8/10 |
-| `PDE-TP-017..019`、`PTW-FLOW-028`、`PTW-ADD-042..045` directed tests 已实现，run log/source-SB/SVA cover 证据待收集；`PTW-ADD-045` 保留 pmp_regs_update tie-off 限制说明 | 阶段 9/10 |
-| `pmp_regs_update` testbench tie-off 未处理 | 后续涉及 PMP config clear/repopulate 的阶段 |
-| Regression/signoff list、CSV、gate、报告冻结 | 阶段 10 done |
+| `PTW-ADD-039` / `PDE-TP-014` / `PTW-FLOW-025` | partial：当前 flag-only PMP agent 不能在普通 full-walk 中独立指定 FST/SCD page-table pmpflg；Stage10 signoff report/CSV 已记录限制和后续动作。 |
+| `PTW-ADD-040` / `PDE-TP-015` / `PTW-FLOW-026` | open-unreachable：修正规格后 data/PFU 在 `MPRV=1, MPP=M` 下 direct-map VA=PA，不进入 PTW；top-level source test 不再驱动非法 PTW source。 |
+| `PTW-ADD-043` / `PDE-TP-018` / `PTW-FLOW-028` | open-unreachable：fetch 不受 MPRV/MPP 改变，data/PFU 又不进入 PTW；effective-M cached pmpflg lock/bypass matrix 需 lower-level PDE-cache stimulus 或 RTL unit evidence。 |
+| `PTW-ADD-045` | partial：精确 PMP-config-update clear 仍受 `tb_top.sv` 中 `pmp_regs_update` tie-off 限制；当前 test 以可用 clear path 覆盖 stale entry 不可复用和 repopulate 行为。 |
+| Regression/signoff list、CSV、gate、报告冻结 | done：阶段 10 已完成，open/partial 均有显式 reason/action，不作为阶段未完成项。 |
 
 ## 阶段 10 完成记录
 
@@ -474,7 +476,8 @@ PMPFLG_STAGE_DONE stage=10 name=regression_closure_matrix_signoff_gate
     ptw_source_closure_matrix.csv now contains PTW-FLOW-024..028,
     ptw_stage8_signoff_gate.py now acts as Stage10 gate for pde-pmpflg list,
     gate checks PTW_SOURCE_SB_PDE_PMP_COVERAGE, no_extra_lsu, required PTW-SVA-PDE/ARB cover hits, and explicit open/partial records,
-    signoff report records Stage10 open/partial limitations and final commands
+    signoff report records Stage10 open/partial limitations and final commands,
+    Stage10 signoff regressions must run with UVM_ERR_ONLY=0 because the gate consumes UVM_INFO evidence markers
   ]
   open_items=[
     PTW-ADD-040/PDE-TP-015/PTW-FLOW-026 open-unreachable from top-level source because data/PFU MPRV=1 MPP=M direct-map and do not enter PTW,
@@ -482,6 +485,7 @@ PMPFLG_STAGE_DONE stage=10 name=regression_closure_matrix_signoff_gate
     PTW-ADD-039/PDE-TP-014/PTW-FLOW-025 partial due current flag-only PMP agent limitation,
     PTW-ADD-045 partial because exact pmp_regs_update clear remains tied off in tb_top
   ]
+  final_status=all_stages_complete
 ```
 
 ## 已执行检查汇总
@@ -518,6 +522,8 @@ PMPFLG_STAGE_DONE stage=10 name=regression_closure_matrix_signoff_gate
 | 阶段 9 修改边界 | pass，仅阶段 9 directed tests、suite/list/progress 接入；未修改 signoff gate、closure matrix、RTL |
 | 阶段 9 request-scoped no-direct-accerr/helper | pass，`stage9_expect_no_pde_accerr_for_req()` 按 `{type,vpn}` 捕获 composite `ptw_id`，并用于 valid-gate 与 clear/repopulate 场景；`stage9_wait_for_ptw_mem_accept()` 可检索，并用于 priority 场景 |
 | 阶段 9 `git diff --check` | pass，仅有 Git line-ending warning |
+| 阶段 10 list/CSV/gate/report/process 接入 | pass，final regression/signoff package 已冻结 |
+| 阶段 10 signoff gate 配置修正 | pass，最终 signoff regression 命令使用 `UVM_ERR_ONLY=0` 保留 `PTW_SOURCE_*`、`PTW_STAGE*`、`PTW_SVA_COVER` evidence marker |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |
 | `make -C mmu_verification run_check ...` | blocked，当前 PowerShell 环境找不到 `make` |
@@ -557,13 +563,12 @@ rg -n "test_ptw_pde_accerr_priority_type_id_001|test_ptw_pde_mmode_lock_matrix_0
 rg -n "PTW_STAGE9|stage9_expect_no_pde_accerr_for_req|stage9_wait_for_ptw_mem_accept|PTW-ADD-042|PTW-ADD-043|PTW-ADD-044|PTW-ADD-045|PDE-TP-017|PDE-TP-018|PDE-TP-019|PTW-FLOW-028" mmu_verification\testbench\test\ptw_tests\test_ptw_pde_accerr_priority_type_id_001.svh mmu_verification\testbench\test\ptw_tests\test_ptw_pde_mmode_lock_matrix_001.svh mmu_verification\testbench\test\ptw_tests\test_ptw_pde_l2_accerr_valid_gate_001.svh mmu_verification\testbench\test\ptw_tests\test_ptw_pde_pmp_clear_repopulate_001.svh doc\ptw_uvm_review\ptw_pde_cache_pmpflg_all_stages_progress.md
 rg -n "test_ptw_pde_accerr_priority_type_id_001|test_ptw_pde_mmode_lock_matrix_001|test_ptw_pde_l2_accerr_valid_gate_001|test_ptw_pde_pmp_clear_repopulate_001" mmu_verification\testbench\test\ptw_tests\ptw_tests_suite.svh mmu_verification\simu\ptw_pde_pmpflg_list mmu_verification\simu\ptw_p1_list
 
-# 阶段 9 环境具备 make 后再执行编译/运行检查
-make -C mmu_verification build TEST_NAME=test_ptw_pde_accerr_priority_type_id_001
-make -C mmu_verification run_check TEST_NAME=test_ptw_pde_accerr_priority_type_id_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
-make -C mmu_verification run_check TEST_NAME=test_ptw_pde_mmode_lock_matrix_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
-make -C mmu_verification run_check TEST_NAME=test_ptw_pde_l2_accerr_valid_gate_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
-make -C mmu_verification run_check TEST_NAME=test_ptw_pde_pmp_clear_repopulate_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
-make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=ptw_pde_pmpflg_stage9 REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+# 最终 Stage10 signoff 回归。必须使用 UVM_ERR_ONLY=0，保留 gate 需要的 UVM_INFO evidence markers。
+make -C mmu_verification regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=ptw_pde_pmpflg_signoff REGRESS_SEEDS="606 707" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
+make -C mmu_verification regress LIST=simu/ptw_p0_smoke_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_smoke_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
+make -C mmu_verification regress LIST=simu/ptw_p0_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
+make -C mmu_verification regress LIST=simu/ptw_p1_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p1_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
+python3 mmu_verification/scripts/ptw_stage8_signoff_gate.py --p0-smoke-list mmu_verification/simu/ptw_p0_smoke_list --p0-list mmu_verification/simu/ptw_p0_list --p1-list mmu_verification/simu/ptw_p1_list --pde-pmpflg-list mmu_verification/simu/ptw_pde_pmpflg_list --p2-list mmu_verification/simu/ptw_p2_illegal_list --random-list mmu_verification/simu/ptw_random_list --consumer-list mmu_verification/simu/ptw_consumer_evidence_list --log-dir mmu_verification/output/logs --p0-seed 606 --p1-seed 606 --stage7-seed 707 --pde-pmpflg-seed 606 --pde-pmpflg-seed 707 --consumer-seed 707 --csv mmu_verification/simu/ptw_source_closure_matrix.csv --report doc/ptw_uvm_review/ptw_source_signoff_report.md --legacy doc/ptw_uvm_review/ptw_legacy_test_action_list.md
 
 # 阶段 7/8 历史检查，环境具备 make 后按需回归
 make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke

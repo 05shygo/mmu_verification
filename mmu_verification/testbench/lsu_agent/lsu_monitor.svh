@@ -98,12 +98,14 @@ class lsu_monitor extends uvm_monitor;
 
   protected function bit _pipe0_t0_terminal();
     return (vif.monitor_cb.mmu_lsu_pa0_vld === 1'b1)
-        || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1);
+        || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1)
+        || (vif.monitor_cb.mmu_lsu_access_fault0 === 1'b1);
   endfunction
 
   protected function bit _pipe1_t0_terminal();
     return (vif.monitor_cb.mmu_lsu_pa1_vld === 1'b1)
-        || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1);
+        || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1)
+        || (vif.monitor_cb.mmu_lsu_access_fault1 === 1'b1);
   endfunction
 
   function new(string name, uvm_component parent);
@@ -527,7 +529,8 @@ class lsu_monitor extends uvm_monitor;
       wait(m_pending_p0.size() > 0);
       if (!_pipe0_t0_terminal())
         @(vif.monitor_cb iff ((vif.monitor_cb.mmu_lsu_pa0_vld === 1'b1)
-                           || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1)));
+                           || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1)
+                           || (vif.monitor_cb.mmu_lsu_access_fault0 === 1'b1)));
       tr              = lsu_txn::type_id::create("lsu_p0_rsp");
       _sample_pipe0_rsp_fields(tr);
       // --- Req/rsp correlation (FIFO, 1-outstanding per pipe) ---
@@ -545,7 +548,8 @@ class lsu_monitor extends uvm_monitor;
       `uvm_info(get_type_name(), {"P0 RSP: ", tr.convert2string()}, UVM_HIGH)
       ap_pipe0_rsp.write(_clone_txn(tr, "lsu_p0_rsp_ap"));
       @(vif.monitor_cb iff !((vif.monitor_cb.mmu_lsu_pa0_vld === 1'b1)
-                          || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1)));
+                          || (vif.monitor_cb.mmu_lsu_page_fault0 === 1'b1)
+                          || (vif.monitor_cb.mmu_lsu_access_fault0 === 1'b1)));
     end
   endtask
 
@@ -592,7 +596,8 @@ class lsu_monitor extends uvm_monitor;
       wait(m_pending_p1.size() > 0);
       if (!_pipe1_t0_terminal())
         @(vif.monitor_cb iff ((vif.monitor_cb.mmu_lsu_pa1_vld === 1'b1)
-                           || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1)));
+                           || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1)
+                           || (vif.monitor_cb.mmu_lsu_access_fault1 === 1'b1)));
       tr              = lsu_txn::type_id::create("lsu_p1_rsp");
       _sample_pipe1_rsp_fields(tr);
       req_tr      = m_pending_p1.pop_front();
@@ -623,7 +628,8 @@ class lsu_monitor extends uvm_monitor;
       end
       ap_pipe1_rsp.write(_clone_txn(tr, "lsu_p1_rsp_ap"));
       @(vif.monitor_cb iff !((vif.monitor_cb.mmu_lsu_pa1_vld === 1'b1)
-                          || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1)));
+                          || (vif.monitor_cb.mmu_lsu_page_fault1 === 1'b1)
+                          || (vif.monitor_cb.mmu_lsu_access_fault1 === 1'b1)));
     end
   endtask
 

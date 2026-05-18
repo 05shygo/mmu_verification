@@ -422,6 +422,7 @@ Stage 9 debug 更新：
 | 日期 | 现象 | 判定 | 处理 |
 | --- | --- | --- | --- |
 | 2026-05-18 | `test_ptw_pde_accerr_priority_type_id_001_606` 在 `stage9_wait_for_pde_accerr()` 报 `expected PDE direct accerr not observed within 192 cycles`，但同一日志 `cp_pde_l2_deny_direct_accerr`/`cp_pde_accerr_valid_gate` 均命中。 | UVM test-local checker 同步窗口问题，不是当前证据支持的 RTL bug。 | 修复 `stage9_wait_for_pde_accerr()`：先等目标 STORE `{type,id}` 被 PTW accept，accept 后再检查 direct accerr；同时接受 matching `ptw_acc_err_grant_vec[5] + ptw_l2tlb_ref_acc_err` 作为可见 grant/完成证据。 |
+| 2026-05-18 | 重跑后 `stage9_wait_for_pde_accerr()` 报 `target req was not accepted within 512 cycles type=store id=0x2c`；metadata 显示 STORE sequence 已启动，PDE direct-accerr SVA 仍命中。 | UVM LSU agent 协议完成条件问题。`lsu_driver` pipe0/1 已采样 `mmu_lsu_access_fault0/1`，但 `_pipe*_t0_terminal()` 未把 access fault 当 terminal，bus-error/access-fault 请求会持续 retry 并阻塞同 pipe 后续 STORE。 | 修复 `lsu_driver.svh` 和 `lsu_monitor.svh`：pipe0/1 terminal 及等待表达式加入 `mmu_lsu_access_fault0/1`，使 access-fault completion 能释放 driver 并被 monitor 正确绑定。 |
 
 实现边界：
 

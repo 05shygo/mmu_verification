@@ -297,12 +297,14 @@ class lsu_driver extends uvm_driver #(lsu_txn);
 
   protected function bit _pipe0_t0_terminal();
     return (vif.driver_cb.mmu_lsu_pa0_vld === 1'b1)
-        || (vif.driver_cb.mmu_lsu_page_fault0 === 1'b1);
+        || (vif.driver_cb.mmu_lsu_page_fault0 === 1'b1)
+        || (vif.driver_cb.mmu_lsu_access_fault0 === 1'b1);
   endfunction
 
   protected function bit _pipe1_t0_terminal();
     return (vif.driver_cb.mmu_lsu_pa1_vld === 1'b1)
-        || (vif.driver_cb.mmu_lsu_page_fault1 === 1'b1);
+        || (vif.driver_cb.mmu_lsu_page_fault1 === 1'b1)
+        || (vif.driver_cb.mmu_lsu_access_fault1 === 1'b1);
   endfunction
 
   protected task _pulse_pipe0_req(lsu_txn tr);
@@ -368,7 +370,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
           begin : wait_rsp_p0
             if (!_pipe0_t0_terminal())
               @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_pa0_vld === 1'b1)
-                                || (vif.driver_cb.mmu_lsu_page_fault0 === 1'b1)));
+                                || (vif.driver_cb.mmu_lsu_page_fault0 === 1'b1)
+                                || (vif.driver_cb.mmu_lsu_access_fault0 === 1'b1)));
             got_rsp         = 1'b1;
             tr.pa           = vif.driver_cb.mmu_lsu_pa0;
             tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault0;
@@ -465,7 +468,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
           begin : wait_rsp_p1
             if (!_pipe1_t0_terminal())
               @(vif.driver_cb iff ((vif.driver_cb.mmu_lsu_pa1_vld === 1'b1)
-                                || (vif.driver_cb.mmu_lsu_page_fault1 === 1'b1)));
+                                || (vif.driver_cb.mmu_lsu_page_fault1 === 1'b1)
+                                || (vif.driver_cb.mmu_lsu_access_fault1 === 1'b1)));
             got_rsp         = 1'b1;
             tr.pa           = vif.driver_cb.mmu_lsu_pa1;
             tr.pgflt        = vif.driver_cb.mmu_lsu_page_fault1;

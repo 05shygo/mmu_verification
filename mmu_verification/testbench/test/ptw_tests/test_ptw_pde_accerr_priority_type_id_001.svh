@@ -99,7 +99,8 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     input ptw_src_req_type_e exp_type,
     input int unsigned       source_id,
     input vpn_t              exp_vpn,
-    input int unsigned       max_cycles = 128
+    input int unsigned       max_cycles = 128,
+    input bit                allow_pre_accept_pde_match = 1'b0
   );
     bit          target_accepted;
     bit          target_ptw_id_valid;
@@ -184,6 +185,18 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
         last_pde_type = ptw_probe_vif.mon_cb.pde_cache_acc_err_type;
         last_pde_id = ptw_probe_vif.mon_cb.pde_cache_acc_err_id;
         last_pde_vpn = ptw_probe_vif.mon_cb.pde_xbar_vpn;
+        if (!target_ptw_id_valid
+            && allow_pre_accept_pde_match
+            && (last_pde_type == exp_type_bits)
+            && (last_pde_vpn == exp_vpn)) begin
+          target_accepted = 1'b1;
+          target_ptw_id_valid = 1'b1;
+          target_ptw_id = last_pde_id;
+          cycles_after_accept = 0;
+          ptw_meta_add_context($sformatf("%s: target_req_inferred_from_pde_accerr cycle_offset=%0d type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
+            scenario_id, cycle, ptw_src_type_name(exp_type), exp_vpn,
+            source_id_bits, target_ptw_id));
+        end
         if (target_ptw_id_valid
             && (last_pde_type == exp_type_bits)
             && (last_pde_id == target_ptw_id)) begin

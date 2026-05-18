@@ -583,7 +583,7 @@ assign twu_hash[1:0] =
 ### 35. Machine mode 请求约束
 
 173. 第 24 题 PMP 检查里存在 machine mode 跳过 PMP 的规则，但第 134 题说机器模式下不会有请求进入 PTW。请确认 UVM 是否应约束不产生 `cp0_mach_mode` 下的 PTW 请求；如果不约束，reference model 是否仍按第 24 题的 machine-mode PMP skip 规则处理。
-答：这是因为当请求类型是fetch时，使用流水线里 真实硬件特权级（M/S/U），但是当请求类型的load、store、pfu时，如果mprv有效时，访存要按 mstatus.MPP（cp0_mmu_mpp）当「有效特权」，即 MPRV 下 S/U 访存用 MPP 档 的 RISC‑V 语义，如果mprv有效无效，才用流水线里 真实硬件特权级（M/S/U）。因此ptw在机器状态不能表示core流水线请求在机器状态。当core流水线请求在机器状态，那么肯定是没有请求会进入ptw的，因为纯 M 态、不做地址翻译时，本来就不该靠 PTW 走路。但是当core流水线请求不在机器状态，但是请求类型是load、store、pfu并且mprv有效时，并且mstatus.MPP是M态，是做地址翻译的，也靠 PTW 走路，但是ptw选用机器模式状态进行。
+答：最新修正：fetch/IFU 使用流水线真实硬件特权级（M/S/U），不受 MPRV/MPP 改变；load/store/PFU 在 `MPRV=1` 时按 `mstatus.MPP/cp0_mmu_mpp` 作为 data effective privilege，否则使用流水线真实特权级。当真实流水线为 S/U 且 `MPRV=1 && MPP=M` 时，load/store/PFU 的物理地址直接等于虚拟地址，data MMU 关闭，不会产生 L1D/L2TLB/PTW source 请求。纯 M 态同样不会进入 PTW。真实 S/U 的 fetch 在 Sv39 下仍可能进入 PTW，真实 M 的 fetch 不进入 PTW。
 
 ## 第六轮待澄清问题
 
@@ -601,11 +601,11 @@ assign twu_hash[1:0] =
 ### 37. MPRV/MPP effective privilege
 
 177. 第 173 题补充了 load/store/PFU 在 `MPRV=1` 时按 `mstatus.MPP` 作为有效特权级。请明确 reference model 应如何生成权限检查使用的 effective mode：fetch 是否永远用流水线真实特权级；load/store/PFU 是否在 `MPRV=1` 时用 `MPP`，否则用真实特权级；`cp0_supv_mode/cp0_user_mode/cp0_mach_mode` 输入到 PTW 时是否已经是这个 effective mode？
-答：fetch 永远用流水线真实特权级，load/store/PFU 在 `MPRV=1` 时用 `MPP`，否则用真实特权。
-178. 当 load/store/PFU 因 `MPRV=1 && MPP=M` 进入 PTW 且 PTW 选用 machine mode 状态时，PMP 检查是否按第 24 题的 machine-mode skip 规则执行，即 `cp0_mach_mode && !pmp_mmu_flg[3]` 时不触发 access fault？同一请求的 PTE U/S 权限检查是否也按 machine effective mode 跳过 S/U 检查？
-答：是的。当 load/store/PFU 时 `MPRV=1 && MPP=M，那么所有的检查包括pmp检查和页表检查都是按照M态进行。
-179. 请补充或确认 “load/store/PFU，`MPRV=1 && MPP=M`，且发生 PTW walk” 的完整处理流程是否和普通 load/store/PFU walk 相同，只是在 PMP 检查和 PTE U/S 权限检查中使用 machine effective mode；正常 refill/异常返回目标仍按原始 `type + id` 返回到 DTLB/L2TLB 或 PFU 端口。
-答：是的。并且正常 refill/异常返回目标仍按原始 `type + id` 返回到 DTLB/L2TLB 或 PFU 端口。
+答：fetch 永远用流水线真实特权级，load/store/PFU 在 `MPRV=1` 时用 `MPP`，否则用真实特权。最新修正：当 load/store/PFU 的 effective privilege 因 `MPRV=1 && MPP=M` 变成 M 时，data MMU 关闭，VA=PA，不进入 PTW；fetch 不受该修正影响。
+178. 旧问法：当 load/store/PFU 因 `MPRV=1 && MPP=M` 进入 PTW 且 PTW 选用 machine mode 状态时，PMP 检查是否按第 24 题的 machine-mode skip 规则执行，即 `cp0_mach_mode && !pmp_mmu_flg[3]` 时不触发 access fault？同一请求的 PTE U/S 权限检查是否也按 machine effective mode 跳过 S/U 检查？
+答：最新修正覆盖旧答。load/store/PFU 在 `MPRV=1 && MPP=M` 时不会进入 PTW，因此不存在对该请求执行 PTW PMP/PTE U/S 检查的合法流程。
+179. 旧问法：请补充或确认 “load/store/PFU，`MPRV=1 && MPP=M`，且发生 PTW walk” 的完整处理流程是否和普通 load/store/PFU walk 相同，只是在 PMP 检查和 PTE U/S 权限检查中使用 machine effective mode；正常 refill/异常返回目标仍按原始 `type + id` 返回到 DTLB/L2TLB 或 PFU 端口。
+答：最新修正覆盖旧答。该 data/PFU PTW walk 不应发生；UVM 应约束为 no PTW source，并用 consumer/direct-map 证据检查 VA=PA 行为。fetch 不受 MPRV/MPP 影响，仍按真实流水线模式判断。
 
 ### 38. 文档笔误同步
 

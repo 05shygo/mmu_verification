@@ -333,22 +333,17 @@ class ptw_source_ref_model extends uvm_component;
   endfunction
 
   protected function bit effective_machine(input pending_req_s pending);
-    if (pending.priv_mode == PRIV_M)
-      return 1'b1;
-    if (((pending.req_type == PTW_SRC_TYPE_LOAD)
-         || (pending.req_type == PTW_SRC_TYPE_STORE)
-         || (pending.req_type == PTW_SRC_TYPE_PFU))
-        && pending.mprv && (pending.mpp == PRIV_M))
-      return 1'b1;
-    return 1'b0;
+    if (pending.req_type == PTW_SRC_TYPE_FETCH)
+      return (pending.priv_mode == PRIV_M);
+    if (ptw_src_is_data_or_pfu_type(pending.req_type) && pending.mprv)
+      return (pending.mpp == PRIV_M);
+    return (pending.priv_mode == PRIV_M);
   endfunction
 
   protected function bit effective_user(input pending_req_s pending);
     if (effective_machine(pending))
       return 1'b0;
-    if (((pending.req_type == PTW_SRC_TYPE_LOAD)
-         || (pending.req_type == PTW_SRC_TYPE_STORE)
-         || (pending.req_type == PTW_SRC_TYPE_PFU))
+    if (ptw_src_is_data_or_pfu_type(pending.req_type)
         && pending.mprv)
       return (pending.mpp == PRIV_U);
     return (pending.priv_mode == PRIV_U);
@@ -357,9 +352,7 @@ class ptw_source_ref_model extends uvm_component;
   protected function bit effective_supervisor(input pending_req_s pending);
     if (effective_machine(pending))
       return 1'b0;
-    if (((pending.req_type == PTW_SRC_TYPE_LOAD)
-         || (pending.req_type == PTW_SRC_TYPE_STORE)
-         || (pending.req_type == PTW_SRC_TYPE_PFU))
+    if (ptw_src_is_data_or_pfu_type(pending.req_type)
         && pending.mprv)
       return (pending.mpp == PRIV_S);
     return (pending.priv_mode == PRIV_S);
@@ -1085,6 +1078,15 @@ class ptw_source_ref_model extends uvm_component;
       pending.drop_emitted = 1'b0;
       m_pending[key] = pending;
       m_req_accept_count++;
+
+      if (effective_machine(pending)) begin
+        `uvm_error(get_type_name(),
+          $sformatf({"PTW_SOURCE_ILLEGAL_EFFECTIVE_M_ACCEPT type=%s id=0x%02h ",
+                     "vpn=0x%07h priv=0x%0h mprv=%0b mpp=0x%0h: corrected spec requires ",
+                     "effective-M data/PFU or real-M fetch to avoid PTW source request"},
+            tr.req_type.name(), tr.id, tr.vpn, pending.priv_mode,
+            pending.mprv, pending.mpp))
+      end
     end
   endtask
 

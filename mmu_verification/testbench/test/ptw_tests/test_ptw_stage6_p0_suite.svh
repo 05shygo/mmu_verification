@@ -668,30 +668,33 @@ class test_ptw_p0_pde_mbuf_pmp_matrix extends ptw_stage6_p0_base;
     va_t va;
     pa_t pa;
 
-    va = 39'h0_3070_3000;
-    pa = 40'h0_0370_3000;
-    ptw_meta_begin("TC-PTW-STAGE6-MPRV", "stage6_mprv_mpp_m_load_success");
+    va = 39'h0_1070_3000;
+    ptw_meta_begin("TC-PTW-STAGE6-MPRV", "stage6_mprv_mpp_m_load_direct_map_no_ptw");
     ptw_meta_add_req("PTW-ADD-015");
     ptw_meta_add_req("PTW-FLOW-023");
     ptw_setup_sv39(STAGE6_ROOT_PPN + 28'h55, STAGE6_ROOT_ASID + 16'h55, PRIV_S, 1'b0, 1'b0, 1'b1, 1'b1, PRIV_M);
-    stage6_map_leaf(.va(va), .level(0), .pa(pa), .req_type(PTW_SRC_TYPE_LOAD), .id(6'h27),
-      .kind("mprv_mpp_m_load_leaf"), .r(1), .w(1), .x(0), .u(0), .a(1), .d(1));
-    ptw_meta_set_expected("load with MPRV=1 MPP=M uses machine effective privilege");
+    ptw_meta_add_context("load_data_effective_m_direct_map_va_eq_pa no_ptw_walk_expected");
+    ptw_meta_set_expected("LOAD with real priv=S, MPRV=1, MPP=M direct-maps VA=PA and does not enter PTW");
     stage6_drive_req(PTW_SRC_TYPE_LOAD, va, 6'h27);
-    stage6_finish_scenario("stage6_mprv_mpp_m_load_success");
-    stage6_close("PTW-ADD-015,PTW-FLOW-023", "stage6_mprv_mpp_m_load_success",
-      "source_sb context/refill compare; PTW-SVA-PMP effective-mode cover");
+    ptw_meta_set_actual("consumer_direct_map_no_ptw_source_event_expected");
+    ptw_meta_set_result("stage6_consumer_directed");
+    ptw_quiescent_wait("stage6_mprv_mpp_m_load_direct_map_no_ptw");
+    ptw_meta_print();
 
     va = 39'h0_1070_4000;
-    ptw_meta_begin("TC-PTW-STAGE6-MPRV", "stage6_mprv_mpp_m_pfu_success");
+    ptw_meta_begin("TC-PTW-STAGE6-MPRV", "stage6_mprv_mpp_m_pfu_direct_map_no_ptw");
+    ptw_meta_add_req("PTW-ADD-015");
+    ptw_meta_add_req("PTW-FLOW-023");
     ptw_setup_sv39(STAGE6_ROOT_PPN + 28'h56, STAGE6_ROOT_ASID + 16'h56, PRIV_S, 1'b0, 1'b0, 1'b1, 1'b1, PRIV_M);
-    ptw_meta_add_context("pfu_direct_map_sysmap_region0 flg=0x0f no_ptw_walk_expected");
-    ptw_meta_set_expected("PFU with MPRV=1 MPP=M direct-maps through default SysMap allow region0");
+    ptw_meta_add_context("pfu_data_effective_m_direct_map_va_eq_pa no_ptw_walk_expected");
+    ptw_meta_set_expected("PFU with MPRV=1 MPP=M direct-maps VA=PA and does not enter PTW");
     stage6_drive_req(PTW_SRC_TYPE_PFU, va, 6'h28);
     ptw_meta_set_actual("consumer_direct_map_no_ptw_source_event_expected");
     ptw_meta_set_result("stage6_consumer_directed");
-    ptw_quiescent_wait("stage6_mprv_mpp_m_pfu_success");
+    ptw_quiescent_wait("stage6_mprv_mpp_m_pfu_direct_map_no_ptw");
     ptw_meta_print();
+    stage6_close("PTW-ADD-015,PTW-FLOW-023", "stage6_mprv_mpp_m_data_pfu_no_ptw",
+      "LOAD/PFU MPRV=1 MPP=M are consumer-only direct-map sanity cases; no PTW source event is expected");
   endtask
 
   virtual task run_test_body();
@@ -882,9 +885,9 @@ class test_ptw_p0_flow_trace_umbrella extends ptw_stage6_p0_base;
       "test_ptw_p0_type_pfu_fault_matrix", "PFU exception target source_sb match + CHK/ARB cover");
     stage6_flow_bind("PTW-FLOW-022", "open-stage7-tb-gap", "stage6_pde_satp_pmp_clear_only_reupdate",
       "test_ptw_p0_pde_mbuf_pmp_matrix", "pmp_regs_update and clear-only old-walk re-update remain Stage-7/TB gap");
-    stage6_flow_bind("PTW-FLOW-023", "closed", "stage6_mprv_mpp_m_load_success",
+    stage6_flow_bind("PTW-FLOW-023", "closed-consumer-only", "stage6_mprv_mpp_m_data_pfu_no_ptw",
       "test_ptw_p0_pde_mbuf_pmp_matrix",
-      "load MPRV=1 MPP=M source_sb context/refill match; PFU MPP=M direct-map is consumer-only");
+      "LOAD/PFU MPRV=1 MPP=M direct-map VA=PA and must not produce PTW source request; fetch remains real-privilege only");
 
     stage6_close("PTW-ADD-031,PTW-FLOW-001..023", "stage6_flow_trace_umbrella",
       "all flows have directed binding plus closed/open reason markers; source-SB evidence comes from grouped P0 tests");

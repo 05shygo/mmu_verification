@@ -645,11 +645,12 @@ mmu_verification/testbench/env/ptw_source_ref_model.svh
 protected function bit effective_machine(input pending_req_s pending);
 ```
 
-本次 PDE cache lookup 必须使用同一个函数，确保 MPRV/MPP 语义与 TWU PMP stage 一致：
+本次 PDE cache lookup 的权限判断必须使用同一个 effective-mode helper，确保 MPRV/MPP 语义与 TWU PMP stage 一致。但在 top-level PTW source flow 中，data/PFU effective-M 请求应已被上游 direct-map 消除；若 monitor 观察到这类 source accept，应作为 illegal stimulus/report 处理，而不是用它关闭 cached pmpflg coverage。
 
-1. `priv_mode == PRIV_M` 时 effective M。
-2. data/PFU 类型且 `mprv && mpp == PRIV_M` 时 effective M。
-3. fetch 不受 MPRV 影响。
+1. fetch 不受 MPRV 影响，只按真实流水线 privilege 判断；真实 M fetch 不进入 PTW，真实 S/U fetch 可进入 PTW。
+2. load/store/PFU 在 `MPRV=1` 时用 `MPP` 计算 data effective privilege，否则用真实 privilege。
+3. load/store/PFU 的 data effective privilege 为 M 时 direct-map VA=PA，不应出现合法 PTW source request。
+4. cached `pmpflg[3]` 的 effective-M lock/bypass matrix 若无法由合法 top-level source 触发，只能由 lower-level PDE-cache stimulus 或 RTL unit evidence 关闭。
 
 #### 4.2 pending request 扩展
 
@@ -1078,10 +1079,10 @@ Phase 8 退出标准：
 | `PTW-ADD-037` | `test_ptw_pde_l1_pmp_tag_deny_fst_fault_001.svh` | P0 | fetch 建 L1 PDE，load 同 L1 tag，cached `l1pmpflg[0]=0`。 | L1 tag hit 但 no hit；进入 FST PMP；若实时 FST deny，则普通 TWU access fault；无 PDE direct accerr。 |
 | `PTW-ADD-038` | `test_ptw_pde_l1_pmp_tag_allow_reuse_001.svh` | P0 | load/PFU 共用 R，fetch 用 X，store 用 W。 | L1 permission-qualified hit，跳过 FST。 |
 | `PTW-ADD-039` | `test_ptw_pde_l2_pmp_l1_deny_accerr_001.svh` | P0 | L2 tag match，cached L2 allow，cached L1 deny。 | PDE direct accerr；不发 LSU；type/id 正确。 |
-| `PTW-ADD-040` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh` | P0 | L2 tag match，cached L1 allow，cached L2 deny。 | PDE direct accerr；不回退 SCD；不发 LSU。 |
+| `PTW-ADD-040` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh` | P0 | L2 tag match，cached L1 allow，cached L2 deny。 | PDE direct accerr；不回退 SCD；不发 LSU。旧 `MPRV=1/MPP=M` data construction 不合法，top-level source test 只能 open，需 alternate legal/lower-level evidence。 |
 | `PTW-ADD-041` | `test_ptw_pde_pmpflg_propagation_update_001.svh` | P0 | FST/SCD/THD payload 全覆盖。 | FST `{0,l1}`，SCD `{l2,l1}`，THD `0` 且不更新。 |
 | `PTW-ADD-042` | `test_ptw_pde_accerr_priority_type_id_001.svh` | P1 | PDE direct accerr 与 bus error/TWU accerr 竞争。 | PDE accerr priority，type/id stable。 |
-| `PTW-ADD-043` | `test_ptw_pde_mmode_lock_matrix_001.svh` | P0 | effective M-mode，`pmpflg[3]` 0/1，type bit allow/deny 交叉。 | `flg[3]=0` bypass；`flg[3]=1` 不 bypass。 |
+| `PTW-ADD-043` | `test_ptw_pde_mmode_lock_matrix_001.svh` | P0 | effective M-mode，`pmpflg[3]` 0/1，type bit allow/deny 交叉。 | 最新规格下 top-level data/PFU `MPRV=1/MPP=M` 不进入 PTW；本 test 只能记录 open/unreachable，实际关闭需 lower-level PDE-cache stimulus 或 RTL unit evidence。 |
 | `PTW-ADD-044` | `test_ptw_pde_l2_accerr_valid_gate_001.svh` | P0 | invalid entry tag 旧值匹配或 `ptw_req=0`。 | 不产生 direct accerr。 |
 | `PTW-ADD-045` | `test_ptw_pde_pmp_clear_repopulate_001.svh` | P1 | PMP update clear 后重新 walk/update。 | 旧 entry 不可用；新 update pmpflg 来自 MBUF entry。 |
 
@@ -1209,10 +1210,10 @@ test_ptw_pde_l2_pmp_l2_deny_accerr_001
 | `PTW-ADD-037` | `test_ptw_pde_l1_pmp_tag_deny_fst_fault_001` | source SB clean + pde coverage | `PTW-SVA-PDE-011` | closed after pass |
 | `PTW-ADD-038` | `test_ptw_pde_l1_pmp_tag_allow_reuse_001` | source SB clean + pde coverage | `PTW-SVA-PDE-011` | closed after pass |
 | `PTW-ADD-039` | `test_ptw_pde_l2_pmp_l1_deny_accerr_001` | source SB clean + no-extra-LSU | `PTW-SVA-PDE-013` | closed after pass |
-| `PTW-ADD-040` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001` | source SB clean + no-extra-LSU | `PTW-SVA-PDE-013` | closed after pass |
+| `PTW-ADD-040` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001` | open/unreachable for old `MPRV=1/MPP=M` construction; no illegal source traffic | `PTW-SVA-PDE-013` if covered by alternate legal stimulus | open until legal/lower-level evidence |
 | `PTW-ADD-041` | `test_ptw_pde_pmpflg_propagation_update_001` | update pmpflg match | `PTW-SVA-PDE-015` | closed after pass |
 | `PTW-ADD-042` | `test_ptw_pde_accerr_priority_type_id_001` | source SB clean + priority debug | `PTW-SVA-ARB-010` | P1 closed |
-| `PTW-ADD-043` | `test_ptw_pde_mmode_lock_matrix_001` | source SB clean + mmode coverage | `PTW-SVA-PDE-011/012` | closed after pass |
+| `PTW-ADD-043` | `test_ptw_pde_mmode_lock_matrix_001` | open/unreachable top-level source marker | lower-level PDE-cache/RTL-unit evidence required | open |
 | `PTW-ADD-044` | `test_ptw_pde_l2_accerr_valid_gate_001` | source SB clean | `PTW-SVA-PDE-014` | closed after pass |
 | `PTW-ADD-045` | `test_ptw_pde_pmp_clear_repopulate_001` | source SB clean + clear/update coverage | `PTW-SVA-PDE-001/015` | P1 closed |
 
@@ -1260,13 +1261,13 @@ Phase 10 退出标准：
 | `PDE-TP-015` | L2 tag hit but cached L2 PMP deny -> direct accerr | pde model、ref model、SB no-extra-LSU | `PTW-ADD-040` | `PTW-SVA-PDE-012/013` |
 | `PDE-TP-016` | FST/SCD/THD pmpflg propagation | monitor、ref model update compare | `PTW-ADD-041` | `PTW-SVA-PDE-015` |
 | `PDE-TP-017` | PDE direct accerr type/id and priority | ref model、SB、arb SVA | `PTW-ADD-042` | `PTW-SVA-PDE-017`、`PTW-SVA-ARB-010` |
-| `PDE-TP-018` | effective M-mode bit3 lock matrix | pde pmp allow helper | `PTW-ADD-043` | `PTW-SVA-PDE-011/012` |
+| `PDE-TP-018` | effective M-mode bit3 lock matrix | pde pmp allow helper | `PTW-ADD-043` | top-level source unreachable under corrected spec; lower-level evidence required |
 | `PDE-TP-019` | L2 direct accerr valid/request gate | monitor、SVA | `PTW-ADD-044` | `PTW-SVA-PDE-014` |
 | `PTW-FLOW-024` | L1 tag hit deny full flow | ref model、SB | `PTW-ADD-037` | `PTW-SVA-PDE-011` |
 | `PTW-FLOW-025` | L2 tag hit L1 deny full flow | ref model、SB no-extra-LSU | `PTW-ADD-039` | `PTW-SVA-PDE-013` |
 | `PTW-FLOW-026` | L2 tag hit L2 deny full flow | ref model、SB no-extra-LSU | `PTW-ADD-040` | `PTW-SVA-PDE-013` |
 | `PTW-FLOW-027` | cached pmpflg allow cross-type reuse | pde model、coverage | `PTW-ADD-038` | `PTW-SVA-PDE-011/012` |
-| `PTW-FLOW-028` | effective M-mode cached pmpflg lock/bypass | pde model、coverage | `PTW-ADD-043` | `PTW-SVA-PDE-011/012` |
+| `PTW-FLOW-028` | effective M-mode cached pmpflg lock/bypass | pde model、coverage | `PTW-ADD-043` | top-level source unreachable under corrected spec; lower-level evidence required |
 
 ## 7. 文件级修改清单
 
@@ -1324,7 +1325,7 @@ Phase 10 退出标准：
 | ref model event ordering 与 monitor FIFO 不稳定 | update compare false fail | predicted update queue 使用小 window 匹配，并打印 unmatched debug；不能无限宽松。 |
 | L2 direct accerr 与 bus error/TWU accerr 同周期优先级不清 | expected completion 可能错误 | 以 RTL 设计文档为准，新增 priority SVA 和 directed priority test。 |
 | all-allow 旧 tests 被 pmpflg 新字段初始化影响 | 大面积回归失败 | 默认 pmpflg 初始化为 allow-safe，例如 `4'h7` 或根据真实 PMP default；不可让 `x` 参与 allow 判断。 |
-| MPRV/MPP effective mode 语义重复实现不一致 | M-mode bypass 测试误判 | 所有 pde pmp allow 调用 ref model 现有 `effective_machine()` 或统一 helper。 |
+| MPRV/MPP effective mode 语义重复实现不一致 | M-mode bypass 测试误判，或把 data/PFU `MPRV=1 && MPP=M` 误建模成合法 PTW source | 所有 pde pmp allow 调用统一 helper；top-level source 侧 data/PFU effective-M accept 必须报 illegal，cached pmpflg bit3 matrix 需 lower-level/RTL unit evidence。 |
 | no-extra-LSU checker 无法归属 memory request | 不能关闭性能语义 | directed tests 保持单 outstanding；多 pending 随机只作为 supplemental。 |
 
 ## 10. 推荐验证命令

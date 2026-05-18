@@ -32,7 +32,7 @@
 
 | 规则族 | 必须遵守的最终规则 | 主要关闭阶段 |
 | --- | --- | --- |
-| 请求模式 | Bare 模式、纯 M 态无翻译请求默认不进入 PTW；`MPRV=1 && MPP=M` 的 load/store/PFU 可以进入 PTW 并使用 machine effective mode。 | 阶段 0、2、4、6、7 |
+| 请求模式 | Bare 模式、纯 M 态无翻译请求默认不进入 PTW；`MPRV=1 && MPP=M` 的 load/store/PFU direct-map VA=PA，不进入 PTW；fetch 不受 MPRV/MPP 影响，按真实流水线特权级判断。 | 阶段 0、2、4、6、7 |
 | type/id | type 固定为 load `010`、fetch `011`、PFU `100`、store `110`；同 `{type,id}` 未完成前不得复用。 | 阶段 1、2、3、4、6、7 |
 | 返回目标 | fetch 成功 refill L1ITLB+L2TLB；load/store 成功 refill L1DTLB+L2TLB；PFU 成功只 refill L2TLB；异常按原始 type/id 返回。 | 阶段 3、4、5、6 |
 | PTE bit | `PTE[58:38]` high reserved 不 fault；RSW 不参与 page fault 但进入 refill `flg[8:7]`；G 不进 data flg，只进 tag/global。 | 阶段 2、4、5、6 |
@@ -339,7 +339,7 @@ PTW_STAGE_DONE stage=<N> name=<stage_name>
 2. 实现 type/id/target/PFU tests：fetch/load/store/PFU success target、exception target、PFU only L2、PFU permission matrix。
 3. 实现 PDE cache tests：hit level、double-hit L2 wins、update condition、lookup/update race、reset/satp/PMP/abort clear matrix。
 4. 实现 xbar/ready tests：hash dispatch、target mask backpressure、non-target mask no block、abort dispatch block。
-5. 实现 PMP/MPRV tests：fst/scd/thd deny、original type permission、MPRV/MPP effective M、deny no side effect。
+5. 实现 PMP/MPRV tests：fst/scd/thd deny、original type permission、MPRV/MPP data direct-map no-PTW 约束、fetch real-privilege、deny no side effect。
 6. 实现 PTE page fault matrix：non-leaf by level、fetch/load/store/PFU leaf permission、write-only/MXR、U/S/SUM/effective mode、huge align before degrade。
 7. 实现 MBUF/LSU/abort tests：entry allocation、CHK not-ready hold、bus error priority、abort outstanding/data/bus-error/pre-existing exception。
 8. 实现 MAEE/sysmap/degrade tests：MAEE=1 all-size、MAEE=0 4K sysmap、1G no-cross/1G->2M/1G->4K、2M no-cross/2M->4K、sysmap flag order。
@@ -581,7 +581,7 @@ PTW_STAGE_DONE stage=<N> name=<stage_name>
 | `PTW-ADD-012` | xbar hash、ready hold、mask。 | 阶段 6 | XBAR/REQ SVA + directed tests。 |
 | `PTW-ADD-013` | fst/scd/thd PMP deny no side effect。 | 阶段 6 | PTE PA PMP deny + no LSU/CHK/refill/PDE。 |
 | `PTW-ADD-014` | PMP original type permission。 | 阶段 6 | fetch X、load/PFU R、store W evidence。 |
-| `PTW-ADD-015` | data/PFU MPRV/MPP effective M；fetch 不受 MPRV。 | 阶段 6 | PMP/CHK SVA + source sb context match。 |
+| `PTW-ADD-015` | data/PFU `MPRV=1 && MPP=M` direct-map/no PTW source；fetch 不受 MPRV。 | 阶段 6 | consumer direct-map sanity + source monitor illegal-accept guard；fetch source case按真实 privilege。 |
 | `PTW-ADD-016` | nonleaf by level、V=0、write-only。 | 阶段 6 | CHK SVA + page fault source compare。 |
 | `PTW-ADD-017` | `W && !(R || (MXR && X))`。 | 阶段 6 | write-only/MXR directed matrix。 |
 | `PTW-ADD-018` | fetch/load/store/PFU leaf 权限。 | 阶段 6 | CHK SVA + source sb expected formulas。 |
@@ -630,7 +630,7 @@ PTW_STAGE_DONE stage=<N> name=<stage_name>
 | `PTW-FLOW-020` | PFU 成功。 | 阶段 6 | L2-only refill + no L1 install。 |
 | `PTW-FLOW-021` | PFU 异常。 | 阶段 6 | PFU fault to L2/PFU path + no L1 refill。 |
 | `PTW-FLOW-022` | satp/PMP 改变清 PDE cache。 | 阶段 6/7 | clear-only + no in-flight flush + possible re-update。 |
-| `PTW-FLOW-023` | Load/Store/PFU，`MPRV=1 && MPP=M`。 | 阶段 6 | effective M PMP/PTE checks + original target。 |
+| `PTW-FLOW-023` | Load/Store/PFU，`MPRV=1 && MPP=M`。 | 阶段 6 | data/PFU direct-map/no PTW source；fetch remains real-privilege。 |
 
 ## 19. 文件归属总表
 

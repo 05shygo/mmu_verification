@@ -207,9 +207,9 @@ class ptw_source_sb extends uvm_scoreboard;
   );
     if (ctx.req_type == PTW_SRC_TYPE_FETCH)
       return (ctx.priv_mode == PRIV_M);
+    if (ptw_src_is_data_or_pfu_type(ctx.req_type) && ctx.mprv)
+      return (ctx.mpp == PRIV_M);
     if (ctx.priv_mode == PRIV_M)
-      return 1'b1;
-    if (ptw_src_is_data_type(ctx.req_type) && ctx.mprv && (ctx.mpp == PRIV_M))
       return 1'b1;
     return 1'b0;
   endfunction

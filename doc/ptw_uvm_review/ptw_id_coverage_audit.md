@@ -109,7 +109,7 @@ This audit checks that all stage-0 required ID ranges are present in the closure
 | `PTW-FLOW-020` | PFU success | present |
 | `PTW-FLOW-021` | PFU exception | present |
 | `PTW-FLOW-022` | satp/PMP change clears PDE cache | present |
-| `PTW-FLOW-023` | load/store/PFU with `MPRV=1 && MPP=M` | present |
+| `PTW-FLOW-023` | load/store/PFU with `MPRV=1 && MPP=M` direct-map/no PTW source; fetch real privilege | present |
 
 ## `PTW-INFRA-*` Check
 

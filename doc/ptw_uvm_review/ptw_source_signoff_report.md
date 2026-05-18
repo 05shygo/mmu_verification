@@ -81,7 +81,7 @@ waivers and do not hide source failures.
 | PTW-FLOW-020 | closed: PFU success L2-only source target. |
 | PTW-FLOW-021 | closed: PFU exception source target. |
 | PTW-FLOW-022 | partial: SATP old-walk covered; PMP update clear remains top/probe gap. |
-| PTW-FLOW-023 | closed: load MPRV=1 MPP=M PTW walk representative. |
+| PTW-FLOW-023 | closed-consumer-only: load/store/PFU MPRV=1 MPP=M direct-map/no PTW source; fetch remains real-privilege. |
 
 ## Waiver Register
 
@@ -170,7 +170,7 @@ effects, but cannot close PTW source-side PTE/PMP/PDE/MAEE/MBUF/abort rules.
 | --- | --- |
 | LSU bus error | Bus error is reported as visible access fault; legal responder drives `lsu_mmu_data_vld` and bus-error together for bus-error response beats. |
 | SysMap mirror | PTW source model uses RTL compile-time SysMap macros/fallback constants unless a real whitebox force path is connected. |
-| PFU MPRV/MPP=M | Effective M-mode PFU may direct-map and never enter PTW; such cases are consumer-only unless a PTW source event exists. |
+| PFU MPRV/MPP=M | Corrected spec requires PFU direct-map and no PTW source; such cases are consumer-only, and observing a PTW source accept is illegal/unexpected. |
 | SATP switch | Process switch must be followed by ASID tlboper invalidation/abort; pre-switch PTW accept is optional debug evidence. |
 | TWU vs L1TLB permission | TWU MXR relaxes source refill eligibility for R=0,W=1,X=1,MXR=1; L1TLB hit permission remains stricter and can fault. |
 | MAEE=0 degrade | Source model distinguishes installed huge-page entry PPN from final translated PPN expansion and records dedicated degrade tests still open. |

@@ -354,7 +354,7 @@ rg -n "l1pmpflg|l2pmpflg|lookup_detail|pde_lookup_result|direct_accerr|L2_L.*DEN
    - `access_src=PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY`。
    - `pde_direct_accerr=1`。
    - `type/id/target` 来自当前 request。
-7. 复用现有 `effective_machine()`，确保 MPRV/MPP 语义一致。
+7. 复用统一 effective-mode helper，确保 fetch real privilege 与 data/PFU MPRV/MPP 语义一致；top-level source 中 data/PFU effective-M 请求必须视为 illegal/unreachable，不可作为 cached pmpflg closure。
 8. 更新 ref model summary counters。
 
 ### 10.3 禁止任务
@@ -624,7 +624,7 @@ make -C mmu_verification run_check TEST_NAME=test_mmu_pde_cache_hit_l2_skip_scd 
 | `PTW-ADD-037` | `test_ptw_pde_l1_pmp_tag_deny_fst_fault_001.svh` | 先建立 L1 PDE，后续同 L1 tag 但 current type 被 cached `l1pmpflg` deny。 | L1 不 hit；进入 FST path；若实时 PMP deny，普通 TWU access fault；无 PDE direct accerr。 |
 | `PTW-ADD-038` | `test_ptw_pde_l1_pmp_tag_allow_reuse_001.svh` | load/PFU 共用 R，fetch 用 X，store 用 W 的 allow reuse。 | L1 permission-qualified hit，跳过 FST。 |
 | `PTW-ADD-039` | `test_ptw_pde_l2_pmp_l1_deny_accerr_001.svh` | L2 tag match，cached L2 allow，cached L1 deny。 | PDE direct access fault；不发 LSU；type/id 正确。 |
-| `PTW-ADD-040` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh` | L2 tag match，cached L1 allow，cached L2 deny。 | PDE direct access fault；不回退 SCD；不发 LSU。 |
+| `PTW-ADD-040` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh` | L2 tag match，cached L1 allow，cached L2 deny。 | PDE direct access fault；不回退 SCD；不发 LSU。旧 `MPRV=1/MPP=M` data construction 不合法，top-level source test 只能 open，需 alternate legal/lower-level evidence。 |
 | `PTW-ADD-041` | `test_ptw_pde_pmpflg_propagation_update_001.svh` | FST/SCD/THD payload 全覆盖。 | FST `{0,l1}`，SCD `{l2,l1}`，THD `0` 且不更新 PDE。 |
 
 ### 14.5 任务产出
@@ -655,7 +655,7 @@ make -C mmu_verification run_check TEST_NAME=test_mmu_pde_cache_hit_l2_skip_scd 
 1. 5 个新 tests 编译通过。
 2. 5 个新 tests 单跑通过。
 3. `PTW-ADD-037` 日志证明 L1 tag hit deny 不是 PDE direct accerr。
-4. `PTW-ADD-039/040` 日志证明 direct accerr 且 no-extra-LSU。
+4. `PTW-ADD-039` 日志证明 direct accerr 且 no-extra-LSU；`PTW-ADD-040` 若仍使用旧 `MPRV=1/MPP=M` construction，只能记录 open/unreachable，不能作为 pass/closed 标准。
 5. `PTW-ADD-041` 日志证明 FST/SCD/THD pmpflg payload 正确。
 6. `PTW_SOURCE_SB_PDE_PMP_COVERAGE` 对应 bin 命中。
 7. 对应 `PTW_SVA_COVER` 有命中或明确说明 cover 尚未接到。
@@ -698,7 +698,7 @@ make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=p
 | Requirement | 文件 | 场景 | 预期 |
 | --- | --- | --- | --- |
 | `PTW-ADD-042` | `test_ptw_pde_accerr_priority_type_id_001.svh` | PDE direct accerr 与 MBUF bus error/TWU accerr 同周期候选。 | PDE direct accerr priority，type/id stable，pending grant 后清。 |
-| `PTW-ADD-043` | `test_ptw_pde_mmode_lock_matrix_001.svh` | effective M-mode 下 `pmpflg[3]` 0/1 与 type bit allow/deny 交叉。 | bit3=0 bypass；bit3=1 不 bypass。 |
+| `PTW-ADD-043` | `test_ptw_pde_mmode_lock_matrix_001.svh` | effective M-mode 下 `pmpflg[3]` 0/1 与 type bit allow/deny 交叉。 | top-level data/PFU `MPRV=1/MPP=M` source path 不存在；本 test 记录 open/unreachable，关闭需 lower-level PDE-cache stimulus 或 RTL unit evidence。 |
 | `PTW-ADD-044` | `test_ptw_pde_l2_accerr_valid_gate_001.svh` | invalid entry tag 旧值匹配或 `ptw_req=0`。 | 不产生 direct accerr。 |
 | `PTW-ADD-045` | `test_ptw_pde_pmp_clear_repopulate_001.svh` | PMP config update clear 后旧 entry 不可复用，后续 walk 可重新 update。 | old entry invalid；new update 使用返回请求 MBUF pmpflg。 |
 
@@ -728,7 +728,7 @@ make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=p
 1. 4 个新 tests 编译通过。
 2. 4 个新 tests 单跑通过。
 3. `PTW-ADD-042` 命中 priority/type-id/pending clear evidence。
-4. `PTW-ADD-043` 命中 effective M bypass 和 lock deny coverage。
+4. `PTW-ADD-043` 在 top-level source test 中必须打印 open/unreachable marker；effective M bypass/lock deny coverage 需另由 lower-level evidence 关闭。
 5. `PTW-ADD-044` 证明 invalid/idle 不误报 direct accerr。
 6. `PTW-ADD-045` 证明 clear 后旧 pmpflg 不可复用，新 update payload 正确。
 7. `ptw_pde_pmpflg_list` 至少 seed 606 通过。

@@ -162,6 +162,12 @@ function automatic bit ptw_src_is_data_type(input logic [2:0] req_type);
       || (req_type == PTW_SRC_TYPE_STORE);
 endfunction
 
+function automatic bit ptw_src_is_data_or_pfu_type(input logic [2:0] req_type);
+  return (req_type == PTW_SRC_TYPE_LOAD)
+      || (req_type == PTW_SRC_TYPE_STORE)
+      || (req_type == PTW_SRC_TYPE_PFU);
+endfunction
+
 function automatic bit ptw_src_is_legal_page_size(input logic [2:0] page_size);
   return (page_size == PTW_SRC_PGS_4K)
       || (page_size == PTW_SRC_PGS_2M)

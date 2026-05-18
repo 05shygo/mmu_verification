@@ -11,7 +11,7 @@
 3. page fault 规则采用第六轮 Q176、第五轮 Q166/Q167、第三轮 Q131-Q133：reference model 不额外套标准 Sv39 的保留位、RSW、strong-order 检查；非叶子 PTE 只检查 `V=0`、本设计 write-only 规则、以及第三级仍非叶子。
 4. abort 与 LSU bus error 采用第五轮 Q161/Q162、第四轮 Q159、第三轮 Q124/Q148：`tlboper_ptw_abort` 清空全部 PDE cache 并 flush in-flight PTW；abort 同拍新形成的 LSU bus error 不上报。
 5. PDE cache 更新与上下文变化采用第六轮 Q175、第五轮 Q168/Q169、第三轮 Q136-Q140/Q155：satp/PMP 变化只清 PDE cache，不 abort in-flight walk；旧 in-flight walk 未被 abort/flush 屏蔽时仍可重新更新 PDE cache。
-6. MPRV/MPP 采用第六轮 Q177-Q179：fetch 使用真实流水线特权级；load/store/PFU 在 `MPRV=1` 时使用 `mstatus.MPP` 作为 effective privilege。
+6. MPRV/MPP 采用最新修正规则：fetch 使用真实流水线特权级，不受 MPRV/MPP 影响；load/store/PFU 在 `MPRV=1` 时使用 `mstatus.MPP` 决定 data effective privilege 和 data MMU enable。只要 data effective privilege 为 M，load/store/PFU 就走 data direct-map，物理地址等于虚拟地址，不会进入 L1D/L2TLB/PTW source path；典型场景包括真实流水线 `priv=S/U` 且 `MPRV=1 && MPP=M`。
 7. scoreboard 与仲裁采用第五轮 Q172、第二/三轮 Q114-Q118/Q143/Q144：scoreboard 做事务级最终匹配；周期级仲裁、ready/backpressure、valid 保持、abort 时序由 assertion/monitor 检查。
 8. 当前不存在已知 RTL 待修项。旧文档中提到的 “tlboper 清 PDE cache 需要 RTL 修改” 和 “MAEE=0 且 4K 走 sysmap 需要 RTL 修改” 已经被后续回答覆盖为已修好。
 9. 文档中残留的 `scd_pmp` 笔误如果出现在第三级流程里，一律按 `thd_pmp/thd_pmp_pa` 理解。
@@ -416,7 +416,8 @@ Privilege 规则：
 2. Load/Store/PFU 若 `MPRV=1`，使用 `mstatus.MPP/cp0_mmu_mpp` 作为 effective privilege；若 `MPRV=0`，使用流水线真实特权级。
 3. `cp0_supv_mode/cp0_user_mode/cp0_mach_mode` 在 PTW 检查中应按 effective privilege 理解。
 4. 纯 M 态且不做地址翻译时，上游保证不会进入 PTW。
-5. 如果 load/store/PFU 在 `MPRV=1 && MPP=M` 情况下仍发生 PTW walk，流程与普通 data walk 相同，只是 PMP deny 和 PTE U/S 权限检查都按 M 态执行；正常 refill/异常返回目标仍按原始 `type/id`。
+5. 当 load/store/PFU 的 data effective privilege 为 M 时，data MMU 关闭，物理地址直接等于虚拟地址；该请求不会产生 DTLB miss、L2TLB miss 或 PTW source 请求。`priv=S/U, MPRV=1, MPP=M` 属于该类；`priv=M, MPRV=1, MPP=S/U` 则不属于该类，仍可按 S/U data effective privilege 进入翻译路径。
+6. Fetch/IFU 不使用 `MPRV/MPP` 生成 effective privilege。真实流水线 `priv=S/U` 的 fetch 在 Sv39 下仍可能进入 PTW；真实流水线 `priv=M` 的 fetch 不进入 PTW。
 
 ## 8. Mbuf 与 LSU
 
@@ -860,12 +861,12 @@ LSU request valid 在 abort 前一拍已经为 1，是判断是否必须继续�
 
 ### 12.23 Load/Store/PFU，`MPRV=1 && MPP=M`
 
-1. 请求 type 仍为 Load、Store 或 PFU，来源和返回目标不变。
-2. 如果该请求需要 PTW walk，则 PDE cache、xbar、PMP、mbuf、LSU、CHK 流程与普通 data/PFU walk 相同。
-3. PMP 检查使用 effective machine mode：若 `pmp_mmu_flg[3]==0`，跳过 PMP deny。
-4. PTE U/S 权限检查使用 effective machine mode，跳过 S/U 检查。
-5. 其他 PTE 检查仍按原请求类型执行，例如 store 仍要求 W/D/A，PFU 仍要求 A 且不检查 D。
-6. 正常 refill 或异常返回仍按原始 `type/id` 返回到 DTLB/L2TLB 或 PFU 端口，不因为 effective mode 改变返回路径。
+1. 该组合只影响 data/PFU 类访问，不影响 fetch/IFU。
+2. 对 load/store/PFU，该组合使 data effective privilege 为 M，data MMU 关闭，物理地址直接等于虚拟地址。
+3. 因为 data/PFU 不产生 DTLB/L2TLB miss，也不会产生 `l2tlb_ptw_req`，所以 PDE cache、xbar、PMP、mbuf、LSU、CHK 等 PTW source 流程均不可达。
+4. UVM 不得构造或期待该组合下的 load/store/PFU PTW source refill/access-fault/page-fault；若 monitor 观察到此类 PTW accept，应归类为非法上游输入或 RTL/TB 集成错误，而不是合法 PTW 功能覆盖。
+5. Fetch/IFU 在同一 CSR 配置下仍按真实流水线 privilege 判断是否进入 PTW：真实 `S/U` fetch 可进入 PTW，真实 `M` fetch 不进入 PTW。
+6. PTW 内部 machine-mode PMP skip 规则仍只适用于合法进入 PTW 的请求上下文；不能用 `priv=S/U, MPRV=1, MPP=M` 的 data/PFU top-level source 请求来关闭该规则。
 
 ## 13. UVM 建模规则
 
@@ -1364,7 +1365,7 @@ result={matched,mismatch_field,waiver_id}
 18. abort 前异常寄存器已有异常且获顶层授权，异常可见。
 19. PFU success。
 20. PFU access fault/page fault。
-21. Load/Store/PFU with `MPRV=1 && MPP=M`。
+21. Fetch with `MPRV=1 && MPP=M` still follows real pipeline privilege；load/store/PFU with `MPRV=1 && MPP=M` must be constrained as no PTW source/direct-map。
 22. raw PTE G 不进 `flg`、RSW 进 `flg`、MAEE=0 sysmap 属性顺序 `{So,C,B,Sh,Sec}`。
 
 ### 13.5 PTW 测试点规格总则
@@ -1551,7 +1552,7 @@ TC-GAP/F4 internal 条目按以下规则处理：
 | `PTW-ADD-012` | `test_ptw_xbar_hash_ready_hold_001` | §4, §13.2 | hash 目标 TWU not ready，覆盖单目标 mask、四路全 mask、非目标 TWU mask 不影响当前 hash 请求，L2TLB valid 保持多拍。 | hash 目标被 mask 时 PTW ready 拉低；非 hash 目标 mask 时当前请求可被 accept；L2TLB `vpn/type/id` 稳定；unmask 后同一请求被 accept；目标 TWU 符合 hash。 | P0 |
 | `PTW-ADD-013` | `test_ptw_pmp_deny_by_level_no_lsu_001` | §5.1, §12.9-12.11 | fst/scd/thd 分别 PMP deny。 | 不写 mbuf、不发 LSU、不进 CHK、不 page fault、不 refill；最终 access fault 携带 type/id。 | P0 |
 | `PTW-ADD-014` | `test_ptw_pmp_original_type_perm_001` | §5.1 | fetch/load/store/PFU 的 PMP flg 分别 deny/allow。 | fetch 看 X；load/PFU 看 R；store 看 W；effective M 且 L=0 bypass，L=1 仍按权限判断。 | P0 |
-| `PTW-ADD-015` | `test_ptw_mprv_mpp_m_effective_mode_001` | §7, §12.23 | load/store/PFU，`MPRV=1 && MPP=M` 触发 PTW；fetch 同时设置 MPRV。 | data/PFU 按 machine effective mode 做 PMP 和 U/S 检查；fetch 忽略 MPRV；返回目标仍按原始 type/id。 | P0 |
+| `PTW-ADD-015` | `test_ptw_mprv_mpp_m_no_ptw_fetch_real_priv_001` | §7, §12.23 | load/store/PFU，`MPRV=1 && MPP=M`；fetch 同时设置 MPRV。 | data/PFU direct-map 且无 PTW source request；fetch 忽略 MPRV、按真实流水线 privilege 判断是否进入 PTW。 | P0 |
 | `PTW-ADD-016` | `test_ptw_nonleaf_rule_by_level_001` | §6.1-6.2 | fst/scd/thd 非叶 `R=0,X=0`，覆盖 `V=0`、write-only、合法 pointer。 | fst/scd 合法 pointer 继续下一级；`V=0`/write-only page fault；thd 仍非叶 page fault。 | P0 |
 | `PTW-ADD-017` | `test_ptw_write_only_mxr_matrix_001` | §6.3 | `W=1,R=0,X=0/1,MXR=0/1` 组合，fetch/load/store/PFU。 | 只在 `W && !(R || (MXR && X))` 时触发 write-only fault；`W=1,R=0,X=1,MXR=1` 不因 write-only fault 失败，后续按 access type 权限检查。 | P0 |
 | `PTW-ADD-018` | `test_ptw_leaf_access_perm_matrix_001` | §6.3 | load R/MXR/X、store W/D、fetch X、PFU 独立规则。 | load 需 R 或 MXR&&X；store 需 W 和 D；fetch 需 X；PFU 不需 R/MXR/X/D 但需 A。 | P0 |
@@ -1588,7 +1589,7 @@ TC-GAP/F4 internal 条目按以下规则处理：
 | `PTW-AUD-008` | xbar hash 与 ready/backpressure | §4 | hash target not ready；non-target masked；all masked；unmask | hash 目标 mask -> ready low；非目标 mask 不阻塞当前请求；L2 fields hold；hash target 正确 | `XBAR-001/002`、ready tests | `modify` | 删除 round-robin/idle-first expected，落地 `PTW-ADD-012`。 |
 | `PTW-AUD-009` | PMP 检查对象与 deny 终止 | §5.1, §12.9-12.11 | fst/scd/thd PTE PA 被 PMP deny | access fault；无 mbuf/LSU/CHK/page fault/refill | pmp_twu tests | `modify` | 落地 `PTW-ADD-013`。 |
 | `PTW-AUD-010` | PMP 权限使用原始 request type | §5.1 | fetch/load/store/PFU flg deny | fetch X、load/PFU R、store W；M L-bit 规则 | `test_ptw_pmp_fetch_zero` 等 | `modify` | 落地 `PTW-ADD-014`。 |
-| `PTW-AUD-011` | MPRV/MPP effective privilege | §7, §12.23 | data/PFU `MPRV=1 && MPP=M`；fetch with MPRV | data/PFU 按 M；fetch 按真实 privilege；返回目标不变 | pmp/mmode tests、cp0_mprv_seq | `add` | 落地 `PTW-ADD-015/030`。 |
+| `PTW-AUD-011` | MPRV/MPP effective privilege | §7, §12.23 | data/PFU `MPRV=1 && MPP=M`；fetch with MPRV | data/PFU direct-map/no PTW source；fetch 按真实 privilege；其它 data MPRV 非 MPP=M 组合按 effective privilege。 | pmp/mmode tests、cp0_mprv_seq | `add` | 落地 `PTW-ADD-015/030`。 |
 | `PTW-AUD-012` | 非叶 PTE page fault 规则 | §6.1-6.2 | fst/scd/thd 非叶、V=0、write-only | fst/scd 合法 pointer；thd 非叶 PF；其它不检查 | `test_pte_rw_both_zero` | `modify` | 落地 `PTW-ADD-016`。 |
 | `PTW-AUD-013` | Leaf PTE 权限矩阵 | §6.3 | load/store/fetch/PFU、A/D/U/S/SUM/MXR/write-only | 按本设计规则 page fault 或 refill | PTE tests/ref model | `split` | 落地 `PTW-ADD-017/018/019/033`。 |
 | `PTW-AUD-014` | 巨页 PPN 对齐优先于降级 | §6.3, §10.8 | MAEE=0 且 1G/2M PPN 错位 | page fault，不进入 sysmap/degrade | misaligned/sysmap align tests | `modify` | 落地 `PTW-ADD-020`。 |
@@ -1750,7 +1751,7 @@ XBAR/ready 测试点至少覆盖：
 | `PTW-FLOW-020` | PFU success | PFU 只 refill L2TLB，PTE 权限按 PFU。 |
 | `PTW-FLOW-021` | PFU exception | PFU access/page fault 返回 L2TLB。 |
 | `PTW-FLOW-022` | satp/PMP clear PDE | 清 PDE cache，不 flush in-flight，旧 walk 可 update。 |
-| `PTW-FLOW-023` | MPRV=1 && MPP=M | data/PFU effective M，fetch 不受 MPRV，返回目标不变。 |
+| `PTW-FLOW-023` | MPRV=1 && MPP=M | data/PFU direct-map/no PTW source；fetch 不受 MPRV，按真实流水线 privilege。 |
 
 ### 13.17 L1DTLB/L2TLB 间接测试点处理规则
 
@@ -2511,7 +2512,7 @@ PTW_SVA_COVER module=<module> name=<cover_name> hits=<N>
 4. 旧说法 “严格遵循标准 Sv39 全部检查” 废弃；最终按本设计 RTL/文字规则，不检查 reserved bits、RSW、strong-order。
 5. 旧说法 “大页对齐不检查” 废弃；最终 1G/2M PPN 对齐错误触发 page fault。
 6. 旧说法 “satp/PMP 清 PDE cache 后旧 walk 不应再更新 PDE cache” 废弃；最终允许旧 in-flight walk 重新更新，除非被 abort/flush 屏蔽。
-7. 旧说法 “机器模式不会有 PTW 请求所以可不考虑 M-mode 检查” 细化；最终 load/store/PFU 在 `MPRV=1 && MPP=M` 下可用 machine effective mode 走 PTW。
+7. 旧说法 “load/store/PFU 在 `MPRV=1 && MPP=M` 下可用 machine effective mode 走 PTW” 废弃；最终为 data/PFU direct-map/no PTW source，fetch 单独按真实流水线特权级判断。
 8. 旧流程标题中 “第一级 PDE cache 命中最终 4K/2M” 反置的地方已修正：`scd_chk` leaf 是最终 2M；`scd_chk` 非叶子后进入 `thd_pmp/thd_chk` 是最终 4K。
 9. 旧流程中第三级误写 `scd_pmp` 的地方统一解释为 `thd_pmp`。
 10. 旧 sysmap 属性顺序里有 `{Sec,Sh,B,C,So}` 文字描述；最终 refill/sysmap 建模统一使用 `{So,C,B,Sh,Sec}`。
@@ -2649,8 +2650,8 @@ PTW_SVA_COVER module=<module> name=<cover_name> hits=<N>
 127. Q168/Q175：satp/PMP 清 cache 后旧 in-flight 非叶子仍可更新 PDE cache。
 128. Q170：跨页流程标题以最终 page size 为准：1G->2M、1G->4K、2M->4K。
 129. Q177：fetch 用真实特权，load/store/PFU 在 MPRV=1 用 MPP，否则真实特权。
-130. Q178：`MPRV=1 && MPP=M` 时 PMP 和 PTE U/S 检查按 M 态。
-131. Q179：MPRV machine effective walk 返回目标仍按原始 type/id。
+130. Q178：最新修正覆盖旧答；`MPRV=1 && MPP=M` 时 load/store/PFU 不进入 PTW，物理地址直接等于虚拟地址。
+131. Q179：最新修正覆盖旧答；不存在合法的 data/PFU MPRV machine effective PTW walk，fetch 仍按真实流水线特权级。
 
 `ptw_overview.md` 中未单独列在上面的重复问题、标题修正、错别字修正和“已补充”回答，均已合并到本文对应章节；没有需要继续追加到原文末尾的新问题。
 
@@ -3243,7 +3244,7 @@ assign twu_hash[1:0] =
 ### 35. Machine mode 请求约束
 
 173. 第 24 题 PMP 检查里存在 machine mode 跳过 PMP 的规则，但第 134 题说机器模式下不会有请求进入 PTW。请确认 UVM 是否应约束不产生 `cp0_mach_mode` 下的 PTW 请求；如果不约束，reference model 是否仍按第 24 题的 machine-mode PMP skip 规则处理。
-答：这是因为当请求类型是fetch时，使用流水线里 真实硬件特权级（M/S/U），但是当请求类型的load、store、pfu时，如果mprv有效时，访存要按 mstatus.MPP（cp0_mmu_mpp）当「有效特权」，即 MPRV 下 S/U 访存用 MPP 档 的 RISC‑V 语义，如果mprv有效无效，才用流水线里 真实硬件特权级（M/S/U）。因此ptw在机器状态不能表示core流水线请求在机器状态。当core流水线请求在机器状态，那么肯定是没有请求会进入ptw的，因为纯 M 态、不做地址翻译时，本来就不该靠 PTW 走路。但是当core流水线请求不在机器状态，但是请求类型是load、store、pfu并且mprv有效时，并且mstatus.MPP是M态，是做地址翻译的，也靠 PTW 走路，但是ptw选用机器模式状态进行。
+答：最新修正：fetch 使用流水线真实硬件特权级（M/S/U），不受 MPRV/MPP 影响；load/store/PFU 在 MPRV 有效时按 mstatus.MPP 作为 data effective privilege。当真实流水线为 S/U 且 `MPRV=1 && MPP=M` 时，load/store/PFU 走 data direct-map，物理地址直接等于虚拟地址，不会进入 PTW。纯 M 态同样不会进入 PTW。只有真实 S/U 的 fetch 在 Sv39 下仍可能进入 PTW。
 
 ## 第六轮待澄清问题
 
@@ -3261,11 +3262,11 @@ assign twu_hash[1:0] =
 ### 37. MPRV/MPP effective privilege
 
 177. 第 173 题补充了 load/store/PFU 在 `MPRV=1` 时按 `mstatus.MPP` 作为有效特权级。请明确 reference model 应如何生成权限检查使用的 effective mode：fetch 是否永远用流水线真实特权级；load/store/PFU 是否在 `MPRV=1` 时用 `MPP`，否则用真实特权级；`cp0_supv_mode/cp0_user_mode/cp0_mach_mode` 输入到 PTW 时是否已经是这个 effective mode？
-答：fetch 永远用流水线真实特权级，load/store/PFU 在 `MPRV=1` 时用 `MPP`，否则用真实特权。
-178. 当 load/store/PFU 因 `MPRV=1 && MPP=M` 进入 PTW 且 PTW 选用 machine mode 状态时，PMP 检查是否按第 24 题的 machine-mode skip 规则执行，即 `cp0_mach_mode && !pmp_mmu_flg[3]` 时不触发 access fault？同一请求的 PTE U/S 权限检查是否也按 machine effective mode 跳过 S/U 检查？
-答：是的。当 load/store/PFU 时 `MPRV=1 && MPP=M，那么所有的检查包括pmp检查和页表检查都是按照M态进行。
-179. 请补充或确认 “load/store/PFU，`MPRV=1 && MPP=M`，且发生 PTW walk” 的完整处理流程是否和普通 load/store/PFU walk 相同，只是在 PMP 检查和 PTE U/S 权限检查中使用 machine effective mode；正常 refill/异常返回目标仍按原始 `type + id` 返回到 DTLB/L2TLB 或 PFU 端口。
-答：是的。并且正常 refill/异常返回目标仍按原始 `type + id` 返回到 DTLB/L2TLB 或 PFU 端口。
+答：fetch 永远用流水线真实特权级，load/store/PFU 在 `MPRV=1` 时用 `MPP`，否则用真实特权；但当 load/store/PFU 的 effective privilege 因 `MPRV=1 && MPP=M` 变成 M 时，data MMU 关闭，VA=PA，不进入 PTW。
+178. 旧问法：当 load/store/PFU 因 `MPRV=1 && MPP=M` 进入 PTW 且 PTW 选用 machine mode 状态时，PMP 检查是否按第 24 题的 machine-mode skip 规则执行，即 `cp0_mach_mode && !pmp_mmu_flg[3]` 时不触发 access fault？同一请求的 PTE U/S 权限检查是否也按 machine effective mode 跳过 S/U 检查？
+答：最新修正覆盖旧答。load/store/PFU 在 `MPRV=1 && MPP=M` 时不会进入 PTW，因此不存在对该请求执行 PTW PMP/PTE U/S 检查的合法流程。
+179. 旧问法：请补充或确认 “load/store/PFU，`MPRV=1 && MPP=M`，且发生 PTW walk” 的完整处理流程是否和普通 load/store/PFU walk 相同，只是在 PMP 检查和 PTE U/S 权限检查中使用 machine effective mode；正常 refill/异常返回目标仍按原始 `type + id` 返回到 DTLB/L2TLB 或 PFU 端口。
+答：最新修正覆盖旧答。该 data/PFU PTW walk 不应发生；UVM 应约束为 no PTW source，并用 consumer/direct-map 证据检查 VA=PA 行为。fetch 不受 MPRV/MPP 影响，仍按真实流水线模式判断。
 
 ### 38. 文档笔误同步
 

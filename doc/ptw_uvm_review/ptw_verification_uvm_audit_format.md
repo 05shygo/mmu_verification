@@ -302,7 +302,7 @@ mbuf 审核重点不是只看最终翻译成功，而是确认页表访问请求
 | PTW-SCN-027 | abort 前异常寄存器已获授权 | 异常可见 |
 | PTW-SCN-028 | PFU success | 只 refill L2TLB，PTE 权限按 PFU 规则 |
 | PTW-SCN-029 | PFU access fault/page fault | 异常返回 L2TLB，不产生独立 prefetch cause |
-| PTW-SCN-030 | Load/Store/PFU with `MPRV=1 && MPP=M` | effective M-mode 影响 PMP 和 U/S 检查，不改变返回目标 |
+| PTW-SCN-030 | Load/Store/PFU with `MPRV=1 && MPP=M` | direct-map VA=PA and no PTW source; fetch ignores MPRV/MPP and uses real privilege |
 | PTW-SCN-031 | raw PTE G/RSW/flg 映射 | G 只进 global，RSW 进 flg 且不 page fault |
 | PTW-SCN-032 | ready/backpressure | ready 低时 L2TLB valid/字段保持 |
 | PTW-SCN-033 | xbar hash | hash 选中 TWU 与 spec 公式一致 |

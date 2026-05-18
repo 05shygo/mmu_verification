@@ -97,7 +97,7 @@ These items are frozen as not usable for PTW source closure until corrected.
 | Test / row | Action | Bound IDs | Stage-0 notes |
 | --- | --- | --- | --- |
 | `TC-PTW-PMP-DENY-ACCFLT-001`, `TC-PTW-PMP-DENY-NO-REFILL-001` | modify | `PTW-ADD-013/014`, `PTW-FLOW-009..011` | Add fst/scd/thd level coverage and no mbuf/LSU/CHK/PDE side effects. |
-| `TC-PTW-PMP-MMODE-L0-001`, `TC-PTW-PMP-MMODE-L1-001` | split + modify | `PTW-ADD-014/015` | Separate PMP L-bit behavior from `MPRV=1 && MPP=M` effective privilege. |
+| `TC-PTW-PMP-MMODE-L0-001`, `TC-PTW-PMP-MMODE-L1-001` | split + modify | `PTW-ADD-014/015` | Separate PMP L-bit behavior from corrected `MPRV=1 && MPP=M` data/PFU direct-map/no-PTW rule and fetch real-privilege rule. |
 | `TC-PTW-PMP-PA-1G/2M/4K`, `TC-PTW-PMP-PA-ZERO-001` | keep + modify | `PTW-AUD-009`, `PTW-SVA-PMP-008` | Bind to PTE PA formulas per level. |
 | `TC-PTW-PMP-FETCH-ZERO-001`, `TC-PTW-PMP-R-CHECK-001` | modify | `PTW-ADD-014` | Ensure fetch/load/store/PFU original type permissions match `ptwspec.md`; avoid blanket load expected. |
 | `TC-PTW-PMP-PORT-MAP-001`, `TC-PTW-PMP-PORT-CONCURRENT-001` | keep as auxiliary + modify | `PTW-INFRA-006` | Port mapping helps debug but does not alone close deny/no-side-effect behavior. |

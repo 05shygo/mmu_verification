@@ -186,16 +186,14 @@ class ptw_source_monitor extends uvm_monitor;
   endfunction
 
   protected function bit effective_machine_for_type(input ptw_src_req_type_e req_type);
-    logic [1:0] effective_priv;
-
     if (req_type == PTW_SRC_TYPE_FETCH)
-      effective_priv = v_probe.mon_cb.ptw_cp0_priv_mode;
-    else if (v_probe.mon_cb.ptw_cp0_mprv === 1'b1)
-      effective_priv = v_probe.mon_cb.ptw_cp0_mpp;
-    else
-      effective_priv = v_probe.mon_cb.ptw_cp0_priv_mode;
+      return (v_probe.mon_cb.ptw_cp0_priv_mode == PRIV_M);
 
-    return (effective_priv == 2'b11);
+    if (ptw_src_is_data_or_pfu_type(req_type)
+        && (v_probe.mon_cb.ptw_cp0_mprv === 1'b1))
+      return (v_probe.mon_cb.ptw_cp0_mpp == PRIV_M);
+
+    return (v_probe.mon_cb.ptw_cp0_priv_mode == PRIV_M);
   endfunction
 
   protected function void fill_pde_probe_fields(input ptw_src_pde_evt_txn tr);
@@ -294,6 +292,15 @@ class ptw_source_monitor extends uvm_monitor;
       m_req_accept_count++;
       ap_req_accept.write(tr);
       `uvm_info(get_type_name(), {"PTW_REQ_ACCEPT ", tr.convert2string()}, UVM_HIGH)
+      if (effective_machine_for_type(tr.req_type)) begin
+        `uvm_error(get_type_name(),
+          $sformatf({"PTW_MON_ILLEGAL_EFFECTIVE_M_ACCEPT type=%s id=0x%02h ",
+                     "vpn=0x%07h priv=0x%0h mprv=%0b mpp=0x%0h: corrected spec requires no PTW source"},
+            tr.req_type.name(), tr.id, tr.vpn,
+            v_probe.mon_cb.ptw_cp0_priv_mode,
+            v_probe.mon_cb.ptw_cp0_mprv,
+            v_probe.mon_cb.ptw_cp0_mpp))
+      end
     end
   endtask
 

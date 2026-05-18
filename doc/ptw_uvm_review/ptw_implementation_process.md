@@ -358,13 +358,13 @@ PTW_STAGE_DONE stage=6 name=P0 Directed Tests and Legacy Conflict Fixes
     no temporary stage task split plan was needed because created file count stayed below the requested threshold
   ]
   debug_record=[
-    test_ptw_p0_pde_mbuf_pmp_matrix SEED=606 reported LSU_P2 fault mismatch in stage6_mprv_mpp_m_pfu_success,
+    test_ptw_p0_pde_mbuf_pmp_matrix SEED=606 reported LSU_P2 fault mismatch in the old stage6_mprv_mpp_m_pfu_success consumer sanity,
     waveform/debug conclusion: MPRV=1 and MPP=M are valid MMU-wide effective-mode inputs, so PFU takes effective M-mode direct-map and does not walk the page table,
     root_cause: VA=0x0030704000 has PPN=0x0030704, which hits RTL default SysMap region1 from mmu_verification/testbench/common/mmu_rtl_defines.v and gets SYSMAP_FLG1=5'b10011,
     RTL behavior: PFU direct-map treats sysmap_flg4[4] || !sysmap_flg4[3] as access fault, so flg=0x13 correctly drives pfu_acc_fault/pa2_err/access_fault,
     scoreboard fix: mmu_ref_model.translate passthrough path now models PFU direct-map SysMap access fault from the compiled RTL default SysMap table,
-    stimulus fix: stage6_mprv_mpp_m_pfu_success now uses VA=0x0010704000, whose PPN=0x0010704 falls below SYSMAP_BASE_ADDR0 and receives SYSMAP_FLG0=5'b01111 for the intended direct-map success case,
-    closure fix: stage6_mprv_mpp_m_pfu_success is recorded as consumer-only sanity because it does not enter PTW; PTW-ADD-015/PTW-ADD-033/PTW-FLOW-023 source closure remains tied to scenarios that actually produce PTW source events,
+    stimulus fix: stage6_mprv_mpp_m_pfu_direct_map_no_ptw now uses VA=0x0010704000, whose PPN=0x0010704 falls below SYSMAP_BASE_ADDR0 and receives SYSMAP_FLG0=5'b01111 for the intended VA=PA direct-map consumer case,
+    closure fix: stage6_mprv_mpp_m_pfu_direct_map_no_ptw and matching LOAD direct-map case are recorded as consumer-only sanity because corrected spec requires MPRV=1/MPP=M data/PFU to avoid PTW; fetch remains real-privilege source behavior,
     test_ptw_p0_maee_sysmap_matrix SEED=606 later reported PTW_SOURCE_MISMATCH in stage6_maee0_4k_sysmap_refill with flg exp=0x2ee7 act=0x26e7,
     mismatch bit delta was 0x0800, i.e. refill attr bit[11]; expected attr[13:9]=0x17 came from UVM sysmap_cfg_agent mirror while actual attr[13:9]=0x13 came from compiled RTL SysMap behavior before the RTL THD query fix,
     debug conclusion: sysmap_cfg_agent currently mirrors configuration to sysmap_cfg_if only; its force path is disabled, so PTW source ref model must not expect ptw_sysmap_one_region flg values unless whitebox RTL force is implemented,

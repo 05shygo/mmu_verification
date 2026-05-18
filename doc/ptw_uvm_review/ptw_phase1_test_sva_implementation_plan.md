@@ -272,7 +272,7 @@ P0 是必须优先落地的 directed tests。每个 P0 test 必须有明确的 s
 | --- | --- | --- | --- | --- | --- |
 | `test_ptw_pmp_level_deny_matrix_001` | `pmp_twu_tests_v6` | `PTW-AUD-009` | 分别构造 fst/scd/thd PTE PA PMP deny；每级覆盖 load/fetch/store/PFU 至少关键类型。 | access fault；无 mbuf/LSU/CHK/page fault/refill/PDE update。 | `PTW-SVA-PMP-003/004/008/009`。 |
 | `test_ptw_pmp_original_type_perm_001` | `pmp_twu_tests_v6` | `PTW-AUD-010` | raw flg 组合：fetch deny X、load/PFU deny R、store deny W。 | PMP deny 使用原始 request type，不把 PTE read 统一当 load。 | `PTW-SVA-PMP-005/006`。 |
-| `test_ptw_mprv_mpp_effective_priv_001` | `pmp_twu_tests_v6` | `PTW-AUD-011` | load/store/PFU 在 `MPRV=1 && MPP=M`，PMP flg L=0 且 R/W deny；fetch 同时真实 S/U。 | data/PFU effective M 跳过 deny；fetch 不用 MPRV，仍按真实 privilege。 | `PTW-SVA-PMP-007`、`PTW-SVA-CHK-007`。 |
+| `test_ptw_mprv_mpp_no_ptw_fetch_real_priv_001` | `pmp_twu_tests_v6` | `PTW-AUD-011` | load/store/PFU 在 `MPRV=1 && MPP=M`；fetch 同时真实 S/U。 | data/PFU direct-map VA=PA 且无 PTW source；fetch 不用 MPRV，仍按真实 privilege。 | source illegal-accept guard、consumer direct-map sanity、fetch source check。 |
 | `test_ptw_pmp_deny_no_side_effect_001` | `pmp_twu_tests_v6` | `PTW-AUD-009` | PMP deny 后延长运行窗口并制造其他 refill/page fault。 | 被 deny 的 transaction 不产生 refill、page fault、PDE update 或 lower-level PMP。 | `PTW-SVA-PMP-003/009`、`PTW-SVA-PDE-007`。 |
 
 ### 5.6 PTE page fault 矩阵
@@ -353,7 +353,7 @@ test_ptw_full_flow_trace_001_023
 | `PTW-FLOW-020` | PFU success | `test_ptw_pfu_success_only_l2_001` |
 | `PTW-FLOW-021` | PFU exception | `test_ptw_pfu_permission_matrix_001`、PMP deny test |
 | `PTW-FLOW-022` | satp/PMP clear PDE | `test_ptw_pde_clear_context_matrix_001` |
-| `PTW-FLOW-023` | MPRV=1 && MPP=M | `test_ptw_mprv_mpp_effective_priv_001` |
+| `PTW-FLOW-023` | MPRV=1 && MPP=M | `test_ptw_mprv_mpp_no_ptw_fetch_real_priv_001` |
 
 每个 flow 关闭标准：directed test pass + source scoreboard expected match + 对应 SVA cover hit。只有 consumer-side pass 的 flow 状态为 `consumer-only`，不能签核。
 
@@ -622,7 +622,7 @@ waiver_id, open_reason
 | `PTW-ADD-012` | `test_ptw_xbar_hash_ready_hold_001` | xbar hash、ready hold、mask。 | P0 |
 | `PTW-ADD-013` | `test_ptw_pmp_deny_by_level_no_lsu_001` | fst/scd/thd PMP deny no side-effect。 | P0 |
 | `PTW-ADD-014` | `test_ptw_pmp_original_type_perm_001` | PMP original type permission。 | P0 |
-| `PTW-ADD-015` | `test_ptw_mprv_mpp_m_effective_mode_001` | data/PFU MPRV/MPP effective M；fetch 不受 MPRV。 | P0 |
+| `PTW-ADD-015` | `test_ptw_mprv_mpp_m_no_ptw_fetch_real_priv_001` | data/PFU `MPRV=1 && MPP=M` direct-map/no PTW source；fetch 不受 MPRV。 | P0 |
 | `PTW-ADD-016` | `test_ptw_nonleaf_rule_by_level_001` | nonleaf by level、V=0、write-only。 | P0 |
 | `PTW-ADD-017` | `test_ptw_write_only_mxr_matrix_001` | `W && !(R || (MXR && X))`。 | P0 |
 | `PTW-ADD-018` | `test_ptw_leaf_access_perm_matrix_001` | fetch/load/store/PFU leaf 权限。 | P0 |

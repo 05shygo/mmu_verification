@@ -664,6 +664,60 @@ make -C mmu_verification run_check TEST_NAME=test_ptw_pde_l2_pmp_l1_deny_accerr_
 
 ---
 
+## 调试记录 #17 — 规格修正：`MPRV=1 && MPP=M` data/PFU 不进入 PTW，当前 RTL 行为正确
+
+| 项目 | 内容 |
+|------|------|
+| **记录时间** | 2026-05-18 14:24:37 +08:00；2026-05-18 16:10:00 +08:00 按最新规格说明修正结论 |
+| **版本号** | 基准：`23506378fb534a3c68b92da0cdb41b957a82a90e`（`2350637`，提交说明：`ptw_uvm_updata`，提交时间：2026-05-18 14:11:02 +0800）— **本条记录规格修正和 UVM 旧假设清理；不要求修改 RTL** |
+| **涉及文件** | `mmu/rtl/ct_mmu_regs.v`（`mmu_lsu_mmu_en`，约 L643-L648）、`mmu/rtl/mmu_l1dtlb.sv`（`dutlb_xx_mmu_off`，约 L162-L170）、`mmu/rtl/ct_mmu_regs.v`（`mmu_xx_mmu_en`，fetch 使用真实流水线特权级） |
+| **关联验证** | `test_ptw_pde_mmode_lock_matrix_001 SEED=606`：`stage9_mmode_l2_lock1_type_deny` 报 `target req was not accepted within 512 cycles type=store vpn=0x003de01 source_id=0x37 saw_any_accept=0`；PDE 相关 cover `cp_pde_l2_pmp_hit/cp_pde_l2_deny_direct_accerr/cp_pde_accerr_valid_gate/cp_pde_update_pmpflg` 均为 0。 |
+
+### 修正后结论
+
+- **这不是 RTL bug**。最新规格说明明确：当 load/store/PFU 的 data effective privilege 为 M 时，物理地址直接等于虚拟地址，data MMU 关闭，不可能产生 L1D/L2TLB/PTW source 请求；`priv=S/U, MPRV=1, MPP=M` 属于该类。
+- **旧 UVM/spec 假设错误**：之前把该组合建模成 “data/PFU 仍进入 PTW，但 PMP/PTE U/S 按 machine effective mode 检查”。这会让 directed test 等待一个 RTL 按正确规则不会发出的 PTW 请求，从而误报。
+- **fetch 例外规则**：IFU/fetch 不受 `MPRV/MPP` 改变，始终使用真实流水线特权级；因此真实 `priv=S/U` 的 fetch 仍可能进入 PTW，真实 `priv=M` 的 fetch 不进入 PTW。
+
+### RTL 证据
+
+`ct_mmu_regs.v` 先用 `MPRV/MPP` 计算 data effective privilege，再用该结果关闭 LSU data MMU：
+
+```systemverilog
+assign cp0_priv_mode[1:0] = cp0_mmu_mprv ? cp0_mmu_mpp[1:0]
+                                          : cp0_yy_priv_mode[1:0];
+assign mmu_lsu_mmu_en     = satp_mode[3:0] == 4'b1000
+                          && cp0_priv_mode[1:0] != 2'b11;
+```
+
+fetch enable 与 data enable 分裂，fetch 使用真实流水线特权级：
+
+```systemverilog
+assign mmu_xx_mmu_en = satp_mode[3:0] == 4'b1000
+                    && cp0_yy_priv_mode[1:0] != 2'b11;
+```
+
+`mmu_l1dtlb.sv` 内部同样用 data effective M 生成 `dutlb_xx_mmu_off = !regs_mmu_en || cp0_mach_mode`，所以 data/PFU direct-map 行为和修正后规格一致。相反，真实 M 且 `MPRV=1, MPP=S/U` 时 data effective privilege 为 S/U，仍可按 data 翻译路径进入 PTW。
+
+### UVM 修正方向
+
+- `test_ptw_pde_mmode_lock_matrix_001` 不能再等待 load/store/PFU PTW accept 或 PDE direct accerr；该 top-level source 场景应标为 open/unreachable，并说明需要 lower-level PDE-cache unit stimulus 才能直接覆盖 unreachable effective-M cached pmpflg matrix。
+- stage6 `MPRV=1 && MPP=M` load/store/PFU 场景应记录为 direct-map/no-PTW consumer sanity，不能用 source scoreboard 关闭 PTW source flow。
+- PTW source ref/SB/monitor 不应把 data/PFU `MPRV=1 && MPP=M` 计为合法 effective-M PTW source coverage。
+
+### 验证关注点
+
+```bash
+make -C mmu_verification run_check TEST_NAME=test_ptw_pde_mmode_lock_matrix_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+```
+
+- 修正 UVM 后期望：
+  - `test_ptw_pde_mmode_lock_matrix_001` 不再报 `target req was not accepted`，而是打印 open/unreachable closure marker。
+  - 对 data/PFU `MPRV=1 && MPP=M` 的 directed 场景不再要求 PTW source-SB match。
+  - 对 fetch with `MPRV=1 && MPP=M` 的场景仍按真实流水线 S/U/M privilege 建模。
+
+---
+
 ## 后续追加新记录的写法（模板）
 
 复制下表，填 **#N+1**、时间与版本后写要点即可：

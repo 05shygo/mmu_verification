@@ -72,10 +72,88 @@ overview
                 
             l2tlb reqq的clear
 
-    2.2 arbiter
+    2.2 l2tlb
         overview
-        
-                
 
-            
-            
+    
+    2.3 arbiter
+        overview
+        arbiter的职责是对访问l2tlb的请求进行仲裁，并选择正确的访问l2tlb的vpn和access type，l2tlb的sram的选择信号，以及生成访问l2tlb的sram的index等控制信号。
+        l2tlb 总共有4个访问来源：1.l2tlb request queue发来的l1tlb的lookup 请求；2.pfu发来的lookup请求；3.ptw的请求；4.tlb operation模块的请求。
+        每一拍arbiter只能给其中一个来源授权访问l2tlb。
+
+        function description
+            1.仲裁
+                每一拍arbiter只能给其中一个来源授权访问l2tlb。
+                仲裁的优先级是：ptw > tlb operation > request queue > prefetch
+                虽然访问l2tlb有4个来源，但是访问类型却有6种
+                    1.来源为ptw的有两种访问请求。由于l2tlb的替换算法是SRRIP，而对应的RRPV值是存在SRAM中。所以ptw回填时，需要先读RRPV SRAM，读出对应的rrpv值之后，找到victim entry，然后再对l2tlb发起写操作进行页表项的回填。
+                        a.ptw读操作
+                        b.ptw写操作
+                    2.来源为l2tlb reqq的请求也可以细分为两种
+                        a.l1itlb的请求
+                        b.l1dtlb的请求
+                    3.pfu的prefetch请求
+                    4.tlb operation的请求
+                ptw refill完成的时候，会有一个refill_pa_vld（代码中不一定叫这个名字）的信号，当它拉高时，对这个信号打两拍，打两拍后的信号作为ptw write请求，而refill_pa_vld作为ptw read请求
+                由于l2tlb的替换算法是SRRIP，而对应的RRPV值是存在SRAM中，ptw回填时，需要先读出RRPV SRAM中的rrpv值，根据rrpv值找到victim entry，所以在给ptw read请求授权之后，别的l2tlb不能被访问。因为l2tlb被访问就会更新rrpv值，这会导致ptw read读出来的是旧的值。所以当ptw read请求被授权时，会拉高ptw_on信号，当ptw_on信号拉高时，不会给除了ptw write请求之外的任何请求授权。当ptw write请求被l2tlb接收时，拉低ptw_on信号，取消对其他请求的阻塞。
+                tlb operation有可能是需要持续进行的操作，并且不能被打断。所以当tlb operation的请求被arbiter授权之后，会拉高tlboper_on信号。当tlboper_on为高的时候，arb不能给除了tlb operation以外的所有请求授权。当tlb operation模块传回tlb operation结束的信号时，拉低tlboper_on信号，取消对其他请求的阻塞。
+                pfu发来prefetch请求时，在得到结果前，会一直拉高同一个请求信号（lsu_mmu_va2_vld），所以需要在给pfu的prefetch请求授权之后，屏蔽掉pfu的请求信号。所以当pfu的prefetch请求被授权之后，会拉高prefetch_mask信号，当l2tlb返回pa_vld信号或者error信号（page fault或access fault）时，拉低prefetch_mask信号。
+                a.给ptw read请求授权的条件是：ptw模块发来ptw_arb_req信号，并且tlboper_on不为1且ptw_on信号不为1。
+                b.给ptw write信号授权的条件是：ptw_write_req2信号为1（由ptw_arb_req信号打两拍得到），且tlboper_on不为1且ptw_on信号为1。
+                c.给tlb operation授权的条件是：有tlboper_arb_req且没有ptw read请求，且ptw_on信号不为1。
+                d.给l2tlb reqq授权的条件是：有l2tlb reqq的请求且没有ptw read请求，且ptw_on信号不为1，且tlboper_on不为1，且没有tlb operation请求。
+                e.给pfu的prefetch请求授权的条件是：有lsu发来的预取请求（lsu_mmu_va2_vld），并且mmu没有被关闭，并且没有ptw read请求，并且没有tlb operation请求，并且没有l2tlb reqq的请求，并且ptw_on信号不为1，且tlboper_on不为1，且prefetch_mask信号不为1。
+
+            2.生成访问l2tlb sram的index
+                在 RISC-V SV39 架构中，系统支持三种页面大小：4KB , 2MB , 1GB 。传统的组相联（Set-Associative）TLB 在处理混合页大小时要根据页大小使用不同索引位，硬件无法在查找前预知页大小，只能：
+                    - 串行查找，效率较低
+                    - 静态分区，TLB空间利用率低
+                Skewed Associative 解决方案
+                    采用 8-Way Skewed Associative 架构。
+                        - 核心原理： 将 TLB 分割为 8 个独立的存储体（Way），每个 Way 拥有完全独立且正交的哈希索引函数。
+                        - 优势：
+                            1. 并发支持： 利用不同的 Way 并行“猜测”不同的页大小。
+                            2. 抗冲突： 即使两个地址在 Way 0 发生索引冲突，由于 Way 1 的哈希函数完全不同，它们在 Way 1 几乎不可能冲突。
+                            3. 无空间浪费： 任意页大小均可利用 TLB 的整体容量，无需静态分区。
+                      引入 Selector。
+                        - 原理： 利用虚拟地址的特定位 VA[31:30] 作为随机选择子，强制规定每个 Way 在当前查找周期应假设的页大小。
+                    这8个way都有自己单独的sram bank，访问这8个bank的index也各不相同。
+                index生成步骤：
+                    1.提取基础index
+                        a.当Selector (VA[31:30])为00时：Way 0按照4k page size从VPN中提取index，	Way 1按照4k page size从VPN中提取index,	Way 2按照2m page size从VPN中提取index,	Way 3按照1g page size从VPN中提取index,	Way 4按照4k page size从VPN中提取index,	Way 5按照4k page size从VPN中提取index,	Way 6按照2m page size从VPN中提取index,	Way 7按照1g page size从VPN中提取index
+                        b.当Selector (VA[31:30])为01时：Way 0按照2m page size从VPN中提取index，	Way 1按照1g page size从VPN中提取index,	Way 2按照4k page size从VPN中提取index,	Way 3按照4k page size从VPN中提取index,	Way 4按照2m page size从VPN中提取index,	Way 5按照1g page size从VPN中提取index,	Way 6按照4k page size从VPN中提取index,	Way 7按照4k page size从VPN中提取index
+                        c.当Selector (VA[31:30])为10时：Way 0按照4k page size从VPN中提取index，	Way 1按照4k page size从VPN中提取index,	Way 2按照1g page size从VPN中提取index,	Way 3按照2m page size从VPN中提取index,	Way 4按照4k page size从VPN中提取index,	Way 5按照4k page size从VPN中提取index,	Way 6按照1g page size从VPN中提取index,	Way 7按照2m page size从VPN中提取index
+                        d.当Selector (VA[31:30])为11时：Way 0按照1g page size从VPN中提取index，	Way 1按照2m page size从VPN中提取index,	Way 2按照4k page size从VPN中提取index,	Way 3按照4k page size从VPN中提取index,	Way 4按照1g page size从VPN中提取index,	Way 5按照2m page size从VPN中提取index,	Way 6按照4k page size从VPN中提取index,	Way 7按照4k page size从VPN中提取index
+                    2.根据提取的基础index，生成skew_index
+                        把提取的基础index进行hash运算，hash运算出来的结果作为skew_index
+                发给l2tlb的index取决于给哪个请求来源授权
+                    1.给ptw，reqq,pfu的prefetch授权，或者给tlb operation授权，且这次的tlb operation需要从va中提取index时（tlboper_arb_idx_not_va为0）：选择skew_index
+                    2.给tlb operation授权且这次的tlb operation不需要从va中提取index时（tlboper_arb_idx_not_va为1）：选择tlb operation模块发给arbiter的index（tlboper_arb_idx）
+            3.生成访问l2tlb bank的选择信号
+                由于l2tlb是采用skew associative tlb这一微架构，所以ptw完成需要回填时，要按照实际的page size和Selector (VA[31:30])的值来决定把哪些entry作为候选。
+                    a.当Selector (VA[31:30])为00时
+                        1.当ptw回填的页表项实际page size为4k时，只访问bank0，1，4，5。mask_bank_sel = 00110011
+                        2.当ptw回填的页表项实际page size为2m时，只访问bank2,6。mask_bank_sel = 01000100
+                        3.当ptw回填的页表项实际page size为1g时，只访问bank3,7。mask_bank_sel = 10001000
+                    b.当Selector (VA[31:30])为01时
+                        1.当ptw回填的页表项实际page size为4k时，只访问bank2，3，6，7。mask_bank_sel = 11001100
+                        2.当ptw回填的页表项实际page size为2m时，只访问bank0，4。mask_bank_sel = 00010001
+                        3.当ptw回填的页表项实际page size为1g时，只访问bank1，5。mask_bank_sel = 00100010
+                    c.当Selector (VA[31:30])为10时
+                        1.当ptw回填的页表项实际page size为4k时，只访问bank0，1，4，5。mask_bank_sel = 00110011
+                        2.当ptw回填的页表项实际page size为2m时，只访问bank3,7。mask_bank_sel = 10001000
+                        3.当ptw回填的页表项实际page size为1g时，只访问bank2,6。mask_bank_sel = 01000100
+                    d.当Selector (VA[31:30])为11时
+                        1.当ptw回填的页表项实际page size为4k时，只访问bank2，3，6，7。mask_bank_sel = 11001100
+                        2.当ptw回填的页表项实际page size为2m时，只访问bank1，5。mask_bank_sel = 00100010
+                        3.当ptw回填的页表项实际page size为1g时，只访问bank0，4。mask_bank_sel = 00010001
+                1.当给ptw read请求授权时，arb发给l2tlb的bank选择信号（arb_l2tlb_bank_sel）选择mask_bank_sel
+                2.当给ptw write请求授权时，arb发给l2tlb的bank选择信号（arb_l2tlb_bank_sel）选择替换算法模块发来的victim entry所在的bank
+                3.当给pfu的prefetch请求和reqq的请求授权时，选择所有的bank
+                4.当给tlb operation请求授权时，选择tlb operation模块发来的bank选择信号（tlboper_arb_bank_sel）
+            4.生成发给l2tlb的va比较信号（arb_l2tlb_cmp_with_va）
+                a.当给pfu的prefetch请求和reqq的请求授权时，需要查找l2tlb，所以此时要拉高arb_l2tlb_cmp_with_va
+                b.当给tlb operation请求授权，且tlb operation模块拉高这个请求需要比较va的信号（tlboper_arb_cmp_va）时，也需要在l2tlb中查找，此时也拉高arb_l2tlb_cmp_with_va。
+                c.其他情况无需进入l2tlb的lookup流水线，所以不拉高arb_l2tlb_cmp_with_va信号
+            5.

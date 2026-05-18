@@ -595,6 +595,75 @@ assign twu_req[3:0] = {4{PDE_xbar_req & (!twu_xbar_mask)}} & twu_req_hash[3:0];
 
 ---
 
+## 调试记录 #16 — `L1PDE_cache` / `L2PDE_cache`：update 前同 tag 去重未用 valid 门控，invalid entry 误挡 PDE refill
+
+| 项目 | 内容 |
+|------|------|
+| **记录时间** | 2026-05-18 11:25:47 +08:00（定位并写入本条时采集） |
+| **版本号** | 基准：`71e1ab830bf2e649920eafa660f6bc39c9176c63`（`71e1ab8`，提交说明：`pdecache_pmpflg`，提交时间：2026-05-18 11:23:22 +0800）— **本条仅记录 RTL bug 与建议修复；写入本条时尚未修改 RTL** |
+| **涉及文件** | `mmu/rtl/L1PDE_cache.sv`（`L1PDE_entry_before_upd_hit`，约 L122）、`mmu/rtl/L2PDE_cache.sv`（`L2PDE_entry_before_upd_hit`，约 L138）、`mmu/rtl/PDE_cache.sv`（`L1PDE_plru_refill_vld` / `L2PDE_plru_refill_vld`，约 L344-L345） |
+| **关联验证** | `test_ptw_pde_l2_pmp_l1_deny_accerr_001 SEED=606`：`stage8_l2_cached_l1pmp_deny_accerr_manual_window` 报 unexpected PTW memory activity；PDE SVA cover 中 `cp_pde_l1_pmp_hit=0`、`cp_pde_l2_deny_direct_accerr=0`。 |
+
+### Bug 内容
+
+- **位置**：`L1PDE_cache.sv` / `L2PDE_cache.sv` 中用于 refill 去重的 `*_entry_before_upd_hit`。
+- **错误行为**：当前逻辑只比较 update VPN tag 与 entry tag，**没有检查 entry valid**：
+
+```systemverilog
+assign L1PDE_entry_before_upd_hit =
+  (L1PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
+
+assign L2PDE_entry_before_upd_hit =
+  (L2PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L2PDE_tag[TAG_WIDTH-1:0]);
+```
+
+- **直接后果**：reset/clear 后 invalid entry 的 tag 默认为 0；当第一笔需要 refill 的 PDE tag 也为 0 时，invalid entry 被误判为 “before update hit”。`PDE_cache.sv` 又用该信号阻止 PLRU refill：
+
+```systemverilog
+assign L1PDE_plru_refill_vld =
+  mbuf_cache_upd & mbuf_cache_upd_lvl[1] & (!(|L1PDE_entry_before_upd_hit));
+
+assign L2PDE_plru_refill_vld =
+  mbuf_cache_upd & mbuf_cache_upd_lvl[0] & (!(|L2PDE_entry_before_upd_hit));
+```
+
+因此合法的第一笔 PDE refill 会被 invalid entry 的假 hit 挡掉。
+
+### 本次失败链路
+
+- `test_ptw_pde_l2_pmp_l1_deny_accerr_001` 先用 `l1_prime_va=0x3860_0000` 建 L1 PDE；该 VPN 的 L1 PDE tag 为 0。
+- reset 后 L1 PDE invalid entries 的 tag 也是 0，且 `L1PDE_entry_before_upd_hit` 未用 `L1PDE_vld` 门控，导致第一笔 L1 PDE update 被去重逻辑误挡。
+- 后续第二笔 fetch 未能通过 L1 PDE hit 直接进入 SCD，而是重新 full walk；日志中可见再次读取 root / SCD / THD PTE。
+- 最终 L2 entry 保存成允许 load 的 cached `l1pmpflg/l2pmpflg`，后续 load 正常 L2 hit 并读取 leaf PTE；direct accerr 不出现，UVM 的 no-extra-PTW-memory 检查报错。
+
+### 建议修改
+
+在 before-update tag hit 判定中加入 entry valid 门控：
+
+```systemverilog
+// L1PDE_cache.sv
+assign L1PDE_entry_before_upd_hit =
+  L1PDE_vld
+  & (L1PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
+
+// L2PDE_cache.sv
+assign L2PDE_entry_before_upd_hit =
+  L2PDE_vld
+  & (L2PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L2PDE_tag[TAG_WIDTH-1:0]);
+```
+
+### 验证关注点
+
+- **reset/clear 后第一笔 tag=0 的 L1/L2 PDE refill**：invalid entry 不应阻止 refill；`*_plru_refill_vld` 应能正常拉高。
+- **已有 valid 同 tag entry 的重复 refill**：仍应由 `*_entry_before_upd_hit` 阻止重复分配，避免同 tag 多 entry。
+- 回归命令：
+
+```bash
+make -C mmu_verification run_check TEST_NAME=test_ptw_pde_l2_pmp_l1_deny_accerr_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+```
+
+---
+
 ## 后续追加新记录的写法（模板）
 
 复制下表，填 **#N+1**、时间与版本后写要点即可：

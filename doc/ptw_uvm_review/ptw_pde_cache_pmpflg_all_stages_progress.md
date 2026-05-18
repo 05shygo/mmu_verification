@@ -2,7 +2,7 @@
 
 更新时间：2026-05-18
 
-本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 directed test 实现已完成，静态接入检查通过，仿真证据待在具备 `make` 的环境中收集；阶段 9 及之后尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
+本文档汇总 `ptw_pde_cache_pmpflg_staged_implementation_plan.md` 中各阶段的执行进度。阶段 0 到阶段 7 已完成；阶段 8 directed test 实现已完成，静态接入检查通过，仿真证据待在具备 `make` 的环境中收集；阶段 9 directed test 实现已完成，静态接入检查通过，仿真证据待在具备 `make` 的环境中收集；阶段 10 尚未开始。原阶段独立进度文件已合并到本文档，后续以本文档作为统一进度记录。
 
 ## 总体状态
 
@@ -17,7 +17,7 @@
 | 6 | SVA and cover | done | `mmu_pde_cache_sva.sv`、`mmu_ptw_top_sva.sv`、必要 bind 显式连接 |
 | 7 | directed helper and legacy PDE tests update | done | `ptw_source_directed_base.svh` helper、旧 PDE tests metadata/allow 前提修正 |
 | 8 | new P0 directed tests A | implemented, static pass, pending sim | 5 个 directed tests、suite include、`ptw_pde_pmpflg_list` |
-| 9 | new P0/P1 directed tests B | not started | 未开始 |
+| 9 | new P0/P1 directed tests B | implemented, static pass, pending sim | 4 个 directed tests、suite/list、P1 list |
 | 10 | regression and signoff freeze | not started | 未开始 |
 
 阶段完成标记：
@@ -32,6 +32,7 @@ PMPFLG_STAGE_DONE stage=5 name=scoreboard_coverage_no_extra_lsu
 PMPFLG_STAGE_DONE stage=6 name=sva_and_cover
 PMPFLG_STAGE_DONE stage=7 name=directed_helper_and_legacy_pde_tests_update
 PMPFLG_STAGE_IMPL_DONE stage=8 name=new_p0_directed_tests_a
+PMPFLG_STAGE_IMPL_DONE stage=9 name=new_p0_p1_directed_tests_b
 ```
 
 ## 阶段 0 进度
@@ -378,12 +379,59 @@ Scoreboard 行为：
 | P0 smoke list | 未修改，阶段计划中该项为可选。 |
 | Closure matrix | 未改成最终 closed；L2 分离类在 test metadata/progress 中保留 partial evidence 说明。 |
 
+## 阶段 9 进度
+
+状态：implemented，static pass，pending simulation evidence
+
+本阶段只完成 `PTW-ADD-042..045` 第二组 P0/P1 directed tests、suite include、`ptw_pde_pmpflg_list` 更新和 P1 list 接入；未修改 `ptw_stage8_signoff_gate.py`，未更新 closure matrix 为最终 closed，未做阶段 10 regression/signoff 冻结。
+
+修改文件：
+
+| 文件 | 修改内容 |
+| --- | --- |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_accerr_priority_type_id_001.svh` | 新增 stage9 base helper 与 `PTW-ADD-042` PDE direct accerr priority/type/id directed test。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_mmode_lock_matrix_001.svh` | 新增 `PTW-ADD-043` effective M-mode `pmpflg[3]` lock/bypass matrix。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_accerr_valid_gate_001.svh` | 新增 `PTW-ADD-044` invalid/stale L2 entry direct-accerr valid/request gate test。 |
+| `mmu_verification/testbench/test/ptw_tests/test_ptw_pde_pmp_clear_repopulate_001.svh` | 新增 `PTW-ADD-045` clear 后 stale cached pmpflg 不可复用、重新 walk/update test。 |
+| `mmu_verification/testbench/test/ptw_tests/ptw_tests_suite.svh` | include 阶段 9 的 4 个 test 文件。 |
+| `mmu_verification/simu/ptw_pde_pmpflg_list` | 加入阶段 9 的 4 个 tests，均带 source monitor/ref/SB/cov plusargs。 |
+| `mmu_verification/simu/ptw_p1_list` | 加入 `test_ptw_pde_accerr_priority_type_id_001` 和 `test_ptw_pde_pmp_clear_repopulate_001`。 |
+
+新增 stage9 helper：
+
+| Helper | 用途 |
+| --- | --- |
+| `stage9_close/partial/open/summary()` | 打印 `PTW_STAGE9_CLOSURE` 和 `PTW_STAGE9_TEST_SUMMARY` metadata。 |
+| `stage9_wait_for_pde_accerr()` | 使用 probe 检查 PDE direct accerr type/id stable 和 grant。 |
+| `stage9_expect_no_pde_accerr_window()` | 检查 idle/fixed window 内无 PDE direct accerr。 |
+| `stage9_expect_no_pde_accerr_for_req()` | 等目标 `{type,id,vpn}` 被 PTW accept 并完成，期间要求无 PDE direct accerr。 |
+| `stage9_wait_for_ptw_mem_accept()` | priority test 中先确认独立 PTW memory bus-error 压力请求已被 accept，再发起 PDE direct accerr。 |
+| `stage9_cp0_tlb_allinv()` | 使用现有 CP0/TLB invalidation path 触发 PDE clear。 |
+
+测试构造：
+
+| Requirement | 实现方式 | 当前证据状态 |
+| --- | --- | --- |
+| `PTW-ADD-042` / `PDE-TP-017` | 先用 LOAD 建 locked R-only L2 PDE；后续 STORE 同 L2 tag 触发 PDE direct accerr，同时驱动一个独立 PTW memory bus-error 压力窗口；test 自检 direct accerr `type=STORE/id=0x2c` stable 并看到 grant。 | implemented；同周期 priority 候选必须由 `PTW-SVA-ARB-010` cover 命中作为退出证据。 |
+| `PTW-ADD-043` / `PDE-TP-018` / `PTW-FLOW-028` | 四个子场景覆盖 effective M 下 `lock=0/type bits deny` 的 L1/L2 bypass，以及 `lock=1/type bit deny` 的 L1 deny miss 和 L2 direct accerr。 | implemented；source SB `mmode_bypass/mmode_lock_deny` coverage 和 `PTW-SVA-PDE-011/012/013/017` cover 待仿真收集。 |
+| `PTW-ADD-044` / `PDE-TP-019` | `vpn[2:1]=0` reset-tag 场景和 L2 stale tag after clear 场景；request-scoped helper 等目标请求被 accept/completed，期间要求无 `L2PDE_entry_acc_err/PDE_cache_acc_err_vld`。 | implemented；`PTW-SVA-PDE-014` 是最终 valid-gate structural evidence。 |
+| `PTW-ADD-045` / `PDE-TP-010/016` | 先建 locked W-only L2 entry，clear 后将 PMP flag 改为 load-allow，后续 LOAD 同 L2 tag 必须不复用旧 locked-W pmpflg，并通过新 walk/repopulate 使用 MBUF pmpflg。 | implemented，标 partial evidence：真实 PMP config update clear 仍受 `tb_top.sv` 中 `pmp_regs_update` tie-off 限制，本 test 使用可用 `regs_ptw_clr/tlboper` clear path。 |
+
+实现边界：
+
+| 边界 | 结果 |
+| --- | --- |
+| 新增文件数量 | 4 个 test 文件，低于 15 文件拆分阈值；未创建临时阶段拆分计划。 |
+| Stage 10/signoff | 未修改 signoff gate、closure matrix、P0/P1 全量签核报告。 |
+| RTL | 未修改 RTL；`doc/ptw_rtl_debug.md` 中已记录的 RTL bug 仍作为外部限制存在。 |
+| PMP config update clear | `pmp_regs_update_probe` 仍为 `1'b0`，`PTW-ADD-045` 不能声明真实 PMP-update clear 完全关闭。 |
+
 ## 当前未关闭项
 
 | Item | 后续阶段 |
 | --- | --- |
 | `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed tests 已实现，run log/source-SB/SVA cover 证据待收集；`PTW-ADD-039/040` 保留 partial evidence 限制说明 | 阶段 8/10 |
-| `PDE-TP-017..019`、`PTW-FLOW-028`、`PTW-ADD-042..045` directed closure 尚未开始 | 阶段 9 |
+| `PDE-TP-017..019`、`PTW-FLOW-028`、`PTW-ADD-042..045` directed tests 已实现，run log/source-SB/SVA cover 证据待收集；`PTW-ADD-045` 保留 pmp_regs_update tie-off 限制说明 | 阶段 9/10 |
 | `pmp_regs_update` testbench tie-off 未处理 | 后续涉及 PMP config clear/repopulate 的阶段 |
 | Regression/signoff list、CSV、gate、报告尚未冻结 | 阶段 10 |
 
@@ -417,6 +465,10 @@ Scoreboard 行为：
 | 阶段 8 修改边界 | pass，仅阶段 8 directed tests、suite/list/progress 相关接入；未新增阶段 9 tests，未修改 signoff gate |
 | 阶段 8 `stage8_map_*` 调用参数风格 | pass，阶段 8 新增 test 中 `stage8_map_2m_and_read_fst` / `stage8_map_4k_and_read_path` 调用已统一为 named argument，避免 SV positional/named 混用 |
 | 阶段 8 `git diff --check` | pass，仅有 Git line-ending warning |
+| 阶段 9 新 test/list/suite 关键词 `rg` | pass，4 个 test 均已在 `ptw_tests_suite.svh`、`ptw_pde_pmpflg_list` 和进度文档中出现；priority/clear 两个 P1 tests 已在 `ptw_p1_list` 中出现 |
+| 阶段 9 修改边界 | pass，仅阶段 9 directed tests、suite/list/progress 接入；未修改 signoff gate、closure matrix、RTL |
+| 阶段 9 request-scoped no-direct-accerr/helper | pass，`stage9_expect_no_pde_accerr_for_req()` 可检索，并用于 valid-gate 与 clear/repopulate 场景；`stage9_wait_for_ptw_mem_accept()` 可检索，并用于 priority 场景 |
+| 阶段 9 `git diff --check` | pass，仅有 Git line-ending warning |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |
 | `make -C mmu_verification run_check ...` | blocked，当前 PowerShell 环境找不到 `make` |
@@ -451,7 +503,20 @@ vlog -sv mmu_verification\testbench\top\mmu_pde_cache_sva.sv mmu_verification\te
 git status --short
 git diff --check
 
-# 环境具备 make 后再执行编译/运行检查
+# 阶段 9 静态接入检查
+rg -n "test_ptw_pde_accerr_priority_type_id_001|test_ptw_pde_mmode_lock_matrix_001|test_ptw_pde_l2_accerr_valid_gate_001|test_ptw_pde_pmp_clear_repopulate_001" mmu_verification\testbench\test\ptw_tests mmu_verification\simu doc\ptw_uvm_review\ptw_pde_cache_pmpflg_all_stages_progress.md
+rg -n "PTW_STAGE9|stage9_expect_no_pde_accerr_for_req|stage9_wait_for_ptw_mem_accept|PTW-ADD-042|PTW-ADD-043|PTW-ADD-044|PTW-ADD-045|PDE-TP-017|PDE-TP-018|PDE-TP-019|PTW-FLOW-028" mmu_verification\testbench\test\ptw_tests\test_ptw_pde_accerr_priority_type_id_001.svh mmu_verification\testbench\test\ptw_tests\test_ptw_pde_mmode_lock_matrix_001.svh mmu_verification\testbench\test\ptw_tests\test_ptw_pde_l2_accerr_valid_gate_001.svh mmu_verification\testbench\test\ptw_tests\test_ptw_pde_pmp_clear_repopulate_001.svh doc\ptw_uvm_review\ptw_pde_cache_pmpflg_all_stages_progress.md
+rg -n "test_ptw_pde_accerr_priority_type_id_001|test_ptw_pde_mmode_lock_matrix_001|test_ptw_pde_l2_accerr_valid_gate_001|test_ptw_pde_pmp_clear_repopulate_001" mmu_verification\testbench\test\ptw_tests\ptw_tests_suite.svh mmu_verification\simu\ptw_pde_pmpflg_list mmu_verification\simu\ptw_p1_list
+
+# 阶段 9 环境具备 make 后再执行编译/运行检查
+make -C mmu_verification build TEST_NAME=test_ptw_pde_accerr_priority_type_id_001
+make -C mmu_verification run_check TEST_NAME=test_ptw_pde_accerr_priority_type_id_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make -C mmu_verification run_check TEST_NAME=test_ptw_pde_mmode_lock_matrix_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make -C mmu_verification run_check TEST_NAME=test_ptw_pde_l2_accerr_valid_gate_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make -C mmu_verification run_check TEST_NAME=test_ptw_pde_pmp_clear_repopulate_001 SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"
+make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=ptw_pde_pmpflg_stage9 REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+
+# 阶段 7/8 历史检查，环境具备 make 后按需回归
 make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke
 make -C mmu_verification build TEST_NAME=test_ptw_l1_pde_hit
 make -C mmu_verification run_check TEST_NAME=test_ptw_l1_pde_hit SEED=606 PLUS_ARGS="+EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV"

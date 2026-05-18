@@ -1,4 +1,4 @@
-# PTW stage-8 PDE-cache pmpflg directed list
+# PTW stage-8/9 PDE-cache pmpflg directed list
 # Entries require source monitor/ref model/SB and PDE pmpflg coverage.
 
 test_ptw_pde_l1_pmp_tag_deny_fst_fault_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
@@ -6,3 +6,7 @@ test_ptw_pde_l1_pmp_tag_allow_reuse_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MOD
 test_ptw_pde_l2_pmp_l1_deny_accerr_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
 test_ptw_pde_l2_pmp_l2_deny_accerr_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
 test_ptw_pde_pmpflg_propagation_update_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_pde_accerr_priority_type_id_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_pde_mmode_lock_matrix_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_pde_l2_accerr_valid_gate_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV
+test_ptw_pde_pmp_clear_repopulate_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV

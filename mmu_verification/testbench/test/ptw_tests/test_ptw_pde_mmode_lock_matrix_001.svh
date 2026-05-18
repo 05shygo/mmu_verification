@@ -179,7 +179,7 @@ class test_ptw_pde_mmode_lock_matrix_001 extends ptw_pde_pmpflg_stage9_base;
     fork
       begin
         stage9_wait_for_pde_accerr("stage9_mmode_l2_lock1_type_deny",
-          PTW_SRC_TYPE_STORE, 6'h37, 128);
+          PTW_SRC_TYPE_STORE, 6'h37, deny_va[38:12], 128);
       end
       begin
         ptw_drive_source_req_by_type(PTW_SRC_TYPE_STORE, deny_va, 6'h37);

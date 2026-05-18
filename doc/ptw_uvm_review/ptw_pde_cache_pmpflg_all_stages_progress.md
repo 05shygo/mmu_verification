@@ -402,7 +402,7 @@ Scoreboard 行为：
 | Helper | 用途 |
 | --- | --- |
 | `stage9_close/partial/open/summary()` | 打印 `PTW_STAGE9_CLOSURE` 和 `PTW_STAGE9_TEST_SUMMARY` metadata。 |
-| `stage9_wait_for_pde_accerr()` | 使用 probe 检查 PDE direct accerr type/id stable 和 grant；2026-05-18 修正为先同步目标 `{type,id}` PTW accept，再从 accept 后窗口检查 `PDE_cache_acc_err_vld/grant` 或顶层 `ptw_l2tlb_ref_acc_err` 可见完成，避免 priority 压力场景中 STORE 排队导致误报。 |
+| `stage9_wait_for_pde_accerr()` | 使用 probe 检查 PDE direct accerr type/id stable 和 grant；2026-05-18 修正为先按目标 `{type,vpn}` 同步 PTW accept 并捕获 RTL composite `ptw_id`，再从 accept 后窗口检查 matching `PDE_cache_acc_err_vld/grant` 或顶层 `ptw_l2tlb_ref_acc_err` 可见完成，避免把 LSU stimulus id 误当 PTW id。 |
 | `stage9_expect_no_pde_accerr_window()` | 检查 idle/fixed window 内无 PDE direct accerr。 |
 | `stage9_expect_no_pde_accerr_for_req()` | 等目标 `{type,id,vpn}` 被 PTW accept 并完成，期间要求无 PDE direct accerr。 |
 | `stage9_wait_for_ptw_mem_accept()` | priority test 中先确认独立 PTW memory bus-error 压力请求已被 accept，再发起 PDE direct accerr。 |
@@ -424,6 +424,7 @@ Stage 9 debug 更新：
 | 2026-05-18 | `test_ptw_pde_accerr_priority_type_id_001_606` 在 `stage9_wait_for_pde_accerr()` 报 `expected PDE direct accerr not observed within 192 cycles`，但同一日志 `cp_pde_l2_deny_direct_accerr`/`cp_pde_accerr_valid_gate` 均命中。 | UVM test-local checker 同步窗口问题，不是当前证据支持的 RTL bug。 | 修复 `stage9_wait_for_pde_accerr()`：先等目标 STORE `{type,id}` 被 PTW accept，accept 后再检查 direct accerr；同时接受 matching `ptw_acc_err_grant_vec[5] + ptw_l2tlb_ref_acc_err` 作为可见 grant/完成证据。 |
 | 2026-05-18 | 重跑后 `stage9_wait_for_pde_accerr()` 报 `target req was not accepted within 512 cycles type=store id=0x2c`；metadata 显示 STORE sequence 已启动，PDE direct-accerr SVA 仍命中。 | UVM LSU agent 协议完成条件问题。`lsu_driver` pipe0/1 已采样 `mmu_lsu_access_fault0/1`，但 `_pipe*_t0_terminal()` 未把 access fault 当 terminal，bus-error/access-fault 请求会持续 retry 并阻塞同 pipe 后续 STORE。 | 修复 `lsu_driver.svh` 和 `lsu_monitor.svh`：pipe0/1 terminal 及等待表达式加入 `mmu_lsu_access_fault0/1`，使 access-fault completion 能释放 driver 并被 monitor 正确绑定。 |
 | 2026-05-18 | 用户再次提供的失败 log metadata 仍为 `drive_source_req_by_type type=load id=43`，即独立 bus-error pressure 和目标 STORE 同走 LSU pipe0；test-local helper 在 STORE 被 pipe0 串行发出前超时。 | UVM directed 场景构造问题，不是 RTL direct-accerr 证据失败。该场景要求“独立” bus-error pressure，不应和被测 STORE 共用同一个 LSU pipe0 serial driver。 | 将 `test_ptw_pde_accerr_priority_type_id_001` 的 bus-error pressure 源从 LOAD 改为 FETCH，metadata 也改为 FETCH pressure；目标 STORE 保持 LSU pipe0，避免前置 pressure 请求阻塞目标 STORE accept，同时仍保留 MBUF bus-error 与 PDE direct accerr 的 priority 候选。 |
+| 2026-05-18 | 最新重跑 metadata 已变为 `type=fetch id=0`，但 `stage9_pde_accerr_priority_buserr_accept` 未观察到 PTW memory accept；同时 helper 报 `act_type=0x6 act_id=0x08`，与 test 期望的 `source_id=0x2c` 不同。 | UVM helper 口径错误，不是 RTL type/id 错误。`l2tlb_ptw_id/PDE_cache_acc_err_id` 是 RTL `{L2MB slot,L1 miss entry}` 复合 PTW id，不是 LSU stimulus id；FETCH pressure 也不能稳定保证进入本场景指定的 PTW memory bus-error 窗口。 | `stage9_wait_for_pde_accerr()` 改为先按 `{type,vpn}` 捕获目标 PTW accept，并用捕获到的 composite `ptw_id` 检查 PDE direct-accerr/visible completion；其它并发 accerr 只记录 context。priority pressure 改为 LSU pipe1 LOAD，目标 STORE 保持 LSU pipe0，`stage9_wait_for_ptw_mem_accept()` 按目标 PTE addr 检查 grant。 |
 
 实现边界：
 
@@ -475,7 +476,7 @@ Stage 9 debug 更新：
 | 阶段 8 `git diff --check` | pass，仅有 Git line-ending warning |
 | 阶段 9 新 test/list/suite 关键词 `rg` | pass，4 个 test 均已在 `ptw_tests_suite.svh`、`ptw_pde_pmpflg_list` 和进度文档中出现；priority/clear 两个 P1 tests 已在 `ptw_p1_list` 中出现 |
 | 阶段 9 修改边界 | pass，仅阶段 9 directed tests、suite/list/progress 接入；未修改 signoff gate、closure matrix、RTL |
-| 阶段 9 request-scoped no-direct-accerr/helper | pass，`stage9_expect_no_pde_accerr_for_req()` 可检索，并用于 valid-gate 与 clear/repopulate 场景；`stage9_wait_for_ptw_mem_accept()` 可检索，并用于 priority 场景 |
+| 阶段 9 request-scoped no-direct-accerr/helper | pass，`stage9_expect_no_pde_accerr_for_req()` 按 `{type,vpn}` 捕获 composite `ptw_id`，并用于 valid-gate 与 clear/repopulate 场景；`stage9_wait_for_ptw_mem_accept()` 可检索，并用于 priority 场景 |
 | 阶段 9 `git diff --check` | pass，仅有 Git line-ending warning |
 | `git diff --check` | pass，仅有 Git line-ending warning |
 | `make -C mmu_verification build TEST_NAME=test_ptw_source_stage2_smoke` | blocked，当前 PowerShell 环境找不到 `make` |

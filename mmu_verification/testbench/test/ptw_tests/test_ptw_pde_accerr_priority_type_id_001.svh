@@ -97,20 +97,34 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
   protected task stage9_wait_for_pde_accerr(
     input string             scenario_id,
     input ptw_src_req_type_e exp_type,
-    input int unsigned       exp_id,
+    input int unsigned       source_id,
+    input vpn_t              exp_vpn,
     input int unsigned       max_cycles = 128
   );
     bit          target_accepted;
+    bit          target_ptw_id_valid;
     bit          pde_seen;
     bit          grant_seen;
     bit          mismatch_seen;
+    bit          saw_any_accept;
+    bit          saw_non_target_pde;
+    bit          saw_non_target_visible;
     int unsigned accept_cycles;
     int unsigned cycles_after_accept;
     int unsigned total_cycles;
     logic [2:0]  first_type;
     logic [2:0]  exp_type_bits;
+    logic [2:0]  last_accept_type;
+    logic [2:0]  last_pde_type;
+    logic [2:0]  last_visible_type;
     logic [5:0]  first_id;
-    logic [5:0]  exp_id_bits;
+    logic [5:0]  source_id_bits;
+    logic [5:0]  target_ptw_id;
+    logic [5:0]  last_accept_id;
+    logic [5:0]  last_pde_id;
+    logic [5:0]  last_visible_id;
+    vpn_t        last_accept_vpn;
+    vpn_t        last_pde_vpn;
 
     if (ptw_probe_vif == null) begin
       `uvm_error(get_type_name(),
@@ -120,107 +134,115 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     end
 
     target_accepted = 1'b0;
+    target_ptw_id_valid = 1'b0;
     pde_seen = 1'b0;
     grant_seen = 1'b0;
     mismatch_seen = 1'b0;
+    saw_any_accept = 1'b0;
+    saw_non_target_pde = 1'b0;
+    saw_non_target_visible = 1'b0;
     accept_cycles = (max_cycles < 512) ? 512 : max_cycles;
     cycles_after_accept = 0;
     total_cycles = accept_cycles + max_cycles;
     first_type = '0;
     exp_type_bits = exp_type;
     first_id = '0;
-    exp_id_bits = exp_id[5:0];
+    source_id_bits = source_id[5:0];
+    target_ptw_id = '0;
+    last_accept_type = '0;
+    last_accept_id = '0;
+    last_accept_vpn = '0;
+    last_pde_type = '0;
+    last_pde_id = '0;
+    last_pde_vpn = '0;
+    last_visible_type = '0;
+    last_visible_id = '0;
 
     for (int unsigned cycle = 0; cycle < total_cycles; cycle++) begin
       @(ptw_probe_vif.mon_cb);
 
-      if (!target_accepted
-          && (ptw_probe_vif.mon_cb.l2tlb_ptw_req === 1'b1)
-          && (ptw_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)
-          && (ptw_probe_vif.mon_cb.l2tlb_ptw_type == exp_type_bits)
-          && (ptw_probe_vif.mon_cb.l2tlb_ptw_id == exp_id_bits)) begin
-        target_accepted = 1'b1;
-        cycles_after_accept = 0;
-        ptw_meta_add_context($sformatf("%s: target_req_accepted cycle_offset=%0d type=%s id=0x%02h",
-          scenario_id, cycle, ptw_src_type_name(exp_type), exp_id_bits));
+      if ((ptw_probe_vif.mon_cb.l2tlb_ptw_req === 1'b1)
+          && (ptw_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)) begin
+        saw_any_accept = 1'b1;
+        last_accept_type = ptw_probe_vif.mon_cb.l2tlb_ptw_type;
+        last_accept_id = ptw_probe_vif.mon_cb.l2tlb_ptw_id;
+        last_accept_vpn = ptw_probe_vif.mon_cb.l2tlb_ptw_vpn;
+        if (!target_accepted
+            && (ptw_probe_vif.mon_cb.l2tlb_ptw_type == exp_type_bits)
+            && (ptw_probe_vif.mon_cb.l2tlb_ptw_vpn == exp_vpn)) begin
+          target_accepted = 1'b1;
+          target_ptw_id_valid = 1'b1;
+          target_ptw_id = ptw_probe_vif.mon_cb.l2tlb_ptw_id;
+          cycles_after_accept = 0;
+          ptw_meta_add_context($sformatf("%s: target_req_accepted cycle_offset=%0d type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
+            scenario_id, cycle, ptw_src_type_name(exp_type), exp_vpn,
+            source_id_bits, target_ptw_id));
+        end
       end
 
       if (ptw_probe_vif.mon_cb.pde_cache_acc_err_vld === 1'b1) begin
-        if (!pde_seen) begin
-          pde_seen = 1'b1;
-          first_type = ptw_probe_vif.mon_cb.pde_cache_acc_err_type;
-          first_id = ptw_probe_vif.mon_cb.pde_cache_acc_err_id;
-          if ((ptw_probe_vif.mon_cb.pde_cache_acc_err_type !== exp_type_bits)
-              || (ptw_probe_vif.mon_cb.pde_cache_acc_err_id !== exp_id_bits)) begin
+        last_pde_type = ptw_probe_vif.mon_cb.pde_cache_acc_err_type;
+        last_pde_id = ptw_probe_vif.mon_cb.pde_cache_acc_err_id;
+        last_pde_vpn = ptw_probe_vif.mon_cb.pde_xbar_vpn;
+        if (target_ptw_id_valid
+            && (last_pde_type == exp_type_bits)
+            && (last_pde_id == target_ptw_id)) begin
+          if (!pde_seen) begin
+            pde_seen = 1'b1;
+            first_type = last_pde_type;
+            first_id = last_pde_id;
+            ptw_meta_add_context($sformatf("%s: pde_accerr_observed cycle_offset=%0d type=0x%0h vpn=0x%07h source_id=0x%02h ptw_id=0x%02h grant=%0b",
+              scenario_id, cycle, last_pde_type, exp_vpn, source_id_bits,
+              last_pde_id, ptw_probe_vif.mon_cb.pde_cache_acc_err_grant));
+          end else if ((last_pde_type !== first_type)
+              || (last_pde_id !== first_id)) begin
             mismatch_seen = 1'b1;
             `uvm_error(get_type_name(),
-              $sformatf("%s: PDE accerr type/id mismatch exp_type=%s exp_id=0x%02h act_type=0x%0h act_id=0x%02h",
-                scenario_id, ptw_src_type_name(exp_type), exp_id_bits,
-                ptw_probe_vif.mon_cb.pde_cache_acc_err_type,
-                ptw_probe_vif.mon_cb.pde_cache_acc_err_id))
+              $sformatf("%s: target PDE accerr type/id changed first={type=0x%0h id=0x%02h} now={type=0x%0h id=0x%02h}",
+                scenario_id, first_type, first_id, last_pde_type, last_pde_id))
             break;
           end
-          if (!target_accepted) begin
-            target_accepted = 1'b1;
-            cycles_after_accept = 0;
-            ptw_meta_add_context($sformatf("%s: target_req_accept_inferred_from_pde_accerr cycle_offset=%0d type=%s id=0x%02h",
-              scenario_id, cycle, ptw_src_type_name(exp_type), exp_id_bits));
-          end
-        end else if ((ptw_probe_vif.mon_cb.pde_cache_acc_err_type !== first_type)
-            || (ptw_probe_vif.mon_cb.pde_cache_acc_err_id !== first_id)) begin
-          mismatch_seen = 1'b1;
-          `uvm_error(get_type_name(),
-            $sformatf("%s: PDE accerr type/id changed while pending first={type=0x%0h id=0x%02h} now={type=0x%0h id=0x%02h}",
-              scenario_id, first_type, first_id,
-              ptw_probe_vif.mon_cb.pde_cache_acc_err_type,
-              ptw_probe_vif.mon_cb.pde_cache_acc_err_id))
-          break;
-        end
 
-        if ((ptw_probe_vif.mon_cb.pde_cache_acc_err_grant === 1'b1)
-            && (ptw_probe_vif.mon_cb.pde_cache_acc_err_type == exp_type_bits)
-            && (ptw_probe_vif.mon_cb.pde_cache_acc_err_id == exp_id_bits)) begin
-          grant_seen = 1'b1;
-          ptw_meta_add_context($sformatf("%s: pde_accerr_observed cycle_offset=%0d type=0x%0h id=0x%02h grant=1",
-            scenario_id, cycle,
-            ptw_probe_vif.mon_cb.pde_cache_acc_err_type,
-            ptw_probe_vif.mon_cb.pde_cache_acc_err_id));
-          break;
+          if (ptw_probe_vif.mon_cb.pde_cache_acc_err_grant === 1'b1) begin
+            grant_seen = 1'b1;
+            ptw_meta_add_context($sformatf("%s: pde_accerr_grant cycle_offset=%0d type=0x%0h vpn=0x%07h ptw_id=0x%02h grant=1",
+              scenario_id, cycle, last_pde_type, exp_vpn, last_pde_id));
+            break;
+          end
+        end else if (!saw_non_target_pde) begin
+          saw_non_target_pde = 1'b1;
+          ptw_meta_add_context($sformatf("%s: ignored_non_target_pde_accerr cycle_offset=%0d act_type=0x%0h act_vpn=0x%07h act_ptw_id=0x%02h target_type=%s target_vpn=0x%07h source_id=0x%02h",
+            scenario_id, cycle, last_pde_type, last_pde_vpn, last_pde_id,
+            ptw_src_type_name(exp_type), exp_vpn, source_id_bits));
         end
       end
 
       if ((ptw_probe_vif.mon_cb.ptw_acc_err_grant_vec[5] === 1'b1)
           && (ptw_probe_vif.mon_cb.ptw_l2tlb_ref_acc_err === 1'b1)) begin
-        if ((ptw_probe_vif.mon_cb.ptw_l2tlb_type !== exp_type_bits)
-            || (ptw_probe_vif.mon_cb.ptw_l2tlb_id !== exp_id_bits)) begin
-          mismatch_seen = 1'b1;
-          `uvm_error(get_type_name(),
-            $sformatf("%s: PDE accerr visible completion type/id mismatch exp_type=%s exp_id=0x%02h act_type=0x%0h act_id=0x%02h",
-              scenario_id, ptw_src_type_name(exp_type), exp_id_bits,
-              ptw_probe_vif.mon_cb.ptw_l2tlb_type,
-              ptw_probe_vif.mon_cb.ptw_l2tlb_id))
+        last_visible_type = ptw_probe_vif.mon_cb.ptw_l2tlb_type;
+        last_visible_id = ptw_probe_vif.mon_cb.ptw_l2tlb_id;
+        if (target_ptw_id_valid
+            && (last_visible_type == exp_type_bits)
+            && (last_visible_id == target_ptw_id)) begin
+          if (!pde_seen) begin
+            pde_seen = 1'b1;
+            first_type = exp_type_bits;
+            first_id = target_ptw_id;
+          end
+          grant_seen = 1'b1;
+          ptw_meta_add_context($sformatf("%s: pde_accerr_visible_completion cycle_offset=%0d type=0x%0h source_id=0x%02h ptw_id=0x%02h grant_vec=0x%0h pde_vld=%0b pde_grant=%0b",
+            scenario_id, cycle, last_visible_type, source_id_bits,
+            last_visible_id, ptw_probe_vif.mon_cb.ptw_acc_err_grant_vec,
+            ptw_probe_vif.mon_cb.pde_cache_acc_err_vld,
+            ptw_probe_vif.mon_cb.pde_cache_acc_err_grant));
           break;
+        end else if (!saw_non_target_visible) begin
+          saw_non_target_visible = 1'b1;
+          ptw_meta_add_context($sformatf("%s: ignored_non_target_visible_accerr cycle_offset=%0d act_type=0x%0h act_id=0x%02h target_type=%s target_vpn=0x%07h target_ptw_id_valid=%0b target_ptw_id=0x%02h",
+            scenario_id, cycle, last_visible_type, last_visible_id,
+            ptw_src_type_name(exp_type), exp_vpn,
+            target_ptw_id_valid, target_ptw_id));
         end
-        if (!target_accepted) begin
-          target_accepted = 1'b1;
-          cycles_after_accept = 0;
-          ptw_meta_add_context($sformatf("%s: target_req_accept_inferred_from_visible_accerr cycle_offset=%0d type=%s id=0x%02h",
-            scenario_id, cycle, ptw_src_type_name(exp_type), exp_id_bits));
-        end
-        if (!pde_seen) begin
-          pde_seen = 1'b1;
-          first_type = exp_type_bits;
-          first_id = exp_id_bits;
-        end
-        grant_seen = 1'b1;
-        ptw_meta_add_context($sformatf("%s: pde_accerr_visible_completion cycle_offset=%0d type=0x%0h id=0x%02h grant_vec=0x%0h pde_vld=%0b pde_grant=%0b",
-          scenario_id, cycle,
-          ptw_probe_vif.mon_cb.ptw_l2tlb_type,
-          ptw_probe_vif.mon_cb.ptw_l2tlb_id,
-          ptw_probe_vif.mon_cb.ptw_acc_err_grant_vec,
-          ptw_probe_vif.mon_cb.pde_cache_acc_err_vld,
-          ptw_probe_vif.mon_cb.pde_cache_acc_err_grant));
-        break;
       end
 
       if (target_accepted) begin
@@ -238,16 +260,20 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
 
     if (!target_accepted) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: target req was not accepted within %0d cycles type=%s id=0x%02h",
-          scenario_id, accept_cycles, ptw_src_type_name(exp_type), exp_id_bits))
+        $sformatf("%s: target req was not accepted within %0d cycles type=%s vpn=0x%07h source_id=0x%02h saw_any_accept=%0b last_accept={type=0x%0h id=0x%02h vpn=0x%07h}",
+          scenario_id, accept_cycles, ptw_src_type_name(exp_type), exp_vpn,
+          source_id_bits, saw_any_accept, last_accept_type, last_accept_id,
+          last_accept_vpn))
     end else if (!pde_seen) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: expected PDE direct accerr not observed within %0d cycles after target accept",
-          scenario_id, max_cycles))
+        $sformatf("%s: expected PDE direct accerr not observed within %0d cycles after target accept type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
+          scenario_id, max_cycles, ptw_src_type_name(exp_type), exp_vpn,
+          source_id_bits, target_ptw_id))
     end else if (!grant_seen) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: PDE direct accerr observed but grant did not arrive within %0d cycles",
-          scenario_id, max_cycles))
+        $sformatf("%s: PDE direct accerr observed but grant did not arrive within %0d cycles type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
+          scenario_id, max_cycles, ptw_src_type_name(exp_type), exp_vpn,
+          source_id_bits, target_ptw_id))
     end
   endtask
 
@@ -301,6 +327,12 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     bit accepted;
     bit completed;
     logic [2:0] req_type_bits;
+    logic [5:0] source_id_bits;
+    logic [5:0] target_ptw_id;
+    bit saw_any_accept;
+    logic [2:0] last_accept_type;
+    logic [5:0] last_accept_id;
+    vpn_t last_accept_vpn;
 
     if (ptw_probe_vif == null) begin
       `uvm_error(get_type_name(),
@@ -312,6 +344,12 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     accepted = 1'b0;
     completed = 1'b0;
     req_type_bits = req_type;
+    source_id_bits = id[5:0];
+    target_ptw_id = '0;
+    saw_any_accept = 1'b0;
+    last_accept_type = '0;
+    last_accept_id = '0;
+    last_accept_vpn = '0;
 
     for (int unsigned cycle = 0; cycle < max_cycles; cycle++) begin
       @(ptw_probe_vif.mon_cb);
@@ -330,42 +368,56 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
 
       if (!accepted
           && (ptw_probe_vif.mon_cb.l2tlb_ptw_req === 1'b1)
-          && (ptw_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)
-          && (ptw_probe_vif.mon_cb.l2tlb_ptw_type == req_type_bits)
-          && (ptw_probe_vif.mon_cb.l2tlb_ptw_id == id[5:0])
-          && (ptw_probe_vif.mon_cb.l2tlb_ptw_vpn == vpn)) begin
-        accepted = 1'b1;
-        ptw_meta_add_context($sformatf("%s: target_req_accepted cycle_offset=%0d type=%s id=0x%02h vpn=0x%07h",
-          scenario_id, cycle, ptw_src_type_name(req_type), id[5:0], vpn));
+          && (ptw_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)) begin
+        saw_any_accept = 1'b1;
+        last_accept_type = ptw_probe_vif.mon_cb.l2tlb_ptw_type;
+        last_accept_id = ptw_probe_vif.mon_cb.l2tlb_ptw_id;
+        last_accept_vpn = ptw_probe_vif.mon_cb.l2tlb_ptw_vpn;
+        if ((ptw_probe_vif.mon_cb.l2tlb_ptw_type == req_type_bits)
+            && (ptw_probe_vif.mon_cb.l2tlb_ptw_vpn == vpn)) begin
+          accepted = 1'b1;
+          target_ptw_id = ptw_probe_vif.mon_cb.l2tlb_ptw_id;
+          ptw_meta_add_context($sformatf("%s: target_req_accepted cycle_offset=%0d type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
+            scenario_id, cycle, ptw_src_type_name(req_type), vpn,
+            source_id_bits, target_ptw_id));
+        end
       end
 
       if (accepted
           && (ptw_probe_vif.mon_cb.ptw_l2tlb_cmplt === 1'b1)
           && (ptw_probe_vif.mon_cb.ptw_l2tlb_type == req_type_bits)
-          && (ptw_probe_vif.mon_cb.ptw_l2tlb_id == id[5:0])) begin
+          && (ptw_probe_vif.mon_cb.ptw_l2tlb_id == target_ptw_id)) begin
         completed = 1'b1;
-        ptw_meta_add_context($sformatf("%s: target_req_completed cycle_offset=%0d no_pde_direct_accerr=1",
-          scenario_id, cycle));
+        ptw_meta_add_context($sformatf("%s: target_req_completed cycle_offset=%0d no_pde_direct_accerr=1 source_id=0x%02h ptw_id=0x%02h",
+          scenario_id, cycle, source_id_bits, target_ptw_id));
         break;
       end
     end
 
     if (!accepted) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: target req was not accepted within %0d cycles type=%s id=0x%02h vpn=0x%07h",
-          scenario_id, max_cycles, ptw_src_type_name(req_type), id[5:0], vpn))
+        $sformatf("%s: target req was not accepted within %0d cycles type=%s vpn=0x%07h source_id=0x%02h saw_any_accept=%0b last_accept={type=0x%0h id=0x%02h vpn=0x%07h}",
+          scenario_id, max_cycles, ptw_src_type_name(req_type), vpn,
+          source_id_bits, saw_any_accept, last_accept_type, last_accept_id,
+          last_accept_vpn))
     end else if (!completed) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: target req accepted but did not complete within %0d cycles type=%s id=0x%02h vpn=0x%07h",
-          scenario_id, max_cycles, ptw_src_type_name(req_type), id[5:0], vpn))
+        $sformatf("%s: target req accepted but did not complete within %0d cycles type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
+          scenario_id, max_cycles, ptw_src_type_name(req_type), vpn,
+          source_id_bits, target_ptw_id))
     end
   endtask
 
   protected task stage9_wait_for_ptw_mem_accept(
     input string       scenario_id,
-    input int unsigned max_cycles = 128
+    input int unsigned max_cycles = 128,
+    input pa_t         target_addr = '0,
+    input bit          match_addr = 1'b0
   );
     bit seen;
+    bit saw_req;
+    pa_t last_addr;
+    logic [8:0] last_grant;
 
     if (ptw_probe_vif == null) begin
       `uvm_error(get_type_name(),
@@ -375,10 +427,20 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     end
 
     seen = 1'b0;
+    saw_req = 1'b0;
+    last_addr = '0;
+    last_grant = '0;
     for (int unsigned cycle = 0; cycle < max_cycles; cycle++) begin
       @(ptw_probe_vif.mon_cb);
+      if (ptw_probe_vif.mon_cb.ptw_lsu_data_req === 1'b1) begin
+        last_addr = ptw_probe_vif.mon_cb.ptw_lsu_data_req_addr;
+        last_grant = ptw_probe_vif.mon_cb.ptw_lsu_data_req_grant;
+        if (!match_addr || (ptw_probe_vif.mon_cb.ptw_lsu_data_req_addr == target_addr))
+          saw_req = 1'b1;
+      end
       if ((ptw_probe_vif.mon_cb.ptw_lsu_data_req === 1'b1)
-          && (|ptw_probe_vif.mon_cb.ptw_lsu_data_req_grant)) begin
+          && (|ptw_probe_vif.mon_cb.ptw_lsu_data_req_grant)
+          && (!match_addr || (ptw_probe_vif.mon_cb.ptw_lsu_data_req_addr == target_addr))) begin
         seen = 1'b1;
         ptw_meta_add_context($sformatf("%s: ptw_mem_accept cycle_offset=%0d addr=0x%010h grant=0x%0h",
           scenario_id, cycle,
@@ -390,8 +452,9 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
 
     if (!seen) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: PTW memory accept not observed within %0d cycles",
-          scenario_id, max_cycles))
+        $sformatf("%s: PTW memory accept not observed within %0d cycles match_addr=%0b target_addr=0x%010h saw_req=%0b last_req={addr=0x%010h grant=0x%0h}",
+          scenario_id, max_cycles, match_addr, target_addr, saw_req,
+          last_addr, last_grant))
     end
   endtask
 
@@ -452,29 +515,33 @@ class test_ptw_pde_accerr_priority_type_id_001 extends ptw_pde_pmpflg_stage9_bas
       .fst_nonleaf(bus_fst_nonleaf), .scd_nonleaf(bus_scd_nonleaf),
       .thd_leaf(bus_thd_leaf), .kind("stage9_accerr_priority_buserr_pressure"),
       .r(1), .w(1), .x(1),
-      .meta_req_type(PTW_SRC_TYPE_FETCH), .meta_id(6'h00));
+      .meta_req_type(PTW_SRC_TYPE_LOAD), .meta_id(6'h2b));
     if (!ptw_get_pte_addr_for_level(bus_va, 2, bus_fst_pte_pa))
       `uvm_fatal(get_type_name(), "stage9_accerr_priority bus pressure FST pte addr lookup failed")
 
-    ptw_meta_add_context("locked R-only L2 entry is primed by LOAD; later STORE must return PDE direct access fault with original type/id even while independent FETCH PTW memory bus-error pressure is active");
+    ptw_meta_add_context("locked R-only L2 entry is primed by LOAD; later STORE must return PDE direct access fault with original type/id while independent LSU pipe1 LOAD PTW memory bus-error pressure is active");
     ptw_prime_l2_pde_cache_with_type(PTW_SRC_TYPE_LOAD, prime_va, fst_nonleaf,
       scd_nonleaf, locked_r_pmpflg, locked_r_pmpflg, 6'h2a);
 
     ptw_mem_delay_by_addr(bus_fst_pte_pa, 24);
     ptw_mem_bus_error_by_addr(bus_fst_pte_pa);
-    ptw_meta_set_expected("STORE tag-matches the locked R-only L2 PDE entry and must produce PDE_CACHE_PMP_DENY access fault with type=STORE id=0x2c; concurrent delayed FETCH bus-error pressure is present for PTW-SVA-ARB-010 priority cover");
+    ptw_meta_set_expected("STORE tag-matches the locked R-only L2 PDE entry and must produce PDE_CACHE_PMP_DENY access fault with type=STORE; the returned PTW id must match the accepted composite PTW id for the target VPN; concurrent delayed LSU pipe1 LOAD bus-error pressure is present for PTW-SVA-ARB-010 priority cover");
 
     fork
       begin
-        ptw_drive_source_req_by_type(PTW_SRC_TYPE_FETCH, bus_va, 6'h00);
+        ptw_meta_add_context($sformatf("drive_source_req_by_type type=load id=%0d va=0x%010h idle=0 pipe=LSU_PIPE1",
+          6'h2b, bus_va));
+        ptw_drive_lsu(.va(bus_va), .id(6'h2b), .is_store(1'b0),
+          .abort(1'b0), .kind(LSU_PIPE1));
       end
       begin
-        stage9_wait_for_ptw_mem_accept("stage9_pde_accerr_priority_buserr_accept", 128);
+        stage9_wait_for_ptw_mem_accept("stage9_pde_accerr_priority_buserr_accept",
+          256, bus_fst_pte_pa, 1'b1);
         stage8_wait_cycles(20);
         fork
           begin
             stage9_wait_for_pde_accerr("stage9_pde_accerr_priority_type_id",
-              PTW_SRC_TYPE_STORE, 6'h2c, 192);
+              PTW_SRC_TYPE_STORE, 6'h2c, deny_va[38:12], 192);
           end
           begin
             ptw_drive_source_req_by_type(PTW_SRC_TYPE_STORE, deny_va, 6'h2c);
@@ -489,7 +556,7 @@ class test_ptw_pde_accerr_priority_type_id_001 extends ptw_pde_pmpflg_stage9_bas
     ptw_meta_print();
     stage9_close("PTW-ADD-042,PDE-TP-017",
       "stage9_pde_accerr_priority_type_id",
-      "directed STORE L2 cached-pmpflg deny checks PDE direct-accerr type/id stability and grant; independent PTW bus-error pressure is driven for priority SVA cover");
+      "directed STORE L2 cached-pmpflg deny checks PDE direct-accerr type/id stability and grant using the target accepted composite PTW id; independent LSU pipe1 PTW bus-error pressure is driven for priority SVA cover");
     stage9_summary();
     #200ns;
   endtask

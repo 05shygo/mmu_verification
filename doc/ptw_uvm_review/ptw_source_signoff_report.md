@@ -1,17 +1,20 @@
 # PTW Source Signoff Report
 
 PTW_STAGE8_SIGNOFF_REPORT version=1 frozen=1 date=2026-05-15
+PTW_STAGE10_SIGNOFF_REPORT version=2 frozen=1 date=2026-05-18
 
-This is the Stage 8 frozen regression/signoff package for PTW source-side
-verification.  `ptwspec.md` remains the functional truth; this report freezes
-the runnable lists, parser/gate, closure matrix, consumer-only separation, and
-open/waiver register.
+This is the Stage 10 frozen regression/signoff package for PTW source-side
+verification, including the PDE-cache pmpflg Stage 8/9 tests. `ptwspec.md`
+remains the functional truth; this report freezes the runnable lists,
+parser/gate, closure matrix, consumer-only separation, and open/waiver
+register.
 
 ## Regression Lists
 
 PTW_SIGNOFF_REGRESSION_LIST role=p0_smoke path=mmu_verification/simu/ptw_p0_smoke_list seed=606 source_closure=1
 PTW_SIGNOFF_REGRESSION_LIST role=p0_full path=mmu_verification/simu/ptw_p0_list seed=606 source_closure=1
 PTW_SIGNOFF_REGRESSION_LIST role=p1_directed path=mmu_verification/simu/ptw_p1_list seed=707 source_closure=1
+PTW_SIGNOFF_REGRESSION_LIST role=pde_pmpflg path=mmu_verification/simu/ptw_pde_pmpflg_list seed=606,707 source_closure=1
 PTW_SIGNOFF_REGRESSION_LIST role=p2_illegal path=mmu_verification/simu/ptw_p2_illegal_list seed=707 source_closure=0 illegal_constraint=1
 PTW_SIGNOFF_REGRESSION_LIST role=random_stress path=mmu_verification/simu/ptw_random_list seed=707 source_closure=1
 PTW_SIGNOFF_REGRESSION_LIST role=consumer_only path=mmu_verification/simu/ptw_consumer_evidence_list seed=707 source_closure=0
@@ -21,6 +24,7 @@ PTW_SIGNOFF_REGRESSION_LIST role=consumer_only path=mmu_verification/simu/ptw_co
 | P0 smoke | `mmu_verification/simu/ptw_p0_smoke_list` | Fast source-side sanity; not a replacement for P0 full. |
 | P0 full | `mmu_verification/simu/ptw_p0_list` | Required P0 source closure gate. |
 | P1 directed | `mmu_verification/simu/ptw_p1_list` | Stage 7 precision/context evidence. |
+| PDE pmpflg | `mmu_verification/simu/ptw_pde_pmpflg_list` | Stage 8/9 PDE cached-pmpflg signoff list; explicit open/unreachable tests are allowed only with marker records. |
 | P2/illegal | `mmu_verification/simu/ptw_p2_illegal_list` | Constraint evidence only; illegal stimulus must be blocked/classified. |
 | Random/stress | `mmu_verification/simu/ptw_random_list` | Stage 7 randomized field/context stress. |
 | Consumer-only | `mmu_verification/simu/ptw_consumer_evidence_list` | Downstream L1/L2 consumption evidence only. |
@@ -32,21 +36,23 @@ PTW_SIGNOFF_CLOSURE_MATRIX frozen=1 path=mmu_verification/simu/ptw_source_closur
 PTW_SIGNOFF_NO_GLOBAL_WAIVER critical_fields=flg,page_size,ppn,fault_kind,target
 PTW_SIGNOFF_CONSUMER_ONLY source_closure=0 evidence=auxiliary
 PTW_SIGNOFF_OBSOLETE_FREEZE tests=test_xbar_twu_round_robin;test_pte_reserved_bits;test_mbuf_ooo_response action=not_counted_as_ptw_closure status=obsolete-by-spec
+PTW_SIGNOFF_PDE_PMPFLG ids=PTW-ADD-037..045,PDE-TP-013..019,PTW-FLOW-024..028 list=mmu_verification/simu/ptw_pde_pmpflg_list gate=stage10
 
-The Stage 8 gate validates clean P0 source scoreboard summaries, P0 SVA cover
-hits, P1/P2/random status markers, closure CSV integrity, report markers, and
-per-item open records.  No waiver in this report covers source `flg`,
-`page_size`, `ppn`, `fault_kind`, or `target` mismatches.
+The Stage 10 gate validates clean P0 source scoreboard summaries, P0 SVA cover
+hits, Stage 8/9 PDE pmpflg coverage banners, `no_extra_lsu`, required
+`PTW-SVA-PDE/ARB` cover hits, P1/P2/random status markers, closure CSV
+integrity, report markers, and per-item open records. No waiver in this report
+covers source `flg`, `page_size`, `ppn`, `fault_kind`, or `target` mismatches.
 
 ## Closure Summary
 
 | Family | Total | Closed/implemented | Open/partial | Consumer-only |
 | --- | ---: | ---: | ---: | ---: |
 | PTW-AUD | 23 | 0 | 22 | 1 |
-| PTW-ADD | 36 | 24 | 11 | 1 |
-| PTW-FLOW | 23 | 15 | 8 | 0 |
+| PTW-ADD | 45 | 29 | 15 | 1 |
+| PTW-FLOW | 28 | 17 | 11 | 0 |
 | PTW-INFRA | 9 | 4 | 5 | 0 |
-| PDE-TP | 12 | 0 | 12 | 0 |
+| PDE-TP | 19 | 4 | 15 | 0 |
 | MBUF-TP | 12 | 0 | 12 | 0 |
 | MAEE-TP | 13 | 2 | 11 | 0 |
 
@@ -82,6 +88,11 @@ waivers and do not hide source failures.
 | PTW-FLOW-021 | closed: PFU exception source target. |
 | PTW-FLOW-022 | partial: SATP old-walk covered; PMP update clear remains top/probe gap. |
 | PTW-FLOW-023 | closed-consumer-only: load/store/PFU MPRV=1 MPP=M direct-map/no PTW source; fetch remains real-privilege. |
+| PTW-FLOW-024 | closed: L1 cached pmpflg tag-deny miss falls back to FST/TWU path. |
+| PTW-FLOW-025 | partial: L2 cached L1 deny direct-accerr and no-extra-LSU evidence exists; exact independent FST/SCD PMP assignment remains limited by flag-only PMP agent. |
+| PTW-FLOW-026 | open-unreachable: old `MPRV=1/MPP=M` data construction is no longer legal PTW source traffic; exact L2-only deny needs lower-level evidence. |
+| PTW-FLOW-027 | closed: cached pmpflg allow reuse covers load/PFU R, fetch X, and store W. |
+| PTW-FLOW-028 | open-unreachable: data/PFU effective-M bypass/lock matrix is not top-source reachable; fetch ignores MPRV/MPP. |
 
 ## Waiver Register
 
@@ -105,6 +116,10 @@ PTW_SIGNOFF_OPEN id=PTW-ADD-027 owner=mmu_verification/testbench/test/ptw_tests/
 PTW_SIGNOFF_OPEN id=PTW-ADD-028 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh reason=dedicated_2m_cross_degrade_evidence_missing next=add_2m_no_cross_to_4k_directed_matrix
 PTW_SIGNOFF_OPEN id=PTW-ADD-029 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh reason=sysmap_flag_order_default_partial next=add_valid_region_flag_order_and_malformed_constraint_report
 PTW_SIGNOFF_OPEN id=PTW-ADD-030 owner=mmu_verification/testbench/env/ptw_source_ref_model.svh reason=mxr_sum_same_cycle_sampling_best_effort next=add_same_cycle_context_ordering_sva_or_directed_constraint
+PTW_SIGNOFF_OPEN id=PTW-ADD-039 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l1_deny_accerr_001.svh reason=flag_only_pmp_agent_cannot_independently_assign_fst_scd_pmpflg next=add_lower_level_or_agent_support_for_independent_l1_l2_cached_pmpflg
+PTW_SIGNOFF_OPEN id=PTW-ADD-040 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh reason=mprv1_mppm_data_no_longer_enters_ptw_source next=add_legal_lower_level_l2_only_cached_pmpflg_deny_evidence
+PTW_SIGNOFF_OPEN id=PTW-ADD-043 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_mmode_lock_matrix_001.svh reason=data_pfu_effective_m_top_source_unreachable_fetch_ignores_mprv_mpp next=add_lower_level_pde_cache_or_rtl_unit_lock_bypass_matrix
+PTW_SIGNOFF_OPEN id=PTW-ADD-045 owner=mmu_verification/testbench/top/tb_top.sv reason=pmp_regs_update_tied_off_so_exact_pmp_update_clear_not_proven next=connect_pmp_regs_update_or_add_equivalent_whitebox_drive
 PTW_SIGNOFF_OPEN id=PTW-FLOW-004 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh reason=1g_to_2m_degrade_directed_evidence_missing next=add_maee0_1g_to_2m_cross_directed
 PTW_SIGNOFF_OPEN id=PTW-FLOW-005 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh reason=1g_to_4k_degrade_directed_evidence_missing next=add_maee0_1g_to_4k_cross_directed
 PTW_SIGNOFF_OPEN id=PTW-FLOW-006 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh reason=2m_to_4k_degrade_directed_evidence_missing next=add_maee0_2m_to_4k_cross_directed
@@ -113,6 +128,9 @@ PTW_SIGNOFF_OPEN id=PTW-FLOW-010 owner=mmu_verification/testbench/test/ptw_tests
 PTW_SIGNOFF_OPEN id=PTW-FLOW-011 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_stage7_suite.svh reason=thd_pmp_deny_vector_missing next=add_third_level_pte_pa_pmp_deny_test
 PTW_SIGNOFF_OPEN id=PTW-FLOW-019 owner=mmu_verification/testbench/env/ptw_source_sb.svh reason=abort_outstanding_full_matrix_missing next=add_late_data_abort_bus_error_old_exception_drop_matrix
 PTW_SIGNOFF_OPEN id=PTW-FLOW-022 owner=mmu_verification/testbench/top/tb_top.sv reason=pmp_update_clear_probe_gap next=connect_pmp_regs_update_and_run_clear_only_no_flush_test
+PTW_SIGNOFF_OPEN id=PTW-FLOW-025 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l1_deny_accerr_001.svh reason=flag_only_pmp_agent_limits_exact_l1_l2_independent_pmpflg_evidence next=add_independent_l1_l2_page_table_pmpflg_stimulus
+PTW_SIGNOFF_OPEN id=PTW-FLOW-026 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh reason=top_source_l2_only_deny_unreachable_under_corrected_mprv_rule next=add_lower_level_l2_only_direct_accerr_evidence
+PTW_SIGNOFF_OPEN id=PTW-FLOW-028 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_mmode_lock_matrix_001.svh reason=effective_m_data_pfu_top_source_unreachable_under_corrected_mprv_rule next=add_lower_level_pde_cache_effective_m_lock_bypass_evidence
 PTW_SIGNOFF_OPEN id=PTW-INFRA-004 owner=mmu_verification/testbench/top/mmu_pde_cache_sva.sv reason=pde_subitems_remain_open next=bind_missing_pde_hit_update_clear_victim_covers
 PTW_SIGNOFF_OPEN id=PTW-INFRA-005 owner=mmu_verification/testbench/top/mmu_ptw_lsu_protocol_sva.sv reason=mbuf_subitems_remain_open next=bind_missing_mbuf_single_outstanding_abort_bus_error_covers
 PTW_SIGNOFF_OPEN id=PTW-INFRA-006 owner=mmu_verification/testbench/top/mmu_pmp_twu_sva.sv reason=pmp_twu_chk_subitems_remain_open next=bind_level_type_no_side_effect_covers
@@ -130,6 +148,9 @@ PTW_SIGNOFF_OPEN id=PDE-TP-009 owner=mmu_verification/testbench/top/mmu_pde_cach
 PTW_SIGNOFF_OPEN id=PDE-TP-010 owner=mmu_verification/testbench/top/tb_top.sv reason=pmp_update_clear_probe_gap next=connect_pmp_regs_update_probe
 PTW_SIGNOFF_OPEN id=PDE-TP-011 owner=mmu_verification/testbench/top/mmu_pde_cache_sva.sv reason=reset_abort_flush_cover_open next=add_reset_abort_flush_cover
 PTW_SIGNOFF_OPEN id=PDE-TP-012 owner=mmu_verification/testbench/top/mmu_pde_cache_sva.sv reason=plru_victim_directed_test_open next=add_pde_plru_victim_test
+PTW_SIGNOFF_OPEN id=PDE-TP-014 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l1_deny_accerr_001.svh reason=flag_only_pmp_agent_limits_exact_l1_deny_construction next=add_independent_l1_l2_cached_pmpflg_stimulus
+PTW_SIGNOFF_OPEN id=PDE-TP-015 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh reason=top_source_l2_only_deny_unreachable_under_corrected_mprv_rule next=add_lower_level_l2_only_cached_pmpflg_deny_test
+PTW_SIGNOFF_OPEN id=PDE-TP-018 owner=mmu_verification/testbench/test/ptw_tests/test_ptw_pde_mmode_lock_matrix_001.svh reason=effective_m_bit3_matrix_not_top_source_reachable next=add_lower_level_pde_cache_or_rtl_unit_evidence
 PTW_SIGNOFF_OPEN id=MBUF-TP-001 owner=mmu_verification/testbench/top/mmu_ptw_lsu_protocol_sva.sv reason=iutlb_entry8_allocation_cover_open next=add_entry8_alloc_cover
 PTW_SIGNOFF_OPEN id=MBUF-TP-002 owner=mmu_verification/testbench/top/mmu_ptw_lsu_protocol_sva.sv reason=dtlb_pfu_entry0_7_allocation_cover_open next=add_entry0_7_alloc_cover
 PTW_SIGNOFF_OPEN id=MBUF-TP-003 owner=mmu_verification/testbench/top/mmu_ptw_lsu_protocol_sva.sv reason=req_valid_pa_stable_cover_open next=add_req_pa_stable_cover
@@ -171,6 +192,7 @@ effects, but cannot close PTW source-side PTE/PMP/PDE/MAEE/MBUF/abort rules.
 | LSU bus error | Bus error is reported as visible access fault; legal responder drives `lsu_mmu_data_vld` and bus-error together for bus-error response beats. |
 | SysMap mirror | PTW source model uses RTL compile-time SysMap macros/fallback constants unless a real whitebox force path is connected. |
 | PFU MPRV/MPP=M | Corrected spec requires PFU direct-map and no PTW source; such cases are consumer-only, and observing a PTW source accept is illegal/unexpected. |
+| Data MPRV/MPP=M | Corrected spec requires load/store direct-map VA=PA and no PTW source; this makes old top-level `PTW-ADD-040/043` data constructions unreachable. |
 | SATP switch | Process switch must be followed by ASID tlboper invalidation/abort; pre-switch PTW accept is optional debug evidence. |
 | TWU vs L1TLB permission | TWU MXR relaxes source refill eligibility for R=0,W=1,X=1,MXR=1; L1TLB hit permission remains stricter and can fault. |
 | MAEE=0 degrade | Source model distinguishes installed huge-page entry PPN from final translated PPN expansion and records dedicated degrade tests still open. |
@@ -182,12 +204,16 @@ python3 mmu_verification/scripts/ptw_stage8_signoff_gate.py \
   --p0-smoke-list mmu_verification/simu/ptw_p0_smoke_list \
   --p0-list mmu_verification/simu/ptw_p0_list \
   --p1-list mmu_verification/simu/ptw_p1_list \
+  --pde-pmpflg-list mmu_verification/simu/ptw_pde_pmpflg_list \
   --p2-list mmu_verification/simu/ptw_p2_illegal_list \
   --random-list mmu_verification/simu/ptw_random_list \
   --consumer-list mmu_verification/simu/ptw_consumer_evidence_list \
   --log-dir mmu_verification/output/logs \
   --p0-seed 606 \
+  --p1-seed 606 \
   --stage7-seed 707 \
+  --pde-pmpflg-seed 606 \
+  --pde-pmpflg-seed 707 \
   --consumer-seed 707 \
   --csv mmu_verification/simu/ptw_source_closure_matrix.csv \
   --report doc/ptw_uvm_review/ptw_source_signoff_report.md \

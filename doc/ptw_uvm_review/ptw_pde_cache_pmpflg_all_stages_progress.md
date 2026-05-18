@@ -443,7 +443,46 @@ Stage 9 debug 更新：
 | `PDE-TP-013..016`、`PTW-FLOW-024..027`、`PTW-ADD-037..041` directed tests 已实现，run log/source-SB/SVA cover 证据待收集；`PTW-ADD-039/040` 保留 partial evidence 限制说明 | 阶段 8/10 |
 | `PDE-TP-017..019`、`PTW-FLOW-028`、`PTW-ADD-042..045` directed tests 已实现，run log/source-SB/SVA cover 证据待收集；`PTW-ADD-045` 保留 pmp_regs_update tie-off 限制说明 | 阶段 9/10 |
 | `pmp_regs_update` testbench tie-off 未处理 | 后续涉及 PMP config clear/repopulate 的阶段 |
-| Regression/signoff list、CSV、gate、报告尚未冻结 | 阶段 10 |
+| Regression/signoff list、CSV、gate、报告冻结 | 阶段 10 done |
+
+## 阶段 10 完成记录
+
+```text
+PMPFLG_STAGE_DONE stage=10 name=regression_closure_matrix_signoff_gate
+  status=done
+  changed_files=[
+    mmu_verification/simu/ptw_p0_smoke_list,
+    mmu_verification/simu/ptw_p0_list,
+    mmu_verification/simu/ptw_source_closure_matrix.csv,
+    mmu_verification/scripts/ptw_stage8_signoff_gate.py,
+    doc/ptw_uvm_review/ptw_source_closure_matrix.md,
+    doc/ptw_uvm_review/ptw_source_signoff_report.md,
+    doc/ptw_uvm_review/ptw_implementation_process.md,
+    doc/ptw_uvm_review/ptw_pde_cache_pmpflg_all_stages_progress.md
+  ]
+  scope_guard=[
+    no new functional tests,
+    no ref model or scoreboard behavior changes,
+    no SVA behavior changes,
+    no RTL changes
+  ]
+  closure_delta=[
+    ptw_p0_smoke_list adds representative pde-pmpflg tests,
+    ptw_p0_list adds Stage8 P0 pde-pmpflg tests and explicit open marker tests,
+    ptw_source_closure_matrix.csv now contains PTW-ADD-037..045,
+    ptw_source_closure_matrix.csv now contains PDE-TP-013..019,
+    ptw_source_closure_matrix.csv now contains PTW-FLOW-024..028,
+    ptw_stage8_signoff_gate.py now acts as Stage10 gate for pde-pmpflg list,
+    gate checks PTW_SOURCE_SB_PDE_PMP_COVERAGE, no_extra_lsu, required PTW-SVA-PDE/ARB cover hits, and explicit open/partial records,
+    signoff report records Stage10 open/partial limitations and final commands
+  ]
+  open_items=[
+    PTW-ADD-040/PDE-TP-015/PTW-FLOW-026 open-unreachable from top-level source because data/PFU MPRV=1 MPP=M direct-map and do not enter PTW,
+    PTW-ADD-043/PDE-TP-018/PTW-FLOW-028 open-unreachable from top-level source because fetch ignores MPRV/MPP and data/PFU do not enter PTW,
+    PTW-ADD-039/PDE-TP-014/PTW-FLOW-025 partial due current flag-only PMP agent limitation,
+    PTW-ADD-045 partial because exact pmp_regs_update clear remains tied off in tb_top
+  ]
+```
 
 ## 已执行检查汇总
 

@@ -17,6 +17,7 @@ boundaries and exit criteria.
 | 6 | P0 Directed Tests and Legacy Conflict Fixes | done | passed | User confirmed stage-6 task and exit-standard checks passed after PFU direct-map and MAEE=0 SysMap refill debug updates. |
 | 7 | Reference/Scoreboard Complete P1/P2 Random Stress | done | passed | User confirmed stage-7 task and exit-standard checks passed after SATP old-walk, TWU/L1TLB permission, and MAEE=0 huge-page cross debug updates. |
 | 8 | Regression, Report, Signoff Freeze | done | passed | User confirmed stage-8 task and exit-standard checks passed after source active-key, L1DTLB PGFLT replay, and signoff-gate Python compatibility debug updates. |
+| 10 | PDE pmpflg Regression, Closure Matrix and Signoff Gate Freeze | done | pending-user-run | Stage10 list/CSV/gate/report/process files updated; pde-pmpflg signoff regressions must be run in the normal make/VCS environment. |
 
 ## Stage 0 Completion Record
 
@@ -817,4 +818,85 @@ git diff --check -- \
   mmu_verification/scripts/ptw_stage8_signoff_gate.py \
   doc/ptw_uvm_review/ptw_source_signoff_report.md \
   doc/ptw_uvm_review/ptw_implementation_process.md
+```
+
+## Stage 10 Implementation Record
+
+```text
+PTW_STAGE_DONE stage=10 name=PDE PMPFLG Regression Closure Matrix Signoff Gate Freeze
+  status=done
+  exit_criteria=pending_user_regression
+  changed_files=[
+    mmu_verification/simu/ptw_p0_smoke_list,
+    mmu_verification/simu/ptw_p0_list,
+    mmu_verification/simu/ptw_source_closure_matrix.csv,
+    mmu_verification/scripts/ptw_stage8_signoff_gate.py,
+    doc/ptw_uvm_review/ptw_source_closure_matrix.md,
+    doc/ptw_uvm_review/ptw_source_signoff_report.md,
+    doc/ptw_uvm_review/ptw_implementation_process.md,
+    doc/ptw_uvm_review/ptw_pde_cache_pmpflg_all_stages_progress.md
+  ]
+  implementation_notes=[
+    final pde-pmpflg directed list was already complete from Stage8/9 and is now gate-checked as a dedicated role,
+    p0_smoke_list now includes representative pde-pmpflg L1 deny and valid-gate tests,
+    p0_list now includes Stage8 P0 pde-pmpflg tests plus explicit open/unreachable marker tests,
+    p1_list already includes priority and clear/repopulate Stage9 tests,
+    closure CSV now requires PTW-ADD-037..045, PDE-TP-013..019, and PTW-FLOW-024..028,
+    signoff gate now checks PTW_SOURCE_SB_PDE_PMP_COVERAGE, required PTW-SVA-PDE/ARB cover hits, no_extra_lsu, and explicit open/partial markers,
+    no new functional tests, ref model, scoreboard, SVA behavior, or RTL were changed in Stage10
+  ]
+  open_items=[
+    PTW-ADD-040/PDE-TP-015/PTW-FLOW-026 remain open-unreachable from top-level source traffic because data/PFU MPRV=1 MPP=M direct-map and do not enter PTW,
+    PTW-ADD-043/PDE-TP-018/PTW-FLOW-028 remain open-unreachable from top-level source traffic because fetch ignores MPRV/MPP and data/PFU do not enter PTW,
+    PTW-ADD-039/PDE-TP-014/PTW-FLOW-025 remain partial because the current flag-only PMP agent cannot independently assign FST and SCD page-table pmpflg in a normal full walk,
+    PTW-ADD-045 remains partial for exact PMP-config-update clear because pmp_regs_update is tied off in tb_top
+  ]
+  local_checks=[
+    CSV structural and required-id check passed in PowerShell,
+    python/python3 local execution blocked by WindowsApps logon-session issue,
+    make not run locally; run exit regressions in normal VCS environment
+  ]
+  environment_notes=[
+    local PowerShell may not have make; run the listed Stage10 exit commands in the normal regression environment
+  ]
+```
+
+## Stage 10 Exit Commands
+
+```bash
+make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=ptw_pde_pmpflg_signoff REGRESS_SEEDS="606 707" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+make regress LIST=simu/ptw_p0_smoke_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_smoke_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+make regress LIST=simu/ptw_p0_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+make regress LIST=simu/ptw_p1_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p1_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+
+python3 mmu_verification/scripts/ptw_stage8_signoff_gate.py \
+  --p0-smoke-list mmu_verification/simu/ptw_p0_smoke_list \
+  --p0-list mmu_verification/simu/ptw_p0_list \
+  --p1-list mmu_verification/simu/ptw_p1_list \
+  --pde-pmpflg-list mmu_verification/simu/ptw_pde_pmpflg_list \
+  --p2-list mmu_verification/simu/ptw_p2_illegal_list \
+  --random-list mmu_verification/simu/ptw_random_list \
+  --consumer-list mmu_verification/simu/ptw_consumer_evidence_list \
+  --log-dir mmu_verification/output/logs \
+  --p0-seed 606 \
+  --p1-seed 606 \
+  --stage7-seed 707 \
+  --pde-pmpflg-seed 606 \
+  --pde-pmpflg-seed 707 \
+  --consumer-seed 707 \
+  --csv mmu_verification/simu/ptw_source_closure_matrix.csv \
+  --report doc/ptw_uvm_review/ptw_source_signoff_report.md \
+  --legacy doc/ptw_uvm_review/ptw_legacy_test_action_list.md
+
+git diff --check -- \
+  mmu_verification/simu/ptw_p0_smoke_list \
+  mmu_verification/simu/ptw_p0_list \
+  mmu_verification/simu/ptw_p1_list \
+  mmu_verification/simu/ptw_pde_pmpflg_list \
+  mmu_verification/simu/ptw_source_closure_matrix.csv \
+  mmu_verification/scripts/ptw_stage8_signoff_gate.py \
+  doc/ptw_uvm_review/ptw_source_closure_matrix.md \
+  doc/ptw_uvm_review/ptw_source_signoff_report.md \
+  doc/ptw_uvm_review/ptw_implementation_process.md \
+  doc/ptw_uvm_review/ptw_pde_cache_pmpflg_all_stages_progress.md
 ```

@@ -818,6 +818,18 @@ python3 scripts/ptw_stage8_signoff_gate.py \
   --p0-list simu/ptw_p0_list \
   --p1-list simu/ptw_p1_list \
   --pde-pmpflg-list simu/ptw_pde_pmpflg_list \
+  --p2-list simu/ptw_p2_illegal_list \
+  --random-list simu/ptw_random_list \
+  --consumer-list simu/ptw_consumer_evidence_list \
+  --log-dir output/logs \
+  --p0-seed 606 \
+  --p1-seed 606 \
+  --stage7-seed 707 \
+  --pde-pmpflg-seed 606 \
+  --pde-pmpflg-seed 707 \
+  --consumer-seed 707 \
+  --csv simu/ptw_source_closure_matrix.csv \
+  --report ../doc/ptw_uvm_review/ptw_source_signoff_report.md \
   --legacy ../doc/ptw_uvm_review/ptw_legacy_test_action_list.md
 ```
 

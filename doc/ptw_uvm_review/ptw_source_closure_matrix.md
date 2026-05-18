@@ -1,6 +1,10 @@
-# PTW Source Closure Matrix - Stage 0 Baseline
+# PTW Source Closure Matrix - Stage 10 Frozen Baseline
 
-This file is the stage-0 closure baseline for the PTW source-side work. It freezes the mapping from `ptwspec.md` to verification IDs and records how legacy PTW-related tests may or may not be used as evidence.
+This file began as the stage-0 closure baseline for the PTW source-side work.
+Stage 10 now freezes the additional PDE-cache pmpflg mapping from
+`ptw_pde_cache_pmpflg_design_change.md`. The machine-readable source remains
+`mmu_verification/simu/ptw_source_closure_matrix.csv`; this file records the
+manual review summary and the rules that must not be lost during signoff.
 
 Authoritative inputs:
 
@@ -10,6 +14,7 @@ Authoritative inputs:
 | `doc/ptw_uvm_review/ptw_phase1_test_sva_implementation_plan.md` | Detailed task library for tests, SVA, source model, monitor, and scoreboard. |
 | `doc/ptw_uvm_review/ptw_staged_implementation_plan.md` | Stage boundary and exit criteria. This file only implements stage 0. |
 | `doc/MMU_Traceability_Matrix.csv` and current UVM tests | Legacy mapping input only. They do not override `ptwspec.md`. |
+| `doc/ptw_uvm_review/ptw_pde_cache_pmpflg_design_change.md` | Frozen PDE-cache pmpflg behavior and corrected MPRV/source reachability. |
 
 ## Stage-0 Terms
 
@@ -66,6 +71,28 @@ Stage-0 status is intentionally `open` for source evidence. The closure point is
 | `PTW-AUD-021` | Context sampling points for ASID, MXR, SUM, privilege, MPRV/MPP, and MAEE. | `PTW-ADD-030`, `PTW-FLOW-023`, `MAEE-TP-012` | Context sample transaction with cycle ordering; `PTW-SVA-ARB-009`, `PTW-SVA-CTX-006`. | Hot-switch tests are provisional until ordering is represented in source ref/sb. | open |
 | `PTW-AUD-022` | The 23 full PTW flows in `ptwspec.md` chapter 12. | `PTW-ADD-031`, `PTW-FLOW-001..023` | Each flow needs source sb match/drop and at least one source SVA/cover hit. | No legacy full-flow row closes this alone; build dedicated flow closure in later stages. | open |
 | `PTW-AUD-023` | L1DTLB consumer-side evidence for PTW outputs. | `PTW-ADD-032` | Source target compare remains required; L1DTLB/L1ITLB/L2TLB checks are auxiliary. | L1DTLB tests may be referenced as `consumer-only`, never as PTE/PMP/PDE/MAEE source closure. | consumer-only auxiliary |
+
+## Stage-10 PDE PMPFLG Closure Addendum
+
+The following rows are frozen in
+`mmu_verification/simu/ptw_source_closure_matrix.csv` and are checked by
+`mmu_verification/scripts/ptw_stage8_signoff_gate.py`.
+
+| ID | Test | Source/SVA evidence | Stage-10 status |
+| --- | --- | --- | --- |
+| `PTW-ADD-037` / `PDE-TP-013` / `PTW-FLOW-024` | `test_ptw_pde_l1_pmp_tag_deny_fst_fault_001` | `PTW_SOURCE_SB_PDE_PMP_COVERAGE.l1_deny_miss`, `PTW-SVA-PDE-011` | closed after pde-pmpflg list pass |
+| `PTW-ADD-038` / `PTW-FLOW-027` | `test_ptw_pde_l1_pmp_tag_allow_reuse_001` | `l1_allow`, `PTW-SVA-PDE-011` | closed after pde-pmpflg list pass |
+| `PTW-ADD-039` / `PDE-TP-014` / `PTW-FLOW-025` | `test_ptw_pde_l2_pmp_l1_deny_accerr_001` | direct accerr, `no_extra_lsu`, `PTW-SVA-PDE-012/013/016` | partial; flag-only PMP agent limits independent FST/SCD pmpflg construction |
+| `PTW-ADD-040` / `PDE-TP-015` / `PTW-FLOW-026` | `test_ptw_pde_l2_pmp_l2_deny_accerr_001` | explicit open/unreachable marker only | open; corrected `MPRV=1 && MPP=M` data source does not enter PTW |
+| `PTW-ADD-041` / `PDE-TP-016` | `test_ptw_pde_pmpflg_propagation_update_001` | `update_l1/update_l2`, `PTW-SVA-PDE-015` | closed after pde-pmpflg list pass |
+| `PTW-ADD-042` / `PDE-TP-017` | `test_ptw_pde_accerr_priority_type_id_001` | direct accerr type/id, `PTW-SVA-PDE-017`, `PTW-SVA-ARB-010` | closed after pde-pmpflg list pass |
+| `PTW-ADD-043` / `PDE-TP-018` / `PTW-FLOW-028` | `test_ptw_pde_mmode_lock_matrix_001` | explicit open/unreachable marker only | open; data/PFU effective-M source is direct-map and fetch ignores MPRV/MPP |
+| `PTW-ADD-044` / `PDE-TP-019` | `test_ptw_pde_l2_accerr_valid_gate_001` | request-scoped no false direct accerr, `PTW-SVA-PDE-014` | closed after pde-pmpflg list pass |
+| `PTW-ADD-045` / `PDE-TP-010/016` | `test_ptw_pde_pmp_clear_repopulate_001` | clear/repopulate source evidence, `PTW-SVA-PDE-001/015` | partial; exact PMP-config-update clear remains blocked by `pmp_regs_update` tie-off |
+
+No Stage-10 waiver is created for these open/partial rows. They are explicit
+reachability or testbench-observability limits and must remain visible in the
+signoff report.
 
 ## Stage-0 Completion Record
 

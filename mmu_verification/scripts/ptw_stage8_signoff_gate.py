@@ -699,6 +699,11 @@ def main() -> int:
 
     if errors:
         print("PTW_STAGE10_SIGNOFF_GATE status=FAIL")
+        print(
+            "  hint: Stage10 gate validates UVM_INFO evidence markers; "
+            "run signoff regressions with UVM_ERR_ONLY=0 so PTW_SOURCE_* "
+            "and PTW_STAGE* markers are present in output/logs."
+        )
         for item in errors:
             print(f"  - {item}")
         return 1

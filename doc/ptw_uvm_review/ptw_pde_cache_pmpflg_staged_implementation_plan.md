@@ -809,10 +809,10 @@ make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=p
 ### 16.7 检查命令
 
 ```bash
-make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=ptw_pde_pmpflg_signoff REGRESS_SEEDS="606 707" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
-make regress LIST=simu/ptw_p0_smoke_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_smoke_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
-make regress LIST=simu/ptw_p0_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
-make regress LIST=simu/ptw_p1_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p1_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=1
+make regress LIST=simu/ptw_pde_pmpflg_list REGRESS_MODE=run_check REGRESS_NAME=ptw_pde_pmpflg_signoff REGRESS_SEEDS="606 707" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
+make regress LIST=simu/ptw_p0_smoke_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_smoke_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
+make regress LIST=simu/ptw_p0_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p0_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
+make regress LIST=simu/ptw_p1_list REGRESS_MODE=run_check REGRESS_NAME=ptw_p1_pmpflg_signoff REGRESS_SEEDS="606" REGRESS_JOBS=1 UVM_CONFIG_DB_TRACE=0 UVM_ERR_ONLY=0
 python3 scripts/ptw_stage8_signoff_gate.py \
   --p0-smoke-list simu/ptw_p0_smoke_list \
   --p0-list simu/ptw_p0_list \

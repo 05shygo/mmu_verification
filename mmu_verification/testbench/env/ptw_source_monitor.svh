@@ -325,14 +325,22 @@ class ptw_source_monitor extends uvm_monitor;
   protected task sample_level_events();
     for (int unsigned twu = 0; twu < 4; twu++) begin
       bit event_seen;
+      logic [2:0] pmp_vld_vec;
+      logic [2:0] pmp_grant_vec;
+      logic [2:0] pmp_deny_fire_vec;
+
+      pmp_vld_vec = v_probe.mon_cb.p13_pmp_vld_vec[twu];
+      pmp_grant_vec = v_probe.mon_cb.p13_pmp_grant_vec[twu];
+      pmp_deny_fire_vec = pmp_vld_vec & pmp_grant_vec
+                         & v_probe.mon_cb.p13_pmp_deny_vec[twu];
       event_seen = (v_probe.mon_cb.ptw_twu_mbuf_req[twu] === 1'b1)
                 || (v_probe.mon_cb.ptw_mbuf_twu_data_vld[twu] === 1'b1)
                 || (v_probe.mon_cb.ptw_twu_ref_req[twu] === 1'b1)
                 || (v_probe.mon_cb.ptw_twu_pgflt_vec[twu] === 1'b1)
                 || (v_probe.mon_cb.ptw_twu_acc_err_vec[twu] === 1'b1)
-                || (|v_probe.mon_cb.p13_pmp_vld_vec[twu])
-                || (|v_probe.mon_cb.p13_pmp_grant_vec[twu])
-                || (|v_probe.mon_cb.p13_pmp_deny_vec[twu])
+                || (|pmp_vld_vec)
+                || (|pmp_grant_vec)
+                || (|pmp_deny_fire_vec)
                 || (|v_probe.mon_cb.p13_pmp_wait_vec[twu]);
 
       if (event_seen) begin
@@ -361,9 +369,9 @@ class ptw_source_monitor extends uvm_monitor;
         tr.refill_req = v_probe.mon_cb.ptw_twu_ref_req[twu];
         tr.page_fault = v_probe.mon_cb.ptw_twu_pgflt_vec[twu];
         tr.access_fault = v_probe.mon_cb.ptw_twu_acc_err_vec[twu];
-        tr.pmp_vld = |v_probe.mon_cb.p13_pmp_vld_vec[twu];
-        tr.pmp_grant = |v_probe.mon_cb.p13_pmp_grant_vec[twu];
-        tr.pmp_deny = |v_probe.mon_cb.p13_pmp_deny_vec[twu];
+        tr.pmp_vld = |pmp_vld_vec;
+        tr.pmp_grant = |pmp_grant_vec;
+        tr.pmp_deny = |pmp_deny_fire_vec;
         tr.pmp_wait = |v_probe.mon_cb.p13_pmp_wait_vec[twu];
         if (tr.pmp_vld || tr.pmp_grant || tr.pmp_deny)
           tr.selected_pmpflg = v_probe.mon_cb.p13_pmp_flg_vec[twu];
@@ -378,10 +386,10 @@ class ptw_source_monitor extends uvm_monitor;
           level_vec = v_probe.mon_cb.ptw_twu_mbuf_lvl[twu];
         if (level_vec == 3'b000)
           level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
-        if ((level_vec == 3'b000) && (|v_probe.mon_cb.p13_pmp_vld_vec[twu]))
-          level_vec = v_probe.mon_cb.p13_pmp_vld_vec[twu];
-        if ((level_vec == 3'b000) && (|v_probe.mon_cb.p13_pmp_deny_vec[twu]))
-          level_vec = v_probe.mon_cb.p13_pmp_deny_vec[twu];
+        if ((level_vec == 3'b000) && (|pmp_vld_vec))
+          level_vec = pmp_vld_vec;
+        if ((level_vec == 3'b000) && (|pmp_deny_fire_vec))
+          level_vec = pmp_deny_fire_vec;
         tr.level = level_from_onehot(level_vec);
 
         lvl_idx = (tr.level == PTW_SRC_LEVEL_FST) ? 2

@@ -452,21 +452,21 @@ class test_ptw_pde_accerr_priority_type_id_001 extends ptw_pde_pmpflg_stage9_bas
       .fst_nonleaf(bus_fst_nonleaf), .scd_nonleaf(bus_scd_nonleaf),
       .thd_leaf(bus_thd_leaf), .kind("stage9_accerr_priority_buserr_pressure"),
       .r(1), .w(1), .x(1),
-      .meta_req_type(PTW_SRC_TYPE_LOAD), .meta_id(6'h2b));
+      .meta_req_type(PTW_SRC_TYPE_FETCH), .meta_id(6'h00));
     if (!ptw_get_pte_addr_for_level(bus_va, 2, bus_fst_pte_pa))
       `uvm_fatal(get_type_name(), "stage9_accerr_priority bus pressure FST pte addr lookup failed")
 
-    ptw_meta_add_context("locked R-only L2 entry is primed by LOAD; later STORE must return PDE direct access fault with original type/id even while independent PTW memory bus-error pressure is active");
+    ptw_meta_add_context("locked R-only L2 entry is primed by LOAD; later STORE must return PDE direct access fault with original type/id even while independent FETCH PTW memory bus-error pressure is active");
     ptw_prime_l2_pde_cache_with_type(PTW_SRC_TYPE_LOAD, prime_va, fst_nonleaf,
       scd_nonleaf, locked_r_pmpflg, locked_r_pmpflg, 6'h2a);
 
     ptw_mem_delay_by_addr(bus_fst_pte_pa, 24);
     ptw_mem_bus_error_by_addr(bus_fst_pte_pa);
-    ptw_meta_set_expected("STORE tag-matches the locked R-only L2 PDE entry and must produce PDE_CACHE_PMP_DENY access fault with type=STORE id=0x2c; concurrent delayed bus-error pressure is present for PTW-SVA-ARB-010 priority cover");
+    ptw_meta_set_expected("STORE tag-matches the locked R-only L2 PDE entry and must produce PDE_CACHE_PMP_DENY access fault with type=STORE id=0x2c; concurrent delayed FETCH bus-error pressure is present for PTW-SVA-ARB-010 priority cover");
 
     fork
       begin
-        ptw_drive_source_req_by_type(PTW_SRC_TYPE_LOAD, bus_va, 6'h2b);
+        ptw_drive_source_req_by_type(PTW_SRC_TYPE_FETCH, bus_va, 6'h00);
       end
       begin
         stage9_wait_for_ptw_mem_accept("stage9_pde_accerr_priority_buserr_accept", 128);

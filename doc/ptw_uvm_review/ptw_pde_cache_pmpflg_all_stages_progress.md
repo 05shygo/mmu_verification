@@ -423,6 +423,7 @@ Stage 9 debug 更新：
 | --- | --- | --- | --- |
 | 2026-05-18 | `test_ptw_pde_accerr_priority_type_id_001_606` 在 `stage9_wait_for_pde_accerr()` 报 `expected PDE direct accerr not observed within 192 cycles`，但同一日志 `cp_pde_l2_deny_direct_accerr`/`cp_pde_accerr_valid_gate` 均命中。 | UVM test-local checker 同步窗口问题，不是当前证据支持的 RTL bug。 | 修复 `stage9_wait_for_pde_accerr()`：先等目标 STORE `{type,id}` 被 PTW accept，accept 后再检查 direct accerr；同时接受 matching `ptw_acc_err_grant_vec[5] + ptw_l2tlb_ref_acc_err` 作为可见 grant/完成证据。 |
 | 2026-05-18 | 重跑后 `stage9_wait_for_pde_accerr()` 报 `target req was not accepted within 512 cycles type=store id=0x2c`；metadata 显示 STORE sequence 已启动，PDE direct-accerr SVA 仍命中。 | UVM LSU agent 协议完成条件问题。`lsu_driver` pipe0/1 已采样 `mmu_lsu_access_fault0/1`，但 `_pipe*_t0_terminal()` 未把 access fault 当 terminal，bus-error/access-fault 请求会持续 retry 并阻塞同 pipe 后续 STORE。 | 修复 `lsu_driver.svh` 和 `lsu_monitor.svh`：pipe0/1 terminal 及等待表达式加入 `mmu_lsu_access_fault0/1`，使 access-fault completion 能释放 driver 并被 monitor 正确绑定。 |
+| 2026-05-18 | 用户再次提供的失败 log metadata 仍为 `drive_source_req_by_type type=load id=43`，即独立 bus-error pressure 和目标 STORE 同走 LSU pipe0；test-local helper 在 STORE 被 pipe0 串行发出前超时。 | UVM directed 场景构造问题，不是 RTL direct-accerr 证据失败。该场景要求“独立” bus-error pressure，不应和被测 STORE 共用同一个 LSU pipe0 serial driver。 | 将 `test_ptw_pde_accerr_priority_type_id_001` 的 bus-error pressure 源从 LOAD 改为 FETCH，metadata 也改为 FETCH pressure；目标 STORE 保持 LSU pipe0，避免前置 pressure 请求阻塞目标 STORE accept，同时仍保留 MBUF bus-error 与 PDE direct accerr 的 priority 候选。 |
 
 实现边界：
 

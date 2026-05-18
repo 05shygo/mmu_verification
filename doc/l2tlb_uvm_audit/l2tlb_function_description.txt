@@ -1,0 +1,81 @@
+overview
+    l2tlb 总共有4个访问来源：1.l2tlb request queue发来的l1tlb的lookup 请求；2.pfu发来的lookup请求；3.ptw的请求；4.tlb operation模块的请求。
+    l2tlb是sram based，并且l2tlb的sram是单端口的，所以l2tlb每拍只能接收一个请求，因此需要对进入l2tlb的请求做仲裁。
+    l2tlb中包含的components有：l2tlb request queue;arbiter;l2tlb tag sram,l2tlb data sram,l2tlb rrpv sram;l2tlb miss buffer；l2tlb rrpv write buffer。
+    所有l1tlb发来的请求都会先进入l2tlb request queue，后续对l2tlb request queue简称l2tlb reqq。l2tlb reqq会在有需要访问l2tlb的请求时，与其他来源的访问l2tlb的请求在arbiter中进行仲裁；同时l2tlb会在多个有效请求中挑选一个请求，把挑选的请求的相关信息发到arbiter。
+    tlb operation,pfu,ptw,以及l2tlb reqq的请求会在arbiter中进行仲裁，arbiter会把赢得仲裁的来源的相关信息发到l2tlb的流水线中，进行后续处理。
+    进入l2tlb流水线的请求会按照来源进行不同的处理。
+        来源为l2tlb reqq的请求，其源头是ifu或者lsu发到l1tlb的地址转换请求发生了miss，需要在l2tlb中找到对应的结果，并且回填回l1tlb，所以l2tlb reqq中的请求需要进入l2tlb的lookup pipeline。
+        来源为ptw的请求，其源头是ifu或者lsu发来的请求在l1tlb中miss，并且在l2tlb中也miss，于是l2tlb把这个请求发到ptw模块走page table walk,从dcache或l2cache或ddr中取回页表内容，拿到叶子表项之后，需要填进l2tlb。所以，ptw的请求无需进入l2tlb的lookup流水线。
+        来源为pfu的请求，其源头是lsu需要进行数据的预取。pfu的预取直接发到l2tlb，而不经过l1tlb。pfu把地址转换请求发到l2tlb，所以也需要进入l2tlb的lookup流水线。
+        来源为tlb operation的请求比较复杂，要按具体情况进行不同的处理
+            如果tlb operation的请求的源头是需要按va无效tlb entry：
+            如果tlb operation的请求的源头是需要按asid无效tlb entry：
+            如果tlb operation的请求的源头是需要按asid和va无效tlb entry
+            如果tlb operation的请求的源头是需要无效所有tlb entry:
+
+        当pfu或l2tlb reqq的请求在l2tlb中完成lookup，但是发现miss时，需要分配进l2tlb miss buffer。
+        l2tlb miss buffer会从多个有效请求中选出一个，发送到ptw模块走page table walk。
+
+1.signal description
+
+
+
+
+2.components
+    2.1 l2tlb request queue
+        overview
+            l2tlb request queue用来存储l1tlb发来的请求，所有l1tlb发来的请求都会先进入l2tlb request queue。l2tlb reqq会在有需要访问l2tlb的请求时，与其他来源的访问l2tlb的请求在arbiter中进行仲裁；同时l2tlb会在多个有效请求中挑选一个请求，把挑选的请求的相关信息发到arbiter。
+            l1itlb和l1dtlb发到l2tlb的请求都会发到l2tlb reqq,l2tlb reqq中，为l1itlb和l1dtlb分别分配了entry。
+                因为ifu发到l1itlb的请求如果发生了miss，那么ifu内部就会停止生成新的pc值，直到这个miss的请求完成了地址转换之后，才会发新的va到l1itlb。所以在l1itlb中，没有设计miss buffer，所以l1itlb没有outstanding的需求和功能。也就是说，l1itlb最多发一个miss请求到l2tlb，所以l2tlb reqq中只预留了一个l1itlb专用的entry。
+                因为l1dtlb中有设计miss buffer，且l1dtlb具备outstanding的能力，所以在l2tlb reqq中给l1dtlb发来的请求预留了多个专用的entry，具体数量可配置，目前是8个l1dtlb专用的entry。
+            l2tlb reqq是用d-flip-flop搭建的。
+        
+        function description
+            由于l2tlb和l1tlb之间采取的握手协议是credit-based的握手协议，所以只要l1能发请求给l2，那么这个请求一定能被l2tlb reqq接收(l2tlb reqq有空位)。credit-based部分已在l1tlb中详细描述，在此不再赘述，并且credit握手部分的验证会放到l1tlb中，在l2tlb中无需对此进行额外验证。
+            l1itlb和l1dtlb在l2tlb reqq中的entry是各自独立的，也就是说，如果同一拍中既有l1itlb的请求，又有l1dtlb的请求时，它们都会被写进l2tlb reqq。
+            在l2tlb reqq的entry中，entry 0为l1itlb专用，entry1到entry8为l1dtlb专用。
+            当有l1itlb的请求时，就把entry0分配给l1itlb；当有l1dtlb的请求时，就从entry1到entry8之间，找到最低位的空闲entry，分配给这个dtlb的请求。
+            
+            当l2tlb reqq中存在有效且未发射的entry，或者当l2tlb reqq不存在有效且未发射的entry但是l1tlb发了请求过来时，l2tlb reqq会参与arbiter的仲裁。同时l21tlb会选择合适的请求发送到arbiter
+                当l2tlb reqq中存在有效且未发射的entry时，无论l1tlb有没有发请求到l2tlb，都会在l2tlb reqq中有效且未发射的entry中，选出一个发送到arbiter。
+                    如果l2tlb reqq中有来源为itlb的未发射的请求，也就是说entry0有效且未发射，那么会优先选择把entry0的请求发送出去。
+                    如果l2tlb reqq中没有来源为itlb的未发射的请求，那么会从来源为dtlb的未发射请求中选一个发送到arbiter，也就是说，itlb的优先级高于dtlb。
+                当当l2tlb reqq不存在有效且未发射的entry但是l1tlb发了请求到l2tlb时，会把l1tlb发来的请求发送到arbiter，同时给l1tlb发来的请求分配reqq entry。
+                    如果当拍只有l1itlb发请求到l2tlb，那么在这一拍会分配entry给这个请求，并且同时在这一拍把l1itlb发来的请求送到arbiter。
+                    如果当拍只有l1dtlb发请求到l2tlb，那么在这一拍会分配entry给这个请求，并且同时在这一拍把l1dtlb发来的请求送到arbiter。
+                    如果当拍同时有l1itlb和l1dtlb的请求发到l2tlb，那么在这一拍会给这两个请求都分配entry，并且同时在这一拍把l1itlb发来的请求发送到l2tlb。
+                也就是说，l1itlb发来的请求的优先级永远比l1dtlb发来的请求的优先级高。
+
+            l2tlb reqq的entry中目前存储：vld ，vpn[26:0],L1eid[L1EID_W-1:0]，Request_Type，sent。
+                vld：vld指示这个entry是否已经被分配，被分配的entry不能参与后续的新发来l2的请求的分配。
+                    当这个entry的请求在l2tlb中hit，会释放这个entry，拉低这个entry的vld信号。
+                    当这个entry的请求在l2tlb中miss并且被分配进l2tlb miss buffer时，会释放这个entry，拉低这个entry的vld信号。
+                    当这个entry的请求在l2tlb中miss并且没有被分配进l2tlb miss buffer时，不会释放这个entry，保持这个entry的vld信号。因为此时的请求发生了miss且未写入miss buffer，如果拉低vld信号，会导致这个请求被丢掉。
+
+                vpn[26:0]：l1tlb发来请求时会带上请求的vpn，l2tlb reqq entry存储请求的vpn，以便后续在l2tlb中lookup。
+
+                L1eid[L1EID_W-1:0]：这个是litlb miss buffer entry id,用来指示这个请求是从l1tlb miss buffer的哪个entry发来的，后续refill的时候需要根据这个id定位。
+                    l1itlb中因为没有miss buffer，所以不需要存储这个eid，entry0的eid是默认的0。
+                    l1dtlb中有miss buffer，所以l2tlb reqq entry会把随着l1dtlb请求过来的那个eid存储进entry。
+
+                Request_Type:用来标识这个请求的类型。
+                    entry0为l1itlb专用，来源为itlb的请求的type会被编码成3'b011。
+                    entry1到entry8为l1dtlb专用，来源为l1dtlb的请求会进一步细分
+                        如果是load请求，那么type被编码成3'b010。
+                        如果是store请求，那么type被编码成3'b110。
+
+                sent：用来指示这个entry是否已经被发射出去。
+                    当这个entry的请求在l2tlb中hit，会释放这个entry，拉低这个entry的vld信号的同时会拉低sent信号。
+                    当这个entry的请求在l2tlb中miss并且被分配进l2tlb miss buffer时，会释放这个entry，拉低这个entry的vld信号的同时会拉低sent信号。
+                    当这个entry的请求在l2tlb中miss并且没有被分配进l2tlb miss buffer时，不会释放这个entry，保持这个entry的vld信号的同时会拉低sent信号。因为此时的请求发生了miss且未写入miss buffer（miss buffer满了，无法接受新请求），需要在后续发起replay，重走l2tlb的lookup流水线。
+                
+            l2tlb reqq的clear
+
+    2.2 arbiter
+        overview
+        
+                
+
+            
+            

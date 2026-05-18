@@ -395,7 +395,7 @@ assign PDE_xbar_id[ID_WIDTH-1:0] = ptw_id[ID_WIDTH-1:0];
 // combinational loop because the xbar computes ready from this valid plus
 // twu_mask.  ptw_req is held while !xbar_pde_ready above, so the request stays
 // stable until accepted.
-assign PDE_xbar_req = ptw_req & (!PDE_cache_acc_err_vld);
+assign PDE_xbar_req = ptw_req & (!L2PDE_entry_acc_err_vld);
 
 // Trace PDE cache hit details for run_check post-log analysis.
 //always_ff @(posedge pde_cache_clk or negedge cpurst_b) begin

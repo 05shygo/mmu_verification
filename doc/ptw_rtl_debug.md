@@ -539,6 +539,62 @@ end
 
 ---
 
+## 调试记录 #15 — `PDE_cache`：L2 PMP 直连 access fault 时禁止向 TWU/xbar 分发命中请求
+
+| 项目 | 内容 |
+|------|------|
+| **记录时间** | **门控修改**：2026-05-18 11:00:07 +0800（Git 提交时间）；**acc_err 检测/上报链**：2026-05-16 13:52:31 +0800（同系列提交 `7abc6bb`） |
+| **版本号** | **`01d8f1fdc491dd429f1c5241cc22e93f1b5e1d60`（`01d8f1f`）** — 提交说明：`pdecache_pmpflg`；acc_err 端口与 L2PDE 判定见 **`7abc6bb7ca64c7244a6d0cedd914d656a655111e`（`7abc6bb`）** |
+| **涉及文件** | `mmu/rtl/PDE_cache.sv`（主）、`mmu/rtl/L2PDE_cache.sv`（`L2PDE_entry_acc_err`）、`mmu/rtl/ptw.sv`（`PDE_cache_acc_err_*` 接入与 `acc_err_twu_grant[5]`） |
+| **关联验证** | `test_ptw_l1_pde_hit` + PTW source SB（`PTW_SOURCE_MISMATCH` 中错误 PPN refill 与「fault 仍走 hit→TWU」相关场景） |
+
+### 背景与动机
+
+- L2 PDE cache **tag 命中**但 **L1/L2 `pmpflg` 检查不通过**时，应在 PDE cache 内 **直接上报 access fault**，**不应**再把该次事务当作正常 **PDE hit** 经 `one_to_four_xbar` **分发给任一路 TWU** 继续 walk/refill。
+- 修改前：`PDE_xbar_req = ptw_req`，在 **`PDE_cache_acc_err_vld` 已有效** 时 xbar 仍可能 **`xbar_twu_req` 非零**，TWU 仍按 hit PPN 推进，与 **直连 fault 上报** 并行，易导致 **错误 refill PPN**（如 `exp=0x200c` / `act=0x2012` 类 `PTW_SOURCE_MISMATCH`）。
+
+### 修改摘要（两处，均在 PDE cache 相关路径）
+
+#### （1）异常检测与 `PDE_cache_acc_err_*` 输出（`7abc6bb`，`PDE_cache.sv` / `L2PDE_cache.sv`）
+
+- **`L2PDE_cache.sv`**：`L2PDE_acc_err` 在 **entry 有效 + `ptw_req` + VPN tag 命中 + PMP 不通过** 时置位，经 **`L2PDE_entry_acc_err`** 送出。
+- **`PDE_cache.sv` ~L261–286**：`|L2PDE_entry_acc_err|` → 锁存 **`PDE_cache_acc_err`**，并输出 **`PDE_cache_acc_err_vld/type/id`**；**`PDE_cache_acc_err_grant`** 清除脉冲。
+- **`ptw.sv`（配套）**：`acc_err_vld` 并入 **`PDE_cache_acc_err_vld`**；access fault 仲裁 **`acc_err_twu_grant[5]`** 专用于 PDE cache 直连 fault（`twu_acc_err_sel[5]` / `case` `6'b100000` 取 `PDE_cache_acc_err_type/id`）。
+
+#### （2）`PDE_xbar_req` 门控：仅无直连 fault 时才向 xbar/TWU 分发（`01d8f1f`，`PDE_cache.sv` ~L398）
+
+- **原**：`assign PDE_xbar_req = ptw_req;`
+- **新**：`assign PDE_xbar_req = ptw_req & (!PDE_cache_acc_err_vld);`
+- **语义**：**`PDE_cache_acc_err_vld=1`** 时 **`PDE_xbar_req=0`** → `one_to_four_xbar` 内 **`twu_req[3:0]`** 为全 0 → **不向 TWU 打 PDE hit 请求**；fault 仅走 **`ptw` access fault 仲裁** 上报 L2TLB。
+- **说明**：仍 **不用 `xbar_pde_ready` 门控 `PDE_xbar_req`**（避免与 xbar 组合环，见 L393–397 注释）；**`ptw_req`** 仍可在 `!xbar_pde_ready` 时保持，待 **`xbar_pde_ready=1`**（无 TWU mask 时 ready 常为 1）后清除，与 xbar 握手解耦。
+
+### 代码锚点（当前 `HEAD` = `01d8f1f`）
+
+```systemverilog
+// L2PDE_cache.sv — PMP deny on L2 tag hit
+assign L2PDE_acc_err = L2PDE_vld & ptw_req & (ptw_vpn[TAG_WIDTH-1:0] == L2PDE_tag[TAG_WIDTH-1:0])
+    & !((l1pmp_ok & l2pmp_ok) | cp0_mach_mode & !L2PDE_l1pmpflg[3] & !L2PDE_l2pmpflg[3]);
+assign L2PDE_entry_acc_err = L2PDE_acc_err;
+
+// PDE_cache.sv — fault 锁存与 xbar 分发门控
+assign PDE_cache_acc_err_vld = PDE_cache_acc_err;
+// always_ff: L2PDE_entry_acc_err_vld -> PDE_cache_acc_err; grant 清除
+
+assign PDE_xbar_req = ptw_req & (!PDE_cache_acc_err_vld);
+
+// one_to_four_xbar.sv — 随 PDE_xbar_req 自动为 0
+assign twu_req[3:0] = {4{PDE_xbar_req & (!twu_xbar_mask)}} & twu_req_hash[3:0];
+```
+
+### 验证关注点
+
+- **L2 PDE hit + PMP deny**：**`PDE_cache_acc_err_vld=1`** 期间 **`PDE_xbar_req=0`**、**`xbar_twu_req[*]=0`**；L2TLB 侧应看到 **access fault**（`acc_err_twu_grant[5]`），**不应**再出现基于错误 hit PPN 的 **TWU refill**。
+- **L2 PDE hit + PMP allow**：**`PDE_cache_acc_err_vld=0`**，**`PDE_xbar_req`** 与修改前一致，正常 hash 分发到 TWU。
+- **grant 后**：**`PDE_cache_acc_err_grant`** 清除 fault 后，下一笔 **`l2tlb_ptw_req`** 可重新走 hit 或 miss 路径。
+- 回归：**`test_ptw_l1_pde_hit` SEED=606** 及 stage2 PMP deny 类用例；PTW source SB 不应再因「fault 与 hit 并行」产生 **PPN 类 `PTW_SOURCE_MISMATCH`**。
+
+---
+
 ## 后续追加新记录的写法（模板）
 
 复制下表，填 **#N+1**、时间与版本后写要点即可：

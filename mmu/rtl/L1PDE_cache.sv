@@ -119,7 +119,7 @@ end
 //assign L1PDE_short_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
 assign L1PDE_hit = (ptw_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]) & ((l1pmp_ok) | cp0_mach_mode & !L1PDE_l1pmpflg[3]);
 //assign L1PDE_miss_because_pmp = L1PDE_short_hit ^ L1PDE_hit;
-assign L1PDE_entry_before_upd_hit = (L1PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
+assign L1PDE_entry_before_upd_hit = L1PDE_vld & (L1PDE_entry_before_upd_vpn[TAG_WIDTH-1:0] == L1PDE_tag[TAG_WIDTH-1:0]);
 //------------------------------------------------------------
 //                  Output
 //------------------------------------------------------------

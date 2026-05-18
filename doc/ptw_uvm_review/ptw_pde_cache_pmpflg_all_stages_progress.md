@@ -402,7 +402,7 @@ Scoreboard 行为：
 | Helper | 用途 |
 | --- | --- |
 | `stage9_close/partial/open/summary()` | 打印 `PTW_STAGE9_CLOSURE` 和 `PTW_STAGE9_TEST_SUMMARY` metadata。 |
-| `stage9_wait_for_pde_accerr()` | 使用 probe 检查 PDE direct accerr type/id stable 和 grant。 |
+| `stage9_wait_for_pde_accerr()` | 使用 probe 检查 PDE direct accerr type/id stable 和 grant；2026-05-18 修正为先同步目标 `{type,id}` PTW accept，再从 accept 后窗口检查 `PDE_cache_acc_err_vld/grant` 或顶层 `ptw_l2tlb_ref_acc_err` 可见完成，避免 priority 压力场景中 STORE 排队导致误报。 |
 | `stage9_expect_no_pde_accerr_window()` | 检查 idle/fixed window 内无 PDE direct accerr。 |
 | `stage9_expect_no_pde_accerr_for_req()` | 等目标 `{type,id,vpn}` 被 PTW accept 并完成，期间要求无 PDE direct accerr。 |
 | `stage9_wait_for_ptw_mem_accept()` | priority test 中先确认独立 PTW memory bus-error 压力请求已被 accept，再发起 PDE direct accerr。 |
@@ -416,6 +416,12 @@ Scoreboard 行为：
 | `PTW-ADD-043` / `PDE-TP-018` / `PTW-FLOW-028` | 四个子场景覆盖 effective M 下 `lock=0/type bits deny` 的 L1/L2 bypass，以及 `lock=1/type bit deny` 的 L1 deny miss 和 L2 direct accerr。 | implemented；source SB `mmode_bypass/mmode_lock_deny` coverage 和 `PTW-SVA-PDE-011/012/013/017` cover 待仿真收集。 |
 | `PTW-ADD-044` / `PDE-TP-019` | `vpn[2:1]=0` reset-tag 场景和 L2 stale tag after clear 场景；request-scoped helper 等目标请求被 accept/completed，期间要求无 `L2PDE_entry_acc_err/PDE_cache_acc_err_vld`。 | implemented；`PTW-SVA-PDE-014` 是最终 valid-gate structural evidence。 |
 | `PTW-ADD-045` / `PDE-TP-010/016` | 先建 locked W-only L2 entry，clear 后将 PMP flag 改为 load-allow，后续 LOAD 同 L2 tag 必须不复用旧 locked-W pmpflg，并通过新 walk/repopulate 使用 MBUF pmpflg。 | implemented，标 partial evidence：真实 PMP config update clear 仍受 `tb_top.sv` 中 `pmp_regs_update` tie-off 限制，本 test 使用可用 `regs_ptw_clr/tlboper` clear path。 |
+
+Stage 9 debug 更新：
+
+| 日期 | 现象 | 判定 | 处理 |
+| --- | --- | --- | --- |
+| 2026-05-18 | `test_ptw_pde_accerr_priority_type_id_001_606` 在 `stage9_wait_for_pde_accerr()` 报 `expected PDE direct accerr not observed within 192 cycles`，但同一日志 `cp_pde_l2_deny_direct_accerr`/`cp_pde_accerr_valid_gate` 均命中。 | UVM test-local checker 同步窗口问题，不是当前证据支持的 RTL bug。 | 修复 `stage9_wait_for_pde_accerr()`：先等目标 STORE `{type,id}` 被 PTW accept，accept 后再检查 direct accerr；同时接受 matching `ptw_acc_err_grant_vec[5] + ptw_l2tlb_ref_acc_err` 作为可见 grant/完成证据。 |
 
 实现边界：
 

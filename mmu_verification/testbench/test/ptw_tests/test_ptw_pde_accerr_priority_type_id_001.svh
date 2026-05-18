@@ -100,11 +100,17 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     input int unsigned       exp_id,
     input int unsigned       max_cycles = 128
   );
-    bit          seen;
+    bit          target_accepted;
+    bit          pde_seen;
     bit          grant_seen;
+    bit          mismatch_seen;
+    int unsigned accept_cycles;
+    int unsigned cycles_after_accept;
+    int unsigned total_cycles;
     logic [2:0]  first_type;
     logic [2:0]  exp_type_bits;
     logic [5:0]  first_id;
+    logic [5:0]  exp_id_bits;
 
     if (ptw_probe_vif == null) begin
       `uvm_error(get_type_name(),
@@ -113,37 +119,67 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
       return;
     end
 
-    seen = 1'b0;
+    target_accepted = 1'b0;
+    pde_seen = 1'b0;
     grant_seen = 1'b0;
+    mismatch_seen = 1'b0;
+    accept_cycles = (max_cycles < 512) ? 512 : max_cycles;
+    cycles_after_accept = 0;
+    total_cycles = accept_cycles + max_cycles;
     first_type = '0;
     exp_type_bits = exp_type;
     first_id = '0;
+    exp_id_bits = exp_id[5:0];
 
-    for (int unsigned cycle = 0; cycle < max_cycles; cycle++) begin
+    for (int unsigned cycle = 0; cycle < total_cycles; cycle++) begin
       @(ptw_probe_vif.mon_cb);
+
+      if (!target_accepted
+          && (ptw_probe_vif.mon_cb.l2tlb_ptw_req === 1'b1)
+          && (ptw_probe_vif.mon_cb.ptw_jtlb_ready === 1'b1)
+          && (ptw_probe_vif.mon_cb.l2tlb_ptw_type == exp_type_bits)
+          && (ptw_probe_vif.mon_cb.l2tlb_ptw_id == exp_id_bits)) begin
+        target_accepted = 1'b1;
+        cycles_after_accept = 0;
+        ptw_meta_add_context($sformatf("%s: target_req_accepted cycle_offset=%0d type=%s id=0x%02h",
+          scenario_id, cycle, ptw_src_type_name(exp_type), exp_id_bits));
+      end
+
       if (ptw_probe_vif.mon_cb.pde_cache_acc_err_vld === 1'b1) begin
-        if (!seen) begin
-          seen = 1'b1;
+        if (!pde_seen) begin
+          pde_seen = 1'b1;
           first_type = ptw_probe_vif.mon_cb.pde_cache_acc_err_type;
           first_id = ptw_probe_vif.mon_cb.pde_cache_acc_err_id;
           if ((ptw_probe_vif.mon_cb.pde_cache_acc_err_type !== exp_type_bits)
-              || (ptw_probe_vif.mon_cb.pde_cache_acc_err_id !== exp_id[5:0])) begin
+              || (ptw_probe_vif.mon_cb.pde_cache_acc_err_id !== exp_id_bits)) begin
+            mismatch_seen = 1'b1;
             `uvm_error(get_type_name(),
               $sformatf("%s: PDE accerr type/id mismatch exp_type=%s exp_id=0x%02h act_type=0x%0h act_id=0x%02h",
-                scenario_id, ptw_src_type_name(exp_type), exp_id[5:0],
+                scenario_id, ptw_src_type_name(exp_type), exp_id_bits,
                 ptw_probe_vif.mon_cb.pde_cache_acc_err_type,
                 ptw_probe_vif.mon_cb.pde_cache_acc_err_id))
+            break;
+          end
+          if (!target_accepted) begin
+            target_accepted = 1'b1;
+            cycles_after_accept = 0;
+            ptw_meta_add_context($sformatf("%s: target_req_accept_inferred_from_pde_accerr cycle_offset=%0d type=%s id=0x%02h",
+              scenario_id, cycle, ptw_src_type_name(exp_type), exp_id_bits));
           end
         end else if ((ptw_probe_vif.mon_cb.pde_cache_acc_err_type !== first_type)
             || (ptw_probe_vif.mon_cb.pde_cache_acc_err_id !== first_id)) begin
+          mismatch_seen = 1'b1;
           `uvm_error(get_type_name(),
             $sformatf("%s: PDE accerr type/id changed while pending first={type=0x%0h id=0x%02h} now={type=0x%0h id=0x%02h}",
               scenario_id, first_type, first_id,
               ptw_probe_vif.mon_cb.pde_cache_acc_err_type,
               ptw_probe_vif.mon_cb.pde_cache_acc_err_id))
+          break;
         end
 
-        if (ptw_probe_vif.mon_cb.pde_cache_acc_err_grant === 1'b1) begin
+        if ((ptw_probe_vif.mon_cb.pde_cache_acc_err_grant === 1'b1)
+            && (ptw_probe_vif.mon_cb.pde_cache_acc_err_type == exp_type_bits)
+            && (ptw_probe_vif.mon_cb.pde_cache_acc_err_id == exp_id_bits)) begin
           grant_seen = 1'b1;
           ptw_meta_add_context($sformatf("%s: pde_accerr_observed cycle_offset=%0d type=0x%0h id=0x%02h grant=1",
             scenario_id, cycle,
@@ -152,11 +188,61 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
           break;
         end
       end
+
+      if ((ptw_probe_vif.mon_cb.ptw_acc_err_grant_vec[5] === 1'b1)
+          && (ptw_probe_vif.mon_cb.ptw_l2tlb_ref_acc_err === 1'b1)) begin
+        if ((ptw_probe_vif.mon_cb.ptw_l2tlb_type !== exp_type_bits)
+            || (ptw_probe_vif.mon_cb.ptw_l2tlb_id !== exp_id_bits)) begin
+          mismatch_seen = 1'b1;
+          `uvm_error(get_type_name(),
+            $sformatf("%s: PDE accerr visible completion type/id mismatch exp_type=%s exp_id=0x%02h act_type=0x%0h act_id=0x%02h",
+              scenario_id, ptw_src_type_name(exp_type), exp_id_bits,
+              ptw_probe_vif.mon_cb.ptw_l2tlb_type,
+              ptw_probe_vif.mon_cb.ptw_l2tlb_id))
+          break;
+        end
+        if (!target_accepted) begin
+          target_accepted = 1'b1;
+          cycles_after_accept = 0;
+          ptw_meta_add_context($sformatf("%s: target_req_accept_inferred_from_visible_accerr cycle_offset=%0d type=%s id=0x%02h",
+            scenario_id, cycle, ptw_src_type_name(exp_type), exp_id_bits));
+        end
+        if (!pde_seen) begin
+          pde_seen = 1'b1;
+          first_type = exp_type_bits;
+          first_id = exp_id_bits;
+        end
+        grant_seen = 1'b1;
+        ptw_meta_add_context($sformatf("%s: pde_accerr_visible_completion cycle_offset=%0d type=0x%0h id=0x%02h grant_vec=0x%0h pde_vld=%0b pde_grant=%0b",
+          scenario_id, cycle,
+          ptw_probe_vif.mon_cb.ptw_l2tlb_type,
+          ptw_probe_vif.mon_cb.ptw_l2tlb_id,
+          ptw_probe_vif.mon_cb.ptw_acc_err_grant_vec,
+          ptw_probe_vif.mon_cb.pde_cache_acc_err_vld,
+          ptw_probe_vif.mon_cb.pde_cache_acc_err_grant));
+        break;
+      end
+
+      if (target_accepted) begin
+        cycles_after_accept++;
+        if (cycles_after_accept >= max_cycles)
+          break;
+      end else if ((cycle + 1) >= accept_cycles) begin
+        break;
+      end
     end
 
-    if (!seen) begin
+    if (mismatch_seen) begin
+      return;
+    end
+
+    if (!target_accepted) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: expected PDE direct accerr not observed within %0d cycles",
+        $sformatf("%s: target req was not accepted within %0d cycles type=%s id=0x%02h",
+          scenario_id, accept_cycles, ptw_src_type_name(exp_type), exp_id_bits))
+    end else if (!pde_seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: expected PDE direct accerr not observed within %0d cycles after target accept",
           scenario_id, max_cycles))
     end else if (!grant_seen) begin
       `uvm_error(get_type_name(),

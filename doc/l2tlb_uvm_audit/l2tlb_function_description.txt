@@ -74,7 +74,58 @@ overview
 
     2.2 l2tlb
         overview
+            在 RISC-V SV39 架构中，系统支持三种页面大小：4KB , 2MB , 1GB 。传统的组相联（Set-Associative）TLB 在处理混合页大小时要根据页大小使用不同索引位，硬件无法在查找前预知页大小，只能：
+                - 串行查找，效率较低
+                - 静态分区，TLB空间利用率低
+            Skewed Associative 解决方案
+                采用 8-Way Skewed Associative 架构。
+                    - 核心原理： 将 TLB 分割为 8 个独立的存储体（Way），每个 Way 拥有完全独立且正交的哈希索引函数。
+                    - 优势：
+                        1. 并发支持： 利用不同的 Way 并行“猜测”不同的页大小。
+                        2. 抗冲突： 即使两个地址在 Way 0 发生索引冲突，由于 Way 1 的哈希函数完全不同，它们在 Way 1 几乎不可能冲突。
+                        3. 无空间浪费： 任意页大小均可利用 TLB 的整体容量，无需静态分区。
 
+            function description
+                1. Storage Organization
+                    TLB的tag，data和rrpv各有单独的sram存储。
+                    TLB 包含 8 个 Way，每个way都是一块单独的sram。也就是说，对于一个way，总共有tag，data，rrpv三个单独的sram bank，8个way加起来就是8*3=24个sram。
+                    每个way有1024个set，每个set有一个entry。
+                    每个 Entry 的结构如下:
+                        a.tag:tag is 45 bit per entry.
+                            1.vld:The V bit indicates whether the PTE is valid
+                            2.VPN[26:0]:entry存储的virtual page number
+                            3.asid[15：0]:Address Space Identifier，区分不同进程
+                            4.golbal:用于标记那些对所有进程都有效的全局映射，当golbal bit有效时，无需检查asid
+                            5.Size_Type [1:0]:存储该 Entry 的实际page size。2'b00: 4KB，2'b01: 2MB，2'b10: 1GB
+                        
+                        b.data:data is 42 bit per entry
+                            1.PPN[27:0]:Physical Page Number
+                            2.Strong Order
+                            3.Cacheable
+                            4.Bufferable
+                            5.Shareable
+                            6.Security
+                            7.Reserved for Software[1:0]：The RSW field is reserved for use by supervisor software,; the implementation shall ignore this field
+                            8.Dirty：The D bit indicates the virtual page has been written since the last time the D bit was cleared.
+                            9.Accessed：The A bit indicates the virtual page has been read, written, or fetched from since the last time the A bit was cleared.
+                            10.Global：The G bit designates a global mapping,Global mappings are those that exist in all address spaces.
+                            11.User：indicates whether the page is accessible to user mode
+                            12.X：indicate whether the page is executable
+                            13.W：indicate whether the page is writable
+                            14.R:indicate whether the page is readable
+
+                        c.rrpv:rrpv is 3 bit per entry
+                            有多少个tag和data的entry就有多少个rrpv的entry，它们是一一对应的关系。
+
+                2.引入 Selector。
+                    - 原理： 利用虚拟地址的特定位 VA[31:30] 作为随机选择子，强制规定每个 Way 在当前查找周期应假设的页大小。
+                    这8个way都有自己单独的sram bank，访问这8个bank的index也各不相同。
+                    利用虚拟地址的特定位 VA[31:30] 作为随机选择子，强制规定每个 Way 在当前查找周期应假设的页大小。
+
+                3.sram的门控
+                    当pfu或itlb或dtlb或需要lookup的的tlb operation访问l2tlb时，被arb_l2tlb_bank_sel选中的way会同时读出tag，data和rrpv
+                    当ptw read请求访问l2tlb时，被arb_l2tlb_bank_sel选中的way会读出rrpv（不读tag和data）
+                    当ptw write请求访问l2tlb时，被arb_l2tlb_bank_sel选中的way会写入tag，data和rrpv
     
     2.3 arbiter
         overview
@@ -156,4 +207,15 @@ overview
                 a.当给pfu的prefetch请求和reqq的请求授权时，需要查找l2tlb，所以此时要拉高arb_l2tlb_cmp_with_va
                 b.当给tlb operation请求授权，且tlb operation模块拉高这个请求需要比较va的信号（tlboper_arb_cmp_va）时，也需要在l2tlb中查找，此时也拉高arb_l2tlb_cmp_with_va。
                 c.其他情况无需进入l2tlb的lookup流水线，所以不拉高arb_l2tlb_cmp_with_va信号
-            5.
+            5.生成access type信号
+                a.如果访问l2tlb的请求来源是pfu，那么arb_l2tlb_acc_type[2:0]=3'b100
+                b.如果访问l2tlb的请求来源是ptw write，那么arb_l2tlb_acc_type[2:0]=3'b101
+                c.如果访问l2tlb的请求来源是itlb，那么arb_l2tlb_acc_type[2:0]=3'b011
+                d.如果访问l2tlb的请求来源是dtlb的load，那么arb_l2tlb_acc_type[2:0]=3'b010
+                e.如果访问l2tlb的请求来源是dtlb的store，那么arb_l2tlb_acc_type[2:0]=3'b110
+                f.如果访问l2tlb的请求来源是tlb operation，那么arb_l2tlb_acc_type[2:0]=3'b001
+                g.如果访问l2tlb的请求来源是ptw read，那么arb_l2tlb_acc_type[2:0]=3'b000
+
+    2.4 l2tlb miss buffer
+        overview
+

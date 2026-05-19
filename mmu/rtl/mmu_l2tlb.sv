@@ -197,6 +197,7 @@ module mmu_l2tlb#(
     input  logic                    tlboper_l2tlb_cmp_noasid,
     input  logic [15 :0]            tlboper_l2tlb_inv_asid,
     input  logic                    tlboper_l2tlb_tlbwr_on,
+    input  logic                    tlboper_l2tlb_invasid_on,
     input  logic [2  :0]            tlboper_xx_pgs,
     input  logic                    tlboper_ptw_abort,
     //input  logic                    tlboper_xx_pgs_en,
@@ -331,6 +332,7 @@ module mmu_l2tlb#(
     logic [WAY_NUM-1:0] final_way_hit_kid0, final_way_hit_kid1, final_way_hit_kid2;
     logic [WAY_NUM-1:0] final_way_hit_kid3, final_way_hit_kid4, final_way_hit_kid5;
     logic [WAY_NUM-1:0] final_way_hit;
+    logic [WAY_NUM-1:0] final_way_asid_hit;
     logic [WAY_NUM-1:0] final_way_sel; 
     
     // Register definitions
@@ -405,6 +407,8 @@ module mmu_l2tlb#(
     // 1. RRPV Control Signals
     logic                       rrpv_write_ptw;
     logic                       rrpv_write_lookup;
+    logic                       rrpv_write_tlboper;
+    localparam [RRPV_WIDTH-1:0] RRPV_VALID_INIT = 3;
 
     // 2. Completion & Result Signals
     logic                       final_l1tlb_cmplt;
@@ -527,22 +531,28 @@ module mmu_l2tlb#(
     logic [WAY_NUM*IDX_WIDTH-1:0] l2tlb_rrpv_idx_mux;
     
     // Write when WBUF has data and is granted
-    assign rrpv_write_en = rrpv_write_ptw | rrpv_write_lookup;
+    assign rrpv_write_en = rrpv_write_ptw | rrpv_write_lookup | rrpv_write_tlboper;
     assign rrpv_write_ptw = arb_l2tlb_req & arb_l2tlb_acc_type == 3'b101 & arb_l2tlb_write;
     assign rrpv_write_lookup = !wbuf_empty && wbuf_pop_grant;
+    assign rrpv_write_tlboper = arb_l2tlb_req
+                              & (arb_l2tlb_acc_type == 3'b001)
+                              & arb_l2tlb_write
+                              & arb_l2tlb_tag_din[TAG_WIDTH-1];
     
     // Enable RAM if Lookup (arb_req) OR Write (rrpv_write_en)
     assign l2tlb_rrpv_cen = {WAY_NUM{arb_l2tlb_req}} | {WAY_NUM{rrpv_write_en}};
     
     // Write Enable Mask
-    assign l2tlb_rrpv_wen = {WAY_NUM{rrpv_write_en}};
+    assign l2tlb_rrpv_wen = ({WAY_NUM{rrpv_write_lookup | rrpv_write_ptw}} & {WAY_NUM{1'b1}})
+                           | ({WAY_NUM{rrpv_write_tlboper}} & arb_l2tlb_bank_sel);
     
     // Address Mux: Write Index vs Lookup Index
-    assign l2tlb_rrpv_idx_mux = rrpv_write_en ? rrpv_sram_idx : arb_l2tlb_idx_bus;
+    assign l2tlb_rrpv_idx_mux = (rrpv_write_lookup | rrpv_write_ptw) ? rrpv_sram_idx : arb_l2tlb_idx_bus;
 
     assign rrpv_lookup_updata = {rrpv_sram_wdata[7],rrpv_sram_wdata[6],rrpv_sram_wdata[5],rrpv_sram_wdata[4],rrpv_sram_wdata[3],rrpv_sram_wdata[2],rrpv_sram_wdata[1],rrpv_sram_wdata[0]};
     assign l2tlb_rrpv_din = ({WAY_NUM*RRPV_WIDTH{rrpv_write_lookup}} & rrpv_lookup_updata
-                            | {WAY_NUM*RRPV_WIDTH{rrpv_write_ptw}} & arb_l2tlb_rrpv_din);
+                            | {WAY_NUM*RRPV_WIDTH{rrpv_write_ptw}} & arb_l2tlb_rrpv_din
+                            | {WAY_NUM*RRPV_WIDTH{rrpv_write_tlboper}} & {WAY_NUM{RRPV_VALID_INIT}});
                             
     //----------------------------------------------------------
     // 1. Tag Array Instance (8 Banks)
@@ -633,7 +643,7 @@ module mmu_l2tlb#(
 	end else raw_vld <= 1'b0;
     end	    
 
-    assign arb_l2tlb_is_dtlb = (arb_l2tlb_acc_type == 3'b010) | (arb_l2tlb_acc_type == 3'b110);
+    assign arb_l2tlb_is_dtlb = (arb_l2tlb_acc_type == 3'b010) | (arb_l2tlb_acc_type == 3'b110) | (arb_l2tlb_acc_type == 3'b100);
 
     always_ff@(posedge l2tlb_clk or negedge cpurst_b) begin
         if(!cpurst_b) begin
@@ -772,6 +782,9 @@ module mmu_l2tlb#(
 
             assign final_way_hit[i] = final_way_hit_kid0[i] & final_way_hit_kid1[i] & final_way_hit_kid2[i] 
                              & (final_way_hit_kid3[i] & final_way_hit_kid4[i] | final_way_hit_kid5[i]);
+            assign final_way_asid_hit[i] = final_way_vld[i]
+                                         & !final_way_g[i]
+                                         & (final_way_asid[i][ASID_WIDTH-1:0] == tlboper_l2tlb_inv_asid[ASID_WIDTH-1:0]);
             assign final_way_sel[i] = final_way_hit[i] | tlboper_way_sel[i]   ;// | tlb operation
 	end
     endgenerate  
@@ -1204,6 +1217,7 @@ module mmu_l2tlb#(
     // Calculate required bits: e.g., 4 ways -> 2 bits, 8 ways -> 3 bits
     localparam HIT_IDX_WIDTH = $clog2(WAY_NUM); 
     logic [HIT_IDX_WIDTH-1:0] final_hit_idx;
+    logic [IDX_WIDTH-1:0]     final_hit_set_idx;
 
     //==========================================================
     // Hit Index Encoding Logic
@@ -1211,6 +1225,7 @@ module mmu_l2tlb#(
     always_comb begin
         // 1. Initialize to 0
         final_hit_idx = {HIT_IDX_WIDTH{1'b0}};
+        final_hit_set_idx = {IDX_WIDTH{1'b0}};
 
         // 2. Iterate to find which way hit
         for(int i = 0; i < WAY_NUM; i++) begin
@@ -1218,6 +1233,7 @@ module mmu_l2tlb#(
             if(final_way_hit[i]) begin 
                 // OR the current index 'i' into the result
                 final_hit_idx |= i[HIT_IDX_WIDTH-1:0];
+                final_hit_set_idx |= final_bank_index[i];
             end
         end
     end
@@ -1239,7 +1255,7 @@ assign final_vpn_1g[VPN_WIDTH-1:0] = {{VPN_PERLEL*2{1'b0}}, final_vpn[VPN_WIDTH-
 assign final_vpn_masked[VPN_WIDTH-1:0] = {VPN_WIDTH{tlboper_xx_pgs[0]}} & final_vpn_4k[VPN_WIDTH-1:0]
                                     | {VPN_WIDTH{tlboper_xx_pgs[1]}} & final_vpn_2m[VPN_WIDTH-1:0]
                                     | {VPN_WIDTH{tlboper_xx_pgs[2]}} & final_vpn_1g[VPN_WIDTH-1:0];
-assign l2tlb_regs_tlbp_hit_index[10:0] = {1'b0, final_hit_idx[1:0], final_vpn_masked[7:0]};////////////need to modify regs module
+assign l2tlb_regs_tlbp_hit_index[10:0] = {final_hit_idx[2:0], final_hit_set_idx[7:0]};
 
 // for tlbr
 assign l2tlb_tlbr_vpn[VPN_WIDTH-1:0]   = final_idx_vpn[VPN_WIDTH-1:0];
@@ -1250,11 +1266,12 @@ assign l2tlb_tlbr_flg[FLG_WIDTH-1:0]   = final_hit_flg[FLG_WIDTH-1:0];
 assign l2tlb_tlbr_g                    = final_idx_g;
 
 //for inv asid
-assign l2tlb_tlboper_asid_hit = (final_idx_asid[ASID_WIDTH-1:0] == tlboper_l2tlb_inv_asid[ASID_WIDTH-1:0]) && !final_idx_g;
+assign l2tlb_tlboper_asid_hit = |final_way_asid_hit[WAY_NUM-1:0];
 // wen sel for tlbwr and invva
 //assign l2tlb_tlboper_fifo[3:0] = tc_l2tlb_fifo[3:0]; //rrip ,not fifo
 assign l2tlb_tlboper_sel[WAY_NUM-1:0] = tlboper_l2tlb_tlbwr_on ? victim_way
-                                                               : final_way_hit;                                             
+                                      : tlboper_l2tlb_invasid_on ? final_way_asid_hit
+                                                                 : final_way_hit;
 assign l2tlb_tlboper_va_hit = |final_way_hit;
 
 

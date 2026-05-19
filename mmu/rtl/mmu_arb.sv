@@ -72,7 +72,7 @@ module mmu_arb#(
     input           tlboper_arb_cmp_va,       
     //input   [3 :0]  tlboper_arb_fifo_din;  
     //input           tlboper_arb_fifo_write; 
-    input   [8 :0]  tlboper_arb_idx,       
+    input   [10:0]  tlboper_arb_idx,
     input           tlboper_arb_idx_not_va,      
     //input   [2 :0]  tlboper_xx_pgs;        
     //input           tlboper_xx_pgs_en;  
@@ -285,7 +285,7 @@ module mmu_arb#(
     assign arb_ptw_grant     = ptw_arb_req && !tlboper_on &&!ptw_on;
     
     assign arb_tlboper_grant = tlboper_arb_req 
-                             && !ptw_arb_req 
+                             && !ptw_arb_req
                              //&& !tlboper_on
 			                 && !ptw_on;
 
@@ -569,14 +569,14 @@ module mmu_arb#(
 
 
     // Assign calculated skew indices to output ports
-    assign arb_l2tlb_idx_w0 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[0];
-    assign arb_l2tlb_idx_w1 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[1];
-    assign arb_l2tlb_idx_w2 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[2];
-    assign arb_l2tlb_idx_w3 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[3];
-    assign arb_l2tlb_idx_w4 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[4];
-    assign arb_l2tlb_idx_w5 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[5];
-    assign arb_l2tlb_idx_w6 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[6];
-    assign arb_l2tlb_idx_w7 = tlboper_idx_not_va_sel ? tlboper_arb_idx[8:0] : skew_idx[7];
+    assign arb_l2tlb_idx_w0 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[0];
+    assign arb_l2tlb_idx_w1 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[1];
+    assign arb_l2tlb_idx_w2 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[2];
+    assign arb_l2tlb_idx_w3 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[3];
+    assign arb_l2tlb_idx_w4 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[4];
+    assign arb_l2tlb_idx_w5 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[5];
+    assign arb_l2tlb_idx_w6 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[6];
+    assign arb_l2tlb_idx_w7 = tlboper_idx_not_va_sel ? tlboper_arb_idx[7:0] : skew_idx[7];
     
     //assign arb_l2tlb_size_w0 = size_pred[0];
     //assign arb_l2tlb_size_w1 = size_pred[1];
@@ -589,5 +589,3 @@ module mmu_arb#(
     assign arb_l2tlb_size_bus = {size_pred[7], size_pred[6], size_pred[5], size_pred[4], size_pred[3], size_pred[2], size_pred[1], size_pred[0]};
 
 endmodule
-
-

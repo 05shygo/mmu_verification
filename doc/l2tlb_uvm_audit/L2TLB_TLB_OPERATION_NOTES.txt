@@ -1,0 +1,289 @@
+L2TLB TLB Operation 说明和修改要点
+===================================
+
+前提
+----
+
+L2TLB 是 8-way skew associative TLB。
+一次 lookup 可以并行查完所有 page size 对应的候选 way。
+每个 way 有 256 个 set。
+
+推荐的 TLB index 编码：
+
+  index[10:8] = way id
+  index[7:0]  = set index
+
+TLB operation 期间，arbiter 应阻塞普通 L2TLB lookup/refill，直到当前 TLB operation 完成。
+
+
+1. TLBP
+-------
+
+目的：
+  用寄存器中的 VPN/ASID/page size 信息 probe L2TLB，判断是否命中。
+
+期望效果：
+  不修改 L2TLB 内容。
+  返回 hit / multi-hit 状态。
+  返回 hit entry 的 index。
+
+实现要点：
+  tlboper 发起 compare-with-VA read。
+  bank select 使用 8'hff，一次读 8 个 way。
+  arbiter 根据 VPN 生成 8 个 skew index。
+  L2TLB 并行比较 8 个 way 的 tag。
+  hit index 推荐编码为 {way_id[2:0], set_idx[7:0]}。
+
+
+2. TLBR
+-------
+
+目的：
+  按指定 index 读取一个 L2TLB entry。
+
+期望效果：
+  不修改 L2TLB 内容。
+  返回指定 entry 的 VPN/ASID/page size/global/PPN/flag。
+
+实现要点：
+  index[10:8] 选择 way。
+  index[7:0] 选择 set。
+  bank select 为 one-hot: 8'b1 << index[10:8]。
+  SRAM row address 只使用 index[7:0]。
+  L2TLB 返回被选中 way 的 tag/data。
+
+
+3. TLBWI
+--------
+
+目的：
+  按指定 index 写入一个 L2TLB entry。
+
+期望效果：
+  用寄存器中的 translation entry 覆盖指定 entry。
+  写入后的 entry valid 为 1。
+  清除 L1 uTLB，避免继续使用旧 translation。
+
+实现要点：
+  index[10:8] 选择 way。
+  index[7:0] 选择 set。
+  bank select 为 one-hot: 8'b1 << index[10:8]。
+  tag 写入 {valid=1, vpn, asid, pgs, global}。
+  data 写入 {ppn, flags}。
+  触发 tlboper_utlb_clr。
+  如果 TLBWI 创建 valid entry，也应明确是否初始化对应 entry 的 RRPV。
+
+
+4. TLBWR
+--------
+
+目的：
+  写入一个由硬件替换策略选择的 L2TLB entry。
+
+期望效果：
+  用寄存器中的 translation entry 覆盖 victim entry。
+  写入后的 entry valid 为 1。
+  清除 L1 uTLB。
+
+实现要点：
+  读阶段读取候选 set 的 8 个 way，供 replacement policy 选择 victim。
+  写阶段 bank select 使用 victim_way。
+  tag 写入 {valid=1, vpn, asid, pgs, global}。
+  data 写入 {ppn, flags}。
+  触发 tlboper_utlb_clr。
+  建议 TLBWR 写 entry 时同步初始化 victim way 的 RRPV。
+
+
+5. INVALL
+---------
+
+目的：
+  使 L2TLB 中所有 entry 无效。
+
+期望效果：
+  所有 tag valid 清 0。
+  data 可以同步写 0。
+  清除 L1 uTLB。
+  LSU 发起时返回 mmu_lsu_tlb_inv_done。
+  CP0 发起时返回 mmu_cp0_tlb_done。
+
+实现要点：
+  counter 扫描 set index 0..255。
+  每个 set 写一次。
+  bank select 使用 8'hff。
+  tag/data 写入 0。
+  一次清一个 set 的 8 个 way。
+  RRPV 不一定需要清，前提是 hit 和 replacement policy 都正确依赖 entry valid。
+
+
+6. INVASID
+----------
+
+目的：
+  使指定 ASID 的非 global entries 无效。
+
+期望效果：
+  清除满足以下条件的 entry：
+
+    entry.valid && !entry.global && entry.asid == inv_asid
+
+  保留 global entries。
+  保留其他 ASID 的 entries。
+  清除 L1 uTLB。
+  LSU 发起时 abort PTW，并在完成后返回 mmu_lsu_tlb_inv_done。
+
+实现要点：
+  推荐按 set 扫描。
+  counter 扫描 set index 0..255。
+  读阶段 bank select 使用 8'hff，一次读 8 个 way。
+  L2TLB 内部生成 8-bit ASID hit vector：
+
+    asid_hit_vec[i] =
+        final_way_vld[i]
+     && !final_way_g[i]
+     && final_way_asid[i] == tlboper_l2tlb_inv_asid
+
+  如果 asid_hit_vec 非 0，进入写阶段。
+  写阶段 bank select 使用 asid_hit_vec。
+  tag/data 写入 0。
+  一次清掉同一个 set 中所有 ASID 命中的 way。
+
+推荐新增控制信号：
+
+  tlboper_l2tlb_invasid_on
+
+L2TLB 根据 operation 类型选择返回给 tlboper 的 way mask：
+
+  l2tlb_tlboper_sel =
+      tlboper_l2tlb_tlbwr_on   ? victim_way :
+      tlboper_l2tlb_invasid_on ? asid_hit_vec :
+                                  final_way_hit;
+
+
+7. INVVA_ALL
+------------
+
+目的：
+  按 VA 使匹配 entry 无效，不比较 ASID。
+
+期望效果：
+  清除所有匹配该 VA 的 entries。
+  忽略 ASID。
+  对 L1 uTLB 发出 VA invalidate 请求。
+  LSU 发起时 abort PTW，并在完成后返回 mmu_lsu_tlb_inv_done。
+
+实现要点：
+  读阶段使用 compare-with-VA。
+  bank select 使用 8'hff，一次读 8 个 way。
+  arbiter 根据 VA/VPN 生成 8 个 skew index。
+  tlboper_l2tlb_cmp_noasid 置 1。
+  L2TLB 生成 final_way_hit。
+  写阶段 bank select 使用 final_way_hit。
+  tag/data 写入 0。
+  触发 tlboper_utlb_inv_va_req。
+
+
+8. INVVA_ASID
+-------------
+
+目的：
+  按 VA + ASID 使匹配 entry 无效。
+
+期望效果：
+  清除 VA 匹配且 ASID 条件满足的 entries。
+  对 L1 uTLB 发出 VA invalidate 请求。
+  LSU 发起时 abort PTW，并在完成后返回 mmu_lsu_tlb_inv_done。
+
+实现要点：
+  读阶段使用 compare-with-VA。
+  bank select 使用 8'hff，一次读 8 个 way。
+  arbiter 根据 VA/VPN 生成 8 个 skew index。
+  tlboper_l2tlb_asid_sel 置 1，使 L2TLB 使用 LSU 提供的 ASID 参与比较。
+  L2TLB 生成 final_way_hit。
+  写阶段 bank select 使用 final_way_hit。
+  tag/data 写入 0。
+  触发 tlboper_utlb_inv_va_req。
+
+
+模块修改要点
+------------
+
+1. ct_mmu_tlboper.v
+
+  - tlboper_arb_bank_sel 必须完整驱动 WAY_NUM bit。
+  - index-based 操作用 index[10:8] decode 成 8-bit one-hot way mask。
+  - set index 使用 index[7:0]。
+  - INVALL counter 扫 0..255。
+  - INVASID counter 扫 0..255。
+  - INVASID 读阶段 bank select 为 8'hff。
+  - INVASID 写阶段 bank select 使用 L2TLB 返回的 ASID hit vector。
+  - INVVA 读阶段 bank select 为 8'hff。
+  - INVVA 写阶段 bank select 使用 L2TLB 返回的 VA hit vector。
+  - 增加 tlboper_l2tlb_invasid_on，用于 L2TLB 区分 ASID invalidate 和 VA invalidate。
+
+推荐 bank select 分类：
+
+  bank_sel_all =
+      tlb_tlbp_req
+   || tlb_invall_req
+   || tlb_invva_rd_req
+   || tlb_invasid_rd_req
+   || tlb_tlbwr_rd_req
+
+  bank_sel_idx =
+      tlb_tlbr_req
+   || tlb_tlbwi_req
+
+  bank_sel_wr =
+      tlb_tlbwr_wt_req
+   || tlb_invva_wt_req
+   || tlb_invasid_wt_req
+
+  tlboper_arb_bank_sel =
+      ({WAY_NUM{bank_sel_all}} & {WAY_NUM{1'b1}})
+    | ({WAY_NUM{bank_sel_idx}} & idx_way_sel)
+    | ({WAY_NUM{bank_sel_wr }} & l2tlb_tlboper_sel)
+
+
+2. mmu_l2tlb.sv
+
+  - 增加 tlboper_l2tlb_invasid_on 输入。
+  - 增加 final_way_asid_hit[7:0]。
+  - INVASID 时返回 ASID hit vector。
+  - INVVA 时返回 VA hit vector。
+  - TLBWR 时返回 victim_way。
+  - l2tlb_tlboper_asid_hit 使用 |final_way_asid_hit。
+  - l2tlb_tlboper_va_hit 使用 |final_way_hit。
+  - l2tlb_regs_tlbp_hit_index 使用 {way_id[2:0], set_idx[7:0]} 编码。
+  - hit 判断必须以 tag valid 为有效条件。
+
+
+3. mmu_arb.sv
+
+  - TLB operation grant 时，普通 request queue / PFU / PTW read 需要被阻塞。
+  - tlboper_arb_bank_sel 原样传给 arb_l2tlb_bank_sel。
+  - index-not-VA 模式下，8 个 way 使用同一个 set index。
+  - compare-with-VA 模式下，8 个 way 使用各自 skew index。
+  - index-not-VA 模式下，SRAM row address 只使用 tlboper_arb_idx[7:0]。
+
+
+4. RRPV
+
+  - invalidation 不要求清 RRPV。
+  - replacement policy 必须优先选择 invalid entry。
+  - TLBWI/TLBWR/PTW refill 创建 valid entry 时，应明确初始化对应 entry 的 RRPV。
+
+
+建议验证点
+----------
+
+1. INVALL 完成后，所有 8 way x 256 set 的 valid 均为 0。
+2. INVASID 只清指定 ASID 的非 global entries。
+3. INVASID 不清 global entries。
+4. INVVA_ALL 清所有 VA 命中的 entries。
+5. INVVA_ASID 只清 VA + ASID 命中的 entries。
+6. INVVA 多命中时清所有 hit way。
+7. TLBP 能返回 way4-way7 的 hit index。
+8. TLBR/TLBWI 能访问 way0-way7 的任意 entry。
+9. invalidation 期间普通 L2TLB lookup/refill 不会并发进入。
+10. invalidation 后 L1 uTLB 不保留旧 translation。

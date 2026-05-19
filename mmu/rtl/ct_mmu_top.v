@@ -343,7 +343,7 @@ module ct_mmu_top(
     logic [7:0]  tlboper_arb_bank_sel;
     logic        tlboper_arb_cmp_va;
     logic [41:0] tlboper_arb_data_din;
-    logic [8:0]  tlboper_arb_idx;
+    logic [10:0] tlboper_arb_idx;
     logic        tlboper_arb_idx_not_va;
     logic        arb_tlboper_grant;
     logic        arb_top_tlboper_on;
@@ -353,6 +353,7 @@ module ct_mmu_top(
     logic        tlboper_l2tlb_cmp_noasid;
     logic [15:0] tlboper_l2tlb_inv_asid;
     logic        tlboper_l2tlb_tlbwr_on;
+    logic        tlboper_l2tlb_invasid_on;
     logic        l2tlb_tlboper_asid_hit;
     logic        l2tlb_tlboper_cmplt;
     logic [7:0]  l2tlb_tlboper_sel;
@@ -740,6 +741,7 @@ module ct_mmu_top(
         .tlboper_l2tlb_cmp_noasid   (tlboper_l2tlb_cmp_noasid),
         .tlboper_l2tlb_inv_asid     (tlboper_l2tlb_inv_asid),
         .tlboper_l2tlb_tlbwr_on     (tlboper_l2tlb_tlbwr_on),
+        .tlboper_l2tlb_invasid_on   (tlboper_l2tlb_invasid_on),
         .tlboper_xx_pgs             (tlboper_xx_pgs),
         .tlboper_ptw_abort          (tlboper_ptw_abort),
         
@@ -1089,6 +1091,7 @@ module ct_mmu_top(
         .tlboper_jtlb_cmp_noasid    (tlboper_l2tlb_cmp_noasid),
         .tlboper_jtlb_inv_asid      (tlboper_l2tlb_inv_asid),
         .tlboper_jtlb_tlbwr_on      (tlboper_l2tlb_tlbwr_on),
+        .tlboper_jtlb_invasid_on    (tlboper_l2tlb_invasid_on),
         
         .jtlb_tlboper_asid_hit      (l2tlb_tlboper_asid_hit),
         .jtlb_tlboper_cmplt         (l2tlb_tlboper_cmplt),

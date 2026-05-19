@@ -70,7 +70,6 @@ overview
                     当这个entry的请求在l2tlb中miss并且被分配进l2tlb miss buffer时，会释放这个entry，拉低这个entry的vld信号的同时会拉低sent信号。
                     当这个entry的请求在l2tlb中miss并且没有被分配进l2tlb miss buffer时，不会释放这个entry，保持这个entry的vld信号的同时会拉低sent信号。因为此时的请求发生了miss且未写入miss buffer（miss buffer满了，无法接受新请求），需要在后续发起replay，重走l2tlb的lookup流水线。
                 
-            l2tlb reqq的clear
 
     2.2 l2tlb
         overview
@@ -126,6 +125,209 @@ overview
                     当pfu或itlb或dtlb或需要lookup的的tlb operation访问l2tlb时，被arb_l2tlb_bank_sel选中的way会同时读出tag，data和rrpv
                     当ptw read请求访问l2tlb时，被arb_l2tlb_bank_sel选中的way会读出rrpv（不读tag和data）
                     当ptw write请求访问l2tlb时，被arb_l2tlb_bank_sel选中的way会写入tag，data和rrpv
+
+                4.sram的clear（L2TLB TLB Operation）
+                    前提
+                    ----
+
+                    L2TLB 是 8-way skew associative TLB。
+                    一次 lookup 可以并行查完所有 page size 对应的候选 way。
+                    每个 way 有 256 个 set。
+
+                    推荐的 TLB index 编码：
+                        index[10:8] = way id
+                        index[7:0]  = set index
+
+                    TLB operation 期间，arbiter 应阻塞普通 L2TLB lookup/refill，直到当前 TLB operation 完成。
+
+
+                    1. TLBP
+                    -------
+
+                    目的：
+                        用寄存器中的 VPN/ASID/page size 信息 probe L2TLB，判断是否命中。
+
+                    期望效果：
+                        不修改 L2TLB 内容。
+                        返回 hit / multi-hit 状态。
+                        返回 hit entry 的 index。
+
+                    实现要点：
+                        tlboper 发起 compare-with-VA read。
+                        bank select 使用 8'hff，一次读 8 个 way。
+                        arbiter 根据 VPN 生成 8 个 skew index。
+                        L2TLB 并行比较 8 个 way 的 tag。
+                        hit index 编码为 {way_id[2:0], set_idx[7:0]}。
+
+
+                    2. TLBR
+                    -------
+
+                    目的：
+                        按指定 index 读取一个 L2TLB entry。
+
+                    期望效果：
+                        不修改 L2TLB 内容。
+                        返回指定 entry 的 VPN/ASID/page size/global/PPN/flag。
+
+                    实现要点：
+                        index[10:8] 选择 way。
+                        index[7:0] 选择 set。
+                        bank select 为 one-hot: 8'b1 << index[10:8]。
+                        SRAM row address 只使用 index[7:0]。
+                        L2TLB 返回被选中 way 的 tag/data。
+
+
+                    3. TLBWI
+                    --------
+
+                    目的：
+                        按指定 index 写入一个 L2TLB entry。
+
+                    期望效果：
+                        用寄存器中的 translation entry 覆盖指定 entry。
+                        写入后的 entry valid 为 1。
+                        清除 L1 uTLB，避免继续使用旧 translation。
+
+                    实现要点：
+                        index[10:8] 选择 way。
+                        index[7:0] 选择 set。
+                        bank select 为 one-hot: 8'b1 << index[10:8]。
+                        tag 写入 {valid=1, vpn, asid, pgs, global}。
+                        data 写入 {ppn, flags}。
+                        触发 tlboper_utlb_clr。
+                        如果 TLBWI 创建 valid entry，对应 entry 的 RRPV为3。
+
+
+                    4. TLBWR
+                    --------
+
+                    目的：
+                        写入一个由硬件替换策略选择的 L2TLB entry。
+
+                    期望效果：
+                        用寄存器中的 translation entry 覆盖 victim entry。
+                        写入后的 entry valid 为 1。
+                        清除 L1 TLB。
+
+                    实现要点：
+                        读阶段读取候选 set 的 8 个 way，供 replacement policy 选择 victim。
+                        写阶段 bank select 使用 victim_way。
+                        tag 写入 {valid=1, vpn, asid, pgs, global}。
+                        data 写入 {ppn, flags}。
+                        触发 tlboper_utlb_clr。
+                        TLBWR 写 entry 时同步初始化 victim way 的 RRPV。
+
+
+                    5. INVALL
+                    ---------
+
+                    目的：
+                        使 L2TLB 中所有 entry 无效。
+
+                    期望效果：
+                        所有 tag valid 清 0。
+                        data 可以同步写 0。
+                        清除 L1 uTLB。
+                        LSU 发起时返回 mmu_lsu_tlb_inv_done。
+                        CP0 发起时返回 mmu_cp0_tlb_done。
+
+                    实现要点：
+                        counter 扫描 set index 0..255。
+                        每个 set 写一次。
+                        bank select 使用 8'hff。
+                        tag/data 写入 0。
+                        一次清一个 set 的 8 个 way。
+                        RRPV 不需要清，因为hit 和 replacement policy 都正确依赖 entry valid。而entry被新置为valid时，对应entry的rrpv会置为3
+
+
+                    6. INVASID
+                    ----------
+
+                    目的：
+                        使指定 ASID 的非 global entries 无效。
+
+                    期望效果：
+                        清除满足以下条件的 entry：
+
+                        entry.valid && !entry.global && entry.asid == inv_asid
+
+                        保留 global entries。
+                        保留其他 ASID 的 entries。
+                        清除 L1 TLB。
+                        LSU 发起时 abort PTW，并在完成后返回 mmu_lsu_tlb_inv_done。
+
+                    实现要点：
+                        按 set 扫描。
+                        counter 扫描 set index 0..255。
+                        读阶段 bank select 使用 8'hff，一次读 8 个 way。
+                        L2TLB 内部生成 8-bit ASID hit vector：
+
+                        asid_hit_vec[i] =
+                            final_way_vld[i]
+                            && !final_way_g[i]
+                            && final_way_asid[i] == tlboper_l2tlb_inv_asid
+
+                        如果 asid_hit_vec 非 0，进入写阶段。
+                        写阶段 bank select 使用 asid_hit_vec。
+                        tag/data 写入 0。
+                        一次清掉同一个 set 中所有 ASID 命中的 way。
+
+                        控制信号：
+                        tlboper_l2tlb_invasid_on
+
+                        L2TLB 根据 operation 类型选择返回给 tlboper 的 way mask：
+
+                        l2tlb_tlboper_sel =
+                            tlboper_l2tlb_tlbwr_on   ? victim_way :
+                            tlboper_l2tlb_invasid_on ? asid_hit_vec :
+                                                        final_way_hit;
+
+
+                    7. INVVA_ALL
+                    ------------
+
+                    目的：
+                        按 VA 使匹配 entry 无效，不比较 ASID。
+
+                    期望效果：
+                        清除所有匹配该 VA 的 entries。
+                        忽略 ASID。
+                        对 L1 uTLB 发出 VA invalidate 请求。
+                        LSU 发起时 abort PTW，并在完成后返回 mmu_lsu_tlb_inv_done。
+
+                    实现要点：
+                        读阶段使用 compare-with-VA。
+                        bank select 使用 8'hff，一次读 8 个 way。
+                        arbiter 根据 VA/VPN 生成 8 个 skew index。
+                        tlboper_l2tlb_cmp_noasid 置 1。
+                        L2TLB 生成 final_way_hit。
+                        写阶段 bank select 使用 final_way_hit。
+                        tag/data 写入 0。
+                        触发 tlboper_utlb_inv_va_req。
+
+
+                    8. INVVA_ASID
+                    -------------
+
+                    目的：
+                         按 VA + ASID 使匹配 entry 无效。
+
+                    期望效果：
+                        清除 VA 匹配且 ASID 条件满足的 entries。
+                        对 L1 TLB 发出 VA invalidate 请求。
+                        LSU 发起时 abort PTW，并在完成后返回 mmu_lsu_tlb_inv_done。
+
+                    实现要点：
+                        读阶段使用 compare-with-VA。
+                        bank select 使用 8'hff，一次读 8 个 way。
+                        arbiter 根据 VA/VPN 生成 8 个 skew index。
+                        tlboper_l2tlb_asid_sel 置 1，使 L2TLB 使用 LSU 提供的 ASID 参与比较。
+                        L2TLB 生成 final_way_hit。
+                        写阶段 bank select 使用 final_way_hit。
+                        tag/data 写入 0。
+                        触发 tlboper_utlb_inv_va_req。
+                    
     
     2.3 arbiter
         overview
@@ -218,4 +420,33 @@ overview
 
     2.4 l2tlb miss buffer
         overview
+        在l2tlb的lookup流水线中miss的pfu，itlb，dtlb的请求会进入l2tlb miss buffer
+        从微架构上看，每拍最多只会有一个miss请求需要进入miss buffer。
+        进入miss buffer的请求将作为候选，准备发到ptw模块。
+        l2tlb miss buffer是用d-flip-flop搭建的
+        在l2tlb miss buffer中给l1dtlb发来的请求预留了多个专用的entry，具体数量可配置，目前是8个l1dtlb和pfu专用的entry。给l1itlb预留了1个专用entry
+        
+        function description
+            在l2tlb miss buffer的entry中，entry 0为l1itlb专用，entry1到entry8为l1dtlb专用。
+                当有来源为l1itlb的请求时，就把entry0分配给l1itlb；当有来源为l1dtlb或pfu的请求时，就从entry1到entry8之间，找到最低位的空闲entry，分配给这个dtlb或pfu的请求。
+            当l2tlb miss buffer中存在有效且未发射的entry且ptw的ready信号拉高，或者当l2tlb miss buffer不存在有效且未发射的entry但是l2tlb的lookup流水线发来miss请求且ptw的ready信号拉高时，l2tlb会发请求到ptw模块
+                当ptw的ready信号拉高且l2tlb miss buffer中存在有效且未发射的entry时，无论l2tlb的lookup流水线有没有发来miss请求，都会在l2tlb miss buffer中有效且未发射的entry中，选出一个发送到ptw。
+                    如果l2tlb miss buffer中有来源为itlb的未发射的请求，也就是说entry0有效且未发射，那么会优先选择把entry0的请求发送出去。
+                    如果l2tlb miss buffer中没有来源为itlb的未发射的请求，那么会从来源为dtlb的未发射请求中选一个发送到ptw，也就是说，itlb的优先级高于dtlb。
+                当l2tlb miss buffer不存在有效且未发射的entry，但是l2tlb的lookup流水线发来miss请求且ptw的ready信号拉高时
+                    如果miss buffer有空闲entry的话，会把lookup流水线发来的miss请求发送到ptw，同时给lookup流水线发来的miss请求分配miss buffer entry。
+                    如果miss buffer没有空闲entry的话，会发feedback信号给l2tlb reqq，把reqq中对应entry的sent信号拉低，而不给这个miss请求分配miss buffer entry。
+
+            l2tlb miss buffer的entry中目前存储：r_vld ，r_sent,entry_vpn[26:0]，entry_l1eid[2:0]，entry_type[2:0]。
+                r_vld：表示该 miss buffer entry 是否有效。分配成功时置 1，PTW completion feedback 命中本 entry 且 fb_hit=1 时清 0。
+                r_sent：表示该 entry 的请求是否已经发给 PTW。r_sent=0 时 entry 是 ready，可被仲裁发出；r_sent=1 时说明请求已经在 PTW 路径中等待完成。若分配同周期走 bypass 且 PTW ready，则初始化为 1；普通 issue grant 后也置 1。feedback、dealloc 或 tlboper_ptw_abort 会清0。
+                entry_vpn[26:0]：保存 miss 请求对应的 VPN。来源是 L2TLB pipeline 的 final_vpn，通过 req_vpn -> alloc_vpn 写入。后续发 PTW 时作为 issue_vpn/l2tlb_ptw_vpn 输出。
+                entry_l1eid[2:0]：保存原始 L1 miss buffer entry id。对 DTLB miss，来自 final_eid/req_l1eid；对 ITLB miss，wrapper 里强制写 0。发给 PTW 的 issue_eid 会把 L2 MB entry index 和这个 L1EID 拼起来：{l2_mb_entry_id, l1eid}。
+                entry_type[2:0]：保存访问类型，也就是 PTW type / access type。来源是 final_acc_type/req_acc_type。当前编码在代码中可见：3'b010 load，3'b110 store，3'b011 fetch，3'b100 prefetch/PFU。后续用于 PTW walk 和 completion 类型判断。
+                当前 L2TLB miss buffer entry 保存的是“L2 miss 后发 PTW 所需的请求上下文”。
+
+    2.5 replacement policy
+        overview
+        
+                          
 

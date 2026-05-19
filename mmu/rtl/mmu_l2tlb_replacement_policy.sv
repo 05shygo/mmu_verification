@@ -29,8 +29,8 @@ module mmu_l2tlb_replacement_policy#(
     // =========================================================
     // Parameters and Internal Signals
     // =========================================================
-    localparam int RRPV_MAX  = (1 << RRPV_WIDTH) - 1; // e.g., 
-    localparam int RRPV_INIT = RRPV_MAX - 3;          // e.g., 6 (Long prediction)
+    localparam int RRPV_MAX  = (1 << RRPV_WIDTH) - 1;
+    localparam int RRPV_INIT = 3;
 
     //logic [WAY_NUM-1:0] [RRPV_WIDTH-1:0]    mask_rrpv;
 
@@ -205,7 +205,7 @@ module mmu_l2tlb_replacement_policy#(
             3'b001: begin
                 for (int i = 0; i < WAY_NUM; i++) begin
                     if (victim_way_out[i]) 
-                        rrpv_updata[i] = RRPV_WIDTH'(RRPV_INIT); // Victim -> Init (e.g., 6)
+                        rrpv_updata[i] = RRPV_WIDTH'(RRPV_INIT);
                     else if (mask_way_reg[i]) 
                         rrpv_updata[i] = rrpv_reg[i]; // Valid Ways -> Age (+1)
                     else
@@ -407,6 +407,4 @@ module mmu_l2tlb_replacement_policy#(
 */
 
 endmodule
-
-
 

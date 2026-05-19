@@ -447,6 +447,128 @@ overview
 
     2.5 replacement policy
         overview
+        RRIP（Re-Reference Interval Prediction）算法是一种缓存替换算法，其原理是通过为每个缓存块存储其重引用预测值（RRPV），以此来预测数据块的重引用间隔。
+        举例说明：
+            L2TLB为way0-7，对于相同index，出现miss情况，需要allocate tlb entry时。若存在空闲way，则直接分配该way(多个空闲时，按照优先级way0->way7)，若无空闲way，则需要使用RRIP算法选择victim way。RRIP算法实际为读取不同entry的未访问时长（即RRPV）。
+
+        RRPV使用方法：
+            使用sram存储rrpv值（范围为0-7）。当某个way初次被allocate时，将其RRPV置为3，每当其被再次访问时，将其RRPV值置为0（最不易被替换）。每次访问会令其他way的RRPV值+1（即其他way经过一段时间未被访问）
+            - 每次访问将被访问的entry RRPV值+1，无论hit/miss，都会更新rrpv值。
+                - 如果hit，那么hit的entry RRPV值置为0，其他未hit的其他entry的RRPV值+1；
+                - 如果miss，那么所有被访问的entry RRPV值+1
+                - 如果ptw refill，将被写入的entry rrpv值置为3。
+
+    2.6 rrpv write buffer
+        overview
+            Request queue中的请求要查l2tlb时需要访问sram（读），更新rrpv值时也需要访问sram（写），而sram是单端口的，此时会发生结构冒险（读写冲突），write buffer是专门解决sram结构冒险问题的。
+            1. 设计Write Buffer：当需要更新 RRPV 时，不要立即写 SRAM。将 {Set_Index, New_RRPV, Way_Mask} 存入一个 Write Buffer (FIFO)。 
+                  - 读优先（Read Priority）：SRAM 端口优先给 Lookup 使用。只要有新的arb请求进来，就执行读操作。
+                  - 偷空闲周期（Cycle Stealing）：
+                    - arb请求通常不会 100% 塞满每一拍。
+                    - 当某一拍没有arb发来的请求时，仲裁器检测到 Write Buffer 非空，利用这个空闲周期把 Buffer 里的数据写入 SRAM。
+                  - Bypass 机制：Lookup 时，除了查 SRAM，还要查 Write Buffer。如果 Buffer 中有针对当前 Index 的待写入 RRPV，直接使用 Buffer 里的新值（Forwarding）。
+                  - 如果 Buffer 满了
+                    - 这种情况下，只能 Stall 流水线。强制停止 Lookup，执行写入。
+            2. 当ptw complete时，ptw造成的写sram作为最高优先级
+
+3.pipeline
+    overview
+        当前 L2TLB 的查找是一套统一的 8-way skew associative 查找流水。无论请求来自 L1TLB、PFU 还是 TLB operation，都会先由 arbiter 选中，再根据 VPN 生成每个 way 的 skew index，或者在某些 TLB operation 中直接使用给定 index访问。真正的 tag compare 在 L2TLB 内部统一完成。
+        单个 way 的基本命中条件是：
+            1.该 way 的 entry valid；entry 中记录的 page size 和当前这个 way 根据 VPN 预测出来的 page size 一致；
+            2.查找 VPN 按该 page size 做 mask 后，和 entry 中保存的 VPN 一致；
+            3.ASID 匹配，或者 entry 是global，或者当前操作要求忽略 ASID。
+            只有这些条件全部满足，这个 way 才算 VA hit。
         
-                          
+        对 L1TLB 来说，包括 L1 ITLB miss 和 L1 DTLB miss，都是按 VA 查找。
+            ITLB miss 进入 ReqQ 的 entry 0，DTLB miss 进入 DTLB 对应的 ReqQ entry。
+            arbiter grant 后，L2TLB 会查所有 way，并打开 VA compare。
+            L1TLB 请求的 hit 判断条件是：
+                8 个 way 中恰好有一个 way 满足上述基本命中条件。
+                如果恰好一个 way hit，就返回 PPN、flag、page size、VPN 给对应的 L1 ITLB 或 L1 DTLB。
+                如果 0 个 way hit，就是 L2TLB miss，PTW 使能时进入 miss buffer 发起 PTW；
+                如果多个 way hit，则认为是 multi-hit，不作为正常 hit 返回。
+
+        对 PFU 来说，也是按 VA 查找。
+            PFU 使用 lsu_mmu_va2 中的 VPN，查所有 way，并打开 VA compare。
+            PFU 的 L2TLB hit 判断条件和 L1TLB 一样：
+                8 个 way 中恰好一个 way 满足 valid、page size、VPN mask、ASID/global/忽略 ASID 条件。
+                PFU 单 hit 之后还不一定最终成功，它还要继续检查 flag、sysmap 和 PMP。如果权限或属性检查通过，PFU 返回 PA valid；
+                如果 L2TLB 多 hit、PTW 关闭时 miss、flag fault 或 PMP deny，则走 PFU error/deny 路径。
+
+        对 TLBP 来说，它是 TLB operation 中的按 VA probe。
+            TLBP 会用当前寄存器中的 VPN 和 ASID 查所有 way，并打开 VA compare。
+            TLBP 的 hit 判断条件也是：
+                恰好一个 way 满足基本 VA hit 条件。此时 l2tlb_regs_hit 为真，并返回probe hit index。
+                如果没有 way hit，则 probe miss。
+                如果多个 way hit，则 l2tlb_regs_hit_mult 为真，表示 probe 发现 multi-hit，不是正常单 hit。
+
+        对 INVVA 的读阶段来说，它也是按 VA 查找。
+            它使用来自 LSU 或当前操作指定的 VA/VPN，查所有 way，并打开 VA compare。
+            INVVA 的 VA hit 判断条件是：
+                至少有一个 way 满足基本 VA hit 条件。这里和普通访问不同，INVVA 更关心有没有匹配项用于后续无效化，所以输出侧会用 VA hit 信息选择要写无效的 way。
+                若操作要求忽略 ASID，则 ASID 条件会被放宽，只要 VPN/page size/valid 匹配，并且 global 或 no-ASID 条件成立即可。
+        对 TLBR 来说，它不是按 VA 判断 hit，而是按 index 读。
+            TLBR 使用 MIR 中给出的 index 和 bank select 去读指定 way，不打开 VA compare。因此 TLBR 没有普通意义上的 “VPN 命中”。它的“选中条件”是 index 和 bank select 指到了某个 way，然后把该 way 的 VPN、ASID、G、page size、PPN、flag 读出来。
+
+        对 TLBWI 来说，它也是按 index 操作。
+            TLBWI 使用 MIR 给出的 index 和 bank select，直接写指定 way，不依赖 VA compare，也没有普通 hit/miss 判定。它的“命中/选中”含义就是 index 选中的目标 way。
+
+        对 TLBWR 来说，读阶段通常会查所有 way 或根据当前替换策略选择 victim。
+            写阶段使用 L2TLB replacement policy 给出的 victim way。
+            TLBWR 不是依赖 VA compare 判断 hit 后再写，而是以 victim way 作为写入目标。因此它的关键条件不是 VA hit，而是 replacement policy 选出的 way。
+
+        对 INVASID 和 INVALL 来说，它们本质是按 index/counter 扫描。
+            INVALL 不需要 VA hit，通常是按 index 遍历并写无效。INVASID 也不是普通 VA hit，它先按 index 读出 entry，然后判断 entry 的 ASID 是否等于目标 ASID，并且entry 不是 global；满足这个 ASID 条件的 entry 才需要被无效化。
+
+    function description
+        下面按“请求被 arbiter 送进 L2TLB 的那个周期叫 T0”来描述。当前 RTL 里可以看成 3 个主要阶段：T0 发起 SRAM 访问，T1 做 raw compare，T2 产生命中结果和返回/分配动作。
+        T0 是仲裁和发起查找周期。
+            这一拍 arbiter 从 PTW、TLB operation、ReqQ、PFU 里选一个来源。优先级大体是 PTW，高于 TLB operation，高于 L1TLB ReqQ，高于 PFU。
+            被选中的请求形成一组送给 L2TLB 的信息：VPN、访问类型、是否写、bank select、是否按 VAcompare、每个 way 的 index、以及写入 tag/data。
+            如果是 L1TLB miss 或 PFU，请求是按 VA 查找，bank select 是所有 way，cmp_with_va 打开。arbiter 用 VPN 生成 8 个 way 各自的 skew index。
+            如果是 TLBP 或 INVVA read，也是按 VA 查找，cmp_with_va 打开。
+            如果是 TLBR、TLBWI、INVASID、INVALL 这类 index 操作，就不用 VPN 生成 skew index，而是把 TLB operation 给出的 index 直接送到各 way，cmp_with_va 关闭。
+            同一个 T0，L2TLB 用这些 index 去访问 tag array、data array、RRPV array。
+            对于写请求，比如 PTW refill 写入、TLBWI、TLBWR、invalidate 写无效，T0 同时根据 bank select 产生写使能。PTW refill 不会进入后面的 hitcompare 流水；它主要是写 array 和更新 RRPV。
+
+            T0 末尾，也就是这个时钟边沿之后，L2TLB 把请求本身的信息打一拍进入 raw stage，包括 VPN、访问类型、ReqQ id、L1 DTLB eid、bank select、cmp_with_va、每个 way 的预测 page size 等。
+            只有需要查找/比较的请求才会置起 raw valid；PTW refill 写和 PTW 读类请求不会作为普通 raw compare 请求继续往后走。
+
+        T1 是 SRAM 读出和 raw compare 周期。
+            这一周期 tag/data array 的读出数据已经对应 T0 发起的那组 index。L2TLB 把每个 way 的 tag 拆开，得到 valid、VPN、ASID、page size、G 位；data 拆成 PPN 和 flag。
+            后每个 way 独立做命中判断。判断条件分成几部分。
+                第一，entry 必须 valid。
+                第二，entry 里存的 page size 要和这个 way 当前预测的 page size 一致。
+                第三，查找 VPN 要按该 page size 做 mask 后和 entry VPN 一致。4K 比较完整 VPN；2M 会忽略页内较低 VPN 段；1G 会忽略更大的低位 VPN 段。
+                第四，ASID 条件要满足，也就是 ASID 相等，或者 entry 是 global，或者当前 TLB operation 要求忽略 ASID。当前忽略 ASID 的信号是 tlboper_l2tlb_cmp_noasid，来自 ct_mmu_tlboper 的 tlboper_jtlb_cmp_noasid。
+            T1 末尾，L2TLB 把每个 way 的 compare 子结果、读出的 tag/data 字段、请求类型、VPN、id 等打一拍进入 final stage。
+
+        T2 是 final hit 汇总和结果输出周期。
+            这一周期 L2TLB 根据 T1 打拍后的每个 way hit 结果做汇总。
+            如果 8 个 way 里 0 个 way hit，就是 miss。
+            如果恰好 1 个 way hit，并且这个请求是按 VA compare 的请求，也就是 cmp_with_va 为真，就是正常 single hit。
+            如果不是 miss，也不是正常 single hit，就归为 multi-hit 或非普通 hit 情况。
+
+            对 L1TLB 请求来说，T2 如果是 single hit，就产生返回给 L1 ITLB 或 L1 DTLB 的完成和 PA valid，同时返回 VPN、page size、PPN、flag。
+            如果是 miss，并且 PTW 使能，就分配 L2TLB miss buffer，后续由 miss buffer 向 PTW 发起页表遍历。ReqQ 会收到 miss allocated 的反馈并释放 entry。
+            如果 miss buffer 满，则 ReqQ 收到 retry，entry 重新变成 ready，之后再发。
+            如果是 multi-hit，或者 PTW 关闭时 miss，就通过 page fault 类路径返回给对应 L1TLB。
+
+            对 PFU 请求来说，T2 的 L2TLB hit 判定和 L1TLB 一样，也是要求恰好一个 way VA hit。
+                single hit 后，PFU 不会立刻只看 L2TLB hit 就结束，还要用读出的 flag、sysmap、PMP 结果做权限和属性检查。
+                PFU 有自己的小 FSM：先从 idle看到 L2TLB/PFU 完成，然后进入 check；如果检查失败进 deny，如果通过进 ok。最终对 LSU 输出 PA valid，或者 PA error。
+
+            对 TLBP 来说，T2 如果恰好一个 way VA hit，就报告 probe hit，并生成 hit index；如果 0 个 hit，就是 probe miss；如果多个 hit，就报告 hit multiple。
+
+            对 INVVA read 来说，T2 关注的是是否有 VA hit，以及 hit 的 way，用于后续写无效。
+
+            对 TLBR、TLBWI、INVASID、INVALL 这类 index 操作来说，T2 不按普通 VA hit 解释。
+                它们更像是“读出被 index/bank select 选中的 entry”。
+                TLBR 把选中 entry 的 VPN、ASID、G、page size、PPN、flag 返回；
+                INVASID 再用读出的 ASID和 G 位判断是否需要无效化；
+                INVALL 直接按扫描/选中目标写无效；TLBWI/TLBWR 则按指定 way 或 victim way 写入。
+
+        用一句话概括时序就是：T0 仲裁并发起 array 访问，同时保存请求；T1 array 数据出来并做每个 way 的 tag compare，同时保存 compare 和数据；T2 汇总 single hit、miss、multi-hit，并根据请求来源返回 L1TLB、驱动 PFU 检查、反馈 ReqQ/miss buffer，或者完成 TLB operation。
+
 

@@ -28,6 +28,7 @@ module mmu_arb#(
     input  logic                    pad_yy_icg_scan_en,
     input  logic                    cp0_mmu_icg_en,
     input  logic                    cp0_mmu_no_op_req,
+    input  logic                    l2tlb_arb_rrpv_wbuf_full,
 
     //-------------------------------------------------------------------------
     // 1. Interface with L2TLB Request Queue (New Source)
@@ -142,6 +143,7 @@ module mmu_arb#(
     logic       arb_clk_en;
     logic       tlboper_on;
     logic       prefetch_mask;
+    logic       arb_block_by_wbuf;
 
     // Selected Request Signals
     logic [VPN_WIDTH-1:0] sel_vpn;
@@ -161,7 +163,8 @@ module mmu_arb#(
     // 1. Clock Gating (Keep from old design)
     //=========================================================================
     assign arb_clk_en = issue_valid | ptw_arb_req | tlboper_arb_req | lsu_mmu_va2_vld | tlboper_on
-                      | mmu_lsu_pa2_err | mmu_lsu_pa2_vld | l2tlb_arb_pfu_miss_mb_full;
+                      | mmu_lsu_pa2_err | mmu_lsu_pa2_vld | l2tlb_arb_pfu_miss_mb_full
+                      | l2tlb_arb_rrpv_wbuf_full | ptw_write_req1 | ptw_write_req2;
 
     gated_clk_cell x_l2tlb_arb_gateclk (
         .clk_in             (forever_cpuclk),
@@ -210,8 +213,9 @@ module mmu_arb#(
             ptw_on <= 1'b1;
     end
 
+    assign arb_block_by_wbuf  = l2tlb_arb_rrpv_wbuf_full;
     assign arb_top_tlboper_on = tlboper_on;
-    assign arb_ptw_mask       = tlboper_on;
+    assign arb_ptw_mask       = tlboper_on | arb_block_by_wbuf;
     assign mmu_yy_xx_no_op    = cp0_mmu_no_op_req && !ptw_arb_req; // Simplified refill check
 
 
@@ -228,10 +232,12 @@ module mmu_arb#(
     always_ff@(posedge arb_clk or negedge cpurst_b) begin
 	if (!cpurst_b) begin
 	    ptw_write_req2 <= 1'b0;
-	end else if(ptw_write_req1) begin
+	end else if(ptw_write_req1 && !ptw_write_req2) begin
 	    ptw_write_req2 <= 1'b1;
-	end else begin
+	end else if(arb_ptw_write_grant) begin
 	    ptw_write_req2 <= 1'b0;
+	end else begin
+	    ptw_write_req2 <= ptw_write_req2;
 	end
     end
 
@@ -256,7 +262,7 @@ module mmu_arb#(
 	    ptw_write_vpn2    <= {VPN_WIDTH{1'b0}};
 	    ptw_l2tlb_tag_in2 <= {48'b0};
 	    ptw_l2tlb_data_in2 <={42'b0};
-	end else if(ptw_write_req1) begin
+	end else if(ptw_write_req1 && !ptw_write_req2) begin
 	    //ptw_write_req2    <= 1'b1;
 	    ptw_write_vpn2    <= ptw_write_vpn1;
 	    ptw_l2tlb_tag_in2 <= ptw_l2tlb_tag_in1;
@@ -269,7 +275,7 @@ module mmu_arb#(
             prefetch_mask <= 1'b0;
         end else if(mmu_lsu_pa2_err | mmu_lsu_pa2_vld | l2tlb_arb_pfu_miss_mb_full) begin
             prefetch_mask <= 1'b0;
-        end else if(arb_tlboper_grant) begin
+        end else if(arb_pfu_grant) begin
             prefetch_mask <= 1'b1;
 
         end
@@ -278,18 +284,21 @@ module mmu_arb#(
     // Grant Logic
     assign arb_ptw_write_grant   = ptw_write_req2 & !tlboper_on & ptw_on;
 
-    assign arb_ptw_grant     = ptw_arb_req && !tlboper_on &&!ptw_on;
+    assign arb_ptw_grant     = ptw_arb_req && !tlboper_on &&!ptw_on
+                             && !arb_block_by_wbuf;
     
     assign arb_tlboper_grant = tlboper_arb_req 
                              && !ptw_arb_req
                              //&& !tlboper_on
-			                 && !ptw_on;
+			                 && !ptw_on
+                             && !arb_block_by_wbuf;
 
     assign arb_reqq_grant    = issue_valid
                              && !ptw_arb_req
                              && !tlboper_arb_req
                              && !tlboper_on
-			                 && !ptw_on;
+			                 && !ptw_on
+                             && !arb_block_by_wbuf;
 
     assign arb_pfu_grant     = lsu_mmu_va2_vld
                              && !dutlb_xx_mmu_off
@@ -298,7 +307,8 @@ module mmu_arb#(
                              && !issue_valid
                              && !tlboper_on
 			                 && !ptw_on
-                             && !prefetch_mask;
+                             && !prefetch_mask
+                             && !arb_block_by_wbuf;
 
     // Global Request Valid
     assign arb_l2tlb_req =arb_ptw_write_grant | arb_ptw_grant | arb_tlboper_grant | arb_reqq_grant | arb_pfu_grant;

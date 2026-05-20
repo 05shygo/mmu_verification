@@ -85,9 +85,11 @@ module mmu_l2tlb_mb_entry#(
     // - Allocating new data (write)
     // - Issuing to pipeline (update Sent bit)
     // - Receiving feedback (update Valid/Sent bit)
+    // - Aborting PTW pipeline (clear Sent bit for retry)
     assign entry_clk_en = entry_alloc_en 
                         | issue_grant 
-                        | fb_match_id;
+                        | fb_match_id
+                        | tlboper_ptw_abort;
 
     // &Instance("gated_clk_cell", "x_reqq_entry_gateclk");
     gated_clk_cell x_reqq_entry_gateclk (
@@ -182,5 +184,4 @@ module mmu_l2tlb_mb_entry#(
     assign entry_out_queue_id =   entry_queue_id;
 
 endmodule
-
 

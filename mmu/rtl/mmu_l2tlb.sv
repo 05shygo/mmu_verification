@@ -49,6 +49,7 @@ module mmu_l2tlb#(
     //pfu <=> arb
     output logic [VPN_WIDTH-1:0]    l2tlb_arb_pfu_vpn,
     output logic                    l2tlb_arb_pfu_miss_mb_full,
+    output logic                    l2tlb_arb_rrpv_wbuf_full,
     
 
     //l2tlb request queue request to arb
@@ -236,16 +237,19 @@ module mmu_l2tlb#(
     //                  Internal Wires Definition
     //==========================================================
     logic                       push_req;
+    logic                       wbuf_push_req;
     logic [WAY_NUM-1:0] [IDX_WIDTH-1:0] raw_bank_index;
     logic [WAY_NUM-1:0] [IDX_WIDTH-1:0] final_bank_index;
     logic                       wbuf_full;
     logic                       wbuf_pop_grant;
     logic                       wbuf_empty;
     logic [WAY_NUM-1:0]         wbuf_cam_hit;
+    logic [WAY_NUM-1:0]         rrpv_sram_vld;
     logic [WAY_NUM-1:0] [IDX_WIDTH-1:0] rrpv_sram_idx;
     logic [WAY_NUM-1:0] [RRPV_WIDTH-1:0]rrpv_sram_wdata;
     logic [WAY_NUM*RRPV_WIDTH-1:0] rrpv_lookup_updata;
     logic [WAY_NUM*RRPV_WIDTH-1:0] l2tlb_rrpv_din;
+    logic [WAY_NUM*RRPV_WIDTH-1:0] l2tlb_rrpv_merged_dout_bus;
     logic [WAY_NUM-1:0] [RRPV_WIDTH-1:0]bypassed_rrpv_rdata;
 
     // Internal Feedback Wires (Hidden from Top Level Ports)
@@ -549,10 +553,14 @@ module mmu_l2tlb#(
                               & arb_l2tlb_tag_din[TAG_WIDTH-1];
     
     // Enable RAM if Lookup (arb_req) OR Write (rrpv_write_en)
-    assign l2tlb_rrpv_cen = {WAY_NUM{arb_l2tlb_req}} | {WAY_NUM{rrpv_write_en}};
+    assign l2tlb_rrpv_cen = {WAY_NUM{arb_l2tlb_req}}
+                          | ({WAY_NUM{rrpv_write_lookup}} & rrpv_sram_vld)
+                          | {WAY_NUM{rrpv_write_ptw}}
+                          | ({WAY_NUM{rrpv_write_tlboper}} & arb_l2tlb_bank_sel);
     
     // Write Enable Mask
-    assign l2tlb_rrpv_wen = ({WAY_NUM{rrpv_write_lookup | rrpv_write_ptw}} & {WAY_NUM{1'b1}})
+    assign l2tlb_rrpv_wen = ({WAY_NUM{rrpv_write_lookup}} & rrpv_sram_vld)
+                           | ({WAY_NUM{rrpv_write_ptw}} & {WAY_NUM{1'b1}})
                            | ({WAY_NUM{rrpv_write_tlboper}} & arb_l2tlb_bank_sel);
     
     // Address Mux: buffered lookup updates use the write-buffer head; PTW and
@@ -563,6 +571,14 @@ module mmu_l2tlb#(
     assign l2tlb_rrpv_din = ({WAY_NUM*RRPV_WIDTH{rrpv_write_lookup}} & rrpv_lookup_updata
                             | {WAY_NUM*RRPV_WIDTH{rrpv_write_ptw}} & arb_l2tlb_rrpv_din
                             | {WAY_NUM*RRPV_WIDTH{rrpv_write_tlboper}} & {WAY_NUM{RRPV_VALID_INIT}});
+
+    always_comb begin
+        for (int i = 0; i < WAY_NUM; i++) begin
+            l2tlb_rrpv_merged_dout_bus[i*RRPV_WIDTH +: RRPV_WIDTH] =
+                wbuf_cam_hit[i] ? bypassed_rrpv_rdata[i]
+                                : l2tlb_rrpv_dout_bus[i*RRPV_WIDTH +: RRPV_WIDTH];
+        end
+    end
                             
     //----------------------------------------------------------
     // 1. Tag Array Instance (8 Banks)
@@ -1035,7 +1051,7 @@ module mmu_l2tlb#(
 
    // Status signals 	
     .entry_vld              (raw_way_vld),
-    .entry_rrpv             (l2tlb_rrpv_dout_bus),////need modify port in replacement policy module 
+    .entry_rrpv             (l2tlb_rrpv_merged_dout_bus),
 
    // Outputs
     .push_req               (push_req), 	
@@ -1045,6 +1061,7 @@ module mmu_l2tlb#(
 
 
 
+    assign wbuf_push_req  = push_req & (final_reqq_req | final_pfu_req);
     assign wbuf_pop_grant = ~arb_l2tlb_req;
 
     mmu_l2tlb_rrpv_wbuf#(
@@ -1056,8 +1073,9 @@ module mmu_l2tlb#(
             .clk        (forever_cpuclk),
             .rst_n      (cpurst_b),
 
-         .push_req(push_req),
+         .push_req(wbuf_push_req),
          .push_idx(final_bank_index), //cam write buffer entry,merge same index data
+         .push_vld(final_way_vld),
          .push_data(rrpv_updata),
 
          .full(wbuf_full),      
@@ -1071,6 +1089,7 @@ module mmu_l2tlb#(
     // Indicates buffer has data pending
          .empty(wbuf_empty),     
     // Data at the Head of the buffer (to be written to SRAM)
+         .sram_vld(rrpv_sram_vld),
          .sram_idx(rrpv_sram_idx),
          .sram_data(rrpv_sram_wdata),
 
@@ -1088,6 +1107,8 @@ module mmu_l2tlb#(
     .bypassed_rrpv_rdata(bypassed_rrpv_rdata),
     .lookup_hit(wbuf_cam_hit)
 );
+
+    assign l2tlb_arb_rrpv_wbuf_full = wbuf_full;
 
     //assign final_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{final_way_sel[0]}} & final_way_ppn[0][PPN_WIDTH-1:0]
     //                                    | {PPN_WIDTH{final_way_sel[1]}} & final_way_ppn[1][PPN_WIDTH-1:0]

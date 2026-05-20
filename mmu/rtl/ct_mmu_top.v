@@ -284,6 +284,7 @@ module ct_mmu_top(
     logic [2:0]  queue_arb_acc_type;
     logic        arb__l2tlb_queue_grant;
     logic	 l2tlb_arb_ptw_cmplt;
+    logic        l2tlb_arb_rrpv_wbuf_full;
 
     // Arbiter <-> L2TLB SRAM/Ctrl
     logic        arb_l2tlb_req;
@@ -644,6 +645,7 @@ module ct_mmu_top(
         // PFU <=> Arb
         .l2tlb_arb_pfu_vpn          (l2tlb_arb_pfu_vpn),
         .l2tlb_arb_pfu_miss_mb_full (l2tlb_arb_pfu_miss_mb_full),
+        .l2tlb_arb_rrpv_wbuf_full   (l2tlb_arb_rrpv_wbuf_full),
         
         // Request Queue <=> Arb
         .queue_arb_req              (queue_arb_req),
@@ -779,6 +781,7 @@ module ct_mmu_top(
         .pad_yy_icg_scan_en         (pad_yy_icg_scan_en),
         .cp0_mmu_icg_en             (cp0_mmu_icg_en),
         .cp0_mmu_no_op_req          (cp0_mmu_no_op_req),
+        .l2tlb_arb_rrpv_wbuf_full   (l2tlb_arb_rrpv_wbuf_full),
         
         // ReqQ Interface
         .issue_valid                (queue_arb_req),

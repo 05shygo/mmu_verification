@@ -878,10 +878,17 @@ overview
                     4KB full PA = {PPN[27:0],  VA[11:0]}
 
         7. VPN[26:0] 对应 SV39 的 VA[38:12]，那么 selector VA[31:30] 对应 VPN 的哪两位？
-        回答：
+        回答：VPN[26:0] = VA[38:12]，所以映射关系是：VPN[i] = VA[i+12]。因此 selector VA[31:30] 对应：VA[31:30] -> VPN[19:18]
 
         8. 4KB、2MB、1GB 的 VPN mask 具体忽略哪些 VPN bit？
-        回答：
+        回答：SV39 VPN 分层：
+                VPN[8:0]    = VPN0 = VA[20:12]
+                VPN[17:9]   = VPN1 = VA[29:21]
+                VPN[26:18]  = VPN2 = VA[38:30]
+            L2TLB hit mask 逻辑：
+                4KB: raw_vpn_4k = raw_vpn[26:0] 
+                2MB: raw_vpn_2m = {raw_vpn[26:9],  9'b0}
+                1GB: raw_vpn_1g = {raw_vpn[26:18], 18'b0}
 
         9. spec 只说“hash 运算”，每个 way、每种 page size 的 hash 函数具体是什么？
         回答：具体hash运算暂时无需纠结，暂时不作为uvm验证的点。
@@ -890,11 +897,12 @@ overview
         回答：是的。
 
         11. lookup 访问所有 bank 时，是否 tag/data/rrpv 三类 SRAM 都读？TLB operation 是否也读 rrpv？
-        回答：
+        回答：是。 ReqQ / PFU 这种 lookup 访问所有 bank 时，8 个 way 的 tag、data、rrpv 都会读。
+                TLB operation 也读 RRPV。TLB operation read/probe 主要用 tag/data hit 结果，RRPV 读值不是结果需要的字段。TLB operation write 且 tag_din valid 时，会写 RRPV，初始化为 RRPV_VALID_INIT = 3
 
         12. 每个 way 的 page size 预测由 selector 决定；如果 entry 中 Size_Type 与该 way 当前预测 page size 不一致，是否即使 VPN/ASID 匹配也必须 miss？
-        回答：
-
+        回答：是，必须 miss。即使 masked VPN 和 ASID/G 条件都匹配，只要 entry 的 Size_Type 与该 way 当前 selector 预测出的 page size 不一致，也会 miss。这个设计等价于：way 按 selector 动态分配 page-size 角色，entry 必须落在与其 page size对应的 way 角色上才可能 hit。
+        
         13. “每个 Way 拥有完全独立且正交的哈希索引函数”与后文只描述“基础 index 再 hash”之间，是否需要给出每个 way 的函数差异？
         回答：具体hash运算暂时无需纠结，暂时不作为uvm验证的点。
 

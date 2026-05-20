@@ -48,6 +48,7 @@ module mmu_l2tlb#(
     //!*****************************************************
     //pfu <=> arb
     output logic [VPN_WIDTH-1:0]    l2tlb_arb_pfu_vpn,
+    output logic                    l2tlb_arb_pfu_miss_mb_full,
     
 
     //l2tlb request queue request to arb
@@ -381,6 +382,14 @@ module mmu_l2tlb#(
     logic                       final_is_dtlb;  // Inferred
     logic                       ptw_req;
     logic                       final_pa_vld;
+    logic                       final_reqq_req;
+    logic                       final_pfu_req;
+    logic                       final_reqq_hit;
+    logic                       final_reqq_miss;
+    logic                       final_reqq_fault;
+    logic                       final_reqq_retry;
+    logic                       final_reqq_done;
+    logic                       final_miss_needs_ptw;
 
     logic [VPN_WIDTH-1:0]       raw_vpn_4k;
     logic [VPN_WIDTH-1:0]       raw_vpn_2m;
@@ -546,8 +555,9 @@ module mmu_l2tlb#(
     assign l2tlb_rrpv_wen = ({WAY_NUM{rrpv_write_lookup | rrpv_write_ptw}} & {WAY_NUM{1'b1}})
                            | ({WAY_NUM{rrpv_write_tlboper}} & arb_l2tlb_bank_sel);
     
-    // Address Mux: Write Index vs Lookup Index
-    assign l2tlb_rrpv_idx_mux = (rrpv_write_lookup | rrpv_write_ptw) ? rrpv_sram_idx : arb_l2tlb_idx_bus;
+    // Address Mux: buffered lookup updates use the write-buffer head; PTW and
+    // TLB operation writes use the current arbiter-selected skew indices.
+    assign l2tlb_rrpv_idx_mux = rrpv_write_lookup ? rrpv_sram_idx : arb_l2tlb_idx_bus;
 
     assign rrpv_lookup_updata = {rrpv_sram_wdata[7],rrpv_sram_wdata[6],rrpv_sram_wdata[5],rrpv_sram_wdata[4],rrpv_sram_wdata[3],rrpv_sram_wdata[2],rrpv_sram_wdata[1],rrpv_sram_wdata[0]};
     assign l2tlb_rrpv_din = ({WAY_NUM*RRPV_WIDTH{rrpv_write_lookup}} & rrpv_lookup_updata
@@ -638,7 +648,7 @@ module mmu_l2tlb#(
     always_ff@(posedge l2tlb_clk or negedge cpurst_b) begin
         if(!cpurst_b) begin
             raw_vld      <=     1'b0;
-	end else if(arb_l2tlb_req & (arb_l2tlb_acc_type != 3'b101 && arb_l2tlb_acc_type != 3'b000)) begin
+	end else if(arb_l2tlb_req & (arb_l2tlb_acc_type != 3'b101)) begin
 		raw_vld	 <=	1'b1;
 	end else raw_vld <= 1'b0;
     end	    
@@ -836,7 +846,7 @@ module mmu_l2tlb#(
 
     assign final_tlb_miss     = (final_hit_sum[2:0] == 3'b000);
     assign final_tlb_hit      = (final_hit_sum[2:0] == 3'b001) & final_cmp_with_va & !final_par_fail;
-    assign final_tlb_hit_mult = !final_tlb_miss & !final_tlb_hit & !final_par_fail;
+    assign final_tlb_hit_mult = final_cmp_with_va & !final_tlb_miss & !final_tlb_hit & !final_par_fail;
 
     assign l2tlb_miss = (final_vld & final_cmp_with_va & final_tlb_miss | final_par_fail); //|| final_vld && final_cmp_va && !final_tlb_miss && final_par_fail;
 
@@ -900,7 +910,20 @@ module mmu_l2tlb#(
     //==========================================================
     logic [L2EID_WIDTH-1:0] l2mb_feedback_eid;
 
-    assign mb_alloc_en = l2tlb_miss; 
+    assign final_reqq_req = final_vld
+                           & final_cmp_with_va
+                           & ((final_acc_type[2:0] == 3'b010)
+                           |  (final_acc_type[2:0] == 3'b110)
+                           |  (final_acc_type[2:0] == 3'b011));
+    assign final_pfu_req  = final_vld
+                           & final_cmp_with_va
+                           & (final_acc_type[2:0] == 3'b100);
+
+    assign final_miss_needs_ptw = l2tlb_miss
+                                & cp0_mmu_ptw_en
+                                & (final_reqq_req | final_pfu_req);
+
+    assign mb_alloc_en = final_miss_needs_ptw;
 
     assign l2mb_feedback_eid = ptw_l2tlb_ref_id[L2EID_WIDTH+L1EID_WIDTH-1:L1EID_WIDTH];
 
@@ -967,16 +990,31 @@ module mmu_l2tlb#(
 
     assign final_pa_vld  = final_tlb_hit & final_vld;
 
-    assign l2tlb_reqq_fb_vld        = final_pa_vld | l2tlb_miss;
-    assign l2tlb_reqq_fb_id         = final_queue_id;
-    assign l2tlb_reqq_fb_hit        = final_pa_vld;
-    
-    // A miss that cannot allocate an L2 miss-buffer entry must retry.  Without
-    // this feedback, the reqq entry stays valid+sent forever.
-    assign l2tlb_reqq_fb_miss_alloc = l2tlb_miss & mb_alloc_valid;////////////////////////////////////add logic mb response to reqq
-    assign l2tlb_reqq_fb_miss_retry = l2tlb_miss & !mb_alloc_valid;
+    assign final_reqq_hit   = final_reqq_req & final_tlb_hit;
+    assign final_reqq_miss  = final_reqq_req & l2tlb_miss;
+    assign final_reqq_fault = final_reqq_req
+                            & (final_tlb_hit_mult
+                            |  (l2tlb_miss & !cp0_mmu_ptw_en));
+    assign final_reqq_retry = final_reqq_miss & cp0_mmu_ptw_en & !mb_alloc_valid;
+    assign final_reqq_done  = final_reqq_hit
+                            | final_reqq_fault
+                            | (final_reqq_miss & cp0_mmu_ptw_en & mb_alloc_valid);
 
-  
+    assign l2tlb_reqq_fb_vld        = final_reqq_done | final_reqq_retry;
+    assign l2tlb_reqq_fb_id         = final_queue_id;
+    assign l2tlb_reqq_fb_hit        = final_reqq_hit;
+    
+    // ReqQ entries retire on any terminal result. Only a PTW-enabled miss that
+    // cannot allocate an L2 miss-buffer entry is replayed.
+    assign l2tlb_reqq_fb_miss_alloc = final_reqq_miss & cp0_mmu_ptw_en & mb_alloc_valid;////////////////////////////////////add logic mb response to reqq
+    assign l2tlb_reqq_fb_miss_retry = final_reqq_retry;
+
+    assign l2tlb_arb_pfu_miss_mb_full = final_pfu_req
+                                      & l2tlb_miss
+                                      & cp0_mmu_ptw_en
+                                      & !mb_alloc_valid;
+
+
     assign ptw_req = (final_acc_type == 3'b000) & final_vld;
     assign l2tlb_arb_ptw_cmplt = arb_l2tlb_req & (arb_l2tlb_acc_type == 3'b101) & arb_l2tlb_write;
 
@@ -1099,7 +1137,7 @@ module mmu_l2tlb#(
 
 
 
-    assign final_l1tlb_cmplt        = final_vld & !final_par_fail
+    assign final_l1tlb_cmplt        = final_vld & final_cmp_with_va & !final_par_fail
                                     & (!cp0_mmu_ptw_en //&& read_cur_1g
                                     | !final_tlb_miss);
 

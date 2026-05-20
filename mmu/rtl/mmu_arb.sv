@@ -95,6 +95,7 @@ module mmu_arb#(
     input  logic                    mmu_lsu_pa2_vld,
     input  logic                    lsu_mmu_va2_vld,  // PFU valid
     input  logic [VPN_WIDTH-1:0]    l2tlb_arb_pfu_vpn,
+    input  logic                    l2tlb_arb_pfu_miss_mb_full,
     input  logic                    dutlb_xx_mmu_off, // MMU enable status
     
     output logic                    arb_pfu_grant,
@@ -159,7 +160,8 @@ module mmu_arb#(
     //=========================================================================
     // 1. Clock Gating (Keep from old design)
     //=========================================================================
-    assign arb_clk_en = issue_valid | ptw_arb_req | tlboper_arb_req | lsu_mmu_va2_vld | tlboper_on;
+    assign arb_clk_en = issue_valid | ptw_arb_req | tlboper_arb_req | lsu_mmu_va2_vld | tlboper_on
+                      | mmu_lsu_pa2_err | mmu_lsu_pa2_vld | l2tlb_arb_pfu_miss_mb_full;
 
     gated_clk_cell x_l2tlb_arb_gateclk (
         .clk_in             (forever_cpuclk),
@@ -195,11 +197,9 @@ module mmu_arb#(
 
     logic [47:0] ptw_l2tlb_tag_in1;
     logic [41:0] ptw_l2tlb_data_in1;
-    logic [WAY_NUM-1:0][RRPV_WIDTH-1:0] ptw_l2tlb_rrpv_in1;
 
     logic [47:0] ptw_l2tlb_tag_in2;
     logic [41:0] ptw_l2tlb_data_in2;
-    logic [WAY_NUM-1:0][RRPV_WIDTH-1:0] ptw_l2tlb_rrpv_in2;
 
     always @(posedge arb_clk or negedge cpurst_b) begin
         if (!cpurst_b)
@@ -241,13 +241,11 @@ module mmu_arb#(
 	    ptw_write_vpn1    <= {VPN_WIDTH{1'b0}};
 	    ptw_l2tlb_tag_in1  <= {48'b0};
 	    ptw_l2tlb_data_in1 <= {42'b0};
-	    ptw_l2tlb_rrpv_in1 <= '{default:0};
 	end else if(arb_ptw_grant) begin
 	    //ptw_write_req1    <= arb_ptw_grant;
 	    ptw_write_vpn1    <= ptw_arb_vpn;
 	    ptw_l2tlb_tag_in1  <= ptw_arb_tag_din;
 	    ptw_l2tlb_data_in1 <= ptw_arb_data_din;
-	    ptw_l2tlb_rrpv_in1 <= rrpv_updata;
 	end
     end
 	
@@ -258,20 +256,18 @@ module mmu_arb#(
 	    ptw_write_vpn2    <= {VPN_WIDTH{1'b0}};
 	    ptw_l2tlb_tag_in2 <= {48'b0};
 	    ptw_l2tlb_data_in2 <={42'b0};
-	    ptw_l2tlb_rrpv_in2 <= '{default:0};
 	end else if(ptw_write_req1) begin
 	    //ptw_write_req2    <= 1'b1;
 	    ptw_write_vpn2    <= ptw_write_vpn1;
 	    ptw_l2tlb_tag_in2 <= ptw_l2tlb_tag_in1;
 	    ptw_l2tlb_data_in2 <= ptw_l2tlb_data_in1;
-	    ptw_l2tlb_rrpv_in2 <= ptw_l2tlb_rrpv_in1;
 	end
     end
 
     always_ff@(posedge arb_clk or negedge cpurst_b) begin
         if (!cpurst_b) begin
             prefetch_mask <= 1'b0;
-        end else if(mmu_lsu_pa2_err | mmu_lsu_pa2_vld) begin
+        end else if(mmu_lsu_pa2_err | mmu_lsu_pa2_vld | l2tlb_arb_pfu_miss_mb_full) begin
             prefetch_mask <= 1'b0;
         end else if(arb_tlboper_grant) begin
             prefetch_mask <= 1'b1;
@@ -327,7 +323,7 @@ module mmu_arb#(
 
     assign arb_l2tlb_tag_din  = ({48{arb_ptw_write_grant}}     & ptw_l2tlb_tag_in2) //tag 2 cycle
                               | ({48{tlboper_wen}} & tlboper_arb_tag_din);
-    assign arb_l2tlb_rrpv_din = {ptw_l2tlb_rrpv_in2[7],ptw_l2tlb_rrpv_in2[6],ptw_l2tlb_rrpv_in2[5],ptw_l2tlb_rrpv_in2[4],ptw_l2tlb_rrpv_in2[3],ptw_l2tlb_rrpv_in2[2],ptw_l2tlb_rrpv_in2[1],ptw_l2tlb_rrpv_in2[0]}; 
+    assign arb_l2tlb_rrpv_din = {rrpv_updata[7],rrpv_updata[6],rrpv_updata[5],rrpv_updata[4],rrpv_updata[3],rrpv_updata[2],rrpv_updata[1],rrpv_updata[0]};
                               
     assign arb_l2tlb_data_din = ({42{arb_ptw_write_grant}}     & ptw_l2tlb_data_in2)
                               | ({42{arb_tlboper_grant}} & tlboper_arb_data_din);

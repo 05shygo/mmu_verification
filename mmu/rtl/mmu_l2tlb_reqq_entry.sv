@@ -95,8 +95,9 @@ module mmu_l2tlb_reqq_entry#(
     //=========================================================================
     // 2. Valid Bit Logic
     //=========================================================================
-    // Deallocate when feedback returns Success (Hit or Alloc Miss Buffer)
-    assign entry_clr = fb_match_id && (fb_hit || fb_miss_alloc);
+    // Deallocate when feedback returns any terminal result. Only miss retry
+    // keeps the entry valid and clears sent so it can be replayed.
+    assign entry_clr = fb_match_id && !fb_miss_retry;
 
     always @(posedge entry_clk or negedge cpurst_b) begin
         if (!cpurst_b)
@@ -171,5 +172,4 @@ module mmu_l2tlb_reqq_entry#(
     assign entry_out_type = entry_type;
 
 endmodule
-
 

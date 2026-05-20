@@ -380,6 +380,7 @@ module ct_mmu_top(
 
     // PFU
     logic [26:0] l2tlb_arb_pfu_vpn;
+    logic        l2tlb_arb_pfu_miss_mb_full;
     logic        arb_pfu_grant;
     logic        dutlb_xx_mmu_off;
 
@@ -642,6 +643,7 @@ module ct_mmu_top(
         
         // PFU <=> Arb
         .l2tlb_arb_pfu_vpn          (l2tlb_arb_pfu_vpn),
+        .l2tlb_arb_pfu_miss_mb_full (l2tlb_arb_pfu_miss_mb_full),
         
         // Request Queue <=> Arb
         .queue_arb_req              (queue_arb_req),
@@ -817,6 +819,7 @@ module ct_mmu_top(
         .mmu_lsu_pa2_vld            (mmu_lsu_pa2_vld),
         .lsu_mmu_va2_vld            (lsu_mmu_va2_vld),
         .l2tlb_arb_pfu_vpn          (l2tlb_arb_pfu_vpn),
+        .l2tlb_arb_pfu_miss_mb_full (l2tlb_arb_pfu_miss_mb_full),
         .dutlb_xx_mmu_off           (dutlb_xx_mmu_off),
         .arb_pfu_grant              (arb_pfu_grant),
         

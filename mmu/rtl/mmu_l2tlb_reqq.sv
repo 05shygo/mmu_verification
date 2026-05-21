@@ -20,7 +20,7 @@ module mmu_l2tlb_reqq#(
     // Total = 1 (ITLB) + 8 (DTLB) = 9
     parameter TOTAL_DEPTH = 1 + DTLB_DEPTH,
     // ID Width = ceil(log2(9)) = 4 bits
-    parameter ID_W        = 3
+    parameter ID_W        = 4
 
 
 

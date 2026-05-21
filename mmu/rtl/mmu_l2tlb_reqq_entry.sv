@@ -8,7 +8,7 @@ module mmu_l2tlb_reqq_entry#(
 	
     parameter VPN_W  = 27,
     parameter ASID_W = 5,
-    parameter EID_W  = 2,    // Width for Miss Buffer ID
+    parameter EID_W  = 3,    // Width for Miss Buffer ID
     parameter TYPE_W = 2     // Width for Request Type
 )(
     // Global Signals

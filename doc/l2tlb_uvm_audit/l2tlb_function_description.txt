@@ -28,7 +28,7 @@ overview
 1.signal description
     说明
         本节整理 mmu_l2tlb 模块的对外接口信号，方向均以 mmu_l2tlb 为基准。
-        主要参数：VPN_WIDTH=27，PPN_WIDTH=28，FLG_WIDTH=14，PGS_WIDTH=3，ASID_WIDTH=16，IDX_WIDTH=8，WAY_NUM=8，TRANS_ID_WIDTH=3，L1EID_WIDTH=3，L2EID_WIDTH=3，TYPE_WIDTH=3，RRPV_WIDTH=3。
+        主要参数：VPN_WIDTH=27，PPN_WIDTH=28，FLG_WIDTH=14，PGS_WIDTH=3，ASID_WIDTH=16，IDX_WIDTH=8，WAY_NUM=8，TRANS_ID_WIDTH=4，L1EID_WIDTH=3，L2EID_WIDTH=4，TYPE_WIDTH=3，RRPV_WIDTH=3。
         常用 access type 编码：3'b001 表示 TLB operation，3'b010 表示 DTLB load，3'b011 表示 ITLB/fetch，3'b100 表示 PFU prefetch，3'b101 表示 PTW refill write，3'b110 表示 DTLB store。
         page size 使用 one-hot 编码：3'b001 表示 4KB，3'b010 表示 2MB，3'b100 表示 1GB。
 
@@ -59,7 +59,7 @@ overview
         | queue_arb_req | output | 1 | ReqQ 向 arbiter 发出的请求有效。该请求可能来自已入队且 ready 的 entry，也可能来自当拍 L1 ITLB/DTLB 新请求的 bypass issue。 |
         | queue_arb_vpn[VPN_WIDTH-1:0] | output | 27 | ReqQ 选中请求的 VPN。进入 arbiter 后用于生成 l2tlb lookup 的各 way index，并在 pipeline 中做 tag compare。 |
         | queue_arb_eid[L1EID_WIDTH-1:0] | output | 3 | L1 DTLB miss buffer entry id。DTLB 请求完成时通过 l2tlb_l1dtlb_ref_eid 返回给 L1 DTLB；ITLB 请求没有 L1 miss buffer，通常为 0。 |
-        | queue_arb_trans_id[TRANS_ID_WIDTH-1:0] | output | 3 | L2TLB ReqQ entry id。pipeline 完成后用该 id 反馈给 ReqQ，命中或 miss 成功分配 miss buffer 时释放 entry，miss buffer full 时清 sent 并等待 replay。 |
+        | queue_arb_trans_id[TRANS_ID_WIDTH-1:0] | output | 4 | L2TLB ReqQ entry id。pipeline 完成后用该 id 反馈给 ReqQ，命中或 miss 成功分配 miss buffer 时释放 entry，miss buffer full 时清 sent 并等待 replay。 |
         | queue_arb_acc_type[TYPE_WIDTH-1:0] | output | 3 | ReqQ 请求类型。ITLB 为 3'b011，DTLB load 为 3'b010，DTLB store 为 3'b110；该字段决定最终返回 ITLB、DTLB 还是进入对应异常路径。 |
         | victim_way[WAY_NUM-1:0] | output | 8 | replacement policy 选出的 victim way one-hot。PTW refill 或 TLBWR 写入新 entry 时使用该 mask 选择写入 way。 |
         | rrpv_updata[WAY_NUM-1:0][RRPV_WIDTH-1:0] | output | 8x3 | replacement policy 计算出的每个 way 的新 RRPV 值。PTW refill write 时经 arbiter 写回 RRPV SRAM。 |
@@ -99,12 +99,12 @@ overview
         | ptw_l2tlb_ref_data_vld | input | 1 | PTW 返回 translation data 有效。表示 page table walk 找到可 refill 的页表项；也作为 uTLB refill 活动指示来源之一。 |
         | ptw_l2tlb_ref_flg[13:0] | input | 14 | PTW 返回的 PTE flag/attribute。PFU miss 完成时，l2tlb 使用该字段做 flag fault、security/share 等判断。 |
         | ptw_l2tlb_ref_pgflt | input | 1 | PTW 返回 page fault。PFU miss completion 时会导致 PFU error；普通 L1 miss 的 fault 也需要通过 PTW/L1 completion 路径处理。 |
-        | ptw_l2tlb_ref_id[L1EID_WIDTH+L2EID_WIDTH-1:0] | input | 6 | PTW 返回 transaction id。高位用于定位 l2tlb miss buffer entry，低位保留 L1 miss buffer id，用于 completion 对应原始请求。 |
+        | ptw_l2tlb_ref_id[L1EID_WIDTH+L2EID_WIDTH-1:0] | input | 7 | PTW 返回 transaction id。高位用于定位 l2tlb miss buffer entry，低位保留 L1 miss buffer id，用于 completion 对应原始请求。 |
         | ptw_ready | input | 1 | PTW 接收请求 ready。l2tlb miss buffer 只有在 PTW ready 且 cp0_mmu_ptw_en 有效时才发起 l2tlb_ptw_req。 |
         | l2tlb_ptw_req | output | 1 | l2tlb miss buffer 向 PTW 发出的 walk 请求有效。该信号由 mb_issue_req 与 cp0_mmu_ptw_en 共同决定。 |
         | l2tlb_ptw_type[2:0] | output | 3 | 发给 PTW 的请求类型，继承原始 miss 的 ITLB/DTLB/PFU 和 load/store/fetch 属性。 |
         | l2tlb_ptw_vpn[26:0] | output | 27 | 发给 PTW 的 miss VPN。PTW 以该 VPN 做 page table walk，并在找到叶子 PTE 后通过 refill 路径写回 L2TLB。 |
-        | l2tlb_ptw_id[L1EID_WIDTH+L2EID_WIDTH-1:0] | output | 6 | 发给 PTW 的 transaction id，包含 L2 miss buffer entry id 和 L1 entry id，供 completion 回传匹配。 |
+        | l2tlb_ptw_id[L1EID_WIDTH+L2EID_WIDTH-1:0] | output | 7 | 发给 PTW 的 transaction id，包含 L2 miss buffer entry id 和 L1 entry id，供 completion 回传匹配。 |
 
     1.6 l1 itlb/dtlb request and credit interface
         | signal | dir | width | description |
@@ -1027,7 +1027,7 @@ overview
                 multi-hit 时 jtlb_regs_hit 为 0，jtlb_regs_hit_mult 为 1，所以 MIR 会被写成 probe fail，并置tlbp_tfatal。index 字段不会被更新，保持原来的值。也就是说 multi-hit 情况下寄存器应通过 “P=1、tlbp_tfatal=1” 表示结果无效，index 是无效字段，不应被软件使用。
 
         4. TLBR 读取 invalid entry 时返回内容是否有定义？
-        回答：TLBR 读取 invalid entry 时，当前 RTL 没有把返回内容定义成固定值，也没有因为 tag valid=0 而屏蔽其它字段。
+        回答：TLBR 读取 invalid entry 时，当前没有把返回内容定义成固定值，也没有因为 tag valid=0 而屏蔽其它字段。
               它会按 MIR 指定的 way/index 读出 tag/data SRAM，然后把读出的 VPN、PGS、ASID、G、PPN、flag 原样写回 MEH/MEL。
               也就是说 MEL.V 会反映 data 里的 V bit，但其它字段就是该 invalid entry SRAM 中保存的旧值或复位值，不应当被软件当作有效翻译内容使用。
 
@@ -1062,7 +1062,7 @@ overview
                    并且 page size 匹配
                    并且按 page size mask 后 VPN 匹配
                    且满足 ASID 条件
-                   其中 ASID 条件在 RTL 里写成：
+                   其中 ASID 条件是：
                        ASID 相等，或者 entry 是 global，或者当前操作要求忽略 ASID。
             INVVA_ALL 时，tlboper_l2tlb_cmp_noasid 会置 1，所以“当前操作要求忽略 ASID”这一项已经为真。
             这样 G 位即使仍在表达式里，也已经被 cmp_noasid 覆盖掉了。
@@ -1070,8 +1070,8 @@ overview
             INVVA_ALL：清除 valid、按 arb per-way predicted page size 后 VA/VPN 匹配、且 tag.pgs 等于该 way predicted pgs 的 entry；ASID 和 G 不限制。
 
         9. INVVA_ASID 中 global entry 是否应被无效化？
-        回答：会。只要 VA/page size 命中，当前 RTL 会把 global entry 放进 final_way_hit，然后写阶段用 final_way_hit 作为 bank select，把它清掉。
-              INVVA_ASID 时不会置 cmp_noasid，但 tlboper_l2tlb_asid_sel 会选择 LSU 提供的目标 ASID 参与比较。因此当前 RTL 的命中条件实际是：
+        回答：会。只要 VA/page size 命中，当前会把 global entry 放进 final_way_hit，然后写阶段用 final_way_hit 作为 bank select，把它清掉。
+              INVVA_ASID 时不会置 cmp_noasid，但 tlboper_l2tlb_asid_sel 会选择 LSU 提供的目标 ASID 参与比较。因此当前的命中条件实际是：
                 valid、page size、VPN 匹配，并且 ASID 相等或者 entry.G=1。
                 这意味着当前INVVA_ASID 会清除两类 entry：
                     第一类是 VA/page size 匹配、G=0、ASID 等于目标 ASID 的 non-global entry。
@@ -1124,7 +1124,7 @@ overview
               abort PTW 差异：
                 只有 LSU 发起的 TLB operation 会产生 tlboper_ptw_abort。条件是：当前有 LSU TLB op 请求，且还没有被 tlb_lsu_oper_flop 记录过。也就是 LSU invalidate 被接收时打一拍 abort pulse。
                 寄存器/MCIR 发起的 TLBP/TLBR/TLBWI/TLBWR/INVALL/INVASID 不会产生 tlboper_ptw_abort。cp0_mmu_tlb_all_inv 也不在 tlb_lsu_oper 条件里，所以同样不会产生这个 abort。
-                PTW 侧收到这个 abort 后，会清/抑制 PTW mbuf 创建和正在处理的 walk。也就是说：当前 RTL 把 PTW abort 语义绑定给 LSU/SFENCE 类 invalidate，而不是所有 TLB operation。
+                PTW 侧收到这个 abort 后，会清/抑制 PTW mbuf 创建和正在处理的 walk。也就是说：当前把 PTW abort 语义绑定给 LSU/SFENCE 类 invalidate，而不是所有 TLB operation。
                 tlb_lsu_oper_flop 更准确地说不是“所有 TLB operation busy”，而是“已经接收了一个 LSU 来源的 TLB invalidate operation，并且该 operation 还没完成”的来源锁存标志。
                     它的输入源只有 LSU 四个请求：lsu_mmu_tlb_asid_all_inv，lsu_mmu_tlb_all_inv，lsu_mmu_tlb_va_all_inv，lsu_mmu_tlb_va_asid_inv。这四个 OR 成 tlb_lsu_oper。只要 tlb_lsu_oper 为 1、所有 TLB operation FSM 都 idle、并且当前不在 LSU done pulse 周期，tlb_lsu_oper_flop 就置 1。
                     置位条件可以理解为：LSU 请求存在，并且 TLBOper 当前空闲，并且上一笔 LSU done pulse 不在高电平
@@ -1344,3 +1344,481 @@ overview
         10. spec 是否需要给出 L2TLB 对外所有 request/response 的时序图，作为 UVM monitor 和 checker 的依据？
         回答：AI不适合读图，我是指挥AI根据spec搭建uvm。如果当前spec不足以支撑monitor和checker的设计，是否可以用文字描述补充信息？
 
+5. AI audit unresolved questions for UVM construction
+    说明
+        以下问题是在只阅读本 spec 文本、且参考已有 4.x 回答后继续补充的待澄清点。目标是让后续 AI 能够据此搭建或修改 L2TLB UVM 环境。这里只记录问题，不给出推测答案。
+
+    5.1 spec 状态、验证边界与可观测性
+        1. 4.x 中已经回答的问题是否都应视为正式 spec 语义？如果 1~3 节正文与 4.x 回答存在不一致，UVM 环境应以哪一部分作为优先级最高的 golden 规则？
+        回答：应该以4.x 回答作为优先级最高的 golden 规则。最好把不一致的地方找出来，让人类工程师澄清。
+
+        2. 本文件中多处回答使用“当前 RTL”“代码里”等表述；这些描述是否允许直接作为 UVM 期望行为，还是需要先改写成与 RTL 无关的正式功能规范？
+        回答：已经改写成改写成与 RTL 无关的正式功能规范。
+
+        3. L2TLB UVM 的 DUT 边界到底是完整 mmu_l2tlb 顶层，还是只验证 L2TLB core/arbiter/ReqQ/miss buffer 等子模块组合？
+        回答：我是要搭建整个mmu的验证环境，而不只是为l2tlb搭建uvm。这个文档的内容只是作为搭建完整uvm的一部分参考。
+
+        4. UVM 环境应驱动真实顶层端口，还是允许直接驱动内部 arbiter/L2TLB/miss buffer/TLB operation 子接口？
+        回答：应该驱动真实顶层接口。
+
+        5. `signal description` 中列出的 `arb_l2tlb_*`、`queue_arb_*`、`l2tlb_arb_*` 等信号哪些是 DUT 对外端口，哪些只是内部 monitor 可选观察点？
+        回答：这些只是mmu内部中l2tlb与其他模块的接口，只有少部分是与mmu外部的接口，比如pmp，sysmap。搭建uvm的时候应该站在mmu的角度。
+
+        6. 验证环境是否允许 white-box 观察内部 ReqQ、miss buffer、raw/final stage、RRPV write buffer、ptw_on、tlboper_on、prefetch_mask、SRAM 内容？
+        回答：允许。
+
+        7. 验证环境是否允许 backdoor 初始化或修改 tag/data/RRPV SRAM，用于构造 hit、miss、multi-hit、invalid entry、RRPV corner case？
+        回答：这个我不太懂。但是如果有利于验证dut的行为我都允许。
+
+        8. 如果允许 backdoor 初始化，tag/data/RRPV 是否必须保持一致性？例如 tag.valid=0 时 data/rrpv 可否任意，tag.G 与 data flags 是否还有一致性要求？
+        回答：tag.valid=0 时 data/rrpv 可任意。tag.G 与 data flags 是否还有一致性要求我不确定，你分析之后做决定。
+
+        9. 如果不允许 backdoor 初始化，UVM 应通过哪些合法前门路径构造 L2TLB entry：PTW refill、TLBWI/TLBWR，还是二者都必须支持？
+        回答：在之前的问题中已作答。
+
+        10. UVM scoreboard 应建成 cycle-accurate SRAM/reference model，还是 transaction-level reference model，只检查可见请求响应结果？
+        回答：这个我不太懂，无法回答。
+
+        11. 对 hash index、victim way、RRPV update 已有回答说“暂时不作为 UVM 验证点”；这是否意味着 UVM 不需要预测具体 set/way，只需要检查功能命中结果？
+        回答：是的。
+
+        12. 如果不精确建模 hash/RRPV，coverage 中“每个 set/way/victim/RRPV 状态”的覆盖目标是否仍然需要？若需要，应通过内部采样覆盖还是前门定向激励覆盖？
+        回答：这个我不太懂，你基于有利于验证dut的正确性这一原则做决定。
+
+    5.2 位宽、编号与字段定义
+        1. ReqQ 有 entry0-entry8 共 9 个 entry，但 `TRANS_ID_WIDTH=3`、`queue_arb_trans_id[2:0]` 只能表示 8 个值；ReqQ transaction id 的真实宽度和 entry 编码是什么？
+        回答：ReqQ transaction id 的真实宽度是4bit，之前的spec有误。
+
+        2. miss buffer 有 entry0-entry8 共 9 个 entry，但 `L2EID_WIDTH=3` 只能表示 8 个值；L2 miss buffer entry id 的真实宽度和 entry 编码是什么？
+        回答：L2 miss buffer entry id 的真实宽度是4Bit，之前的文档有误，现已修改
+
+        3. 1.5 中 `ptw_l2tlb_ref_id[L1EID_WIDTH+L2EID_WIDTH-1:0]` 按参数是 6 bit，但 4.6 回答写 `issue_eid` 默认总宽度是 7 bit，且高 4 bit 为 L2 MB entry id；PTW id 的真实总宽度和字段切分是什么？
+        回答：`ptw_l2tlb_ref_id[L1EID_WIDTH+L2EID_WIDTH-1:0]`是7bit，之前的spec有误，现已修改。高 4 bit 为 L2 MB entry id，低3bit为l1dtlb miss buffer entry id
+        
+        4. 4.6 回答中“L2EID_WIDTH + L1EID_WIDTH = 3 + 4”与 1.1 参数 `L1EID_WIDTH=3, L2EID_WIDTH=3` 不一致；哪个参数值为准？
+        回答：L2EID_WIDTH + L1EID_WIDTH = 3 + 4。
+
+        5. 1.4 中 `arb_l2tlb_eid[EID_WIDTH-1:0]` 使用了未定义的 `EID_WIDTH`；它是否应为 `L1EID_WIDTH`，真实宽度是多少？
+        回答：它是L1EID_WIDTH，真实宽度是3bit。
+
+        6. `lsu_mmu_va2[27:0]` 被描述为 PFU 地址，同时又说低 27 bit 作为 VPN；bit[27] 的语义是什么？
+        回答：lsu_mmu_va2[27] 不是 VPN 的一部分。这根线做成 28 bit，是因为 LSU/PFU 侧按 PA_WIDTH=40 来传“页号”，即地址[39:12]，宽度是 28 bit。
+              但 MMU 的 Sv39 VPN 宽度是 VA_WIDTH-12 = 39-12 = 27 bit，所以真正用于 JTLB 查询、VPN 比较的是 lsu_mmu_va2[26:0]，也就是 VA[38:12]。
+              因此：
+                lsu_mmu_va2[26:0] = PFU 虚地址的 VPN
+                lsu_mmu_va2[27] = 地址 bit[39]，更准确说是 40-bit 地址页号/PPN 的最高位
+                MMU 开启时，bit[27] 不参与 JTLB VPN 匹配；MMU 关闭或走物理地址相关路径时，它才作为物理页号高位使用。
+                
+        7. PFU 返回 `mmu_lsu_pa2[27:0]` 是 PA[39:12]、PA[27:0]、还是某种压缩物理页号？它与完整 byte PA 的拼接关系需要怎样定义？
+        回答：mmu_lsu_pa2[27:0] 应定义为 PA[39:12]，也就是 28-bit PPN。它不是 PA[27:0]，也不是压缩物理页号。它只是完整 40-bit byte PA 去掉低 12 bit 页内偏移后的物理页号。
+              完整 byte PA 的拼接关系是：full_pfu_pa[39:0] = {mmu_lsu_pa2[27:0], pfu_va[11:0]} 
+              这里的 pfu_va[11:0] 来自 PFU 本地维护的预取虚地址低 12 位，不由 MMU 返回。更精确地说：
+                  MMU 输入：lsu_mmu_va2[26:0] = PFU VA[38:12]，lsu_mmu_va2[27] = PFU 地址 bit[39]，仅在物理地址/MMU-off 语境下有意义
+                  MMU 输出：mmu_lsu_pa2[27:0] = translated PA[39:12]
+
+        8. 对 ITLB 请求，`queue_arb_eid` 和 PTW id 低位 L1EID 固定为 0；UVM 是否需要检查这些无效字段必须为 0，还是可以忽略？
+        回答：可以忽略。
+
+        9. `l2tlb_regs_tlbp_hit_index[10:0] = {way_id[2:0], set_idx[7:0]}` 只能编码 2048 个 entry；这是否也是所有 TLBR/TLBWI/TLBWR index 的统一编码？
+        回答：{way_id[2:0], set_idx[7:0]} 是 L2TLB 物理 entry 的统一编码空间，容量就是 8 ways * 256 sets = 2048 entries。所以对 TLBP 返回值、TLBR/TLBWI 指定 entry 来说，应当统一按这个编码理解。
+              TLBP 命中后返回的 index 就是这个编码。TLBR 和 TLBWI 使用 MIR 里的 index 时，也应按同样方式解释：index 的高 3 bit 选择 way，低 8 bit 选择 SRAM row/set。
+              但 TLBWR 要分开理解。TLBWR 不是用 MIR 高 3 bit 指定 way，而是由替换策略选出 victim way，再写入对应 set。也就是说，TLBWR 最终写到的 entry 仍然可以用同样的 way 加 set 编码表示，但它的 way 来源不是软件写入的 index，而是硬件 replacement policy。MIR 的第 11 bit 当前不属于有效 L2TLB entry 编码。
+
+        10. page size one-hot 只定义 3'b001/010/100；如果 tag 中 pgs 为 000、011、101、110、111，lookup、TLBR、TLBP、INVVA、replacement 应如何处理？
+        回答：非法 tag.pgs 的行为是由现有 compare/replacement 逻辑自然决定的。
+                普通 lookup：非法 tag.pgs 不会命中。原因是 L2TLB compare 用每个 way 的预测 page size raw_pre_pgs 去和 tag 里的 raw_way_pgs 做精确相等比较。raw_pre_pgs 只会是 001/010/100，所以 tag 里如果是 000/011/101/110/111，pagesize 相等条件为假，最终 final_way_hit 为 0。结果就是 miss。
+                TLBP：和普通 lookup 一样，不会命中非法 tag.pgs entry。TLBP 也是走 final_way_hit/final_tlb_hit 这套 VA compare path，所以非法 pgs entry 不会返回 hit index，也不会参与 multi-hit 计数。
+                INVVA：读阶段也走同一套 VA compare，因此非法 tag.pgs entry 不会产生 jtlb_tlboper_va_hit。如果没有其他合法 entry 命中，INVVA 直接完成，不进入写清除阶段；如果有其他合法 entry 命中，写阶段只清 final_way_hit 对应的合法命中 way，非法 pgs entry 不会被 INVVA 清掉。
+                TLBR：会原样读出。TLBR 是 index read，cmp_with_va=0，通过 index 选中 way 后直接把 tag 里的 pgs 送到 l2tlb_tlbr_pgs。所以 tag 中是 011 就读出 011，不会修正，也不会报错。
+                replacement：当前 replacement 不看 pgs，只看 tag valid 和 RRPV/mask。也就是说，如果 tag.valid=1 但 tag.pgs 非法，它在 replacement 里仍被当作 valid entry，不会被当作 free entry 优先回收；只有在没有 free way 时，才可能按 RRPV 规则被选为 victim。如果 tag.valid=0，那不管 pgs 是什么，都按 invalid/free 处理。
+
+        11. access type 已定义 000、001、010、011、100、101、110；如果出现 3'b111，DUT 行为应是忽略、断言、按 miss/fault 处理，还是属于 UVM 不应产生的非法输入？
+        回答：这是不应产生的非法输入。
+
+
+    5.3 reset、初始化与时钟门控
+        uvm部分由ai分析后回答
+        1. `cpurst_b` 异步拉低/释放的最小周期和释放同步要求是什么？UVM 是否需要测试 reset 在有 outstanding 请求时发生？
+        回答：`cpurst_b` 为异步低有效复位，拉低后会清除 MMU/L2TLB 的寄存器型状态，包括 ReqQ valid/sent、miss buffer valid/sent、lookup 流水 valid、arbiter 运行标志、PFU 状态机、RRPV write buffer 等，使这些状态回到 idle/invalid。复位脉冲宽度需要满足触发器和时钟门控单元的最小复位脉宽要求，设计没有额外定义固定的最小周期数。`cpurst_b` 释放端需要由外部保证相对 `forever_cpuclk` 以及门控派生时钟满足 recovery/removal 时序。若 reset 发生在 outstanding 请求期间，这些在途请求会被取消，UVM scoreboard 应在 reset 拉低时清空 outstanding transaction、ReqQ/MB/L1TLB 参考状态和未完成期望。
+              但 `cpurst_b` 本身不会清 L2TLB tag/data SRAM。core 级 reset 后 translation entry 必须全部 invalid，这个语义由硬件 reset-invalidate 流程保证：IFU reset vector 逻辑发 `ifu_cp0_rst_inv_req`，CP0 reset-inv FSM 拉起 `cp0_mmu_tlb_all_inv`，MMU TLB operation 执行 TLB inv-all，扫描 L2TLB 全部 index/way 并把 tag 写 0，等 `mmu_cp0_tlb_done` 后 CP0 返回 `cp0_ifu_rst_inv_done`，前端才继续 reset 后流程。UVM 需要把 `cp0_ifu_rst_inv_done` 或等价完成事件作为 reset 后开始正常取指/翻译检查的边界，并检查 reset-inv 流程最终完成。
+
+        2. reset 期间各输入 valid/request 是否必须为 0？如果 reset 期间或刚释放 reset 当拍有请求，DUT 行为是否有定义？
+        回答：reset 期间普通翻译请求、PFU 请求、PTW refill、软件 TLB operation 等输入 valid/request 应保持为 0，这是安全且有定义的使用方式。reset 刚释放后也不应立即放开普通 translation 流量，而应先让 core reset-inv 流程完成 L2TLB inv-all；在 `cp0_ifu_rst_inv_done` 之前，UVM driver/sequence 应阻塞普通 IFU/LSU 翻译访问，monitor/scoreboard 应把此阶段建模为 reset 初始化阶段，而不是正常 lookup 阶段。
+              reset 刚释放当拍如果已有合法 reset-inv 请求，则按初始化流程处理；如果普通请求与 reset 释放或 reset-inv 尚未完成重叠，该场景不应作为合法功能行为。UVM 可以增加协议检查：reset assert 期间普通请求为 0；reset deassert 后，必须先观察到 `ifu_cp0_rst_inv_req -> cp0_mmu_tlb_all_inv -> mmu_cp0_tlb_done -> cp0_ifu_rst_inv_done` 这条机制完成，再允许普通翻译请求进入可检查窗口。
+
+        3. SRAM 不随 reset 清零，但仿真 RAM initial 清 0；UVM golden model 在 reset 后应把 SRAM 视为 unknown、全 0，还是仅以 tag.valid 判断 entry 是否有效？
+        回答：L2TLB entry 是否有效应以 `tag.valid` 为准。L2TLB tag/data/RRPV SRAM 不随 `cpurst_b` 直接清零，仿真 RAM 的 initial 清 0 只能代表冷启动仿真的初始值，不能代表 reset 语义，也不能用于证明 warm reset 后 SRAM 自然 invalid。reset 后 golden model 不应简单把 L2TLB SRAM 视为全 0；在 reset-inv 完成前，L2TLB SRAM 内容应视为未知或可能保留旧值。
+              UVM 的参考模型建议分两层处理：`cpurst_b` 拉低时，L1iTLB/L1dTLB 等寄存器型 entry 直接置 invalid；L2TLB SRAM 保持 unknown/stale 状态，直到监测到 reset-inv 的 TLB inv-all 完成后，再把 L2TLB 全部 entry 的 `tag.valid` 置 0。后续 lookup 只依据 `tag.valid` 判定 entry 有效性；tag.valid 为 0 时，即使 data/RRPV 或其它 tag 字段非 0，也应视为无效 entry。
+
+        4. 运行中 warm reset 后，如果 SRAM tag.valid 中仍有旧值，DUT 是否可能命中旧 entry？UVM 是否需要覆盖这种场景，还是 reset 后测试默认重新初始化 SRAM？
+        回答: 如果只拉 `cpurst_b` 而不执行 reset-inv，warm reset 后 SRAM 中旧的 `tag.valid=1` entry 可能仍然被命中，这是不安全的集成方式。core 的正确 reset 语义不是依赖 SRAM 自然清零，而是依赖 reset 后自动发起 TLB inv-all，把 L2TLB 全部 index/way 的 tag 写 0，从而保证 MMU translation entry 全部 invalid。
+              UVM 需要覆盖 warm reset 场景：可以在 reset 前构造 L2TLB 中存在有效 entry，然后拉 reset，之后必须观察 reset-inv 流程完成，并在完成后将参考模型中的 L2TLB 全部 entry 置 invalid；如有 backdoor/内部监测能力，还可检查 inv-all 扫描期间确实对全部 set/way 产生清 valid 写入。若某个 testbench 只驱动 `cpurst_b`，但没有驱动或没有集成 `ifu_cp0_rst_inv_req -> cp0_mmu_tlb_all_inv -> mmu_cp0_tlb_done` 机制，UVM 应将其标记为不完整 reset 环境，不应假设 reset 后 L2TLB 已经 invalid。
+
+        5. `cp0_mmu_icg_en=0` 时，DUT 是否仍必须功能正确但少开门控时钟，还是该位关闭会阻止部分内部状态更新？
+        回答：`cp0_mmu_icg_en` 是时钟门控控制位，不是 MMU 功能关闭位，也不是 reset-inv 屏蔽位。无论该位如何配置，reset 后必须仍能完成必要的 TLB inv-all 初始化流程，不能因为时钟门控配置导致 L2TLB 清 valid 流程停住。功能语义上，`cp0_mmu_icg_en=0` 不应改变 L2TLB 的访问、命中、miss、refill、invalidate 等结果，只影响时钟打开策略。
+              UVM 需要注意两点：第一，测试 clock gating 时不能把 `cp0_mmu_icg_en=0` 建模成内部状态冻结；第二，若覆盖 reset 与 clock gating 组合场景，应检查 reset 释放后 reset-inv 仍能推进到 `mmu_cp0_tlb_done/cp0_ifu_rst_inv_done`，并且完成后 translation entry 按全 invalid 状态建模。
+
+        6. `pad_yy_icg_scan_en=1` 的 scan 模式是否需要在 UVM 功能验证中覆盖？scan 模式下功能时序是否保持一致？
+        回答：`pad_yy_icg_scan_en` 只用于时钟门控单元的 scan/DFT 旁路控制，不参与 L2TLB 的请求仲裁、SRAM 访问、命中比较、refill、invalidate 或响应生成。scan 使能拉高时，语义上是强制打开被门控的时钟，便于可测性；它不定义新的功能协议，也不改变 reset 后必须执行 TLB inv-all 的机制。
+              正常功能 UVM 默认应使用 `pad_yy_icg_scan_en=0`。如果需要做 scan_en smoke test，只应检查打开 scan_en 不破坏 reset-inv 完成和基本功能结果，不应把 scan 模式作为独立功能时序来建立新的 scoreboard 规则。
+
+
+    5.4 L1 ReqQ 与 credit 协议
+    uvm部分由ai分析后回答
+        1. `i_req_valid`、`d_req_valid` 是单周期 pulse，还是可以保持到 credit 返回？DUT 对持续 valid 的同一请求会按每拍新请求采样还是只采一次？
+        回答：应按“单拍 request fire”使用，不是保持到 credit_return 的 valid/ready 协议。mmu_l2tlb_reqq 消费端没有边沿检测、没有 sample-once 锁存，也没有 ready。
+              直接用 i_req_valid/d_req_valid 做 allocate/issue 条件：valid 每高一拍，DUT 就按一拍请求处理。
+              如果同一个请求持续 valid：
+                - d_req_valid：每拍会尝试分配一个新的 DTLB ReqQ entry，同一 payload 会变成多笔重复请求，直到 entry/credit 假设被打破。
+                - i_req_valid：每拍会写 entry0，并可能重复走 bypass/issue；不是只采一次，且 ITLB 只有 entry0，持续高还可能覆盖/重初始化 entry0。
+            补充：L1I 端 iutlb_l2tlb_req 实际是 WFG 状态电平，正常有 credit 时 WFG 下一拍转 WFC，所以表现为单拍；L1D scheduler 也用 credit gate，dutlb_arb_req fire 后立即扣 credit。credit_return 是后续 entry dealloc 后返还credit，用来允许下一笔请求，不是当前 valid 的接受握手。
+
+        2. L1 请求 payload `*_vpn`、`d_req_eid`、`d_req_is_load` 需要在 `*_req_valid` 当拍稳定即可，还是 valid 保持期间必须一直稳定？
+        回答：*_req_valid 是单拍 pulse，所以 payload 只需要在该 valid 当拍稳定，满足采样时钟的 setup/hold。下一拍 valid=0 后，*_vpn、d_req_eid、d_req_is_load 可以变，不需要等 credit_return。
+
+        3. `i_credit_return`、`d_credit_return` 是一周期 pulse 还是 level 信号？同一拍 credit_return 和新的 req_valid 同时出现时，是否允许复用刚释放的 entry？
+        回答： i_credit_return、d_credit_return 按 pulse 使用，不是 level/ready 信号。们由 ReqQ entry dealloc 组合产生：entry 有效并收到 terminal feedback 时拉高；该拍时钟沿清掉 entry valid，下一拍 dealloc/credit_return 就会拉低。
+              同一拍 credit_return 和新的 req_valid 可以同时出现，信用计数上允许 send+return 同拍抵消，不改变 credit count。
+              但不能依赖“刚释放的 entry”在同一拍被新请求复用。ReqQ 分配逻辑看到的是清除前的 valid 状态，同拍 dealloc 的 entry 要到下一拍才真正变成 free。ITLB entry0 同拍 clear 和 alloc 时也是 clear 优先，不是同拍复用语义。             
+
+        4. ReqQ entry 释放与新请求分配同拍发生时，分配优先级如何定义？新请求能否使用同拍释放的 entry？
+        回答：ReqQ entry 的“释放”和“新分配”同拍时，整体不是“释放后立即复用”的语义。DTLB entries 的分配优先级是：先看当前拍、清除前的 entry_vld_vec，用 FFZ 选第一个已经 invalid 的 entry。
+              也就是说，同拍正在 dealloc 的 entry 在分配逻辑里仍被看成 valid，不能被本拍新请求选中。它要到时钟沿后 valid 清掉，下一拍才成为可分配 entry。
+              如果本拍已经存在别的空 entry，新请求可以分配到那个旧空 entry；如果唯一空位来自本拍 dealloc，则本拍不能分配，下一拍才行。
+              ITLB entry0 更不支持同拍复用：同拍 entry_clr 和 entry_alloc_en 时，valid bit 逻辑 clear 优先于 alloc，时钟后 entry 仍是 invalid。因此不能把同拍释放的 entry0 当作已重新分配成功。
+
+        5. 当 ReqQ 中没有 unsent entry 但存在 sent outstanding entry 时，新来的 ITLB/DTLB 请求是否仍可 bypass 到 arbiter？
+        回答：新来的 ITLB/DTLB 请求可 bypass 到 arbiter。
+
+        6. 当新请求 bypass 参与 arbiter 但未 grant 时，后续 arbiter 看到的是该请求已入队 entry；该 entry 在下一拍的选择优先级如何与其它 unsent entry 比较？
+        回答：只要reqq中有未发射的有效entry，就不可能把新请求bypass到arbiter，也就是说，下一拍只会有这个新请求在reqq中，不存在所谓的与其它 unsent entry的竞争关系。
+
+        7. DTLB entry1-entry8 分配采用最低空闲 entry；如果同拍有多个 DTLB 请求，协议是否保证最多一个，还是 L2TLB 需要定义多个请求的处理？
+        回答：每一拍最多有一个dtlb的请求进入reqq。
+
+        8. 如果上游违反 credit 协议，在 entry full 时仍发 ITLB/DTLB 请求，L2TLB 是否忽略、覆盖、断言，还是该场景不纳入 L2TLB UVM？
+        回答：该场景不纳入 L2TLB UVM
+
+        9. ReqQ 不保存 ASID/privilege/MMU enable/SUM/MXR，使用“当前值”；UVM 是否需要主动覆盖请求排队期间这些控制寄存器变化的场景？
+        回答：uvm部分由ai分析后回答
+
+        10. 如果 ASID 在 ReqQ request 发出后、T2 compare 前改变，scoreboard 应按 T2 当前 ASID 判断，还是应限制 sequence 不产生这种软件不应出现的场景？
+        回答：从整个 core 的视角看：正常架构路径下，不应该出现“旧 ASID 的请求还在 L2TLB lookup 流水线里，同时 SATP.ASID 已经被改掉”的情况。关键点是：这个保证不是 L2TLB 自己做的，而是 core 前后端协议做的。
+              CSR/SATP 写在 C910 里不是普通乱序指令随便执行。CSR 指令会被 IDU 当作 special/fence 类指令处理，发射前要等前面的流水、ROB、PST、LSU commit 数据等基本排空。之后 CP0 真正写 SATP 也不是 decode/issue 时写，而是等该 CSR 指令到 RTUcommit0 时才写。写完还会触发 flush，清掉后续取指/执行路径，并且 SATP 写会清 L1TLB。
+              所以对正常的 IFU 取指翻译、load/store 翻译来说，旧 ASID 下的架构性请求应该已经完成、被 drain，或者被 flush/abort 掉；新 ASID 下的请求应该发生在 SATP 写和 flush 之后。
+              所以对正常的 IFU 取指翻译、load/store 翻译来说，旧 ASID 下的架构性请求应该已经完成、被 drain，或者被 flush/abort 掉；新 ASID 下的请求应该发生在 SATP 写和 flush 之后。
+              应限制 sequence 不产生这种软件不应出现的场景
+
+    5.5 arbiter、stall 与请求保持
+    uvm部分由ai分析后回答
+        1. PTW、TLB operation、ReqQ、PFU 的请求信号在未 grant 时是否都必须保持有效直到 grant？如果某个请求只 pulse 一拍但未 grant，DUT 是否会丢弃？
+        回答：arbiter 本身不缓存未 grant 的请求，只按当前拍看到的请求信号组合生成 grant。ReqQ 和 TLB operation 自身有等待 grant 的状态保持机制：ReqQ entry 在未 grant 时保持 ready，TLB operation 状态机在 wait-for-grant 状态保持 `tlboper_arb_req`。PTW refill 请求也需要由 PTW/TWU 侧保持到 `arb_ptw_grant` 后才算被接收。PFU 请求没有在 arbiter 侧排队，`lsu_mmu_va2_vld` 如果只 pulse 一拍且当拍没有 `arb_pfu_grant`，该次 PFU arbiter 访问不会被保存，必须由上游保持或重新发起。
+
+        2. wbuf full stall 阻塞 PTW read、TLB operation、ReqQ、PFU；被阻塞请求的 ready/hold 协议分别是什么？
+        回答：RRPV write buffer full 通过 `l2tlb_arb_rrpv_wbuf_full` 形成 arbiter block 条件，会阻止 PTW read、TLB operation、ReqQ 和 PFU 获得新的 L2TLB grant。PTW read 侧还会通过 `arb_ptw_mask` 被屏蔽，直到 wbuf full 解除后再申请；TLB operation 在自身 wait-for-grant 状态保持请求；ReqQ entry 保持 valid 且未 sent，等后续 grant；PFU 没有内部排队语义，需要上游保持 `lsu_mmu_va2_vld` 或在失败后重发。PTW write 不受 wbuf full 阻塞，因为 PTW write 直接写 tag/data/RRPV SRAM，不进入 RRPV write buffer。
+
+        3. `tlboper_on=1` 时即使没有当拍 TLB operation SRAM 访问，也阻塞其它请求；这种空泡是否需要 checker 逐拍检查？
+        回答：`tlboper_on` 从某次 TLB operation 获得 grant 后置 1，直到 `tlboper_xx_cmplt` 才清 0。在 `tlboper_on=1` 期间，PTW read、ReqQ 和 PFU 都不能获得 grant；即使某一拍没有实际 TLB operation SRAM 访问，这个阻塞仍然有效。TLB operation 自己的后续 read/write beat 可以继续通过 arbiter 访问 L2TLB。该空泡是 TLB operation 独占 L2TLB 访问窗口的一部分。
+
+        4. `ptw_on=1` 从 read grant 到 write grant；如果预期 write grant 当拍被其它条件阻塞，是否允许 ptw_on 延长，还是设计保证一定不会阻塞？
+        回答：`ptw_on` 在 PTW read grant 后置 1，并保持到对应 PTW write 完成。正常流程中，PTW read grant 后会打拍生成 `ptw_write_req1`、`ptw_write_req2`，随后由 `arb_ptw_write_grant` 发出 PTW write；`ptw_on=1` 会阻塞 TLB operation、ReqQ、PFU 和新的 PTW read，因此其它普通请求不会抢占这个 write。wbuf full 也不阻塞 PTW write。若异常条件导致 PTW write 当拍不能 grant，`ptw_on` 会继续保持，直到 PTW write 完成信号到来后才清除。
+
+        5. 同一拍 PTW read request、TLB operation request、ReqQ request、PFU request 同时有效时，UVM 是否需要按 `ptw > tlb operation > reqq > pfu` 检查唯一 grant？
+        回答：在没有 `ptw_on`、`tlboper_on`、wbuf full 等阻塞条件时，同一拍多个源同时请求的固定优先级是 PTW read 最高，其次 TLB operation，其次 ReqQ，PFU 最低。每拍最多只有一个源获得进入 L2TLB 的 grant。若已有 PTW read/write 流程在进行，则 PTW write 是该原子 refill 流程的后续访问，会阻塞其它源直到完成。
+
+        6. 同一拍 `tlboper_on` 清除和新的 PTW/ReqQ/PFU request 到来时，是否允许新 request 当拍 grant，还是必须等下一拍？
+        回答：不允许同拍 grant。grant 组合逻辑看到的是当前拍尚未清除前的 `tlboper_on=1`，因此 PTW read、ReqQ 和 PFU 当拍仍被阻塞。`tlboper_on` 在时钟沿根据 `tlboper_xx_cmplt` 清 0 后，新的 PTW/ReqQ/PFU 请求最早下一拍参与仲裁。
+
+        7. 同一拍 `ptw_on` 因 PTW write grant 清除和新的 TLB operation/ReqQ/PFU request 到来时，是否允许新 request 当拍 grant？
+        回答：不允许同拍 grant。PTW write grant 当拍，当前 `ptw_on` 仍为 1，TLB operation、ReqQ 和 PFU 的 grant 条件都被 `ptw_on` 阻塞。该拍只完成 PTW write；`ptw_on` 在时钟沿清除后，其它新请求最早下一拍获得仲裁机会。
+
+        8. `prefetch_mask` 清除和 `lsu_mmu_va2_vld` 持续为 1 同拍发生时，PFU 是否可以同拍重新获得 grant，还是必须下一拍？
+        回答：必须下一拍。PFU grant 条件使用当前拍的 `prefetch_mask`，当 `prefetch_mask=1` 且本拍因为 `mmu_lsu_pa2_vld`、`mmu_lsu_pa2_err` 或 `l2tlb_arb_pfu_miss_mb_full` 清除时，清除结果要到时钟沿后生效；因此同拍不能重新 grant。下一拍若 `lsu_mmu_va2_vld` 仍为 1，且没有更高优先级请求、`ptw_on/tlboper_on` 或 wbuf full 阻塞，PFU 才能重新获得 grant。
+
+        9. arbiter payload 必须在 grant 当拍稳定；UVM monitor 应以哪个信号作为 accept 事件：各 source grant、`arb_l2tlb_req`，还是二者组合？
+        回答：L2TLB 侧的接收事件是 `arb_l2tlb_req=1`。同一拍应有且只有一个来源 grant 或内部 PTW write grant 选择本次访问来源，并由该 grant 选择 `arb_l2tlb_vpn`、`arb_l2tlb_acc_type`、`arb_l2tlb_write`、bank select、index、tag/data din 等 payload。各 source grant 表示对应源被接受，`arb_l2tlb_req` 表示 L2TLB SRAM/pipeline 实际收到一次访问；二者在功能上是同一接受动作的源侧和目标侧表示。
+
+        10. RRPV write buffer drain 不产生 `arb_l2tlb_req`；UVM 是否需要把 drain 建模为单独的内部 SRAM 写 transaction？
+        回答：RRPV write buffer drain 是内部 replacement metadata 写回，不属于新的 L2TLB 请求访问。它在 `wbuf_empty=0` 且当前没有 `arb_l2tlb_req` 的空闲拍发生，只写 RRPV SRAM，不访问 tag/data SRAM，不启动 raw/final lookup 流水，也不产生任何 source grant 或外部 completion。它只更新后续 victim 选择和 RRPV bypass 可见的内部状态。
+
+    5.6 SRAM、entry 内容与前门/后门一致性
+    uvm部分由ai分析后回答
+        1. invalidate 类操作写无效时，tag/data 是否都必须写 0？overview 中写“data 也可同步清 0”，后文写“tag/data 写入 0”；UVM 是否应检查 data 被清 0？
+        回答：invalidate 类操作真正产生写无效 beat 时，被选中的 way/bank 的 tag 和 data 都写 0。也就是说，tag.valid 会被清 0，tag 中 VPN/ASID/PGS/G 也写 0，data 中 PPN/flag 也写 0。若某个 invalidate read 阶段没有找到需要清除的 way，则不会对该 set 产生对应的写无效修改。INVALL 扫描时会对每个 set 的所有 way 执行写 0。
+
+        2. tag.valid=0 但 data.V=1、PGS/G/ASID/VPN 非 0 时，lookup 必须 miss；UVM 是否需要覆盖 invalid tag + nonzero data 的场景？
+        回答：必须 miss。普通 VA compare 命中条件包含 tag.valid，tag.valid=0 时该 entry 不参与有效命中；data.V、PPN、flag 或 tag 其它字段即使非 0，也不能让该 entry 命中。TLBR 这类按 index 读 entry 的操作不属于普通 lookup 命中判定，它可以读出 SRAM 中保存的旧字段。
+
+        3. TLBWI/TLBWR 写 tag.valid=1 且 data.V 可为 0；普通 L1 lookup 命中这种 entry 后 L2TLB 是否仍返回 `ref_pavld=1`，由 L1 后续判 page fault？
+        回答：是。普通 ITLB/DTLB lookup 的 L2TLB 命中只检查 tag valid、VPN/page size、ASID/global 等 tag 条件，不检查 data flag 里的 PTE.V/R/W/X/U/A/D。只要 tag 命中且没有 multi-hit，L2TLB 会返回 `ref_cmplt=1`、`ref_pavld=1`，并把 PPN/flag/page size 返回给 L1。data.V=0 这类 PTE flag fault 由 L1 后续根据返回的 flag 判断。
+
+        4. PFU lookup 命中 data.V=0 的 entry 时，是在 L2TLB PFU flag check 阶段返回 `pa2_err`，还是仍返回 PA valid 后由 LSU 检查？
+        回答：PFU 路径会在 L2TLB 内部做 flag check。data.V=0 会触发 PFU flag fault，随后 PFU response 进入 error/deny 路径，对 LSU 输出 `mmu_lsu_pa2_vld=1` 且 `mmu_lsu_pa2_err=1`。因此该错误由 L2TLB 的 PFU 检查阶段报告，不是只返回一个正常 PA 后再完全交给 LSU 判断。错误时 PA/sec/share 可能仍有输出值，但以 `pa2_err=1` 表示该结果不可作为正常翻译使用。
+
+        5. `RSW[1:0]` 被实现忽略；TLBR 是否仍原样读出 RSW，L1 refill 是否会保存并返回 RSW？
+        回答：RSW 不参与命中比较和权限判断，但会作为 flag 的一部分保存和传递。L2TLB data flag 中包含 RSW，对应 flag[8:7]。TLBWI/TLBWR 会把 MEL 中的 RSW 写入 data，PTW refill 也会把 PTE[9:8] 写入 data flag[8:7]。TLBR 读出 entry 时会把 flag[8:7] 写回 MEL.RSW，普通 L1 refill 返回的 `l2tlb_l1tlb_ref_flg` 也包含这两位。
+
+        6. 大页 PPN 低位不对齐时，TLBWI/TLBWR/PTW refill 是否允许写入？PFU PA 拼接时是否直接用 PPN 高位并忽略低位？
+        回答：TLBWI/TLBWR 和 PTW refill 写入 L2TLB 时不检查大页 PPN 低位对齐，也不会在写入时强制把大页 PPN 低位清 0；data 中保存的是完整 PPN 字段。PFU 生成 PA 时按 page size 拼接：4KB 使用完整 PPN；2MB 使用 PPN 高位并用 VA offset 替换低 9 位；1GB 使用 PPN 高位并用 VA offset 替换低 18 位。因此大页 PPN 中被页内偏移覆盖的低位不会影响 PFU 最终 PA。
+
+        7. PTW refill 写入 tag/data 时，ASID 使用 completion 当拍当前 ASID，还是 miss 创建/发 PTW 时的 ASID？
+        回答：PTW refill 写入 tag 时使用 PTW refill 生成时看到的当前 `regs_ptw_cur_asid`，也就是当前 SATP ASID，而不是 miss 创建或发 PTW request 时保存下来的 ASID。L2TLB miss buffer/PTW request 中没有单独保存原始 ASID，refill tag 的 ASID 由 PTW/TWU 侧按当前 ASID 打包进 tag。
+
+        8. 如果 miss 创建后 ASID 改变，PTW completion 回填的 ASID 与原请求 ASID 可能不同；这种场景是否合法，UVM 应如何约束或检查？
+        回答：如果 miss 创建后、PTW completion/refill 前 ASID 改变，回填 entry 的 ASID 可能变成新的当前 ASID，而 VPN/PPN 来自旧 miss 对应的 page walk，这会造成旧 translation 被错误标到新 ASID 下。该场景不应作为合法软件/系统行为。切换 ASID 或 SATP 时，需要保证旧的 outstanding walk 不会继续以旧上下文回填，或者通过 fence/invalidate/abort/drain 等机制完成同步后再允许新的地址空间使用翻译结果。
+
+        9. TLBR 读取 invalid entry 时返回旧 SRAM 内容；UVM 是否需要检查 TLBR 精确返回这些旧字段，还是只检查 valid/PTE.V 相关字段？
+        回答：TLBR 是按 index/way 读取 L2TLB 物理 entry，不因为 tag.valid=0 而屏蔽 VPN/ASID/PGS/G/PPN/flag 字段。它会把被选中 entry 的 tag/data 字段读出并写回 MEH/MEL 可见字段。若该 entry 是由 invalidate 写 0 形成的 invalid entry，则 TLBR 读到的是 0；若存在 tag.valid=0 但其它 SRAM 字段非 0 的旧内容，则 TLBR 可以读出这些旧字段。tag.valid 本身不作为单独字段返回，MEL.V 返回的是 data flag 中的 PTE.V。
+
+        10. RRPV 对 invalid entry 无意义；TLBR 或 debug 观测是否需要返回/检查 invalid entry 的 RRPV？
+        回答：RRPV 不是 TLBR 的返回内容，也不是软件可见 entry 内容。invalid entry 的 RRPV 没有功能意义，replacement 选择应优先把 tag.valid=0 的 entry 作为空闲候选；只有在没有可用 invalid entry 时，RRPV 才参与 victim 选择。invalidate 清 tag/data 时不要求同步清 RRPV，后续 RRPV 旧值或变化不影响 invalid entry 的 lookup 结果。
+
+    5.7 lookup、fault 与响应建模
+    uvm部分由ai分析后回答
+        1. 普通 ITLB/DTLB L2 hit 后，L2TLB 是否完全不检查 PTE.V/R/W/X/U/A/D，只返回 flag 给 L1？UVM 是否应避免在 L2 scoreboard 中判这些 fault？
+        回答：普通 ITLB/DTLB L2 hit 后，L2TLB 不做 PTE.V/R/W/X/U/A/D 权限和有效性 fault 判断。L2TLB 的普通 lookup 命中只由 tag valid、VPN/page size、ASID/global 等条件决定；单命中后返回 PPN、flag、page size、VPN 给 L1。PTE flag 相关 page fault/access fault 由 L1 侧或 PTW/PMP 等后续路径处理。
+
+        2. multi-hit 和 PTW disabled miss 对 L1 都表现为 `pgflt=1`；是否需要内部 coverage 区分二者原因，还是只检查外部 pgflt？
+        回答：对 L1 直返响应而言，multi-hit 和 PTW disabled miss 都编码成 page fault 类完成，没有单独的外部原因码。两者都会在对应 ITLB/DTLB 响应上产生 `ref_cmplt=1`、`ref_pavld=0`、`pgflt=1`。内部原因不同：multi-hit 是同一次 compare 命中多个 way；PTW disabled miss 是 miss 且 `cp0_mmu_ptw_en=0`。
+
+        3. L1 ITLB/DTLB 的 `ref_cmplt`、`ref_pavld`、`pgflt` 合法组合有哪些？例如成功是否必须 `cmplt=1,pavld=1,pgflt=0`，fault 是否必须 `cmplt=1,pavld=0,pgflt=1`？
+        回答：L2TLB 直返给 L1 ITLB/DTLB 的有效完成主要有两类组合：成功命中为 `ref_cmplt=1, ref_pavld=1, pgflt=0`；multi-hit 或 PTW disabled miss 直返 fault 为 `ref_cmplt=1, ref_pavld=0, pgflt=1`。普通 miss 且 PTW enable 并成功分配 miss buffer 时，L2TLB 当拍不对 L1 拉 `ref_cmplt`。没有完成时通常为 `ref_cmplt=0, ref_pavld=0, pgflt=0`。
+
+        4. L1 response payload `l2tlb_l1tlb_ref_*` 在 fault 或 `ref_pavld=0` 时是否有定义，UVM 是否应忽略？
+        回答：当 `ref_pavld=1` 时，`l2tlb_l1tlb_ref_vpn/ppn/flg/pgs` 是有效翻译 payload。当 fault 或 `ref_pavld=0` 时，这些 payload 不作为有效翻译结果使用；它们可能仍由当前流水线的 final stage 组合逻辑给出某些值，但语义上不保证为可消费的 PA/flag。DTLB 的 `l2tlb_l1dtlb_ref_eid` 用于标识返回给哪个 L1 DTLB miss entry，fault 时仍用于关联对应请求。
+
+        5. DTLB load/store fault 在 L2TLB 输出上是否完全相同，只通过原始 type/eid 由 L1 区分？
+        回答：L2TLB 对 DTLB load 和 store 的直返 fault 编码相同，都是 DTLB 方向的 `ref_cmplt=1, ref_pavld=0, pgflt=1`。L2TLB 不在输出 fault 信号中单独区分 load fault 或 store fault；请求类型和 `eid` 由 L1 DTLB 自己保存/使用，用于后续与原始 load/store 请求关联。
+
+        6. ITLB 和 DTLB response 如果同拍都可能完成，DUT 是否允许同时拉高 ITLB 和 DTLB completion，还是由于单 pipeline 每拍最多完成一个？
+        回答：L2TLB lookup 是单入口、单条 raw/final 流水，每拍最多有一个 final lookup 请求完成。普通 L2TLB 直返响应同一拍只会对应 ITLB 或 DTLB 其中一种请求类型，不会因为同一个 L2TLB lookup 同时拉高 ITLB 和 DTLB completion。PTW completion 到 L1 的后续响应走 PTW 到 L1 的独立端口，不属于 L2TLB 直返 final stage 的同一类输出。
+
+        7. T2 miss 且 miss buffer alloc 成功时，L1 是否当拍没有 `ref_cmplt`，直到 PTW/L1 后续路径完成？L2TLB UVM 是否只检查 MB/PTW request 而不期待 L1 response？
+        回答：是。T2 发现 miss、`cp0_mmu_ptw_en=1` 且 miss buffer allocation 成功时，L2TLB 当拍只释放 ReqQ entry 并把 miss 送入 L2 miss buffer/PTW 路径，不对 L1 ITLB/DTLB 产生 `ref_cmplt`。L1 的最终 refill、page fault 或 access error 由后续 PTW 到 L1 的路径完成。
+
+        8. PTW completion 后 L1 ITLB/DTLB 的最终 refill/fault response 是否经过 mmu_l2tlb 端口，还是由 PTW/TWU/L1 模块直接处理？L2TLB UVM 的 scoreboard 边界应在哪里结束？
+        回答：PTW completion 后给 L1 ITLB/DTLB 的最终 refill/fault response 由 PTW 直接输出到 L1 ITLB/DTLB 端口，不经过 `mmu_l2tlb` 的 `l2tlb_l1*` 直返端口。`mmu_l2tlb` 会接收 PTW completion 用于释放 L2 miss buffer，并在 data valid 时配合 arbiter 执行 L2TLB refill 写入；但 L1 的最终 completion、pa_vld、pgflt、acc_err 由 PTW/L1 路径处理。
+
+        9. PTW disabled miss 对 L1 是直返 page fault；该 response 与 multi-hit response 的时序是否都在原 lookup 的 T2 当拍产生？
+        回答：是。PTW disabled miss 和 multi-hit 都在原 lookup 的 final/T2 当拍产生 L1 直返完成。multi-hit 在 T2 根据 hit sum 判断生成 `pgflt=1`；PTW disabled miss 在 T2 根据 miss 且 `cp0_mmu_ptw_en=0` 生成 `pgflt=1`。两者都是原 lookup 流水的最终阶段响应，不等待 PTW。
+
+        10. 如果 L2TLB lookup request 在 T0 后出现 reset，T1/T2 response 是否被清除，还是 reset 行为未定义？
+        回答：`cpurst_b` 拉低会异步清除 L2TLB raw/final 流水 valid 和相关寄存器状态。因此如果 T0 后、T1/T2 响应前发生 reset，尚未完成的 lookup 响应会被取消，不应再产生有效 L1 completion、miss buffer allocation 或 PFU response。reset 释放后需要按 reset 初始化流程重新开始新的请求。
+
+    5.8 PFU 专用行为
+    uvm部分由ai分析后回答
+        1. PFU `lsu_mmu_va2_vld` 在 `prefetch_mask=1` 期间是否必须保持同一个 VA 不变？如果 LSU 改变 VA，DUT 是忽略新 VA、覆盖旧 VA，还是属于非法输入？
+        回答：在一个请求未取得结果前，pfu会一直保持一个请求，你说的情况不存在。
+            `prefetch_mask=1` 表示前一笔 MMU-on PFU 请求已经被接受，但结果还没有返回。已经进入 lookup 流水的请求使用被接受当拍的 VA，后续 `lsu_mmu_va2` 的变化不会覆盖这笔在途请求，也不会在 `prefetch_mask=1` 期间再次获得 PFU grant。
+              因此，在 mask 期间改变 VA 对当前在途请求等价于“不被接受”。等 `prefetch_mask` 因 `mmu_lsu_pa2_vld`、`mmu_lsu_pa2_err` 或 miss-buffer-full replay 条件清除后，如果 `lsu_mmu_va2_vld` 仍为 1，当前 VA 可能作为下一笔 PFU 请求重新参与仲裁。对单笔请求语义来说，上游应保持 VA 到响应或 replay 边界，避免把尚未撤销的新 VA 误当成下一笔预取请求。
+        2. PFU output error 时 `mmu_lsu_pa2_vld` 是否总是同时为 1？还是 `mmu_lsu_pa2_err` 可单独 pulse？
+        回答：`mmu_lsu_pa2_err` 不会单独 pulse。PFU error 对应 PFU_DENY 状态，该状态下 `mmu_lsu_pa2_vld=1` 且 `mmu_lsu_pa2_err=1` 同拍有效。PFU_OK 状态下 `mmu_lsu_pa2_vld=1` 且 `mmu_lsu_pa2_err=0`。也就是说，`pa2_err=1` 必然伴随 `pa2_vld=1`。
+        3. PFU fault/error 时 `mmu_lsu_pa2`、`mmu_lsu_sec2`、`mmu_lsu_share2` 是否有定义，UVM 是否应忽略？
+        回答：这些字段在 PFU completion 被接受时会锁存，因此 error 响应同拍也会有稳定输出值；MMU-off 时 PA 来自 `lsu_mmu_va2`，MMU-on 命中时 PA 来自命中的 PPN 与 VA offset 拼接，security/share 来自 sysmap 或 entry attribute。
+              但当 `mmu_lsu_pa2_err=1` 时，这些字段不表示一笔可使用的成功翻译结果，使用方应以 error 为准，不应把 `mmu_lsu_pa2/mmu_lsu_sec2/mmu_lsu_share2` 当作有效 translation 属性消费。`mmu_lsu_pa2_vld=0` 时这些字段只是上一次锁存值或 reset 后初值，也没有新响应含义。
+        4. PFU MMU-off direct path 的精确时序是什么？`lsu_mmu_va2_vld && l1dtlb_xx_mmu_off` 后几拍输出 `mmu_lsu_pa2_vld`？
+        回答：在 PFU idle 时，`lsu_mmu_va2_vld && l1dtlb_xx_mmu_off` 当拍形成 direct completion，并在该拍时钟沿锁存 PA/security/share。若 sysmap 属性立即判为 fault，即 `sysmap_mmu_flg4[4]=1` 或 `sysmap_mmu_flg4[3]=0`，下一拍进入 PFU_DENY，输出 `mmu_lsu_pa2_vld=1`、`mmu_lsu_pa2_err=1`。
+              若 sysmap 不报 fault，则下一拍进入 PFU_CHK，用锁存 PA 等待 PMP 返回判断，再下一拍进入 PFU_OK 或 PFU_DENY。因此无 sysmap fault 的 MMU-off direct path 在请求后第 2 拍输出 `mmu_lsu_pa2_vld`；PMP allow 时 `pa2_err=0`，PMP deny 时 `pa2_err=1`。如果 PFU 当前不在 idle，该 direct 请求不应视为被正常接受。
+        5. PFU MMU-off direct path 是否使用 `prefetch_mask`，还是完全绕过 arbiter/mask？
+        回答：MMU-off direct path 绕过 PFU arbiter grant 和 `prefetch_mask`。MMU-on PFU lookup 需要通过 arbiter，且受 `prefetch_mask` 阻塞；MMU-off 时不会发起 L2TLB lookup，而是直接用 `lsu_mmu_va2` 作为 PA 来源进入 PFU completion/PMP check 流程。因此 `prefetch_mask` 不限制 MMU-off direct path。
+        6. `pmp_mmu_flg4[3:0]` 每一 bit 的含义是什么？PFU read/prefetch 检查时哪些组合表示 allow、deny、lock、access fault？
+        回答：`pmp_mmu_flg4[3:0]` 对应 PMP entry 的 `{L, X, W, R}`：bit0 为 read permission，bit1 为 write permission，bit2 为 execute permission，bit3 为 lock bit。PFU 是 read/prefetch 检查，只使用 bit0 和 bit3；bit1/bit2 不参与 PFU deny 判定。
+              对 U/S effective privilege，`R=1` 表示 PMP allow，`R=0` 表示 PMP deny，PFU 返回 `mmu_lsu_pa2_vld=1` 且 `mmu_lsu_pa2_err=1`。对 M effective privilege，若 `R=0 && L=0`，M-mode lock 规则放行；若 `R=0 && L=1`，仍然 deny；`R=1` 时无论 L 为何都 allow。PMP deny 在 PFU 输出上表现为 access-error 类 `pa2_err`。
+        7. `sysmap_mmu_flg4[4:0]` 每一 bit 的含义是什么？MAEE=0 时如何从 sysmap 生成 security/share/cacheable/bufferable/strong-order 和 fault？
+        回答：`sysmap_mmu_flg4[4:0]` 的属性顺序是 `{SO, C, B, Share, Sec}`：bit4 为 strong-order，bit3 为 cacheable，bit2 为 bufferable，bit1 为 shareable，bit0 为 security。
+              当 MAEE=0 时，PFU 的 security/share 输出分别来自 `sysmap_mmu_flg4[0]` 和 `sysmap_mmu_flg4[1]`；cacheable、bufferable、strong-order 作为 sysmap 属性使用，其中 PFU fault 条件只检查 `SO=1` 或 `C=0`。也就是说，`sysmap_mmu_flg4[4]=1` 或 `sysmap_mmu_flg4[3]=0` 会使 PFU 走 error；bit2 bufferable 不单独触发 PFU error。MMU-off direct path 也采用同一组 sysmap 属性检查。
+        8. PFU flag fault 的完整 truth table 是什么？需要明确 V/R/W/X/U/A/D、SUM、MXR、MPRV、MPP、priv mode、MAEE 如何共同决定 `pa2_err`。
+        回答：PFU hit 的 flag fault 可按“任一条件为真即 fault”定义：
+              1. `V=0`。
+              2. `W=1 && R=0`，属于非法权限组合。
+              3. `R=0 && !(MXR && X=1)`，即不可读，且不能通过 MXR 把可执行页当作可读页。
+              4. effective privilege 为 S，且 `U=1 && SUM=0`。
+              5. effective privilege 为 U，且 `U=0`。
+              6. `A=0`。
+              7. MAEE=1 时，entry attribute 中 `SO=1` 或 `C=0`。
+              8. MAEE=0 时，sysmap attribute 中 `SO=1` 或 `C=0`。
+              effective privilege 由 `MPRV ? MPP : current privilege` 决定。M effective privilege 不触发第 4/5 条 U/S 页权限 fault，但仍要满足 V/R/W/X/A 与 memory attribute 条件。`D` 位不参与 PFU read/prefetch 的 flag fault 判定。若上述 flag fault 不成立，PFU 还会继续做 PMP check；PMP deny 仍会使最终 `pa2_err=1`。
+        9. PFU hit 后进入 PMP check 的场景中，如果同拍又有 TLB operation invalidate 清除了该 entry，PFU 是否仍按已锁存的 PPN/flag 完成？
+        回答：PFU hit completion 一旦形成，会把用于 PMP check 和响应的 PA/security/share 锁存到 PFU buffer，后续 PFU_CHK/PFU_OK/PFU_DENY 使用这个已锁存结果完成。TLB operation invalidate 对 entry 的清除影响后续 lookup，不回滚已经形成 completion 并进入 PFU check 的在途 PFU 响应。
+              如果 invalidate 在该 PFU lookup 形成 hit 之前已经使 entry 无效，则该请求不会按旧 entry 命中；如果 hit 已经在流水末级形成，则该笔响应按已锁存结果自然完成。
+        10. PFU miss 进入 PTW 后，如果 PTW 返回 data_vld，PFU 输出使用 PTW 返回 flag 还是写入 L2TLB 后再查一次？
+        回答：PFU miss 的完成由 PTW completion 直接触发，不需要先写入 L2TLB 后再发起一次 lookup。`ptw_l2tlb_ref_cmplt` 且返回类型为 PFU miss 时，会作为 PFU completion 来源；error 判定使用 PTW completion 携带的 `ptw_l2tlb_ref_flg` 中的 memory attribute，以及 `ptw_l2tlb_ref_pgflt`、`ptw_l2tlb_ref_acc_err`。
+              对 PTW 返回的正常 `data_vld`，如果没有 PTW page fault/access error，且返回属性不满足 `SO=1` 或 `C=0`，PFU 进入 PMP check，随后输出 OK 或 DENY。该路径不会通过“refill 后二次查表”来重新执行完整的 PFU hit flag check。
+
+    5.9 PTW、miss buffer 与 abort
+    uvm部分由ai分析后回答
+        1. `l2tlb_ptw_req` 与 `ptw_ready` 的握手是 valid/ready 协议还是只在 ready 为 1 时 pulse？`l2tlb_ptw_*` payload 是否需要在未 ready 时保持？
+        回答：这是 level valid/ready 语义，不是只在 `ptw_ready=1` 时才 pulse。L2 miss buffer 中只要存在 valid 且未 sent 的 entry，或当拍新 miss 可以分配，就可以拉高 `l2tlb_ptw_req`。真正把 entry 标记为 sent 的接受边界是 `l2tlb_ptw_req && ptw_ready`。
+              当 `ptw_ready=0` 时，未 sent entry 保持 valid/rdy，`l2tlb_ptw_req` 可以持续为 1，`l2tlb_ptw_vpn/type/id` 必须保持为当前被选择的那笔 miss。若当拍新 miss 在 `ptw_ready=0` 时不能 bypass 接收，它会先写入 miss buffer，后续作为 stored entry 继续发给 PTW。
+        2. PTW completion `ptw_l2tlb_ref_cmplt`、`ref_data_vld`、`ref_pgflt`、`ref_acc_err` 的合法组合是什么？是否互斥？
+        回答：`ptw_l2tlb_ref_cmplt` 是三类完成的 OR：正常 data/refill、page fault、access error。合法组合为：
+              `cmplt=0, data_vld=0, pgflt=0, acc_err=0`：没有完成。
+              `cmplt=1, data_vld=1, pgflt=0, acc_err=0`：正常 walk 完成，有可 refill 的 translation data。
+              `cmplt=1, data_vld=0, pgflt=1, acc_err=0`：page fault 完成。
+              `cmplt=1, data_vld=0, pgflt=0, acc_err=1`：access error 完成。
+              三个 completion class 互斥；同一拍不应出现 data_vld、pgflt、acc_err 多个同时为 1。任一完成都携带对应的 `type/id`，用于定位 L2 miss buffer entry 以及原始 L1/PFU 请求。
+        3. PTW completion 可以乱序返回吗？如果可以，是否完全依赖 L2 MB entry id 匹配？
+        回答：可以乱序返回。L2 miss buffer 允许多个 entry 已经 sent 到 PTW，PTW 内部不同 walk、fault 或 refill 路径完成的顺序不要求等于 issue 顺序。返回时以 composite id 为准，其中高位是 L2 miss buffer entry id，低位是 L1 DTLB miss entry id 或固定 0。
+              L2 miss buffer 使用返回 id 的高位匹配并释放对应 entry；L1 侧使用返回 id/type 关联原始 miss。completion 的顺序本身不提供匹配语义，id 才是匹配依据。
+        4. PTW completion id 如果没有命中任何 valid miss buffer entry，DUT 应忽略、报错、还是该场景非法？
+        回答：这是非法 completion 场景。L2 miss buffer 只会对返回 id 命中的 valid entry 做 deallocation；如果没有任何 valid entry 匹配，该 completion 不会释放 L2 miss buffer 中的正常 entry。
+              但 completion 本身仍可能在 PTW 到 L1/L2 的可见路径上形成 fault、refill 或 PFU 完成信号，因此不能把这种场景定义成安全 ignore。系统语义要求 PTW 只返回曾经由 L2 miss buffer issue 出去、且尚未完成或 abort 清理掉的 id。
+        5. PTW completion 返回 fault 时是否一定不发起 L2TLB tag/data/RRPV refill write？
+        回答：是。page fault 或 access error completion 不携带可 refill 的 translation data，也不会发起 L2TLB tag/data/RRPV refill 写。fault completion 只用于通知对应 L1/PFU 路径并释放 L2 miss buffer entry。
+              只有正常 data/refill completion 才会进入 PTW refill arbitration，并在被 L2TLB 接收后触发后续 tag/data/RRPV 写入流程。
+        6. PTW completion 正常 data_vld 但 RRPV write buffer full 导致 PTW read 无法 grant 时，PTW 是否必须保持 completion/refill request 直到被 L2TLB 接收？
+        回答：正常 data/refill completion 在 L2TLB 接收之前不会对外拉 `ptw_l2tlb_ref_data_vld`。当 RRPV write buffer full 或 TLB operation 阻塞 PTW refill 时，PTW refill request 会被 mask，内部保存的 refill payload 保持等待；此时没有正常 data completion 对外发生。
+              等阻塞解除并获得 `arb_ptw_grant` 后，`ptw_l2tlb_ref_data_vld` 才拉高，同拍表示这笔 refill 被 L2TLB 接收。也就是说，data_vld 是接受点上的完成脉冲，不是“先报 completion、再等待 L2TLB 接收”的两阶段协议。
+        7. miss buffer allocation 与 PTW completion deallocation 同拍且指向同一个 entry 时，优先级如何定义？
+        回答：合法流程下，同一个 valid entry 在 completion 当拍不会同时被重新分配。allocation 选择空 entry 时使用当前拍的 valid 状态；正在 deallocation 的 entry 在该拍开始时仍然是 valid，因此不会被当作空 entry 分配，新 allocation 要到下一拍才能使用这个刚释放的位置。
+              allocation 和 deallocation 同拍但指向不同 entry 时可以并行发生：一个 entry 被 completion 释放，另一个空 entry 接收新 miss。若一个无效或非法 completion id 与当拍新 allocation 指向同一 entry 冲突，该 completion 本身属于非法输入组合，不定义为正常仲裁优先级。
+        8. miss buffer full 是否按来源分别判断：ITLB 只看 entry0，DTLB/PFU 只看 entry1-entry8？
+        回答：是。L2 miss buffer entry0 专用于 ITLB/fetch miss；entry1-entry8 由 DTLB load/store miss 和 PFU miss 共用。ITLB miss 只在 entry0 当前 invalid 时可以分配；DTLB/PFU miss 只在 entry1-entry8 中至少有一个 invalid entry 时可以分配。
+              因此 full 判断按来源分开：entry0 valid 会阻塞新的 ITLB miss allocation；entry1-entry8 全 valid 会阻塞新的 DTLB/PFU miss allocation。DTLB/PFU 不会借用 entry0，ITLB 也不会借用 entry1-entry8。
+        9. PFU 与 DTLB 共用 MB entry1-entry8；如果 PFU miss 和 DTLB miss 不可能同拍进入 MB，这个“不可能”是否依赖单 T2 pipeline，UVM 是否需要断言每拍最多一个 alloc？
+        回答：PFU miss 和 DTLB miss 不会同拍从 L2TLB final stage 同时进入 L2 miss buffer。L2TLB lookup 是单入口、单条 raw/final 流水；每个 final 周期最多只有一笔 lookup 请求完成，并且该请求的 type 只能是 ITLB、DTLB 或 PFU 中的一种。
+              因此 L2 miss buffer 每拍最多接收一笔由 lookup miss 产生的 allocation。它可以在同一拍处理一笔 PTW completion deallocation，但不会同拍接收 PFU 和 DTLB 两笔新的 allocation。
+        10. `tlboper_ptw_abort` 只清 sent 不清 valid；abort 后所有 valid entry 是否都会重新 issue PTW？还是只重发已 sent 的 entry？
+        回答：`tlboper_ptw_abort` 对 L2 miss buffer 是全局 sent 清除，不清 valid 和 payload。abort 后，所有仍 valid 的 entry 都会变成 not-sent/ready 状态；之前已经 sent 的 entry 会被重发，之前尚未 sent 的 entry 保持待发状态，并和其它 ready entry 一起按 miss buffer issue 优先级重新发给 PTW。
+              因此 abort 不区分“已 sent entry”和“未 sent entry”来选择性保留 ready 状态。只要 entry valid，abort 后它就是后续 PTW issue 的候选。
+        11. abort 对未 sent 的 miss buffer entry 是否有任何影响？
+        回答：对未 sent entry，abort 不改变 valid、VPN、type、L1EID 等 payload；它本来就是 ready，abort 后仍然 ready。唯一统一执行的动作是把 sent 位清 0，而未 sent entry 的 sent 位本来就是 0，所以功能上没有额外变化。
+              abort 同时会清 PTW 内部正在处理的 walk/refill/fault 状态，防止旧 walk 继续完成；但 L2 miss buffer 中尚未发出的 entry 会继续保留，等待后续重新 issue。
+        12. LSU invalidate abort PTW 后，miss buffer entry 保留并重新 issue，会重新 page walk 旧 VPN/ASID；这是期望行为吗？如何保证不会回填 invalidate 前的旧 translation？
+        回答：这是期望行为。L2 miss buffer 保存的是仍然需要完成的 miss 请求上下文；LSU invalidate 触发 abort 时，不是丢弃这些 miss，而是取消已经在 PTW 内部推进的旧 walk/refill，再把 L2 miss buffer 中仍 valid 的 entry 重新发起 walk。
+              防止旧 translation 回填依赖两点：第一，abort 会清 PTW/TWU 中的在途 valid、pending refill、page/access fault 以及 PTW 内部访存缓冲状态，使 invalidate 前已经取得或正在等待的页表结果不再继续提交；第二，TLB invalidate 本身会清除目标 L1/L2 entry，后续从 L2 miss buffer 重发的 walk 必须重新经过页表读取和权限/属性检查，得到的是 abort 之后的新完成结果。
+              L2 miss buffer entry 本身只保存 VPN/type/L1EID，不保存 ASID。PTW refill 使用当前地址空间相关寄存器生成 tag。因此在有 outstanding miss 时切换 ASID、页表根或相关上下文，需要由软件/系统流程保证安全边界；否则不能依赖 L2 miss buffer 自动区分旧 ASID 请求。
+        13. 同一 VPN/ASID/type 多个 miss 不 merge；如果第一笔 PTW completion 已 refill L2TLB，后续重复 miss buffer entry 是否仍会发 PTW，还是有机会重新 lookup L2TLB？
+        回答：已经进入 L2 miss buffer 的重复 entry 不会因为另一笔 completion 已经 refill L2TLB 而自动重新 lookup。miss buffer entry 的后续动作是按保存的 VPN/type/id 发给 PTW；没有“发 PTW 前先重新查一次 L2TLB，若命中则直接完成”的机制。
+              因此多个相同 VPN/type 的 miss 如果都已经分配到 L2 miss buffer，后续会分别 issue 到 PTW，分别等待 completion。只有尚未进入 miss buffer、因 miss buffer full 等原因保留在 ReqQ 中 replay 的请求，后续重新走 L2TLB lookup 时才可能命中新 refill 的 entry。
+        14. miss buffer 发 PTW 后，原 ReqQ entry 已释放；如果后续 PTW abort/retry，该请求最终如何通知原 L1，还是由 PTW/L1 miss buffer 自己保持上下文？
+        回答：原 ReqQ entry 在 miss 成功分配到 L2 miss buffer 后即可释放；后续完成不再依赖 ReqQ。L2 miss buffer entry 保存 VPN、type 和原始 L1EID，并在 issue PTW 时生成 composite id。PTW completion 返回同一个 type/id，L2 miss buffer 用高位 L2 entry id 释放 entry，L1 DTLB 用低位 L1EID 关联原始 miss；ITLB 请求低位 id 固定为 0。
+              如果发生 abort，L2 miss buffer 保留 entry 并清 sent，之后用同一 payload/id 重新 issue。原 L1 miss 仍由 L1 侧自己的等待状态或 miss entry 保持，直到 PTW 最终返回 refill、page fault 或 access error completion。ReqQ 不参与 abort 后的重试和最终通知。
+
+    5.10 TLB operation 详细接口
+    uvm部分由ai分析后回答
+        1. TLB operation 相关但未列入 signal table 的信号需要补全吗？例如 `tlboper_arb_req`、`tlboper_arb_idx`、`tlboper_arb_bank_sel`、`tlboper_arb_cmp_va`、`tlboper_arb_idx_not_va`、`arb_tlboper_grant`、`tlboper_xx_cmplt`。
+        回答：需要补全。以下方向按 TLB operation 控制单元视角描述，进入控制单元为输入，由控制单元发出为输出；与 L2TLB 交互的反馈另行注明。
+            LSU 来源请求输入：
+                lsu_mmu_tlb_all_inv，1bit，LSU 发起全清请求。
+                lsu_mmu_tlb_asid_all_inv，1bit，LSU 发起按 ASID 清除请求。
+                lsu_mmu_tlb_va_all_inv，1bit，LSU 发起按 VA 清除、忽略 ASID 的请求。
+                lsu_mmu_tlb_va_asid_inv，1bit，LSU 发起按 VA 和 ASID 清除的请求。
+                lsu_mmu_tlb_asid[15:0]，目标 ASID，用于 LSU 的 ASID 类或 VA+ASID 类清除。
+                lsu_mmu_tlb_va[26:0]，目标 VPN，用于 LSU 的 VA 类清除，同时送给 L1 侧按低 8 位匹配。
+            寄存器来源请求输入：
+                regs_tlboper_invall，1bit，寄存器侧全清请求。
+                regs_tlboper_invasid，1bit，寄存器侧按 ASID 清除请求。
+                regs_tlboper_tlbp，1bit，按当前 MEH 内容查找并更新 MIR 的请求。
+                regs_tlboper_tlbr，1bit，按 MIR 指定位置读取并回填 MEH/MEL 的请求。
+                regs_tlboper_tlbwi，1bit，按 MIR 指定位置写入 MEH/MEL 内容的请求。
+                regs_tlboper_tlbwr，1bit，按当前 VPN 候选位置选择 victim way 后写入 MEH/MEL 内容的请求。
+                regs_tlboper_inv_asid[15:0]，寄存器侧 INVASID 的目标 ASID。
+                regs_tlboper_cur_asid[15:0]，MEH 中的 ASID，用于 TLBP、TLBWI、TLBWR 和寄存器侧 VA 比较。
+                regs_tlboper_cur_pgs[2:0]，MEH 中的 page size，写入新 entry，并作为 TLBP 命中索引相关的页大小上下文。
+                regs_tlboper_cur_vpn[26:0]，MEH 中的 VPN，用于 TLBP、TLBWI、TLBWR。
+                regs_tlboper_mir[11:0]，MIR 中的索引；[10:8] 选择 way，[7:0] 选择 set。
+                regs_jtlb_cur_ppn[27:0]，MEL 中的 PPN，TLBWI/TLBWR 写入 data。
+                regs_jtlb_cur_flg[13:0]，MEL 中的属性和权限，TLBWI/TLBWR 写入 data。
+                regs_jtlb_cur_g，MEL 中的 global 位，TLBWI/TLBWR 写入 tag。
+            CP0 来源请求输入：
+                cp0_mmu_tlb_all_inv，1bit，CP0 侧全清请求，走 INVALL 流程。
+            仲裁请求输出：
+                tlboper_arb_req，1bit，向仲裁发起一次访问请求；单拍操作保持到 grant，多拍操作每个 beat 单独保持到 grant。
+                tlboper_arb_write，1bit，本 beat 是否为写访问。TLBWI、TLBWR 写阶段、INVASID 写阶段、INVALL、INVVA 写阶段为 1。
+                tlboper_arb_vpn[26:0]，本 beat 使用的 VPN。INVVA 类来自 lsu_mmu_tlb_va，其余来自 regs_tlboper_cur_vpn。
+                tlboper_arb_idx[10:0]，索引类 beat 使用的索引。INVASID/INVALL 来自扫描计数器，其余索引类操作来自 regs_tlboper_mir。
+                tlboper_arb_idx_not_va，1bit，索引模式选择。TLBR、TLBWI、INVASID、INVALL 为 1，表示使用 tlboper_arb_idx[7:0] 作为各 way 的 set index。
+                tlboper_arb_cmp_va，1bit，是否按 VA/VPN 做比较。TLBP 和 INVVA 读阶段为 1。
+                tlboper_arb_bank_sel[7:0]，本 beat 访问的 way mask。TLBP、INVALL、INVVA 读阶段、INVASID 读阶段、TLBWR victim 读阶段访问 8 个 way；TLBR/TLBWI 使用 MIR[10:8] 指定的单 way；TLBWR 写阶段使用 victim way；INVVA/INVASID 写阶段使用命中的 way mask。
+                tlboper_arb_tag_din[47:0]，写入 tag 的数据。TLBWI/TLBWR 写阶段包含 valid、VPN、ASID、page size、global；清除类写阶段为 0，用于清 valid。
+                tlboper_arb_data_din[41:0]，写入 data 的数据。TLBWI/TLBWR 写阶段包含 PPN 和 flag；清除类写阶段为 0。
+            仲裁反馈输入：
+                arb_tlboper_grant，1bit，仲裁接受当前 tlboper_arb_* beat。该拍之后控制单元进入等待完成或下一 beat。
+                arb_top_tlboper_on，1bit，仲裁侧 TLB operation busy 状态，从首次 grant 后保持到 tlboper_xx_cmplt。
+            L2TLB 直接控制输出：
+                tlboper_l2tlb_asid[15:0]，VA 比较使用的 ASID。INVVA 类来自 lsu_mmu_tlb_asid，TLBP 来自 regs_tlboper_cur_asid。
+                tlboper_l2tlb_asid_sel，1bit，选择 TLB operation 专用 ASID 参与 VA 比较。TLBP 和 INVVA 流程中有效。
+                tlboper_l2tlb_cmp_noasid，1bit，VA 清除且忽略 ASID 时有效；此时 VA 命中不要求 ASID 匹配。
+                tlboper_l2tlb_inv_asid[15:0]，INVASID 扫描比较使用的目标 ASID；寄存器来源使用 regs_tlboper_inv_asid，LSU 来源使用 lsu_mmu_tlb_asid。
+                tlboper_l2tlb_tlbwr_on，1bit，TLBWR 流程有效，用于 L2TLB 在反馈 way mask 时选择 victim way。
+                tlboper_l2tlb_invasid_on，1bit，INVASID 流程有效，用于 L2TLB 在反馈 way mask 时选择 ASID 命中 way。
+                tlboper_xx_pgs[2:0]，当前操作页大小上下文，来自 regs_tlboper_cur_pgs。
+            L2TLB 反馈输入：
+                l2tlb_tlboper_cmplt，1bit，L2TLB 对一次 TLB operation beat 的流水完成反馈。
+                l2tlb_tlboper_va_hit，1bit，INVVA/TLBP 类 VA 比较存在命中 way。
+                l2tlb_tlboper_asid_hit，1bit，INVASID 扫描当前 set 存在 ASID 命中 way。
+                l2tlb_tlboper_sel[7:0]，反馈给写阶段使用的 way mask。TLBWR 时为 victim way，INVASID 时为 ASID hit way，INVVA 时为 VA hit way。
+                l2tlb_regs_hit，1bit，TLBP 单命中结果。
+                l2tlb_regs_hit_mult，1bit，TLBP 多命中结果。
+                l2tlb_regs_tlbp_hit_index[10:0]，TLBP 命中时回写 MIR 的索引，格式为 way[2:0] 加 set[7:0]。
+                l2tlb_tlbr_vpn[26:0]、l2tlb_tlbr_pgs[2:0]、l2tlb_tlbr_asid[15:0]、l2tlb_tlbr_ppn[27:0]、l2tlb_tlbr_flg[13:0]、l2tlb_tlbr_g，TLBR 读出的 entry 内容，用于回填 MEH/MEL。
+            一级缓存清除和 PTW 控制输出：
+                tlboper_utlb_clr，1bit，TLBWI、TLBWR、INVASID、INVALL 过程中清 L1 ITLB、L1 DTLB 和相关 uTLB。
+                tlboper_utlb_inv_va_req，1bit，INVVA 过程中按 VA 清 L1 侧 entry。
+                tlboper_ptw_abort，1bit，LSU 来源 invalidate 新启动时发出，用于取消正在推进的 page walk，并让 miss buffer 中仍有效的请求后续重发。
+            完成与状态输出：
+                tlboper_xx_cmplt，1bit，所有 TLB operation 的统一完成脉冲。
+                tlboper_regs_cmplt，1bit，寄存器来源操作完成脉冲，LSU 来源操作不拉高该信号。
+                tlboper_regs_tlbp_cmplt，1bit，TLBP 完成并允许 MIR 更新。
+                tlboper_regs_tlbr_cmplt，1bit，TLBR 完成并允许 MEH/MEL 更新。
+                mmu_lsu_tlb_inv_done，1bit，LSU 来源 invalidate 的最终完成脉冲。
+                mmu_cp0_tlb_done，1bit，CP0 全清请求完成脉冲。
+                tlboper_top_tlbp_cur_st[1:0]、tlboper_top_tlbr_cur_st[1:0]、tlboper_top_tlbwi_cur_st[1:0]、tlboper_top_tlbwr_cur_st[1:0]、tlboper_top_tlbiasid_cur_st[2:0]、tlboper_top_tlbiall_cur_st、tlboper_top_tlbiva_cur_st[3:0]，各子流程当前状态。
+                tlboper_top_lsu_oper，1bit，当前操作归属 LSU 来源。
+                tlboper_top_lsu_cmplt，1bit，LSU 来源操作完成状态脉冲。
+        2. UVM 应通过寄存器抽象层驱动 MEH/MEL/MIR/MCIR/LSU invalidate，还是直接驱动 tlboper_l2tlb/tlboper_arb 低层接口？
+        回答：本条属于验证策略，不在本节展开。
+        3. 多个 TLB operation 来源同拍有效时（LSU invalidate、MCIR、cp0_mmu_tlb_all_inv），优先级和互斥规则是什么？
+        回答：功能语义上同一时刻只应启动一个新的 TLB operation。控制单元空闲时，LSU 来源 invalidate 优先于寄存器来源操作；寄存器来源的 TLBP、TLBR、TLBWI、TLBWR、INVASID、INVALL 在 LSU invalidate 正在启动或执行时不应被采纳。CP0 直接全清和 LSU 全清都走 INVALL 流程；若与 LSU 全清同拍出现，实际执行的是同一个全清扫描，完成时 LSU done 和 CP0 done 都可能看到完成脉冲。寄存器侧 MCIR 的命令位按字段互斥使用，若写入值同时置多个命令位，优先关系为 INVALL 高于 INVASID，高于 TLBP，高于 TLBWI，高于 TLBWR，高于 TLBR。
+        4. TLBP/TLBR/TLBWI/TLBWR/INVASID/INVALL/INVVA 每个 operation 的 request、grant、cmplt、done pulse 宽度分别是多少？
+        回答：request 是 level 语义，当前 beat 未被 grant 前保持有效；grant 是仲裁接受该 beat 的 1 拍脉冲；l2tlb_tlboper_cmplt 是每个已接受 beat 在 L2TLB 完成阶段产生的 1 拍脉冲；tlboper_xx_cmplt、tlboper_regs_cmplt、mmu_lsu_tlb_inv_done、mmu_cp0_tlb_done 都是最终完成 1 拍脉冲。
+            TLBP：1 个读 request beat，grant 后等待 1 次 l2tlb_tlboper_cmplt，随后产生 1 次最终完成。TLBP 命中、多命中和命中索引在该完成点更新到 MIR 相关路径。
+            TLBR：1 个索引读 request beat，grant 后等待 1 次 l2tlb_tlboper_cmplt，随后产生 1 次最终完成，并用读出的 entry 回填 MEH/MEL。
+            TLBWI：1 个索引写 request beat，grant 后等待 1 次 l2tlb_tlboper_cmplt，随后产生 1 次最终完成。
+            TLBWR：先发 1 个 victim 读 request beat，grant 后等待第 1 次 l2tlb_tlboper_cmplt；随后发 1 个写 request beat，grant 后等待第 2 次 l2tlb_tlboper_cmplt；最终完成只产生 1 次。
+            INVASID：对 256 个 set 扫描。每个 set 先发读 request beat；读完成后若当前 set 有 ASID 命中，再发写 request beat 清除命中 way；若无命中，则没有写 beat。最后一个 set 处理完后产生 1 次最终完成。
+            INVALL：对 256 个 set 直接发写 request beat，每个 set 1 个写 beat，8 个 way 同时选择；每个写 beat 仍会在 L2TLB 完成阶段产生 1 次 l2tlb_tlboper_cmplt。最终完成由最后一个 set 的写 grant 触发，产生 1 次。
+            INVVA：先发 1 个按 VA 比较的读 request beat；若读完成后 VA 命中，再发 1 个写 request beat 清除命中 way，并等待写完成；若未命中，则不发写 beat。最终完成只产生 1 次。
+        5. `tlboper_utlb_clr`、`tlboper_utlb_inv_va_req`、`mmu_lsu_tlb_inv_done`、`mmu_cp0_tlb_done`、`tlboper_regs_cmplt` 是否都属于 L2TLB UVM 必须监控的可见结果？
+        回答：这些信号的功能含义如下。tlboper_utlb_clr 表示清 L1 ITLB、L1 DTLB 和相关 uTLB，TLBWI、TLBWR、INVASID、INVALL 的请求阶段会拉高。tlboper_utlb_inv_va_req 表示按 lsu_mmu_tlb_va 清 L1 侧匹配 entry，INVVA 的读请求和写请求阶段会拉高。mmu_lsu_tlb_inv_done 是 LSU 来源 invalidate 的最终完成。mmu_cp0_tlb_done 是 CP0 全清流程完成。tlboper_regs_cmplt 是寄存器来源操作完成，不覆盖 LSU 来源操作。tlboper_xx_cmplt 是所有来源共用的内部完成汇总。
+        6. `tlboper_utlb_inv_va_req` 按 VA 清 L1 时，发送给 L1 的 VA/ASID payload 是什么？spec 只提到 L1 实际比较 VA/VPN 低 8 位，UVM 是否需要检查该低 8 位行为？
+        回答：按 VA 清 L1 时，随 tlboper_utlb_inv_va_req 一起使用的地址 payload 是 lsu_mmu_tlb_va[26:0]，没有单独送 ASID payload 到 L1。L1 ITLB、L1 DTLB 和 uTLB entry 使用 lsu_mmu_tlb_va[7:0] 与本地保存的 VPN 低 8 位比较，匹配则清除。VA_ALL 和 VA_ASID 两类 LSU 请求在 L1 侧清除行为相同，都不做 ASID 精确区分；ASID 条件只影响 L2TLB 的 VA 命中判断。
+        7. TLBWI/TLBWR 写非法 page size、非法 PTE flag、未对齐大页 PPN 时不拦截；TLBP/lookup 后续遇到这些 entry 的预期行为是否只由 tag.pgs/flag check 自然决定？
+        回答：TLBWI/TLBWR 写入时不对 page size、flag 或大页 PPN 对齐做前置拦截，也不修正字段。后续 TLBP 或普通 lookup 是否命中，由 valid、VPN、page size、ASID/global 的比较自然决定；非法 page size 通常无法匹配合法候选页大小。若 entry 命中，flag 按后续权限、属性检查使用；PPN 也按已保存值参与物理地址形成，不自动按大页边界清零或对齐。
+        8. INVVA_ASID 当前会清 global entry；这个行为是否是正式架构语义，还是当前实现行为但需要在 spec 中特别标注？
+        回答：当前接口语义下，INVVA_ASID 会清除 VA 命中的 global entry。原因是 VA 比较中 global entry 可绕过 ASID 匹配；VA_ASID 请求没有启用忽略 ASID，但 global 位仍使该 entry 满足命中条件。该行为需要在规格中特别标注：INVASID 扫描会保留 global entry，而 INVVA_ASID 会清除同 VA 的 global entry。
+        9. TLBWR 读 victim 阶段是否会产生 `l2tlb_tlboper_cmplt`，写阶段也产生一次 `l2tlb_tlboper_cmplt`？UVM 是否应看到两个内部完成但只有一个最终 operation done？
+        回答：TLBWR 有两个 L2TLB beat。第一个 beat 是 victim 读，完成时产生一次 l2tlb_tlboper_cmplt，用于推进到写阶段并取得 victim way。第二个 beat 是写入 victim way，完成时再产生一次 l2tlb_tlboper_cmplt。最终 operation done 只在第二个 beat 完成后产生一次。
+        10. INVASID 某个 set 没有 ASID hit 时，是否仍产生一次 read 完成但没有 write beat？coverage/checker 是否需要区分 NWT 和 WT？
+        回答：某个 set 没有 ASID hit 时，仍然有读 request、读 grant 和一次 l2tlb_tlboper_cmplt；随后进入 no-write 路径，不产生写 request beat。某个 set 有 ASID hit 时，读完成后进入 write 路径，并用 ASID hit way mask 发起写清除。功能上需要区分“读完成但无写”和“读完成后有写”两种结果，因为它们对应的 L2TLB 修改行为不同。
+        11. INVALL 是直接写无效不读 compare；是否每个 set 只有一个 write beat，还是也会产生 final_vld/cmplt？
+        回答：INVALL 不读 compare，直接按 set index 扫描写无效。每个 set 只有一个写 beat，bank_sel 选择 8 个 way，tag/data 写入值为 0，用于清 valid。由于每个写 beat 仍进入 L2TLB 访问流水，所以每个已接受的写 beat 后仍会产生 final_vld 和 l2tlb_tlboper_cmplt；但 INVALL 自身的最终完成由最后一个 set 的写 grant 触发。
+        12. TLB operation 期间如果 reset 拉低，operation done 是否取消，L1 invalidate pulse 是否可能已经发出但 L2 invalidation 未完成？
+        回答：reset 拉低后，各 TLB operation 子流程状态、扫描计数、LSU 来源记录和完成脉冲状态都会回到空闲或无效，本次 operation done 不再保证产生；若 done 已在 reset 前出现，则它已经是一个已发出的完成脉冲。tlboper_utlb_clr 或 tlboper_utlb_inv_va_req 是请求阶段即可发出的清 L1 信号，因此存在 L1 清除信号已经发出、但 L2TLB 后续清除 beat 尚未全部完成时 reset 到来的情况。reset 期间应把未完成操作视为取消，复位结束后如仍需要该失效语义，应重新发起对应操作。
+
+    5.11 replacement、RRPV 与 victim 可检查性
+    uvm部分由ai分析后回答
+        1. UVM 是否需要检查 TLBWR/PTW refill 选择的 victim way 与 RRPV/free-way 规则一致？还是 victim way 完全作为 DUT 内部行为不比较？
+        2. 如果需要检查 victim way，hash/index/RRPV bypass/wbuf 最新值规则是否都必须补全为可实现的 reference model？
+        3. RRPV write buffer full 在 count>=5 拉高；UVM 是否需要检查这个水位，还是只检查不会 overflow 和不会错误 grant？
+        4. RRPV write buffer depth、水位、head/tail 顺序、CAM merge、latest-wins 是否都属于必须断言的微架构行为？
+        5. 同周期 wbuf push 和 bypass lookup 命中同 bank/index 时，spec 写“同周期刚 push 也参与 bypass”；这个同周期优先级如何在 cycle-accurate UVM 中采样？
+        6. PTW read 使用 merged RRPV；如果 wbuf 中某些 way valid=0，merged 结果应从 SRAM 取旧值还是视为 invalid way 不参与 victim？
+        7. TLBWI/TLBWR 写有效 entry 时，RRPV 初始化为 3；是否也需要清除 wbuf 中同 bank/index 的旧 pending RRPV，避免后续 drain 覆盖新值？
+        8. invalidate 清 tag/data 后，如果 wbuf 中仍有同 bank/index pending RRPV，drain 是否允许继续写 RRPV？UVM 是否应忽略 invalid entry 的 RRPV 后续变化？
+        9. PTW write 直接写 RRPV SRAM 时，如果 wbuf 中有同 bank/index pending 更新，是否需要 invalidate/merge wbuf entry，还是依赖 bypass/latest rules？
+        10. 普通 lookup multi-hit 不更新 RRPV；TLBP multi-hit 是否也不更新 RRPV，且不会 push wbuf？
+
+    5.12 sequence、非法输入与 coverage
+    uvm部分由ai分析后回答
+        1. L2TLB UVM 是否只产生协议合法输入，还是需要专门注入非法 access type、非法 page size、credit overflow、PTW completion bad id、多个 TLB operation 同时请求等场景？
+        2. 对协议非法输入，如果 DUT 行为未定义，UVM 应检查 assertion 触发、忽略结果，还是完全不生成？
+        3. multi-hit 是否必须主动构造？若必须，推荐使用 backdoor 写 tag/data，还是通过 TLBWI/TLBWR/PTW refill 前门构造？
+        4. 如果通过前门构造 multi-hit，hash 函数不建模时如何保证多个 entry 会落到同一次 lookup 的候选 way？
+        5. coverage 是否需要按 source 类型覆盖 ITLB、DTLB load、DTLB store、PFU、PTW refill、TLBP、TLBR、TLBWI、TLBWR、INVALL、INVASID、INVVA_ALL、INVVA_ASID？
+        6. coverage 是否需要按结果类型覆盖 single-hit、miss+MB alloc、miss+MB full retry、PTW disabled miss、multi-hit、PTW page fault、PTW access error、PFU flag fault、PFU PMP/sysmap deny？
+        7. coverage 是否需要按 page size 覆盖 4KB/2MB/1GB，并交叉 selector VA[31:30]、way mask、global/non-global、ASID match/mismatch？
+        8. coverage 是否需要覆盖 ASID/control 寄存器在 outstanding request 期间变化的场景，还是这种场景应作为软件约束禁止？
+        9. coverage 是否需要覆盖 warm reset、wbuf full stall、ptw_on stall、tlboper_on stall、prefetch_mask retry、miss buffer abort/reissue？
+        10. scoreboard 对可变延迟请求的 timeout 应如何设置？例如 TLB operation 扫描、PTW 等待、miss buffer full retry、wbuf full stall 是否需要最大等待周期约束？

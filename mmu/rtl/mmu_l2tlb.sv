@@ -8,7 +8,7 @@ module mmu_l2tlb#(
     parameter ASID_WIDTH     = 16,
     parameter IDX_WIDTH      = 8,          // 256 Sets
     parameter WAY_NUM        = 8,          // 8 Skewed Ways
-    parameter TRANS_ID_WIDTH = 3,          // Mafinalhes Reqq ID Width
+    parameter TRANS_ID_WIDTH = 4,          // Mafinalhes Reqq ID Width
     parameter L1EID_WIDTH    = 3,
     parameter L2EID_WIDTH    = 4,
     parameter TYPE_WIDTH     = 3,          // 2 bits for req type

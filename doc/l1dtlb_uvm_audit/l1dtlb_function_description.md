@@ -30,11 +30,12 @@
     l1dtlb需要把miss的请求发送到l2tlb走refill流程。
         l1dtlb内部会维护一个credit计数器，计数器初始化为l2tlb的request queue entry的数量。
             当credit计数器的值大于0时，能发请求到l2tlb request queue。
-            当credit计数器等于0，但是l2tlb刚好归还了credit时，也能发请求到l2tlb。
-            也就是说，只要l1dtlb能发请求到l2tlb，那一定说明l2tlb request queue的为dtlb准备的entry还有空位。
+            当credit计数器等于0时，即使l2tlb本拍刚好归还credit，本拍也不能发请求到l2tlb；这个return只会让下一拍看到可用credit。
+            也就是说，l1dtlb发请求只能基于本拍开始前已经存在的credit，不能把同拍归还的credit或同拍释放的ReqQ entry当拍复用。
             每当l1dtlb的miss buffer发送一个请求到l2tlb request queue，都要把这个计数器减一。
             当l2tlb归还了credit时，credit计数器加一。
-            如果同时发生l2tlb归还credit和发送请求到l2tlb，那么credit不变。
+            如果本拍开始credit大于0，并且同时发生l2tlb归还credit和发送请求到l2tlb，那么credit不变；该请求消耗的是已有credit，return只是同拍补回。
+            l2tlb归还给l1dtlb的credit_return是ReqQ entry dealloc产生的一拍pulse。ReqQ entry释放在时钟沿后才对分配逻辑可见，新请求不能使用同拍刚释放的entry，下一拍才可以分配到该entry。
         在有miss请求未发送到l2tlb（有判定需要分配miss buffer entry的miss请求或miss buffer中有未发送的请求），且l1dtlb满足发请求给l2tlb（credit满足上面所说的情况）的时侯，一拍发送一个请求到l2tlb的request queue。
             当miss buffer中有未发送的请求时，优先发miss buffer中的请求；
             当miss buffer中没有未发送给l2tlb的请求时，如果有被判定需要分配miss buffer entry的miss请求，那么这个要被分配miss buffer entry的请求走bypass，直接发送到l2tlb request queue。
@@ -379,8 +380,9 @@
         Q-L1DTLB-043: credit计数器的最大值、最小值、饱和/溢出处理是什么？scoreboard是否需要检查credit守恒？
         回答：credit计数器的最大值是L2TLB request queue中DTLB专用entry数量，最小值是0。当前 RTL 没有显式饱和或溢出保护。scoreboard需要检查credit守恒。
 
-        Q-L1DTLB-044: credit为0且同拍收到credit return时可以发请求。该请求是否消耗同拍归还的credit，使计数值保持0？
-        回答：credit为0且同拍收到credit return时可以发请求。该请求消耗同拍归还的credit，使计数值保持0。
+        Q-L1DTLB-044: credit为0且同拍收到credit return时是否可以发请求？该请求是否能消耗同拍归还的credit，使计数值保持0？
+        回答：基于当前RTL，credit为0且同拍收到credit return时，本拍不能发请求。scheduler的credit_avail由当前credit_cnt组合产生，credit_return只在时钟沿更新credit_cnt，下一拍才变成可用credit。只有本拍开始credit_cnt>0时，才允许request fire；如果此时同拍还有credit_return，则fire消耗已有credit、return补回，计数值保持不变。
+              需要区分credit计数守恒和ReqQ物理entry复用。L2TLB ReqQ的credit_return来自entry_dealloc的一拍pulse，同拍dealloc的entry在分配FFZ逻辑中仍被看作valid，不能被本拍新request复用；下一拍该entry才可作为free entry被分配。
 
         Q-L1DTLB-045: 每拍最多发送一个请求到L2TLB。该限制是否包括bypass请求和miss buffer中未发送请求的总和？
         回答：每拍最多发送一个请求到L2TLB。该限制包括bypass请求和miss buffer中未发送请求的总和。
@@ -537,7 +539,7 @@
             wakeup是广播式全局提示，不携带iid/pipe，不应作为某条请求完成信号逐请求匹配；可按事件级检查其触发条件和广播全1/全0形态。
             miss统计/HPC类信号建议事件级检查，确认只在真实miss场景计数，不作为translation correctness的核心oracle。
         Q-L1DTLB-082: l1dtlb相关覆盖点应覆盖哪些spec行为？请确认是否需要覆盖双pipe并发、同VPN去重、MB full、credit边界、WFI仲裁、fault replay、flush/refill race、invalidate/install race等场景。
-        AI基于当前spec给出的UVM建模决策：l1dtlb覆盖点至少应覆盖以下场景：双pipe同拍hit、hit+miss、双miss同4K去重、双miss不同4K双分配、双miss不同4K但仅一个空位按iid年龄选择、MB hit不再分配、MB full drop并等待wakeup replay、credit>0发送、credit=0且同拍return发送、MB旧请求优先于bypass、bypass allocate+issue同拍进入WFC、WFI > PTW > L2TLB install仲裁、多个WFI最低entry优先、PTW/L2TLB fault写exception array、fault replay释放entry、ABT late refill drain、RTU flush与grant/refill/install race、invalidate与hit同拍、invalidate与install同拍clear优先、MMU off/M-mode direct map、STAMO pipe1 bypass、page fault T0和access fault T1重叠归属。
+        AI基于当前spec给出的UVM建模决策：l1dtlb覆盖点至少应覆盖以下场景：双pipe同拍hit、hit+miss、双miss同4K去重、双miss不同4K双分配、双miss不同4K但仅一个空位按iid年龄选择、MB hit不再分配、MB full drop并等待wakeup replay、credit>0发送、credit=0且同拍return不发送、credit>0时return+fire守恒、MB旧请求优先于bypass、bypass allocate+issue同拍进入WFC、WFI > PTW > L2TLB install仲裁、多个WFI最低entry优先、PTW/L2TLB fault写exception array、fault replay释放entry、ABT late refill drain、RTU flush与grant/refill/install race、invalidate与hit同拍、invalidate与install同拍clear优先、MMU off/M-mode direct map、STAMO pipe1 bypass、page fault T0和access fault T1重叠归属。
 
 
 ## 3. L1DTLB Requirement-Driven Test Audit Table Format
@@ -647,7 +649,7 @@
         | L1DTLB-AUD-018 | store访问W=0和D=0 page fault | Q-L1DTLB-006, Q-L1DTLB-031 | store访问W=0 page；store访问D=0 page | page fault；L1DTLB测试不应期待硬件D-bit update/writeback | F2.8, DTLB_PERM_ST_001, DTLB_PERM_ST_002 | lsu_st_ld_mix_seq | directed PTE setup、PTE不变、page_fault pulse | modify | wrong_expected | 修改expected behavior | 将“store触发D-bit update”改为“D=0 store page fault/trap-only”，wrapper需要directed PTE控制。 |
         | L1DTLB-AUD-019 | store flag影响L2 request/PMP type | Q-L1DTLB-006, Q-L1DTLB-048 | load miss和store miss发送到L2/PTW/PMP | request type反映load/store，store路径使用写相关PMP/permission检查 | F2.10, F3.5/TC-BUG-006 adjacent | 无L1DTLB-directed wrapper | L1D到L2 request type probe或L2 acc_type coverage | add | missing_test | 新增directed test/coverage | 当前permission wrapper只做pipe0随机流量，不能证明request type传播。 |
         | L1DTLB-AUD-020 | MB CAM hit不分配、不wakeup | Q-L1DTLB-035, Q-L1DTLB-036, Q-L1DTLB-038 | 第二个请求访问已有pending MB entry的完整27-bit 4K VPN | 不新增MB entry，不立即wakeup；后续只能在refill/replay后成功 | F2.3, DTLB_MB_* | mmu_ptw_thrash_vseq | MB valid count、wakeup、后续replay response | add | missing_test | 新增directed test | 该场景不同于同拍dual-miss dedup，需要单独测试。 |
-        | L1DTLB-AUD-021 | credit counter边界 | 1.4, Q-L1DTLB-042, Q-L1DTLB-043, Q-L1DTLB-044 | credit到0，同时发生credit return和request fire | credit初始/最大值为L2TLB request queue中DTLB专用entry数量，最小值为0；同拍return时可以fire request，return和fire同拍时credit计数保持稳定；scoreboard检查credit守恒 | F2.3, F2.10, DTLB_CREDIT_001, DTLB_CREDIT_002, DTLB_CREDIT_BOUND_001 | mmu_concurrent_3pipe_vseq；mmu_credit_sb仅做外部近似跟踪 | exact scheduler credit probe或SVA | modify | weak_check | 修改test/check | 现有credit测试不强制也不检查内部credit边界；DTLB_CREDIT_002当前更接近随机fairness/pressure，仍缺credit=0同拍return的directed check。 |
+        | L1DTLB-AUD-021 | credit counter边界 | 1.4, Q-L1DTLB-042, Q-L1DTLB-043, Q-L1DTLB-044 | 覆盖credit到0、本拍开始credit>0时return+fire同拍、credit=0且return同拍无fire | credit初始/最大值为L2TLB request queue中DTLB专用entry数量，最小值为0；request只能基于本拍开始前已有credit发出；本拍开始credit>0时return和fire同拍计数保持稳定；credit=0时同拍return不能当拍fire，只能下一拍提供credit；scoreboard检查credit守恒和无同拍ReqQ entry复用 | F2.3, F2.10, DTLB_CREDIT_001, DTLB_CREDIT_002, DTLB_CREDIT_BOUND_001 | mmu_concurrent_3pipe_vseq；mmu_credit_sb仅做外部近似跟踪 | exact scheduler credit probe或SVA | modify | weak_check | 修改test/check | 现有credit测试不强制也不检查内部credit边界；DTLB_CREDIT_002当前更接近随机fairness/pressure，仍缺credit=0同拍return禁止fire和return+fire守恒的directed check。 |
         | L1DTLB-AUD-022 | 每cycle最多一个L2 request和scheduler priority | 1.4, Q-L1DTLB-045, Q-L1DTLB-046 | 存在old unsent MB entry，同时新miss可走bypass | 最多发送一个request；old unsent MB优先于current bypass request | F2.10, F2.19, DTLB_SCHED_001 | mmu_concurrent_3pipe_vseq | L2 request valid/type/id和MB sent state | add | missing_test | 新增directed test | 当前sched测试名实际映射generic vseq，不能证明priority。 |
         | L1DTLB-AUD-023 | bypass allocate+issue路径 | 1.4, 1.8, Q-L1DTLB-047 | 新miss同cycle分配并发往L2 | 该entry下一cycle进入WFC，而不是WFG | F2.3a, TC-BUG-BYPASS-001 | 未看到L1DTLB wrapper | MB state transition coverage/SVA | add | missing_test | 新增directed test或SVA | verification plan有目标，但当前l1dtlb_tests未实现。 |
         | L1DTLB-AUD-024 | install arbitration优先级WFI大于PTW大于L2 | 1.5, Q-L1DTLB-050 | WFI candidate、PTW refill和L2 refill同cycle竞争 | 只写一个TLB entry，优先级为WFI、PTW、L2 | F2.15, TC-GAP-DTLB-002, DTLB_REFILL_001, DTLB_REFILL_002, DTLB_INSTALL_ARB_001 | mmu_ptw_thrash_vseq, mmu_concurrent_3pipe_vseq | install select probe如sel_wfi/sel_ptw/sel_jtlb和entry update | add | missing_test | 新增directed test/SVA | 现有refill测试是压力测试，不能证明arbitration priority；DTLB_REFILL_002当前只是generic concurrent pressure。 |
@@ -841,7 +843,7 @@
         | L1DTLB_SVA_A040 | assert | Q039, AUD-056 | mb_entry | `entry_vld == (state != IDLE)`；`entry_wfi == (state == WFI)`；`entry_wfc == (state == WFC || state == ABT)`；`ready`只能在WFG且本拍未被RTU flush屏蔽时为1。 |
         | L1DTLB_SVA_A041 | assert | Q039, AUD-056 | mb_entry | `issued/sent`是latch而不是纯状态译码：issue_grant后置1，entry回IDLE后清0；不得在未issue的entry上声明已发送。 |
         | L1DTLB_SVA_A042 | assert | Q040, Q041, AUD-059 | mb_entry/expt | PGFLT/ACFLT状态必须保持entry valid和exception array valid，直到原请求replay命中exception array或RTU flush；不得超时自动释放。 |
-        | L1DTLB_SVA_A043 | assert | Q042, Q043, Q044, AUD-021 | scheduler | credit更新守恒：只有L2TLB request消耗credit，只有credit_return归还credit；request和return同拍时计数不变；credit=0且同拍return允许发出一个request。 |
+        | L1DTLB_SVA_A043 | assert | Q042, Q043, Q044, AUD-021 | scheduler | credit更新守恒：只有L2TLB request消耗credit，只有credit_return归还credit；本拍开始credit>0时request和return同拍计数不变；credit=0时同拍return不得当拍发出request，return只让下一拍credit可用。 |
         | L1DTLB_SVA_A044 | assert | Q045, AUD-021 | scheduler/top | 每拍最多一个L1DTLB->L2TLB request，限制覆盖MB旧entry request和当前bypass request总和。 |
         | L1DTLB_SVA_A045 | assert | Q046, AUD-022 | scheduler | 当存在MB中未发送ready entry且同拍有新miss可bypass时，必须优先发送MB旧entry，不得让bypass抢占。 |
         | L1DTLB_SVA_A046 | assert | Q047, AUD-023 | scheduler/allocator/mb_entry | bypass request必须同拍已经分配到MB entry并携带该entry id；下一拍该entry进入WFC且issued/sent为1。 |
@@ -887,7 +889,7 @@
         | L1DTLB_SVA_C011 | Q033, AUD-041 | regs_mmu_en=0 direct map、effective M-mode direct map、MPRV导致非M effective mode走正常DTLB三类场景。 |
         | L1DTLB_SVA_C012 | Q032, AUD-039, AUD-040 | STAMO pipe1 bypass成功返回；pipe0普通请求同拍存在但不受STAMO bypass污染。 |
         | L1DTLB_SVA_C013 | Q035-Q038, AUD-020 | MB CAM hit去重、MB CAM miss分配、2M/1G最终page但MB仍按4K VPN去重。 |
-        | L1DTLB_SVA_C014 | Q042-Q048, AUD-019, AUD-021, AUD-022, AUD-023 | load miss和store miss分别发L2TLB request；credit>0发请求、credit=0且同拍return发请求、request+return同拍计数不变、MB旧entry优先于bypass、bypass allocate+issue同拍。 |
+        | L1DTLB_SVA_C014 | Q042-Q048, AUD-019, AUD-021, AUD-022, AUD-023 | load miss和store miss分别发L2TLB request；credit>0发请求、credit=0且同拍return不发请求、credit>0时request+return同拍计数不变、MB旧entry优先于bypass、bypass allocate+issue同拍。 |
         | L1DTLB_SVA_C015 | Q050-Q052, AUD-024, AUD-025, AUD-057 | WFI > PTW > L2TLB install优先级、多WFI最低entry优先、WFI等待多拍后install且数据保持。 |
         | L1DTLB_SVA_C016 | Q053, Q054, AUD-026, AUD-027, AUD-058 | PTW fault写exception、L2TLB fault写exception、PTW和L2TLB同拍双fault写两个exception entry。 |
         | L1DTLB_SVA_C017 | Q055, Q056, AUD-030, AUD-060 | IDLE/PGFLT/ACFLT等非WFC stale refill被丢弃；ABT late refill drain回IDLE且无副作用。 |
@@ -956,7 +958,7 @@
 #### 3.10.4 L2 Request, Scheduler, Credit, and Type Propagation
         | Scenario ID | AUD | Test Scenario | Trigger / Stimulus | Expected Behavior | Suggested Test / Sequence | Observable Check |
         | --- | --- | --- | --- | --- | --- | --- |
-        | L1DTLB_TS_SCHED_CREDIT_BOUND | AUD-021 | credit上下界和守恒 | reset、连续发request、credit return、request+return同拍，覆盖credit=0 | credit初值为DTLB专用ReqQ深度；只被request消耗、return归还；同拍request+return计数不变；credit=0且同拍return允许发一个request | `test_mmu_l1dtlb_dtlb_credit_001`, `_002`, `test_mmu_l1dtlb_dtlb_credit_bound_001` | scheduler credit probe或SVA，request fire条件与credit一致 |
+        | L1DTLB_TS_SCHED_CREDIT_BOUND | AUD-021 | credit上下界和守恒 | reset、连续发request、credit return、credit>0时request+return同拍，覆盖credit=0且return同拍 | credit初值为DTLB专用ReqQ深度；只被request消耗、return归还；credit>0时同拍request+return计数不变；credit=0且同拍return不得当拍发request，return只让下一拍credit可用 | `test_mmu_l1dtlb_dtlb_credit_001`, `_002`, `test_mmu_l1dtlb_dtlb_credit_bound_001` | scheduler credit probe或SVA，request fire条件与credit一致 |
         | L1DTLB_TS_SCHED_ONE_REQ_PER_CYCLE | AUD-022 | 每拍最多一个L2 request | 多个MB ready或MB ready与current bypass同拍竞争 | L1DTLB->L2TLB每cycle最多一个request | `test_mmu_l1dtlb_dtlb_sched_001` | L2 request valid event计数，每cycle不超过1 |
         | L1DTLB_TS_SCHED_OLD_MB_PRIORITY | AUD-022 | old MB优先于bypass | 已有未发送ready MB entry，同时当前cycle出现可bypass新miss | 发送old unsent MB entry，新bypass不得抢占 | `test_mmu_l1dtlb_dtlb_sched_001` with directed priority case | L2 request id/type来自old MB，new miss留在MB中待后续发送 |
         | L1DTLB_TS_SCHED_BYPASS_ALLOC_ISSUE | AUD-023 | bypass allocate+issue同拍 | 当前新miss可分配且无old unsent MB，credit允许发送 | 新miss必须先分配MB并携带entry id同拍发L2；下一拍entry进入WFC且issued/sent=1 | `test_mmu_l1dtlb_dtlb_alloc_race_001` or add directed bypass test | allocation event、L2 request eid、next-state WFC/sent一致 |
@@ -1038,7 +1040,7 @@
             `mmu_ref_model.svh`继续负责页表级Sv39翻译、权限、PMP/sysmap/CSR镜像和direct-map结果；需要补充或暴露L1DTLB可复用的permission、PA拼接、属性生成函数，避免translation scoreboard和L1DTLB scoreboard各自实现一套不一致规则。
             `mmu_translation_sb.svh`负责LSU/IFU最终translation结果比较。对L1DTLB部分，它必须正确处理DTLB hit、direct map、STAMO pipe1 bypass、exception array replay、T0 page fault和T1 access fault归属。
             `mmu_l1dtlb_spec_sb.svh`负责L1DTLB micro-architecture protocol检查：MB/exception/credit/install/invalidate/flush/wakeup/busy等按cycle或事件的检查。
-            `mmu_credit_sb.svh`可继续承担跨L1/L2 request queue容量守恒检查，但L1DTLB scheduler自己的credit_cnt边界和同拍return+fire规则应在L1DTLB spec scoreboard中有明确检查或与credit scoreboard共享同一个credit shadow。
+            `mmu_credit_sb.svh`可继续承担跨L1/L2 request queue容量守恒检查，但L1DTLB scheduler自己的credit_cnt边界、credit>0时同拍return+fire守恒、credit=0时同拍return不得当拍fire的规则，应在L1DTLB spec scoreboard中有明确检查或与credit scoreboard共享同一个credit shadow。
             `mmu_dut_probes_if.sv`只作为可观测性补充。主scoreboard不能因为某个内部probe和reference model不同就绕过外部接口错误；也不能用PLRU victim probe替代translation正确性判断。
 
 #### 3.11.2 Reference Model必须建模的数据结构
@@ -1060,8 +1062,8 @@
 
         Credit shadow：
             初始值为L2TLB request queue中DTLB专用entry数量，当前spec为8。最小值0，最大值CREDIT_MAX。
-            L1DTLB每发出一个L2TLB request消耗1个credit；L2TLB归还credit增加1个credit；同拍return+fire时计数保持不变。credit=0但同拍return时允许fire，且该fire消耗同拍归还的credit。
-            reference model需要逐拍维护credit，禁止underflow/overflow，禁止无credit且无同拍return时发request。
+            L1DTLB每发出一个L2TLB request消耗1个credit；L2TLB归还credit增加1个credit；本拍开始credit>0且同拍return+fire时计数保持不变。credit=0但同拍return时不得fire；该return只让下一拍credit可用。
+            reference model需要逐拍维护credit，禁止underflow/overflow，禁止credit=0时发request，即使同拍观察到credit_return也不能放行本拍request。
 
         Per-pipe T0/T1 token：
             每个pipe维护当前T0 request token和上一拍进入T1/PMP或exception access-fault路径的token。token至少记录pipe、cycle、VA/VPN、IID、abort、store/load/AMO/STAMO类型、effective mode、是否direct map、是否TLB hit、是否page fault、是否需要PMP check、预期PA/属性。
@@ -1154,7 +1156,7 @@
 
         L2 request和credit检查：
             每拍最多一个L1DTLB->L2TLB request；payload无X；EID范围合法；VPN等于被发送MB/bypass miss的完整4K VPN；is_load/access type与LSU request类型一致。
-            credit shadow和DUT credit逐拍一致，或至少检查边界、同拍return+fire守恒、credit=0无return禁止fire。若DUT内部credit probe不可用，仍需用外部request/return事件建立近似守恒检查并报告不可精确覆盖的风险。
+            credit shadow和DUT credit逐拍一致，或至少检查边界、credit>0时同拍return+fire守恒、credit=0禁止fire（包含credit=0且同拍return的场景）。若DUT内部credit probe不可用，仍需用外部request/return事件建立近似守恒检查并报告不可精确覆盖的风险。
 
         Busy/wakeup检查：
             busy逐拍等于任意MB entry valid。busy不是LSU VA请求ready，busy=1时hit-under-miss仍需正常返回hit响应。
@@ -1186,7 +1188,7 @@
         UVM中需要完成的工作项：
             1. 在reference model中补齐L1DTLB entry/MB/exception/credit/per-pipe token shadow，或在`mmu_l1dtlb_spec_sb.svh`内建立专用L1DTLB reference sub-model，并复用`mmu_ref_model.svh`的权限、PA、属性函数。
             2. 修改translation scoreboard，使L1DTLB fault replay、T0/T1重叠、STAMO pipe1 bypass、direct-map/PMP T1 access fault不再依赖宽泛waive，而是由明确token和exception shadow解释。
-            3. 强化credit scoreboard或L1DTLB spec scoreboard，覆盖CREDIT_MAX、credit=0+return、return+fire守恒、request payload和每拍最多一个request。
+            3. 强化credit scoreboard或L1DTLB spec scoreboard，覆盖CREDIT_MAX、credit=0+return不得当拍fire、credit>0时return+fire守恒、request payload和每拍最多一个request。
             4. 强化L1DTLB spec scoreboard，加入MB分配/去重/full、install仲裁、WFI data hold、fault refill、exception replay、flush race、invalidate race、wakeup源和busy逐拍检查。
             5. 给所有新增检查增加可控开关和诊断打印：失败信息应包含cycle、pipe、IID、VA/VPN、expected/actual PA、fault类型、MB id、refill source和scenario id。
             6. 对PLRU exact victim保持white-box-only，不接入主translation pass/fail；若未来要精确检查replacement，必须先把victim选择和更新优先级补进spec。

@@ -26,11 +26,12 @@
     l1dtlb需要把miss的请求发送到l2tlb走refill流程。
         l1dtlb内部会维护一个credit计数器，计数器初始化为l2tlb的request queue entry的数量。
             当credit计数器的值大于0时，能发请求到l2tlb request queue。
-            当credit计数器等于0，但是l2tlb刚好归还了credit时，也能发请求到l2tlb。
-            也就是说，只要l1dtlb能发请求到l2tlb，那一定说明l2tlb request queue的为dtlb准备的entry还有空位。
+            当credit计数器等于0时，即使l2tlb本拍刚好归还credit，本拍也不能发请求到l2tlb；这个return只会让下一拍看到可用credit。
+            也就是说，l1dtlb发请求只能基于本拍开始前已经存在的credit，不能把同拍归还的credit或同拍释放的ReqQ entry当拍复用。
             每当l1dtlb的miss buffer发送一个请求到l2tlb request queue，都要把这个计数器减一。
             当l2tlb归还了credit时，credit计数器加一。
-            如果同时发生l2tlb归还credit和发送请求到l2tlb，那么credit不变。
+            如果本拍开始credit大于0，并且同时发生l2tlb归还credit和发送请求到l2tlb，那么credit不变；该请求消耗的是已有credit，return只是同拍补回。
+            l2tlb归还给l1dtlb的credit_return是ReqQ entry dealloc产生的一拍pulse。ReqQ entry释放在时钟沿后才对分配逻辑可见，新请求不能使用同拍刚释放的entry，下一拍才可以分配到该entry。
         在有miss请求未发送到l2tlb（有判定需要分配miss buffer entry的miss请求或miss buffer中有未发送的请求），且l1dtlb满足发请求给l2tlb（credit满足上面所说的情况）的时侯，一拍发送一个请求到l2tlb的request queue。
             当miss buffer中有未发送的请求时，优先发miss buffer中的请求；
             当miss buffer中没有未发送给l2tlb的请求时，如果有被判定需要分配miss buffer entry的miss请求，那么这个要被分配miss buffer entry的请求走bypass，直接发送到l2tlb request queue。
@@ -373,8 +374,9 @@
         Q-L1DTLB-043: credit计数器的最大值、最小值、饱和/溢出处理是什么？scoreboard是否需要检查credit守恒？
         回答：credit计数器的最大值是L2TLB request queue中DTLB专用entry数量，最小值是0。当前 RTL 没有显式饱和或溢出保护。scoreboard需要检查credit守恒。
 
-        Q-L1DTLB-044: credit为0且同拍收到credit return时可以发请求。该请求是否消耗同拍归还的credit，使计数值保持0？
-        回答：credit为0且同拍收到credit return时可以发请求。该请求消耗同拍归还的credit，使计数值保持0。
+        Q-L1DTLB-044: credit为0且同拍收到credit return时是否可以发请求？该请求是否能消耗同拍归还的credit，使计数值保持0？
+        回答：基于当前RTL，credit为0且同拍收到credit return时，本拍不能发请求。scheduler的credit_avail由当前credit_cnt组合产生，credit_return只在时钟沿更新credit_cnt，下一拍才变成可用credit。只有本拍开始credit_cnt>0时，才允许request fire；如果此时同拍还有credit_return，则fire消耗已有credit、return补回，计数值保持不变。
+              需要区分credit计数守恒和ReqQ物理entry复用。L2TLB ReqQ的credit_return来自entry_dealloc的一拍pulse，同拍dealloc的entry在分配FFZ逻辑中仍被看作valid，不能被本拍新request复用；下一拍该entry才可作为free entry被分配。
 
         Q-L1DTLB-045: 每拍最多发送一个请求到L2TLB。该限制是否包括bypass请求和miss buffer中未发送请求的总和？
         回答：每拍最多发送一个请求到L2TLB。该限制包括bypass请求和miss buffer中未发送请求的总和。
@@ -531,4 +533,4 @@
             wakeup是广播式全局提示，不携带iid/pipe，不应作为某条请求完成信号逐请求匹配；可按事件级检查其触发条件和广播全1/全0形态。
             miss统计/HPC类信号建议事件级检查，确认只在真实miss场景计数，不作为translation correctness的核心oracle。
         Q-L1DTLB-082: l1dtlb相关覆盖点应覆盖哪些spec行为？请确认是否需要覆盖双pipe并发、同VPN去重、MB full、credit边界、WFI仲裁、fault replay、flush/refill race、invalidate/install race等场景。
-        AI基于当前spec给出的UVM建模决策：l1dtlb覆盖点至少应覆盖以下场景：双pipe同拍hit、hit+miss、双miss同4K去重、双miss不同4K双分配、双miss不同4K但仅一个空位按iid年龄选择、MB hit不再分配、MB full drop并等待wakeup replay、credit>0发送、credit=0且同拍return发送、MB旧请求优先于bypass、bypass allocate+issue同拍进入WFC、WFI > PTW > L2TLB install仲裁、多个WFI最低entry优先、PTW/L2TLB fault写exception array、fault replay释放entry、ABT late refill drain、RTU flush与grant/refill/install race、invalidate与hit同拍、invalidate与install同拍clear优先、MMU off/M-mode direct map、STAMO pipe1 bypass、page fault T0和access fault T1重叠归属。
+        AI基于当前spec给出的UVM建模决策：l1dtlb覆盖点至少应覆盖以下场景：双pipe同拍hit、hit+miss、双miss同4K去重、双miss不同4K双分配、双miss不同4K但仅一个空位按iid年龄选择、MB hit不再分配、MB full drop并等待wakeup replay、credit>0发送、credit=0且同拍return不发送、credit>0时return+fire守恒、MB旧请求优先于bypass、bypass allocate+issue同拍进入WFC、WFI > PTW > L2TLB install仲裁、多个WFI最低entry优先、PTW/L2TLB fault写exception array、fault replay释放entry、ABT late refill drain、RTU flush与grant/refill/install race、invalidate与hit同拍、invalidate与install同拍clear优先、MMU off/M-mode direct map、STAMO pipe1 bypass、page fault T0和access fault T1重叠归属。

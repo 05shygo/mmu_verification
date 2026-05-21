@@ -1269,57 +1269,78 @@ overview
         15. refill 写入 victim way 的 RRPV 是 3，是否同时需要对其他候选 way RRPV +1？
         回答：需要。victim way 写 RRPV=3；其他 way 使用已经预计算的 +1 aging 值。也就是说，当前实现会同时 aging 其他 way，而不是只初始化 victim way。
 
-
     4.8 pipeline、返回与异常
         1. T0/T1/T2 描述是否对所有请求固定 3 拍？TLB operation 多周期扫描、PTW read/write、RRPV write buffer drain 是否也遵循该延迟？
-        回答：
+        回答：T0/T1/T2 不是所有请求固定 3 拍的全局协议。它只适用于一次已经拿到 arb grant 的 L2TLB lookup/read 类访问：
+                T0 是 arb_l2tlb_req 访问 SRAM，T1 是 raw_vld，T2 是 final_vld，这时生成 hit/miss/multi-hit、L1TLB cmplt/pgflt、ReqQ feedback 等结果。源头请求等待仲裁、ReqQ 排队、MB full retry、PTW ready、wbuf full stall 都不包含在这 3 拍里。
+              TLB operation 不固定 3 拍。TLBP/TLBR/TLBWI 这类单次访问在拿到 grant 后大体走同一个 raw/final 路径；但 TLBWR 有读后写，INVASID/INVALL 是计数扫描多 entry，INVVA 是读比较后可选写回，所以整个 operation 延迟由 FSM、grant 和扫描次数决定。
+              PTW refill 在 L2TLB 侧也不是“所有阶段各固定 3 拍”。arb_ptw_grant 先作为 acc_type=000 读/选择 victim，走 raw/final 路径；随后 ptw_write_req1/2 延迟到 arb_ptw_write_grant，以 acc_type=101 写入。这个写入不再产生raw_vld/final_vld，l2tlb_arb_ptw_cmplt 在写 grant 当拍产生。
+              RRPV write buffer drain 也不遵循 T0/T1/T2。普通 lookup 的 RRPV 更新先进 wbuf，wbuf_pop_grant = ~arb_l2tlb_req 时趁 L2TLB 空闲写回 RRPV SRAM；它是后台 drain，可被后续 lookup CAM bypass，不是请求完成延迟的一部分。
 
         2. multi-hit 对 L1TLB 被描述为 page fault 类路径；具体返回 page fault、access fault，还是专用 multi-hit error？
-        回答：
+        回答：multi-hit 对 L1TLB 的返回就是 page fault。代码里 final_tlb_hit_mult 直接置 l2tlb_l1itlb_pgflt 或 l2tlb_l1dtlb_pgflt，同时 ref_cmplt=1、ref_pavld=0。L1DTLB 侧把 jtlb_dutlb_pgflt 写入异常 CAM，expt_wr1_acflt 固定为0；L1ITLB 侧进入 PGFLT 路径。没有专用 multi-hit error 编码，也不是 access fault。
 
         3. L1TLB hit 返回的 flag 是否需要在 L2TLB 做权限检查，还是 L1 自行检查？
-        回答：
+        回答：L1自行检查。
 
         4. PFU 的 sysmap/PMP/flag 检查输入来自哪里，检查延迟是否影响 prefetch_mask 清除时机？
-        回答：
+        回答：PFU 检查输入来源：sysmap：mmu_sysmap_pa4 = lsu_mmu_va2，顶层接 ct_mmu_sysmap_4 返回 sysmap_mmu_flg4。它用于 MAEE=0 时的 PFU flag fault 判断，也用于输出 sec/share。PMP：mmu_pmp_pa4 = pfu_pa_buf。pfu_pa_buf 在 pfu_idle_st && l2tlb_pfu_cmplt 时锁存 l2tlb_pfu_pa；MMU off 时是 lsu_mmu_va2，否则是由 L2TLB hit/refill 的 ref_ppn/ref_pgs 加 VA offset 组成的物理地址。PMP 返回pmp_mmu_flg4，PFU_CHK 状态用它生成 l2tlb_pfu_deny。
+              flag：L2 hit 路径用 final_hit_flg，来自 L2TLB data array 读出的 hit way；PTW PFU 返回路径用 ptw_l2tlb_ref_flg/pgflt/acc_err。权限条件还使用 MXR/SUM/MPRV/MPP/priv/MAEE。
+              延迟会影响 prefetch_mask 清除。prefetch_mask 在 arb_pfu_grant 后置 1，只在 mmu_lsu_pa2_vld、mmu_lsu_pa2_err 或 l2tlb_arb_pfu_miss_mb_full 时清。PFU 命中且 flag 不提前失败时，会先进入 PFU_CHK 等 PMP 判断，再到PFU_OK/PFU_DENY 拉 mmu_lsu_pa2_vld，所以 PMP 检查延迟直接推迟 mask 清除。flag/sysmap 失败则直接转 DENY，少走 PMP CHK。
 
         5. PFU miss 且 PTW enabled 时，是发 PTW 还是走 error/deny？overview、miss buffer 和 PFU pipeline 描述需要统一。
-        回答：
+        回答：PFU miss 且 cp0_mmu_ptw_en=1 时，发 PTW。只有两种不是正常发 PTW：
+                1. miss buffer 满：!mb_alloc_valid 时置 l2tlb_arb_pfu_miss_mb_full，用于清 prefetch_mask/让 PFU 请求可重试。
+                2. cp0_mmu_ptw_en=0：PFU miss 被当成 fault/deny 类完成，不发 PTW。
 
         6. TLBR/TLBWI/INVASID/INVALL 这类 cmp_with_va=0 请求在 T2 被归为“非普通 hit”，是否有单独 done 信号而不是 multi-hit？
-        回答：
+        回答：是，有单独完成路径，不看 multi-hit。TLBR/TLBWI/INVASID/INVALL 这类 TLB operation 进入 L2TLB 时 acc_type=001，其中 TLBR/TLBWI/INVASID/INVALL 的 cmp_with_va 通常为 0，所以 final_tlb_hit 和 final_tlb_hit_mult 都不会成立。它们的完成看 l2tlb_tlboper_cmplt= final_vld && acc_type==001，再由 ct_mmu_tlboper 转成各自的 tlbr_cmplt/tlbwi_cmplt/invasid_cmplt/invall_cmplt/tlboper_xx_cmplt。INVASID 另外用 l2tlb_tlboper_asid_hit 和 l2tlb_tlboper_sel 做 ASID 命中选择，不是multi-hit error。
 
         7. 同一 set 多 way hit 时，INVVA 会清所有 hit way；普通 lookup multi-hit 是否也会更新 RRPV？
-        回答：
+        回答：INVVA是 VA compare 请求，cmp_with_va=1，l2tlb_tlboper_sel 会取 final_way_hit，所以同一 set 多 way hit 时，写回 invalidate 会清所有 hit way。
+              普通 lookup 出现 multi-hit 时，不更新 RRPV。RRPV 更新的 push_req 只来自 normal hit 或 miss：normal hit 要求 exactly one hit，miss 要求 zero hit；multi-hit 既不是 hit 也不是 miss，所以不会 push 到 RRPV wbuf，不会 promote 任何 hit way，也不会 aging。它会走 fault/page-fault 类返回路径。
 
         8. flush、exception、pipeline kill 是否会取消已发射但未完成的 ReqQ/PFU/TLB operation 请求？
-        回答：
+        回答：不会由普通 flush、exception、pipeline kill 去取消已经发射到 L2TLB 的 ReqQ/PFU/TLB operation。
+              ReqQ 没有 flush/kill/expt 输入。entry 发射后 sent=1，只靠 L2 pipeline feedback 清掉；MB full retry 才把 sent 清回 0 重新发射。L1 后面 abort/flush，最多是 L1 侧等待完成后丢弃或不写异常状态，不会撤销 L2 已发出的ReqQ。
+              PFU 也没有 kill 输入。arb_pfu_grant 后 prefetch_mask 置位，直到 mmu_lsu_pa2_vld、mmu_lsu_pa2_err 或 l2tlb_arb_pfu_miss_mb_full 才清。也就是 PFU 请求会自然完成或因 MB full 释放重试窗口。
+              TLB operation FSM 也没有 flush/exception/pipeline kill 取消路径。TLBP/TLBR/TLBWI/TLBWR/INVASID/INVALL/INVVA 一旦进入状态机，就等 jtlb_tlboper_cmplt、grant、计数扫描完成等条件收尾。普通 pipeline kill 不会中断它。唯一相关的特殊控制是 TLB operation 产生 tlboper_ptw_abort，它影响 PTW/L2 miss buffer，不是被 flush kill 取消 TLBOp 本身。              
 
         9. T2 miss 且 miss buffer full 时，ReqQ sent 拉低后重新发射；重新发射是否必须重新走完整 T0/T1/T2？
-        回答：
+        回答：是的。
 
         10. PTW refill 与普通 lookup 同 VPN 同周期或相邻周期发生时，是否有 forwarding 或 ordering 规则？
-        回答：
+        回答：没有。
 
         11. L2TLB 返回给 L1 ITLB 和 L1 DTLB 的响应字段是否完全相同？fetch/load/store 的 fault 编码是否不同？
-        回答：
+        回答：L2TLB 给 L1 ITLB 和 L1 DTLB 的响应字段不完全相同。共同 payload 是 VPN/PPN/FLG/PGS，共用 l2tlb_l1tlb_ref_* 数据；
+              两边各自有 ref_cmplt/ref_pavld/pgflt。区别是 DTLB 多一个 ref_eid，用于定位 L1 DTLB miss buffer entry；ITLB 没有这个 id。并且 ITLB 只接 type=3'b011，DTLB 接 load/store，即 type[1:0]==2'b10。
 
         12. page fault、access fault、PMP deny、flag fault、multi-hit、PTW disabled miss 是否都有独立可观察响应编码？
-        回答：
+        回答：不是都有独立可观察响应编码。对 L1 ITLB/DTLB 来说，L2TLB 直返路径基本只有成功和 page-fault 类失败：ref_cmplt、ref_pavld、pgflt。multi-hit 和 PTW disabled miss 都被编码成 pgflt=1，没有专用 multi-hit code，也没有 PTW-disabled-miss code。access fault 主要来自 PTW 或 L1 本地 PMP 检查。PTW 返回有 pgflt 和 acc_err 两类标志，但没有更细的原因码。PMP deny 不单独编码：IFU 侧表现为 deny，LSU 侧表现为 access_fault，PFU 侧表现为 mmu_lsu_pa2_err。flag fault 也没有独立编码。普通 ITLB/DTLB 权限位、V/R/W/X/U/A/D 等 flag fault 最终归入 page fault；
+              PFU 的 flag/sysmap 检查失败则归入 PFU deny/error，也就是 pa2_err。所以这些只是内部原因，不是独立响应编码。
+              
 
         13. raw stage/final stage valid 在 stall、kill、tlboper_on、ptw_on 场景下如何保持或清除？
-        回答：
+        回答：raw/final stage valid 不是可保持的 ready/valid 协议，只是 L2TLB 内部两级流水脉冲。如果 stall 发生在 grant 之前，比如 arb 被 tlboper_on、ptw_on、wbuf full、优先级挡住，则没有 arb_l2tlb_req，raw/final 不启动。已经进入 raw/final 的请求不会因为后续 stall 被取消，会自然走到 final。
+              pipeline kill/exception/flush 没有接到 L2TLB raw/final valid 控制里，所以不会清掉已发射的 L2TLB pipeline 请求；取消语义主要在 L1 自己处理，或由 TLB operation 生成 PTW abort 影响 PTW/miss buffer。
+              tlboper_on 会挡住普通 ReqQ/PFU/PTW read 新 grant，但 TLB operation 自己的子请求仍可继续发射；每个 TLBOp 子请求只要拿到 arb_l2tlb_req，照样产生 raw/final 脉冲。
+              ptw_on 表示 PTW read/write 原子段进行中，会挡住新的 TLBOp/ReqQ/PFU/PTW read。PTW read 是 acc_type=000，会走 raw/final，用来算 victim/RRPV；PTW write 是 acc_type=101，明确不置 raw_vld，完成走单独的l2tlb_arb_ptw_cmplt，不走 final stage。
 
 
     4.9 UVM 可观测接口与检查点
+        回答：对uvm的问题我只回答了部分。其余问题我无法回答，因为我不懂uvm验证。我需要ai协助回答，或由ai分析之后ai回答。
         1. UVM scoreboard 应以哪些 visible transaction 作为 L2TLB 请求和响应边界？
         2. 是否允许验证环境直接观察内部 ReqQ/miss buffer/RRPV/write buffer 状态，还是只能通过接口行为推断？
         3. 对 TLB operation 的 done、abort、L1 invalidate 请求是否都需要作为 checker 观察点？
         4. 对 PTW read/write 两阶段 refill，验证模型应把它建模为一个原子 refill，还是两个可被阻塞的访问？
         5. spec 是否需要定义所有 access type 编码的非法值行为？
         6. 对 hash index、replacement victim、RRPV update 这类内部算法，UVM reference model 是否必须精确建模？
+        回答：这部分先不精确建模。
+
         7. 对 credit-based L1/L2 请求协议，本 L2TLB UVM 是否只假设合法输入，还是也需要注入非法/overflow 场景？
         8. 对 TLB operation 扫描类请求，coverage 是否应覆盖每个 set、每个 way、global/non-global、ASID hit/miss 和 valid/invalid 组合？
         9. 对 multi-hit，验证环境是否需要主动构造非法多命中状态？如果需要，允许通过什么接口构造？
         10. spec 是否需要给出 L2TLB 对外所有 request/response 的时序图，作为 UVM monitor 和 checker 的依据？
+        回答：AI不适合读图，我是指挥AI根据spec搭建uvm。如果当前spec不足以支撑monitor和checker的设计，是否可以用文字描述补充信息？
 

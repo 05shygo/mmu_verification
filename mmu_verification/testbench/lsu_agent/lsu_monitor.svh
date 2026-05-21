@@ -66,6 +66,69 @@ class lsu_monitor extends uvm_monitor;
     return dst;
   endfunction
 
+  protected function bit [1:0] _effective_priv();
+    if (v_probe == null)
+      return 2'b00;
+    if ((v_probe.mon_cb.l1d_cp0_priv_mode == 2'b11)
+        && (v_probe.mon_cb.l1d_cp0_mprv === 1'b1))
+      return v_probe.mon_cb.l1d_cp0_mpp;
+    return v_probe.mon_cb.l1d_cp0_priv_mode;
+  endfunction
+
+  protected function void _sample_obs_common(ref lsu_txn tr);
+    tr.obs_valid = (v_probe != null);
+    if (v_probe == null)
+      return;
+
+    tr.eff_priv   = _effective_priv();
+    tr.mprv       = v_probe.mon_cb.l1d_cp0_mprv;
+    tr.mpp        = v_probe.mon_cb.l1d_cp0_mpp;
+    tr.mxr        = v_probe.mon_cb.l1d_cp0_mxr;
+    tr.sum        = v_probe.mon_cb.l1d_cp0_sum;
+    tr.maee       = v_probe.mon_cb.l1d_cp0_maee;
+    tr.asid       = v_probe.mon_cb.l1d_regs_cur_asid;
+    tr.satp_ppn   = v_probe.mon_cb.l1d_regs_satp_ppn;
+    tr.direct_map = (vif.monitor_cb.mmu_lsu_mmu_en === 1'b0);
+  endfunction
+
+  protected function void _sample_pipe0_obs(ref lsu_txn tr);
+    _sample_obs_common(tr);
+    tr.req_type = tr.st_inst ? 3'd1 : 3'd0;
+    if (v_probe == null)
+      return;
+    tr.l1d_hit_vld    = v_probe.mon_cb.l1d_p0_hit_vld;
+    tr.l1d_miss_vld   = v_probe.mon_cb.l1d_p0_miss_vld;
+    tr.l1d_mb_hit     = v_probe.mon_cb.l1d_p0_mb_hit;
+    tr.l1d_pre_sel    = v_probe.mon_cb.l1d_p0_pre_sel;
+    tr.l1d_hit_idx    = v_probe.mon_cb.l1d_p0_hit_idx;
+    tr.l1d_hit_pgs    = v_probe.mon_cb.l1d_p0_hit_pgs;
+    tr.l1d_hit_ppn    = v_probe.mon_cb.l1d_p0_hit_ppn;
+    tr.l1d_fin_pa     = v_probe.mon_cb.l1d_p0_fin_pa;
+    tr.l1d_pmp_flg    = v_probe.mon_cb.l1d_pmp_flg0;
+    tr.l1d_sysmap_flg = v_probe.mon_cb.l1d_sysmap_flg0;
+    tr.l1d_sysmap_hit = v_probe.mon_cb.l1d_sysmap_hit0;
+    tr.l1d_sysmap_pa  = v_probe.mon_cb.l1d_sysmap_pa0;
+  endfunction
+
+  protected function void _sample_pipe1_obs(ref lsu_txn tr);
+    _sample_obs_common(tr);
+    tr.req_type = tr.st_inst ? 3'd1 : 3'd0;
+    if (v_probe == null)
+      return;
+    tr.l1d_hit_vld    = v_probe.mon_cb.l1d_p1_hit_vld;
+    tr.l1d_miss_vld   = v_probe.mon_cb.l1d_p1_miss_vld;
+    tr.l1d_mb_hit     = v_probe.mon_cb.l1d_p1_mb_hit;
+    tr.l1d_pre_sel    = v_probe.mon_cb.l1d_p1_pre_sel;
+    tr.l1d_hit_idx    = v_probe.mon_cb.l1d_p1_hit_idx;
+    tr.l1d_hit_pgs    = v_probe.mon_cb.l1d_p1_hit_pgs;
+    tr.l1d_hit_ppn    = v_probe.mon_cb.l1d_p1_hit_ppn;
+    tr.l1d_fin_pa     = v_probe.mon_cb.l1d_p1_fin_pa;
+    tr.l1d_pmp_flg    = v_probe.mon_cb.l1d_pmp_flg1;
+    tr.l1d_sysmap_flg = v_probe.mon_cb.l1d_sysmap_flg1;
+    tr.l1d_sysmap_hit = v_probe.mon_cb.l1d_sysmap_hit1;
+    tr.l1d_sysmap_pa  = v_probe.mon_cb.l1d_sysmap_pa1;
+  endfunction
+
   protected function void _sample_pipe0_rsp_fields(ref lsu_txn tr);
     tr.kind             = LSU_PIPE0;
     tr.pa               = vif.monitor_cb.mmu_lsu_pa0;
@@ -79,6 +142,7 @@ class lsu_monitor extends uvm_monitor;
     tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
     tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
     tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match0;
+    _sample_pipe0_obs(tr);
   endfunction
 
   protected function void _sample_pipe1_rsp_fields(ref lsu_txn tr);
@@ -94,6 +158,7 @@ class lsu_monitor extends uvm_monitor;
     tr.stamo_vld_at_rsp = vif.monitor_cb.lsu_mmu_stamo_vld;
     tr.stamo_pa_at_rsp  = vif.monitor_cb.lsu_mmu_stamo_pa;
     tr.dtlb_expt_match  = vif.monitor_cb.mmu_lsu_dtlb_expt_match1;
+    _sample_pipe1_obs(tr);
   endfunction
 
   protected function bit _pipe0_t0_terminal();
@@ -234,6 +299,7 @@ class lsu_monitor extends uvm_monitor;
         req_tr.vabuf     = cur_vabuf;
         req_tr.tlb_busy  = vif.monitor_cb.mmu_lsu_tlb_busy;
         req_tr.tlb_wakeup= vif.monitor_cb.mmu_lsu_tlb_wakeup;
+        _sample_pipe0_obs(req_tr);
         pending_req      = _clone_txn(req_tr, "lsu_p0_req_pending_sm");
         has_pending      = 1'b1;
         `uvm_info(get_type_name(),
@@ -269,6 +335,19 @@ class lsu_monitor extends uvm_monitor;
           rsp_tr.st_inst = pending_req.st_inst;
           rsp_tr.abort   = pending_req.abort;
           rsp_tr.vabuf   = pending_req.vabuf;
+          _sample_pipe0_obs(rsp_tr);
+          if (!rsp_tr.obs_valid && pending_req.obs_valid) begin
+            rsp_tr.obs_valid = pending_req.obs_valid;
+            rsp_tr.eff_priv  = pending_req.eff_priv;
+            rsp_tr.mprv      = pending_req.mprv;
+            rsp_tr.mpp       = pending_req.mpp;
+            rsp_tr.mxr       = pending_req.mxr;
+            rsp_tr.sum       = pending_req.sum;
+            rsp_tr.maee      = pending_req.maee;
+            rsp_tr.asid      = pending_req.asid;
+            rsp_tr.satp_ppn  = pending_req.satp_ppn;
+            rsp_tr.req_type  = pending_req.req_type;
+          end
           `uvm_info(get_type_name(),
             $sformatf("[LSU_P0_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h",
               {1'b0, pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.id,
@@ -400,6 +479,7 @@ class lsu_monitor extends uvm_monitor;
         req_tr.vabuf      = cur_vabuf;
         req_tr.tlb_busy   = vif.monitor_cb.mmu_lsu_tlb_busy;
         req_tr.tlb_wakeup = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+        _sample_pipe1_obs(req_tr);
         pending_req       = _clone_txn(req_tr, "lsu_p1_req_pending_sm");
         has_pending       = 1'b1;
         `uvm_info(get_type_name(),
@@ -435,6 +515,19 @@ class lsu_monitor extends uvm_monitor;
           rsp_tr.st_inst = pending_req.st_inst;
           rsp_tr.abort   = pending_req.abort;
           rsp_tr.vabuf   = pending_req.vabuf;
+          _sample_pipe1_obs(rsp_tr);
+          if (!rsp_tr.obs_valid && pending_req.obs_valid) begin
+            rsp_tr.obs_valid = pending_req.obs_valid;
+            rsp_tr.eff_priv  = pending_req.eff_priv;
+            rsp_tr.mprv      = pending_req.mprv;
+            rsp_tr.mpp       = pending_req.mpp;
+            rsp_tr.mxr       = pending_req.mxr;
+            rsp_tr.sum       = pending_req.sum;
+            rsp_tr.maee      = pending_req.maee;
+            rsp_tr.asid      = pending_req.asid;
+            rsp_tr.satp_ppn  = pending_req.satp_ppn;
+            rsp_tr.req_type  = pending_req.req_type;
+          end
           `uvm_info(get_type_name(),
             $sformatf("[LSU_P1_RSP_DBG] bind rsp: pending_va=0x%010h cur_va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h",
               {1'b0, pending_req.va[38:0]}, {1'b0, cur_va[38:0]}, rsp_tr.id,
@@ -495,6 +588,7 @@ class lsu_monitor extends uvm_monitor;
       tr.vabuf    = vif.monitor_cb.lsu_mmu_vabuf0;
       tr.tlb_busy = vif.monitor_cb.mmu_lsu_tlb_busy;
       tr.tlb_wakeup = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+      _sample_pipe0_obs(tr);
       `uvm_info(get_type_name(),
         $sformatf("[LSU_P0_REQ_DBG] va=0x%010h id=%0d st=%0b abort=%0b mmu_en=%0b tlb_busy=%0b tlb_wakeup=0x%03h",
           {1'b0, tr.va[38:0]}, tr.id, tr.st_inst, tr.abort,
@@ -539,6 +633,9 @@ class lsu_monitor extends uvm_monitor;
       tr.va       = req_tr.va;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
+      tr.abort    = req_tr.abort;
+      tr.vabuf    = req_tr.vabuf;
+      _sample_pipe0_obs(tr);
       `uvm_info(get_type_name(),
         $sformatf("[LSU_P0_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,
@@ -569,6 +666,7 @@ class lsu_monitor extends uvm_monitor;
       tr.vabuf   = vif.monitor_cb.lsu_mmu_vabuf1;
       tr.tlb_busy = vif.monitor_cb.mmu_lsu_tlb_busy;
       tr.tlb_wakeup = vif.monitor_cb.mmu_lsu_tlb_wakeup;
+      _sample_pipe1_obs(tr);
       `uvm_info(get_type_name(),
         $sformatf("[LSU_P1_REQ_DBG] va=0x%010h id=%0d st=%0b abort=%0b mmu_en=%0b tlb_busy=%0b tlb_wakeup=0x%03h",
           {1'b0, tr.va[38:0]}, tr.id, tr.st_inst, tr.abort,
@@ -605,6 +703,9 @@ class lsu_monitor extends uvm_monitor;
       tr.va       = req_tr.va;
       tr.id       = req_tr.id;
       tr.st_inst  = req_tr.st_inst;
+      tr.abort    = req_tr.abort;
+      tr.vabuf    = req_tr.vabuf;
+      _sample_pipe1_obs(tr);
       `uvm_info(get_type_name(),
         $sformatf("[LSU_P1_RSP_DBG] va=0x%010h id=%0d pa=0x%07h pgflt=%0b acflt=%0b stall=%0b mmu_en=%0b dtlb_expt_match=%0b busy=%0b wakeup=0x%03h pend_depth=%0d",
           {1'b0, tr.va[38:0]}, tr.id, tr.pa, tr.pgflt, tr.access_fault, tr.stall,

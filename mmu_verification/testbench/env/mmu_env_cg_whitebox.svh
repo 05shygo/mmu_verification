@@ -35,7 +35,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   logic [2:0]  wb_l2_b0;
   logic [2:0]  wb_l2_w0;
   logic [2:0]  wb_l2_pgs0;
-  logic [2:0]  wb_reqq_iss;
+  logic [3:0]  wb_reqq_iss;
   int unsigned wb_reqq_dep;
   logic [1:0]  wb_xbar_hit;
   logic [2:0]  wb_mbuf_lvl;
@@ -174,7 +174,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- cg_l2_reqq -----------------------------------------------------------
   covergroup cg_l2_reqq;
     option.per_instance = 1;
-    cp_alloc_idx: coverpoint wb_reqq_iss { bins id[] = {[0:7]}; }
+    cp_alloc_idx: coverpoint wb_reqq_iss { bins id[] = {[0:8]}; }
     cp_depth: coverpoint wb_reqq_dep { bins d0 = {0}; bins d1_4 = {[1:4]}; bins d5_9 = {[5:9]}; }
   endgroup
 

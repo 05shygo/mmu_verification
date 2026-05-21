@@ -164,7 +164,7 @@ module mmu_l1dtlb_sva #(
 
   // A001/A061: reset and full-entry clear visible state.
   a_reset_clears_visible_state: assert property (@(posedge forever_cpuclk)
-    !cpurst_b |-> (entry_vld == '0
+    !cpurst_b |=> (entry_vld == '0
                 && mb_entry_vld == '0
                 && mmu_lsu_tlb_busy == 1'b0
                 && mmu_lsu_tlb_wakeup == 12'h000

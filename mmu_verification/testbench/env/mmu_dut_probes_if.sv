@@ -22,8 +22,15 @@ interface mmu_dut_probes_if (
   wire [2:0]   l1d_mb_st0;       // mb_entry_state[0]
   wire [15:0]  l1d_entry_vld;
   wire [15:0][26:0] l1d_entry_vpn;
+  wire [15:0][27:0] l1d_entry_ppn;
+  wire [15:0][2:0]  l1d_entry_pgs;
+  wire [15:0][13:0] l1d_entry_flg;
+  wire [15:0]        l1d_entry_clr;
   wire [7:0][2:0]  l1d_mb_state;
   wire [7:0][26:0] l1d_mb_vpn;
+  wire [7:0][27:0] l1d_mb_ppn;
+  wire [7:0][2:0]  l1d_mb_pgs;
+  wire [7:0][13:0] l1d_mb_flg;
   wire [7:0][6:0]  l1d_mb_iid;
   wire [7:0]   l1d_mb_issued;
   wire [7:0]   l1d_mb_ready;
@@ -61,7 +68,9 @@ interface mmu_dut_probes_if (
   wire [26:0]  l1d_refill_vpn;
   wire [27:0]  l1d_refill_ppn;
   wire [2:0]   l1d_refill_pgs;
+  wire [13:0]  l1d_refill_flg;
   wire [15:0]  l1d_entry_upd;
+  wire [7:0]   l1d_refill_gnt_bus;
   wire [6:0]   l1d_refill_iid0;
   wire [6:0]   l1d_refill_iid1;
   wire [6:0]   l1d_refill_iid_sel;
@@ -78,6 +87,32 @@ interface mmu_dut_probes_if (
   wire         l1d_ptw_ref_mb_vld;
   wire [6:0]   l1d_ptw_ref_mb_iid;
   wire [26:0]  l1d_ptw_ref_mb_vpn;
+  wire         l1d_ptw_ref_pavld;
+  wire         l1d_ptw_ref_cmplt;
+  wire [2:0]   l1d_ptw_ref_id;
+  wire [26:0]  l1d_ptw_ref_vpn;
+  wire [27:0]  l1d_ptw_ref_ppn;
+  wire [13:0]  l1d_ptw_ref_flg;
+  wire [2:0]   l1d_ptw_ref_pgs;
+  wire         l1d_ptw_ref_pgflt;
+  wire         l1d_ptw_ref_acflt;
+  wire         l1d_l2_ref_pavld;
+  wire         l1d_l2_ref_cmplt;
+  wire [2:0]   l1d_l2_ref_eid;
+  wire [26:0]  l1d_l2_ref_vpn;
+  wire [27:0]  l1d_l2_ref_ppn;
+  wire [13:0]  l1d_l2_ref_flg;
+  wire [2:0]   l1d_l2_ref_pgs;
+  wire         l1d_l2_ref_pgflt;
+  wire         l1d_install_req_ptw;
+  wire         l1d_install_req_l2;
+  wire         l1d_install_req_wfi;
+  wire         l1d_install_sel_ptw;
+  wire         l1d_install_sel_l2;
+  wire         l1d_install_sel_wfi;
+  wire [2:0]   l1d_install_id_ptw;
+  wire [2:0]   l1d_install_id_l2;
+  wire [2:0]   l1d_install_id_wfi;
   wire         l1d_expt_wr0_vld;
   wire [3:0]   l1d_expt_wr0_eid;
   wire [6:0]   l1d_expt_wr0_iid;
@@ -90,6 +125,29 @@ interface mmu_dut_probes_if (
   wire [26:0]  l1d_expt_wr1_vpn;
   wire         l1d_expt_wr1_pgflt;
   wire         l1d_expt_wr1_acflt;
+  wire         l1d_expt_pgflt0;
+  wire         l1d_expt_acflt0;
+  wire         l1d_expt_pgflt1;
+  wire         l1d_expt_acflt1;
+  wire [7:0]   l1d_expt_hit_vec;
+  wire [11:0]  l1d_expt_wakeup;
+  wire         l1d_expt_clear_req;
+  wire         l1d_cp0_maee;
+  wire [1:0]   l1d_cp0_mpp;
+  wire         l1d_cp0_mprv;
+  wire         l1d_cp0_mxr;
+  wire         l1d_cp0_sum;
+  wire [1:0]   l1d_cp0_priv_mode;
+  wire [15:0]  l1d_regs_cur_asid;
+  wire [27:0]  l1d_regs_satp_ppn;
+  wire [3:0]   l1d_pmp_flg0;
+  wire [3:0]   l1d_pmp_flg1;
+  wire [4:0]   l1d_sysmap_flg0;
+  wire [4:0]   l1d_sysmap_flg1;
+  wire [7:0]   l1d_sysmap_hit0;
+  wire [7:0]   l1d_sysmap_hit1;
+  wire [27:0]  l1d_sysmap_pa0;
+  wire [27:0]  l1d_sysmap_pa1;
 
   // mmu_l2tlb
   wire [2:0]   l2_bank0;   // way_index[0][2:0]
@@ -109,7 +167,7 @@ interface mmu_dut_probes_if (
   // mmu_l2tlb / x_l2tlb_reqq
   wire [8:0]   l2_reqq_vld_vec;  // TOTAL_DEPTH=9
   wire [8:0]   l2_reqq_rdy_vec;
-  wire [2:0]   l2_reqq_qid;
+  wire [3:0]   l2_reqq_qid;
   wire         l2_reqq_issue_valid;
   wire [2:0]   l2_reqq_issue_type;
 
@@ -270,7 +328,8 @@ interface mmu_dut_probes_if (
     default input #1step;
     input l1i_entry_vld, l1i_ref_fsm, l1i_credit_cnt;
     input l1d_mb_vld, l1d_mb_st0;
-    input l1d_entry_vld, l1d_entry_vpn, l1d_mb_state, l1d_mb_vpn, l1d_mb_iid;
+    input l1d_entry_vld, l1d_entry_vpn, l1d_entry_ppn, l1d_entry_pgs, l1d_entry_flg;
+    input l1d_entry_clr, l1d_mb_state, l1d_mb_vpn, l1d_mb_ppn, l1d_mb_pgs, l1d_mb_flg, l1d_mb_iid;
     input l1d_mb_issued;
     input l1d_mb_ready, l1d_mb_wfc, l1d_mb_wfi, l1d_mb_store;
     input l1d_sched_credit_cnt, l1d_l2_req_vld, l1d_l2_req_vpn;
@@ -280,14 +339,29 @@ interface mmu_dut_probes_if (
     input l1d_p1_req_vpn, l1d_p1_addr_hit, l1d_p1_hit_vld, l1d_p1_miss_vld, l1d_p1_mb_hit;
     input l1d_p1_pre_sel, l1d_p1_expt_match, l1d_p1_entry_pa, l1d_p1_off_pa, l1d_p1_fin_pa;
     input l1d_refill_vld, l1d_refill_src, l1d_refill_idx, l1d_refill_vpn, l1d_refill_ppn;
-    input l1d_refill_pgs, l1d_entry_upd, l1d_refill_iid0, l1d_refill_iid1, l1d_refill_iid_sel;
+    input l1d_refill_pgs, l1d_refill_flg, l1d_entry_upd, l1d_refill_gnt_bus;
+    input l1d_refill_iid0, l1d_refill_iid1, l1d_refill_iid_sel;
     input l1d_p0_hit_vec, l1d_p0_hit_idx, l1d_p0_hit_vpn, l1d_p0_hit_ppn, l1d_p0_hit_pgs;
     input l1d_p1_hit_vec, l1d_p1_hit_idx, l1d_p1_hit_vpn, l1d_p1_hit_ppn, l1d_p1_hit_pgs;
     input l1d_ptw_ref_mb_vld, l1d_ptw_ref_mb_iid, l1d_ptw_ref_mb_vpn;
+    input l1d_ptw_ref_pavld, l1d_ptw_ref_cmplt, l1d_ptw_ref_id, l1d_ptw_ref_vpn;
+    input l1d_ptw_ref_ppn, l1d_ptw_ref_flg, l1d_ptw_ref_pgs, l1d_ptw_ref_pgflt, l1d_ptw_ref_acflt;
+    input l1d_l2_ref_pavld, l1d_l2_ref_cmplt, l1d_l2_ref_eid, l1d_l2_ref_vpn;
+    input l1d_l2_ref_ppn, l1d_l2_ref_flg, l1d_l2_ref_pgs, l1d_l2_ref_pgflt;
+    input l1d_install_req_ptw, l1d_install_req_l2, l1d_install_req_wfi;
+    input l1d_install_sel_ptw, l1d_install_sel_l2, l1d_install_sel_wfi;
+    input l1d_install_id_ptw, l1d_install_id_l2, l1d_install_id_wfi;
     input l1d_expt_wr0_vld, l1d_expt_wr0_eid, l1d_expt_wr0_iid, l1d_expt_wr0_vpn;
     input l1d_expt_wr0_pgflt, l1d_expt_wr0_acflt;
     input l1d_expt_wr1_vld, l1d_expt_wr1_eid, l1d_expt_wr1_iid, l1d_expt_wr1_vpn;
     input l1d_expt_wr1_pgflt, l1d_expt_wr1_acflt;
+    input l1d_expt_pgflt0, l1d_expt_acflt0, l1d_expt_pgflt1, l1d_expt_acflt1;
+    input l1d_expt_hit_vec, l1d_expt_wakeup, l1d_expt_clear_req;
+    input l1d_cp0_maee, l1d_cp0_mpp, l1d_cp0_mprv, l1d_cp0_mxr, l1d_cp0_sum, l1d_cp0_priv_mode;
+    input l1d_regs_cur_asid, l1d_regs_satp_ppn;
+    input l1d_pmp_flg0, l1d_pmp_flg1;
+    input l1d_sysmap_flg0, l1d_sysmap_flg1, l1d_sysmap_hit0, l1d_sysmap_hit1;
+    input l1d_sysmap_pa0, l1d_sysmap_pa1;
     input l2_bank0, l2_final_way_hit, l2_raw_pre_pgs0, l2_final_vld, l2_final_tlb_hit;
     input l2_miss, l2_final_is_dtlb, l2_final_vpn, l2_final_hit_ppn;
     input l2_dtlb_ref_pavld, l2_dtlb_ref_cmplt, l2_dtlb_ref_vpn, l2_dtlb_ref_ppn;

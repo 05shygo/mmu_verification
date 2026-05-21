@@ -1,1 +1,5 @@
 /mmu/rtl/relate_rtl
+
+# Simulation reports and run artifacts
+/mmu_verification/sysBusyPLog/
+/mmu_verification/urgReport/

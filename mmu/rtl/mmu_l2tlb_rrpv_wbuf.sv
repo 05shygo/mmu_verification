@@ -121,16 +121,6 @@ module mmu_l2tlb_rrpv_wbuf#(
             end
         end
 
-        // Include the same-cycle push so a lookup granted while an older lookup
-        // updates RRPV still sees the newest value.
-        if (push_req) begin
-            for (int w = 0; w < WAY_NUM; w++) begin
-                if (push_vld[w] && (push_idx[w] == lookup_idx[w])) begin
-                    bypassed_rrpv_rdata_comb[w] = push_data[w];
-                    lookup_hit_comb[w] = 1'b1;
-                end
-            end
-        end
     end
 
     assign push_new_bank  = push_vld & ~push_hit_comb;
@@ -248,6 +238,17 @@ module mmu_l2tlb_rrpv_wbuf#(
                         bypassed_rrpv_rdata_comb[w] = buffer[ptr].data[w];
 			lookup_hit_comb[w]   =  1'b1;
                     end
+                end
+            end
+        end
+
+        // Include the same-cycle push so a lookup granted while an older lookup
+        // updates RRPV still sees the newest value.
+        if (push_req) begin
+            for (int w = 0; w < WAY_NUM; w++) begin
+                if (push_vld[w] && (push_idx[w] == lookup_idx[w])) begin
+                    bypassed_rrpv_rdata_comb[w] = push_data[w];
+                    lookup_hit_comb[w] = 1'b1;
                 end
             end
         end

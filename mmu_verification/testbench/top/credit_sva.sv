@@ -6,11 +6,14 @@
 // =============================================================================
 `timescale 1ns/1ps
 
-module credit_sva #(parameter int VPN_W = 27) (
+module credit_sva #(
+    parameter int VPN_W = 27,
+    parameter int ID_W  = 4
+) (
     input logic reqq_clk,
     input logic cpurst_b,
     input logic issue_valid,
-    input logic [2:0] issue_queue_id,
+    input logic [ID_W-1:0] issue_queue_id,
     input logic [2:0] issue_type,
     input logic [VPN_W-1:0] issue_vpn,
     input logic i_credit_return,

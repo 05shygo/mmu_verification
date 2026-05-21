@@ -52,6 +52,29 @@ class lsu_txn extends uvm_sequence_item;
     `uvm_field_int(stamo_vld_at_rsp, UVM_ALL_ON)
     `uvm_field_int(stamo_pa_at_rsp,  UVM_ALL_ON)
     `uvm_field_int(dtlb_expt_match,  UVM_ALL_ON)
+    `uvm_field_int(obs_valid,        UVM_ALL_ON)
+    `uvm_field_int(eff_priv,         UVM_ALL_ON)
+    `uvm_field_int(mprv,             UVM_ALL_ON)
+    `uvm_field_int(mpp,              UVM_ALL_ON)
+    `uvm_field_int(mxr,              UVM_ALL_ON)
+    `uvm_field_int(sum,              UVM_ALL_ON)
+    `uvm_field_int(maee,             UVM_ALL_ON)
+    `uvm_field_int(asid,             UVM_ALL_ON)
+    `uvm_field_int(satp_ppn,         UVM_ALL_ON)
+    `uvm_field_int(req_type,         UVM_ALL_ON)
+    `uvm_field_int(direct_map,       UVM_ALL_ON)
+    `uvm_field_int(l1d_hit_vld,      UVM_ALL_ON)
+    `uvm_field_int(l1d_miss_vld,     UVM_ALL_ON)
+    `uvm_field_int(l1d_mb_hit,       UVM_ALL_ON)
+    `uvm_field_int(l1d_pre_sel,      UVM_ALL_ON)
+    `uvm_field_int(l1d_hit_idx,      UVM_ALL_ON)
+    `uvm_field_int(l1d_hit_pgs,      UVM_ALL_ON)
+    `uvm_field_int(l1d_hit_ppn,      UVM_ALL_ON)
+    `uvm_field_int(l1d_fin_pa,       UVM_ALL_ON)
+    `uvm_field_int(l1d_pmp_flg,      UVM_ALL_ON)
+    `uvm_field_int(l1d_sysmap_flg,   UVM_ALL_ON)
+    `uvm_field_int(l1d_sysmap_hit,   UVM_ALL_ON)
+    `uvm_field_int(l1d_sysmap_pa,    UVM_ALL_ON)
   `uvm_object_utils_end
 
   // ── Sub-channel selector ─────────────────────────────────────────────────
@@ -97,6 +120,31 @@ class lsu_txn extends uvm_sequence_item;
   // Sampled with rsp: mmu_l1dtlb expt CAM consumer (pipe0→0, pipe1→1)
   bit        dtlb_expt_match;
 
+  // Phase 6A observability snapshot for downstream token/checker work.
+  bit          obs_valid;
+  logic [1:0]  eff_priv;
+  logic        mprv;
+  logic [1:0]  mpp;
+  logic        mxr;
+  logic        sum;
+  logic        maee;
+  logic [15:0] asid;
+  logic [27:0] satp_ppn;
+  logic [2:0]  req_type;       // 0=load, 1=store, 2=prefetch, 3=stamo, 4=inv
+  logic        direct_map;
+  logic        l1d_hit_vld;
+  logic        l1d_miss_vld;
+  logic        l1d_mb_hit;
+  logic        l1d_pre_sel;
+  logic [3:0]  l1d_hit_idx;
+  logic [2:0]  l1d_hit_pgs;
+  logic [27:0] l1d_hit_ppn;
+  logic [27:0] l1d_fin_pa;
+  logic [3:0]  l1d_pmp_flg;
+  logic [4:0]  l1d_sysmap_flg;
+  logic [7:0]  l1d_sysmap_hit;
+  logic [27:0] l1d_sysmap_pa;
+
   // ── Constraints ──────────────────────────────────────────────────────────
   // Sv39 canonical VA (pipe0/1): bits[63:39] == {25{va[38]}}
   constraint c_sv39_canonical {
@@ -116,9 +164,10 @@ class lsu_txn extends uvm_sequence_item;
     case (kind)
       LSU_PIPE0, LSU_PIPE1:
         return $sformatf(
-          "kind=%s va=0x%016h id=%0d st=%0b abort=%0b | pa=0x%07h pgflt=%0b acflt=%0b stall=%0b busy=%0b wakeup=0x%03h",
+          "kind=%s va=0x%016h id=%0d st=%0b abort=%0b | pa=0x%07h pgflt=%0b acflt=%0b stall=%0b busy=%0b wakeup=0x%03h obs=%0b priv=%0d mprv=%0b mpp=%0d mxr=%0b sum=%0b l1d_hit=%0b miss=%0b mb_hit=%0b pgs=0x%0h",
           kind.name(), va, id, st_inst, abort, pa, pgflt, access_fault,
-          stall, tlb_busy, tlb_wakeup);
+          stall, tlb_busy, tlb_wakeup, obs_valid, eff_priv, mprv, mpp, mxr,
+          sum, l1d_hit_vld, l1d_miss_vld, l1d_mb_hit, l1d_hit_pgs);
       LSU_PIPE2:
         return $sformatf("kind=PIPE2 va2=0x%07h va2_valid=%0b", va2, va2_valid);
       LSU_STAMO:

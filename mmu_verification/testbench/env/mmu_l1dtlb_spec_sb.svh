@@ -123,6 +123,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_perm_sum0_pf_cycles;
   int unsigned m_perm_sum1_success_cycles;
   int unsigned m_perm_user_u0_pf_cycles;
+  int unsigned m_phase6a_inventory_checks;
+  int unsigned m_phase6a_entry_payload_checks;
+  int unsigned m_phase6a_refill_payload_checks;
+  int unsigned m_phase6a_install_arb_checks;
+  int unsigned m_phase6a_expt_consume_checks;
+  int unsigned m_phase6a_mode_snapshot_checks;
 
   logic [15:0] m_prev_entry_vld;
   logic [15:0][26:0] m_prev_entry_vpn;
@@ -166,6 +172,10 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   endfunction
 
   protected function int unsigned count16(input logic [15:0] v);
+    return int'($countones(v));
+  endfunction
+
+  protected function int unsigned count3(input logic [2:0] v);
     return int'($countones(v));
   endfunction
 
@@ -523,6 +533,86 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
           v_probe.mon_cb.l1d_expt_wr1_vpn,
           v_probe.mon_cb.l1d_expt_wr1_pgflt,
           v_probe.mon_cb.l1d_expt_wr1_acflt));
+  endfunction
+
+  protected virtual function void check_phase6a_observability();
+    logic [2:0] sel_vec;
+
+    m_phase6a_inventory_checks++;
+
+    if (!$isunknown(v_probe.mon_cb.l1d_entry_vld)) begin
+      for (int i = 0; i < 16; i++) begin
+        if (v_probe.mon_cb.l1d_entry_vld[i]) begin
+          m_phase6a_entry_payload_checks++;
+          if ($isunknown({v_probe.mon_cb.l1d_entry_vpn[i],
+                          v_probe.mon_cb.l1d_entry_ppn[i],
+                          v_probe.mon_cb.l1d_entry_pgs[i],
+                          v_probe.mon_cb.l1d_entry_flg[i]}))
+            sb_error("P6A_ENTRY_PAYLOAD_X",
+              $sformatf("valid entry%0d has X payload vpn=0x%07h ppn=0x%07h pgs=0x%0h flg=0x%04h",
+                i, v_probe.mon_cb.l1d_entry_vpn[i], v_probe.mon_cb.l1d_entry_ppn[i],
+                v_probe.mon_cb.l1d_entry_pgs[i], v_probe.mon_cb.l1d_entry_flg[i]));
+        end
+      end
+    end
+
+    if (v_probe.mon_cb.l1d_refill_vld) begin
+      m_phase6a_refill_payload_checks++;
+      if ($isunknown({v_probe.mon_cb.l1d_refill_flg,
+                      v_probe.mon_cb.l1d_refill_gnt_bus,
+                      v_probe.mon_cb.l1d_ptw_ref_pavld,
+                      v_probe.mon_cb.l1d_ptw_ref_cmplt,
+                      v_probe.mon_cb.l1d_l2_ref_pavld,
+                      v_probe.mon_cb.l1d_l2_ref_cmplt}))
+        sb_error("P6A_REFILL_OBS_X",
+          $sformatf("refill full observation has X: flg=0x%04h gnt=0x%02h ptw(pavld=%0b cmplt=%0b) l2(pavld=%0b cmplt=%0b)",
+            v_probe.mon_cb.l1d_refill_flg, v_probe.mon_cb.l1d_refill_gnt_bus,
+            v_probe.mon_cb.l1d_ptw_ref_pavld, v_probe.mon_cb.l1d_ptw_ref_cmplt,
+            v_probe.mon_cb.l1d_l2_ref_pavld, v_probe.mon_cb.l1d_l2_ref_cmplt));
+    end
+
+    if (!$isunknown({v_probe.mon_cb.l1d_install_sel_ptw,
+                     v_probe.mon_cb.l1d_install_sel_l2,
+                     v_probe.mon_cb.l1d_install_sel_wfi})) begin
+      sel_vec = {v_probe.mon_cb.l1d_install_sel_wfi,
+                 v_probe.mon_cb.l1d_install_sel_ptw,
+                 v_probe.mon_cb.l1d_install_sel_l2};
+      if (sel_vec != 3'b000) begin
+        m_phase6a_install_arb_checks++;
+        if (count3(sel_vec) > 1)
+          sb_error("P6A_INSTALL_MULTI_SEL",
+            $sformatf("install selected multiple sources: wfi=%0b ptw=%0b l2=%0b ids wfi=%0d ptw=%0d l2=%0d",
+              v_probe.mon_cb.l1d_install_sel_wfi,
+              v_probe.mon_cb.l1d_install_sel_ptw,
+              v_probe.mon_cb.l1d_install_sel_l2,
+              v_probe.mon_cb.l1d_install_id_wfi,
+              v_probe.mon_cb.l1d_install_id_ptw,
+              v_probe.mon_cb.l1d_install_id_l2));
+      end
+    end
+
+    if (!$isunknown(v_probe.mon_cb.l1d_expt_hit_vec)
+        && (v_probe.mon_cb.l1d_expt_hit_vec != 8'h00)) begin
+      m_phase6a_expt_consume_checks++;
+      if (count8(v_probe.mon_cb.l1d_expt_hit_vec) > 2)
+        sb_error("P6A_EXPT_HIT_VEC_RANGE",
+          $sformatf("expt hit vec consumes more than two entries: 0x%02h",
+            v_probe.mon_cb.l1d_expt_hit_vec));
+      if (!$isunknown(v_probe.mon_cb.l1d_expt_wakeup)
+          && (v_probe.mon_cb.l1d_expt_wakeup !== 12'hfff))
+        sb_error("P6A_EXPT_WAKEUP",
+          $sformatf("expt hit vec requires broadcast wakeup, got hit=0x%02h wakeup=0x%03h",
+            v_probe.mon_cb.l1d_expt_hit_vec, v_probe.mon_cb.l1d_expt_wakeup));
+    end
+
+    if (!$isunknown({v_probe.mon_cb.l1d_cp0_priv_mode,
+                     v_probe.mon_cb.l1d_cp0_mprv,
+                     v_probe.mon_cb.l1d_cp0_mpp,
+                     v_probe.mon_cb.l1d_cp0_mxr,
+                     v_probe.mon_cb.l1d_cp0_sum,
+                     v_probe.mon_cb.l1d_regs_cur_asid,
+                     v_probe.mon_cb.l1d_regs_satp_ppn}))
+      m_phase6a_mode_snapshot_checks++;
   endfunction
 
   protected virtual function void check_invalidate_edges();
@@ -1115,6 +1205,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       check_busy_and_wakeup();
       check_mb_state_derived_signals();
       check_refill_and_expt();
+      check_phase6a_observability();
       check_invalidate_edges();
       check_l2_req_and_credit();
       check_pipe_response_fault_pulses(t0_p0, m_t1_token[0]);
@@ -1176,6 +1267,15 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_perm_store_d0_pf_cycles, m_perm_a0_pf_cycles,
         m_perm_sum0_pf_cycles, m_perm_sum1_success_cycles,
         m_perm_user_u0_pf_cycles),
+      UVM_LOW)
+    `uvm_info({get_type_name(), "::PHASE6A_INVENTORY"},
+      $sformatf("status=implemented disposition='entry/MB/refill/install/expt/mode stable_probe; LSU request/rsp monitor-derived snapshot; PMP/sysmap sampled flags; pmp_regs_update remains tied-off external stimulus limitation' inventory_checks=%0d entry_payload=%0d refill_payload=%0d install_arb=%0d expt_consume=%0d mode_snapshot=%0d consumers='mmu_l1dtlb_spec_sb,lsu_monitor,lsu_txn,future_6B_6C_6D_6E' fragile_root_paths=0",
+        m_phase6a_inventory_checks,
+        m_phase6a_entry_payload_checks,
+        m_phase6a_refill_payload_checks,
+        m_phase6a_install_arb_checks,
+        m_phase6a_expt_consume_checks,
+        m_phase6a_mode_snapshot_checks),
       UVM_LOW)
   endfunction
 

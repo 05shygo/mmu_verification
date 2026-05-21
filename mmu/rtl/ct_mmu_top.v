@@ -284,7 +284,7 @@ module ct_mmu_top(
     logic        queue_arb_req;
     logic [26:0] queue_arb_vpn;
     logic [2:0]  queue_arb_eid;
-    logic [2:0]  queue_arb_trans_id;
+    logic [L2EID_WIDTH-1:0] queue_arb_trans_id;
     logic [2:0]  queue_arb_acc_type;
     logic        arb__l2tlb_queue_grant;
     logic	 l2tlb_arb_ptw_cmplt;
@@ -296,7 +296,7 @@ module ct_mmu_top(
     logic        arb_l2tlb_write;
     logic [47:0] arb_l2tlb_tag_din;
     logic [41:0] arb_l2tlb_data_din;
-    logic [2:0]  arb_l2tlb_trans_id;
+    logic [L2EID_WIDTH-1:0] arb_l2tlb_trans_id;
     logic [2:0]  arb_l2tlb_eid;
     logic [2:0]  arb_l2tlb_acc_type;
     logic [7:0]  arb_l2tlb_bank_sel;
@@ -782,7 +782,9 @@ module ct_mmu_top(
     // Instance Arbiter
     //==========================================================
     // &Instance("mmu_arb", "x_mmu_arb");
-    mmu_arb x_mmu_arb (
+    mmu_arb #(
+        .TRANS_ID_WIDTH             (L2EID_WIDTH)
+    ) x_mmu_arb (
         .forever_cpuclk             (forever_cpuclk),
         .cpurst_b                   (cpurst_b),
         .pad_yy_icg_scan_en         (pad_yy_icg_scan_en),
@@ -1299,4 +1301,3 @@ module ct_mmu_top(
 
     // &ModuleEnd; @200
 endmodule
-

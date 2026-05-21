@@ -181,7 +181,6 @@ logic [7:0]                 mbuf_upd_pmpflg;
 logic [MBUF_ENTRY_NUM-1:0][7:0]                 mbuf_entry_pmpflg;
 logic [3:0]                 pde_updata_l1pmpflg;
 logic [3:0]                 pde_updata_l2pmpflg;
-logic [7:0]                 mbuf_twu_pmpflg;
 
 assign mbuf_clk_en = 1'b1; 
 // &Instance("gated_clk_cell", "x_ptw_gateclk"); @59
@@ -736,6 +735,5 @@ assign mbuf_cache_upd_l2pmpflg[3:0] = pde_updata_l2pmpflg[3:0];
 
 
 endmodule
-
 
 

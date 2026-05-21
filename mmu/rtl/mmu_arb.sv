@@ -144,6 +144,16 @@ module mmu_arb#(
     logic       tlboper_on;
     logic       prefetch_mask;
     logic       arb_block_by_wbuf;
+    logic       ptw_on;
+    logic       ptw_write_req1;
+    logic       ptw_write_req2;
+    logic       arb_ptw_write_grant;
+    logic [VPN_WIDTH-1:0] ptw_write_vpn1;
+    logic [VPN_WIDTH-1:0] ptw_write_vpn2;
+    logic [47:0] ptw_l2tlb_tag_in1;
+    logic [41:0] ptw_l2tlb_data_in1;
+    logic [47:0] ptw_l2tlb_tag_in2;
+    logic [41:0] ptw_l2tlb_data_in2;
 
     // Selected Request Signals
     logic [VPN_WIDTH-1:0] sel_vpn;
@@ -191,19 +201,6 @@ module mmu_arb#(
             tlboper_on <= 1'b1;
     end
     
-    logic ptw_on;
-    logic ptw_write_req1;
-    logic [VPN_WIDTH-1:0]  ptw_write_vpn1;
-
-    logic ptw_write_req2;
-    logic [VPN_WIDTH-1:0] ptw_write_vpn2;
-
-    logic [47:0] ptw_l2tlb_tag_in1;
-    logic [41:0] ptw_l2tlb_data_in1;
-
-    logic [47:0] ptw_l2tlb_tag_in2;
-    logic [41:0] ptw_l2tlb_data_in2;
-
     always @(posedge arb_clk or negedge cpurst_b) begin
         if (!cpurst_b)
             ptw_on <= 1'b0;

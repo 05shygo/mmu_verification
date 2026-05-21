@@ -49,7 +49,7 @@ class ptw_source_monitor extends uvm_monitor;
   typedef struct {
     bit                valid;
     ptw_src_req_type_e req_type;
-    logic [5:0]        id;
+    logic [PTW_SRC_ID_WIDTH-1:0] id;
     vpn_t              vpn;
     asid_t             asid;
     int unsigned       cycle;
@@ -128,7 +128,7 @@ class ptw_source_monitor extends uvm_monitor;
     end
   endtask
 
-  protected function string key_string(input logic [2:0] req_type, input logic [5:0] id);
+  protected function string key_string(input logic [2:0] req_type, input logic [PTW_SRC_ID_WIDTH-1:0] id);
     return $sformatf("%0h:%0h", req_type, id);
   endfunction
 

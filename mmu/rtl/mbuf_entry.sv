@@ -7,6 +7,7 @@ module mbuf_entry #(
     parameter ASID_WIDTH  = 16,                         // PPN
     parameter PGS_WIDTH   = 3,                          // Page Size
     parameter PTE_LEVEL   = 3,                          // Page Table Label
+    parameter ID_WIDTH    = 7,
     parameter TYPE_WIDTH  = 3
 ) (
 //!******************************************
@@ -27,7 +28,7 @@ module mbuf_entry #(
     input  logic [PADDR_WIDTH-1:0]    mbuf_upd_padder,
     input  logic [VPN_WIDTH-1:0]      mbuf_upd_vpn,
     input  logic [TYPE_WIDTH-1:0]     mbuf_upd_type,
-    input  logic [5:0]                mbuf_upd_id,
+    input  logic [ID_WIDTH-1:0]       mbuf_upd_id,
     input  logic [3:0]                mbuf_upd_twu_idx,
     input  logic [PTE_LEVEL-1:0]      mbuf_upd_lvl,
     input  logic [7:0]                mbuf_upd_pmpflg,
@@ -43,7 +44,7 @@ module mbuf_entry #(
     output logic                      mbuf_entry_on,
     output logic [VPN_WIDTH-1:0]      mbuf_entry_vpn,
     output logic [TYPE_WIDTH-1:0]     mbuf_entry_type,
-    output logic [5:0]                mbuf_entry_id,
+    output logic [ID_WIDTH-1:0]       mbuf_entry_id,
     output logic [3:0]                mbuf_entry_twu_idx,
     output logic [PTE_LEVEL-1:0]      mbuf_entry_lvl,
     output logic [7:0]                mbuf_entry_pmpflg,
@@ -58,7 +59,7 @@ logic                   mbuf_on          ;                      //
 logic [PADDR_WIDTH-1:0] mbuf_padder      ;                      //
 logic [VPN_WIDTH-1:0]   mbuf_vpn         ;                      //
 logic [TYPE_WIDTH-1:0]  mbuf_type        ;
-logic [5:0]             mbuf_id          ;                      //
+logic [ID_WIDTH-1:0]    mbuf_id          ;                      //
 logic [3:0]             mbuf_twu_idx     ;                      //
 logic [PTE_LEVEL-1:0]   mbuf_lvl         ;                      //
 logic [63:0]            mbuf_lsu_data    ;
@@ -143,14 +144,14 @@ always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
 		mbuf_padder[PADDR_WIDTH-1:0] <= {PADDR_WIDTH{1'b0}};
 		mbuf_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
 		mbuf_type[TYPE_WIDTH-1:0] <= {TYPE_WIDTH{1'b0}};
-		mbuf_id[5:0] <= 6'b0;
+		mbuf_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
 		mbuf_twu_idx[3:0] <= 4'b0;
 		mbuf_lvl[PTE_LEVEL-1:0] <= {PTE_LEVEL{1'b0}};
     end else if(mbuf_entry_upd)begin
 		mbuf_padder[PADDR_WIDTH-1:0] <= mbuf_upd_padder[PADDR_WIDTH-1:0];
 		mbuf_vpn[VPN_WIDTH-1:0] <= mbuf_upd_vpn[VPN_WIDTH-1:0];
 		mbuf_type[TYPE_WIDTH-1:0] <= mbuf_upd_type[TYPE_WIDTH-1:0];
-		mbuf_id[5:0] <= mbuf_upd_id[5:0];
+		mbuf_id[ID_WIDTH-1:0] <= mbuf_upd_id[ID_WIDTH-1:0];
 		mbuf_twu_idx[3:0] <= mbuf_upd_twu_idx[3:0];
 		mbuf_lvl[PTE_LEVEL-1:0] <= mbuf_upd_lvl[PTE_LEVEL-1:0];
 	end
@@ -182,7 +183,7 @@ assign mbuf_entry_vld = mbuf_vld;
 assign mbuf_entry_on = mbuf_on;
 assign mbuf_entry_vpn = mbuf_vpn[VPN_WIDTH-1:0];
 assign mbuf_entry_type = mbuf_type[TYPE_WIDTH-1:0];
-assign mbuf_entry_id = mbuf_id[5:0];
+assign mbuf_entry_id = mbuf_id[ID_WIDTH-1:0];
 assign mbuf_entry_twu_idx = mbuf_twu_idx[3:0];
 assign mbuf_entry_lvl = mbuf_lvl[PTE_LEVEL-1:0];
 assign mbuf_entry_pmpflg = mbuf_pmpflg[7:0];

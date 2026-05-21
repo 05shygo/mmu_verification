@@ -162,12 +162,12 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     logic [2:0]  last_accept_type;
     logic [2:0]  last_pde_type;
     logic [2:0]  last_visible_type;
-    logic [5:0]  first_id;
-    logic [5:0]  source_id_bits;
-    logic [5:0]  target_ptw_id;
-    logic [5:0]  last_accept_id;
-    logic [5:0]  last_pde_id;
-    logic [5:0]  last_visible_id;
+    logic [PTW_SRC_ID_WIDTH-1:0]  first_id;
+    logic [PTW_SRC_ID_WIDTH-1:0]  source_id_bits;
+    logic [PTW_SRC_ID_WIDTH-1:0]  target_ptw_id;
+    logic [PTW_SRC_ID_WIDTH-1:0]  last_accept_id;
+    logic [PTW_SRC_ID_WIDTH-1:0]  last_pde_id;
+    logic [PTW_SRC_ID_WIDTH-1:0]  last_visible_id;
     vpn_t        last_accept_vpn;
     vpn_t        last_pde_vpn;
 
@@ -192,7 +192,7 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     first_type = '0;
     exp_type_bits = exp_type;
     first_id = '0;
-    source_id_bits = source_id[5:0];
+    source_id_bits = source_id[PTW_SRC_ID_WIDTH-1:0];
     target_ptw_id = '0;
     last_accept_type = '0;
     last_accept_id = '0;
@@ -384,11 +384,11 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     bit accepted;
     bit completed;
     logic [2:0] req_type_bits;
-    logic [5:0] source_id_bits;
-    logic [5:0] target_ptw_id;
+    logic [PTW_SRC_ID_WIDTH-1:0] source_id_bits;
+    logic [PTW_SRC_ID_WIDTH-1:0] target_ptw_id;
     bit saw_any_accept;
     logic [2:0] last_accept_type;
-    logic [5:0] last_accept_id;
+    logic [PTW_SRC_ID_WIDTH-1:0] last_accept_id;
     vpn_t last_accept_vpn;
 
     if (ptw_probe_vif == null) begin
@@ -401,7 +401,7 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     accepted = 1'b0;
     completed = 1'b0;
     req_type_bits = req_type;
-    source_id_bits = id[5:0];
+    source_id_bits = id[PTW_SRC_ID_WIDTH-1:0];
     target_ptw_id = '0;
     saw_any_accept = 1'b0;
     last_accept_type = '0;
@@ -415,7 +415,7 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
           || (|ptw_probe_vif.mon_cb.pde_l2_entry_acc_err_vec)) begin
         `uvm_error(get_type_name(),
           $sformatf("%s: unexpected PDE direct accerr while checking req type=%s id=0x%02h vpn=0x%07h at cycle=%0d accepted=%0b vld=%0b vec=0x%0h acc_type=0x%0h acc_id=0x%02h",
-            scenario_id, ptw_src_type_name(req_type), id[5:0], vpn, cycle,
+            scenario_id, ptw_src_type_name(req_type), id[PTW_SRC_ID_WIDTH-1:0], vpn, cycle,
             accepted, ptw_probe_vif.mon_cb.pde_cache_acc_err_vld,
             ptw_probe_vif.mon_cb.pde_l2_entry_acc_err_vec,
             ptw_probe_vif.mon_cb.pde_cache_acc_err_type,

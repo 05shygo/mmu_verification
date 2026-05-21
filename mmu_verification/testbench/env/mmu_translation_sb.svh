@@ -93,6 +93,7 @@ class mmu_translation_sb extends uvm_scoreboard;
 
   localparam int DTLB_EXPT_CAM_DEPTH = 8;
   localparam int PTW_REQ_SHADOW_DEPTH = 8;
+  localparam int PTW_ID_WIDTH = 7;
   localparam int unsigned LSU_SATP_MIDWALK_REFILL_CYCLE_WINDOW = 32;
   localparam int unsigned LSU_SATP_MIDWALK_SATP_CYCLE_WINDOW   = 128;
   localparam int unsigned LSU_SATP_MIDWALK_REQ_CYCLE_WINDOW    = 128;
@@ -110,7 +111,7 @@ class mmu_translation_sb extends uvm_scoreboard;
 
   typedef struct {
     bit              vld;
-    bit [5:0]        id;
+    bit [PTW_ID_WIDTH-1:0] id;
     bit [26:0]       vpn;
     bit [27:0]       satp_ppn;
     bit [15:0]       asid;
@@ -142,7 +143,7 @@ class mmu_translation_sb extends uvm_scoreboard;
   time         m_last_ptw_ref_time;
   longint unsigned m_probe_cycle;
   bit          m_last_l2tlb_ptw_req_valid;
-  bit [5:0]    m_last_l2tlb_ptw_req_id;
+  bit [PTW_ID_WIDTH-1:0] m_last_l2tlb_ptw_req_id;
   bit [26:0]   m_last_l2tlb_ptw_req_vpn;
   bit [27:0]   m_last_l2tlb_ptw_req_satp_ppn;
   bit [15:0]   m_last_l2tlb_ptw_req_asid;
@@ -439,10 +440,20 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_dtlb_expt_cam[idx].eid   = eid;
   endfunction
 
-  protected function int _ptw_req_shadow_find(bit [5:0] id, bit [26:0] vpn);
+  protected function int _ptw_req_shadow_find(bit [PTW_ID_WIDTH-1:0] id, bit [26:0] vpn);
     for (int i = 0; i < PTW_REQ_SHADOW_DEPTH; i++) begin
       if (m_ptw_req_shadow[i].vld
           && (m_ptw_req_shadow[i].id == id)
+          && (m_ptw_req_shadow[i].vpn == vpn))
+        return i;
+    end
+    return -1;
+  endfunction
+
+  protected function int _ptw_req_shadow_find_l1eid(bit [2:0] l1eid, bit [26:0] vpn);
+    for (int i = 0; i < PTW_REQ_SHADOW_DEPTH; i++) begin
+      if (m_ptw_req_shadow[i].vld
+          && (m_ptw_req_shadow[i].id[2:0] == l1eid)
           && (m_ptw_req_shadow[i].vpn == vpn))
         return i;
     end
@@ -478,7 +489,7 @@ class mmu_translation_sb extends uvm_scoreboard;
   endfunction
 
   protected function void _ptw_req_shadow_write(
-    bit [5:0]  id,
+    bit [PTW_ID_WIDTH-1:0] id,
     bit [26:0] vpn,
     bit [27:0] satp_ppn,
     bit [15:0] asid,
@@ -600,7 +611,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     if ((v_probe != null)
         && v_probe.l2tlb_ptw_req
         && v_probe.ptw_jtlb_ready
-        && (v_probe.l2tlb_ptw_id == lsu_iid[5:0])
+        && (v_probe.l2tlb_ptw_id[2:0] == lsu_iid[2:0])
         && (v_probe.l2tlb_ptw_vpn == req_vpn)
         && _ptw_req_is_old_satp_context(m_probe_cycle,
                                         v_probe.regs_ptw_satp_ppn)) begin
@@ -619,7 +630,7 @@ class mmu_translation_sb extends uvm_scoreboard;
       return 1'b1;
     end
 
-    idx = _ptw_req_shadow_find(lsu_iid[5:0], req_vpn);
+    idx = _ptw_req_shadow_find_l1eid(lsu_iid[2:0], req_vpn);
     if (idx >= 0) begin
       if (_ptw_req_is_old_satp_context(m_ptw_req_shadow[idx].req_cycle,
                                        m_ptw_req_shadow[idx].satp_ppn)) begin
@@ -630,7 +641,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     end
 
     if (m_last_l2tlb_ptw_req_valid
-        && (m_last_l2tlb_ptw_req_id == lsu_iid[5:0])
+        && (m_last_l2tlb_ptw_req_id[2:0] == lsu_iid[2:0])
         && (m_last_l2tlb_ptw_req_vpn == req_vpn)
         && _ptw_req_is_old_satp_context(m_last_l2tlb_ptw_req_cycle,
                                         m_last_l2tlb_ptw_req_satp_ppn)) begin

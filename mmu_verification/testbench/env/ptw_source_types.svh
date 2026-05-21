@@ -21,6 +21,8 @@
 `ifndef PTW_SOURCE_TYPES_SVH
 `define PTW_SOURCE_TYPES_SVH
 
+localparam int PTW_SRC_ID_WIDTH = 7;
+
 typedef enum logic [2:0] {
   PTW_SRC_TYPE_UNKNOWN = 3'b000,
   PTW_SRC_TYPE_LOAD  = 3'b010,
@@ -109,7 +111,7 @@ typedef enum int unsigned {
 
 typedef struct packed {
   ptw_src_req_type_e req_type;
-  logic [5:0]        id;
+  logic [PTW_SRC_ID_WIDTH-1:0] id;
 } ptw_src_key_s;
 
 typedef struct packed {
@@ -334,7 +336,7 @@ class ptw_src_req_accept_txn extends uvm_sequence_item;
   `uvm_object_utils(ptw_src_req_accept_txn)
 
   ptw_src_req_type_e req_type;
-  logic [5:0]        id;
+  logic [PTW_SRC_ID_WIDTH-1:0] id;
   vpn_t              vpn;
   asid_t             asid;
   int unsigned       cycle;
@@ -373,7 +375,7 @@ class ptw_src_expected_rsp_txn extends uvm_sequence_item;
 
   ptw_src_exp_kind_e     kind;
   ptw_src_req_type_e     req_type;
-  logic [5:0]            id;
+  logic [PTW_SRC_ID_WIDTH-1:0] id;
   vpn_t                  vpn;
   asid_t                 asid;
   ptw_src_page_size_e    page_size;
@@ -435,7 +437,7 @@ class ptw_src_actual_rsp_txn extends uvm_sequence_item;
 
   ptw_src_exp_kind_e     kind;
   ptw_src_req_type_e     req_type;
-  logic [5:0]            id;
+  logic [PTW_SRC_ID_WIDTH-1:0] id;
   vpn_t                  vpn;
   asid_t                 asid;
   ptw_src_page_size_e    page_size;
@@ -474,7 +476,7 @@ class ptw_src_ctx_sample_txn extends uvm_sequence_item;
   `uvm_object_utils(ptw_src_ctx_sample_txn)
 
   ptw_src_req_type_e req_type;
-  logic [5:0]        id;
+  logic [PTW_SRC_ID_WIDTH-1:0] id;
   vpn_t              vpn;
   asid_t             asid;
   ppn_t              satp_ppn;
@@ -505,7 +507,7 @@ class ptw_src_level_evt_txn extends uvm_sequence_item;
   int unsigned       twu_idx;
   ptw_src_level_e    level;
   ptw_src_req_type_e req_type;
-  logic [5:0]        id;
+  logic [PTW_SRC_ID_WIDTH-1:0] id;
   vpn_t              vpn;
   logic [39:0]       pte_pa;
   pte_t              pte_data;
@@ -547,7 +549,7 @@ class ptw_src_pde_evt_txn extends uvm_sequence_item;
   int unsigned           cycle;
   ptw_src_pde_evt_kind_e kind;
   ptw_src_req_type_e     req_type;
-  logic [5:0]            id;
+  logic [PTW_SRC_ID_WIDTH-1:0] id;
   vpn_t                  vpn;
   ppn_t                  ppn;
   bit                    l1_hit;
@@ -572,7 +574,7 @@ class ptw_src_pde_evt_txn extends uvm_sequence_item;
   ptw_src_pde_reason_e   reason;
   ptw_src_access_src_e   access_src;
   ptw_src_req_type_e     accerr_type;
-  logic [5:0]            accerr_id;
+  logic [PTW_SRC_ID_WIDTH-1:0] accerr_id;
   bit                    accerr_grant;
   logic [15:0]           l1_tag_hit_vec;
   logic [15:0]           l2_tag_hit_vec;

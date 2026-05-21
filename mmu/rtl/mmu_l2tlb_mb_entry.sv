@@ -128,7 +128,7 @@ module mmu_l2tlb_mb_entry#(
     
     // Clear ONLY when Retry Feedback occurs. 
     // [CHANGE]: Removed 'entry_alloc_en' from here, handled in priority logic below.
-    assign sent_clr = entry_dealloc | fb_match_id | tlboper_ptw_abort;//(fb_match_id && fb_miss_retry);
+    assign sent_clr = entry_dealloc |  tlboper_ptw_abort;//| fb_match_id 
 
     always @(posedge entry_clk or negedge cpurst_b) begin
         if (!cpurst_b)

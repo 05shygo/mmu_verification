@@ -10,6 +10,7 @@ interface mmu_dut_probes_if (
   input logic clk_i,
   input logic rst_ni
 );
+  localparam int PTW_ID_WIDTH = 7;
 
   // mmu_l1itlb
   wire [31:0]  l1i_entry_vld;
@@ -116,7 +117,7 @@ interface mmu_dut_probes_if (
   wire [8:0]   l2mb_vld_vec;
   wire [8:0]   l2mb_rdy_vec;
   wire         l2mb_issue_req;
-  wire [5:0]   l2mb_issue_eid;
+  wire [PTW_ID_WIDTH-1:0]   l2mb_issue_eid;
   wire [2:0]   l2mb_issue_type;
   wire         l2mb_alloc_valid;
   wire [8:0][26:0] l2mb_entry_vpn;
@@ -143,7 +144,7 @@ interface mmu_dut_probes_if (
   wire         ptw_l2tlb_ref_pgflt;
   wire         ptw_l2tlb_ref_acc_err;
   wire         l2tlb_ptw_req;
-  wire [5:0]   l2tlb_ptw_id;
+  wire [PTW_ID_WIDTH-1:0]   l2tlb_ptw_id;
   wire [2:0]   l2tlb_ptw_type;
   wire [26:0]  l2tlb_ptw_vpn;
   wire         ptw_lsu_data_req;
@@ -155,7 +156,7 @@ interface mmu_dut_probes_if (
   wire [63:0]  ptw_lsu_data;
   wire         ptw_l2tlb_cmplt;
   wire         ptw_l2tlb_ref_data_vld;
-  wire [5:0]   ptw_l2tlb_id;
+  wire [PTW_ID_WIDTH-1:0]   ptw_l2tlb_id;
   wire [2:0]   ptw_l2tlb_type;
   wire [13:0]  ptw_l2tlb_flg;
   wire         ptw_l1i_ref_cmplt;
@@ -182,7 +183,7 @@ interface mmu_dut_probes_if (
   wire         ptw_abort_flop;
   wire [26:0]  ptw_mbuf_twu_vpn;
   wire [2:0]   ptw_mbuf_twu_type;
-  wire [5:0]   ptw_mbuf_twu_id;
+  wire [PTW_ID_WIDTH-1:0]   ptw_mbuf_twu_id;
   wire [2:0]   ptw_mbuf_twu_lvl_vec;
   wire [63:0]  ptw_mbuf_twu_data;
   wire [3:0]   ptw_mbuf_twu_data_vld;
@@ -190,7 +191,7 @@ interface mmu_dut_probes_if (
   wire [3:0][39:0] ptw_twu_mbuf_paddr;
   wire [3:0][26:0] ptw_twu_mbuf_vpn;
   wire [3:0][2:0]  ptw_twu_mbuf_type;
-  wire [3:0][5:0]  ptw_twu_mbuf_id;
+  wire [3:0][PTW_ID_WIDTH-1:0]  ptw_twu_mbuf_id;
   wire [3:0][2:0]  ptw_twu_mbuf_lvl;
   wire         pde_cache_req;
   wire         pde_cache_ready;
@@ -200,7 +201,7 @@ interface mmu_dut_probes_if (
   wire [27:0]  pde_xbar_ppn;
   wire [26:0]  pde_xbar_vpn;
   wire [2:0]   pde_xbar_type;
-  wire [5:0]   pde_xbar_id;
+  wire [PTW_ID_WIDTH-1:0]   pde_xbar_id;
   wire         pde_cache_update;
   wire [1:0]   pde_cache_update_level;
   wire [27:0]  pde_cache_update_ppn;
@@ -219,7 +220,7 @@ interface mmu_dut_probes_if (
   wire [8:0][7:0] ptw_mbuf_entry_pmpflg;
   wire         pde_cache_acc_err_vld;
   wire [2:0]   pde_cache_acc_err_type;
-  wire [5:0]   pde_cache_acc_err_id;
+  wire [PTW_ID_WIDTH-1:0]   pde_cache_acc_err_id;
   wire         pde_cache_acc_err_grant;
   wire [15:0]  pde_l2_entry_acc_err_vec;
   wire [5:0]   ptw_acc_err_grant_vec;

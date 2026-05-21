@@ -8,7 +8,7 @@ module mmu_pde_cache_sva #(
     parameter int VPN_WIDTH        = 27,
     parameter int PPN_WIDTH        = 28,
     parameter int PTE_LEVEL        = 3,
-    parameter int ID_WIDTH         = 6,
+    parameter int ID_WIDTH         = 7,
     parameter int TYPE_WIDTH       = 3,
     parameter int L1PDE_ENTRY_NUM  = 16,
     parameter int L2PDE_ENTRY_NUM  = 16

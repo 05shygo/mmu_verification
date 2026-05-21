@@ -9,7 +9,7 @@ module mmu_ptw_xbar_sva #(
     parameter int PPN_WIDTH  = 28,
     parameter int PTE_LEVEL  = 3,
     parameter int TYPE_WIDTH = 3,
-    parameter int ID_WIDTH   = 6
+    parameter int ID_WIDTH   = 7
 ) (
     input logic                  forever_cpuclk,
     input logic                  cpurst_b,

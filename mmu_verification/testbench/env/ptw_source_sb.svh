@@ -36,7 +36,7 @@ class ptw_source_sb extends uvm_scoreboard;
   typedef struct {
     bit                    valid;
     ptw_src_req_type_e     req_type;
-    logic [5:0]            id;
+    logic [PTW_SRC_ID_WIDTH-1:0] id;
     vpn_t                  vpn;
     ptw_src_access_src_e   access_src;
     ptw_src_pde_reason_e   pde_reason;
@@ -49,7 +49,7 @@ class ptw_source_sb extends uvm_scoreboard;
   typedef struct {
     bit                    active;
     ptw_src_req_type_e     req_type;
-    logic [5:0]            id;
+    logic [PTW_SRC_ID_WIDTH-1:0] id;
     vpn_t                  vpn;
     int unsigned           start_cycle;
     int unsigned           mem_req_seen_after_accerr;
@@ -175,13 +175,13 @@ class ptw_source_sb extends uvm_scoreboard;
     join_none
   endtask
 
-  protected function string key_string(input logic [2:0] req_type, input logic [5:0] id);
+  protected function string key_string(input logic [2:0] req_type, input logic [PTW_SRC_ID_WIDTH-1:0] id);
     return $sformatf("%0h:%0h", req_type, id);
   endfunction
 
   protected function string cycle_key_string(
     input logic [2:0]  req_type,
-    input logic [5:0]  id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input int unsigned cycle
   );
     return $sformatf("%s:%0d", key_string(req_type, id), cycle);
@@ -702,7 +702,7 @@ class ptw_source_sb extends uvm_scoreboard;
 
   protected function void open_no_extra_lsu_window(
     input ptw_src_req_type_e req_type,
-    input logic [5:0]        id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input vpn_t              vpn,
     input int unsigned       start_cycle
   );
@@ -743,7 +743,7 @@ class ptw_source_sb extends uvm_scoreboard;
 
   protected function void close_no_extra_lsu_window(
     input logic [2:0]  req_type,
-    input logic [5:0]  id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input string       reason,
     input int unsigned visible_cycle
   );
@@ -837,7 +837,7 @@ class ptw_source_sb extends uvm_scoreboard;
     end
   endfunction
 
-  protected function void retire_active_key(input logic [2:0] req_type, input logic [5:0] id);
+  protected function void retire_active_key(input logic [2:0] req_type, input logic [PTW_SRC_ID_WIDTH-1:0] id);
     string key;
     key = key_string(req_type, id);
     if (m_active_keys.exists(key)) begin
@@ -848,7 +848,7 @@ class ptw_source_sb extends uvm_scoreboard;
 
   protected function void note_visible_completion(
     input ptw_src_req_type_e req_type,
-    input logic [5:0]        id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input int unsigned       cycle,
     input string             reason
   );

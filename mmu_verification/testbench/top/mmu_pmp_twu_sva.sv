@@ -5,7 +5,9 @@
 // =============================================================================
 `timescale 1ns/1ps
 
-module mmu_pmp_twu_sva (
+module mmu_pmp_twu_sva #(
+    parameter int ID_WIDTH = 7
+) (
     input logic        twu_clk,
     input logic        cpurst_b,
     input logic        tlboper_ptw_abort,
@@ -42,16 +44,16 @@ module mmu_pmp_twu_sva (
     input logic [2:0]  thd_pmp_type,
     input logic [27:0] thd_pmp_ppn,
     input logic [39:0] thd_pmp_pa,
-    input logic [5:0]  fst_pmp_id,
-    input logic [5:0]  scd_pmp_id,
-    input logic [5:0]  thd_pmp_id,
+    input logic [ID_WIDTH-1:0]  fst_pmp_id,
+    input logic [ID_WIDTH-1:0]  scd_pmp_id,
+    input logic [ID_WIDTH-1:0]  thd_pmp_id,
     input logic        mmu_pmp_fecth,
     input logic [27:0] mmu_pmp_pa,
     input logic        twu_mbuf_req,
     input logic [39:0] twu_mbuf_paddr,
     input logic        twu_arb_ref_req,
     input logic [2:0]  twu_arb_ref_type,
-    input logic [5:0]  twu_arb_ref_id,
+    input logic [ID_WIDTH-1:0]  twu_arb_ref_id,
     input logic        twu_l2tlb_ref_acc_err
 );
 

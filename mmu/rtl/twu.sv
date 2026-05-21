@@ -7,7 +7,7 @@ module twu #(
     parameter ASID_WIDTH  = 16,                         // PPN
     parameter PGS_WIDTH   = 3,                          // Page Size
     parameter PTE_LEVEL   = 3,                          // Page Table Label
-    parameter ID_WIDTH    = 6,
+    parameter ID_WIDTH    = 7,
     parameter TYPE_WIDTH  = 3,
     parameter DATA_WIDTH  = 64,
 

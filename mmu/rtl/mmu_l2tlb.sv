@@ -10,7 +10,7 @@ module mmu_l2tlb#(
     parameter WAY_NUM        = 8,          // 8 Skewed Ways
     parameter TRANS_ID_WIDTH = 3,          // Mafinalhes Reqq ID Width
     parameter L1EID_WIDTH    = 3,
-    parameter L2EID_WIDTH    = 3,
+    parameter L2EID_WIDTH    = 4,
     parameter TYPE_WIDTH     = 3,          // 2 bits for req type
     parameter DTLB_DEPTH     = 8,
     parameter RRPV_WIDTH     = 3,
@@ -947,6 +947,7 @@ module mmu_l2tlb#(
         .DTLB_DEPTH     (DTLB_DEPTH),
         .VPN_WIDTH      (VPN_WIDTH),
         .L1EID_WIDTH    (L1EID_WIDTH),
+        .L2EID_WIDTH    (L2EID_WIDTH),
         .PTW_TYPE_WIDTH (3), // PTW usually needs 3 bits (Load/Store/Fetch)
         .QUE_ID_WIDTH   (TRANS_ID_WIDTH),
         .ACC_TYPE_WIDTH (TYPE_WIDTH) // Note: Fixed Typo in parameter name if possible

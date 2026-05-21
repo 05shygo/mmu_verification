@@ -183,7 +183,7 @@ class ptw_stage7_base extends ptw_source_directed_base;
     bit saw_any_accept;
     bit [26:0] vpn;
     bit [2:0] last_accept_type;
-    bit [5:0] last_accept_id;
+    bit [PTW_SRC_ID_WIDTH-1:0] last_accept_id;
     bit [26:0] last_accept_vpn;
 
     seen = 1'b0;
@@ -224,14 +224,14 @@ class ptw_stage7_base extends ptw_source_directed_base;
     if (!seen) begin
       `uvm_info(get_type_name(),
         $sformatf("%s: no matching PTW accept observed before SATP switch; this is legal for a process switch type=%s vpn=0x%07h source_id=0x%02h saw_any_accept=%0b last_accept={type=0x%0h id=0x%02h vpn=0x%07h}",
-          scenario_id, req_type.name(), vpn, source_id[5:0], saw_any_accept,
+          scenario_id, req_type.name(), vpn, source_id[PTW_SRC_ID_WIDTH-1:0], saw_any_accept,
           last_accept_type, last_accept_id, last_accept_vpn),
         UVM_LOW)
       ptw_meta_add_context($sformatf("%s: no_required_ptw_accept_before_satp_switch type=%s vpn=0x%07h source_id=0x%02h",
-        scenario_id, req_type.name(), vpn, source_id[5:0]));
+        scenario_id, req_type.name(), vpn, source_id[PTW_SRC_ID_WIDTH-1:0]));
     end else begin
       ptw_meta_add_context($sformatf("%s: observed_ptw_accept_before_satp_switch type=%s vpn=0x%07h source_id=0x%02h ptw_id=0x%02h",
-        scenario_id, req_type.name(), vpn, source_id[5:0], last_accept_id));
+        scenario_id, req_type.name(), vpn, source_id[PTW_SRC_ID_WIDTH-1:0], last_accept_id));
     end
   endtask
 

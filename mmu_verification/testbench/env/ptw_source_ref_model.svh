@@ -49,7 +49,7 @@ class ptw_source_ref_model extends uvm_component;
   typedef struct {
     bit                    valid;
     ptw_src_req_type_e     req_type;
-    logic [5:0]            id;
+    logic [PTW_SRC_ID_WIDTH-1:0] id;
     vpn_t                  vpn;
     asid_t                 asid;
     asid_t                 accept_asid;
@@ -104,7 +104,7 @@ class ptw_source_ref_model extends uvm_component;
   typedef struct {
     bit                valid;
     ptw_src_req_type_e req_type;
-    logic [5:0]        id;
+    logic [PTW_SRC_ID_WIDTH-1:0] id;
     int unsigned       cycle;
   } pde_direct_accerr_info_s;
 
@@ -229,13 +229,13 @@ class ptw_source_ref_model extends uvm_component;
     join_none
   endtask
 
-  protected function string key_string(input logic [2:0] req_type, input logic [5:0] id);
+  protected function string key_string(input logic [2:0] req_type, input logic [PTW_SRC_ID_WIDTH-1:0] id);
     return $sformatf("%0h:%0h", req_type, id);
   endfunction
 
   protected function string pending_key_string(
     input logic [2:0]  req_type,
-    input logic [5:0]  id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input vpn_t        vpn,
     input int unsigned cycle
   );
@@ -245,7 +245,7 @@ class ptw_source_ref_model extends uvm_component;
   protected function bit pending_key_matches(
     input pending_req_s      pending,
     input ptw_src_req_type_e req_type,
-    input logic [5:0]        id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input bit                use_vpn,
     input vpn_t              vpn
   );
@@ -279,7 +279,7 @@ class ptw_source_ref_model extends uvm_component;
 
   protected function bit resolve_pending_key(
     input  ptw_src_req_type_e req_type,
-    input  logic [5:0]        id,
+    input  logic [PTW_SRC_ID_WIDTH-1:0] id,
     output string             key,
     input  bit                use_vpn = 1'b0,
     input  vpn_t              vpn = '0,
@@ -423,7 +423,7 @@ class ptw_source_ref_model extends uvm_component;
 
   protected function bit pde_direct_accerr_event_is_recent(
     input ptw_src_req_type_e req_type,
-    input logic [5:0]        id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input int unsigned       cycle,
     input bit                count_duplicate = 1'b1
   );
@@ -441,7 +441,7 @@ class ptw_source_ref_model extends uvm_component;
 
   protected function bit note_pde_direct_accerr_event(
     input ptw_src_req_type_e req_type,
-    input logic [5:0]        id,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
     input int unsigned       cycle
   );
     pde_direct_accerr_info_s info;

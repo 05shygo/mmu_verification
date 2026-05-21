@@ -8,7 +8,7 @@ module mmu_twu_chk_sva #(
     parameter int VPN_WIDTH  = 27,
     parameter int DATA_WIDTH = 64,
     parameter int TYPE_WIDTH = 3,
-    parameter int ID_WIDTH   = 6
+    parameter int ID_WIDTH   = 7
 ) (
     input logic                  twu_clk,
     input logic                  cpurst_b,

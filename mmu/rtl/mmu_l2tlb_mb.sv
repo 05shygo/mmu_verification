@@ -9,7 +9,7 @@ module mmu_l2tlb_mb #(
     parameter DTLB_DEPTH     = 8,
     parameter VPN_WIDTH      = 27,
     parameter L1EID_WIDTH    = 3,
-    parameter L2EID_WIDTH    = 3,
+    parameter L2EID_WIDTH    = 4,
     parameter PTW_TYPE_WIDTH = 3, // 2 bits for Load/Store/Fetch
     parameter QUE_ID_WIDTH   = 3,
     parameter ACC_TYPE_WIDTH = 3  // Fixed typo: TPYE -> TYPE
@@ -53,7 +53,7 @@ module mmu_l2tlb_mb #(
     // 3. Feedback Interface (from PTW)
     //-------------------------------------------------------------------------
     input  logic                      fb_valid,        // ptw complete
-    input  logic [2:0]                fb_trans_id,     // Matching issue_eid width
+    input  logic [L2EID_WIDTH-1:0]    fb_trans_id,     // L2 miss-buffer entry id
     input  logic                      fb_hit           // same as fb_valid
 );
 
@@ -186,7 +186,7 @@ module mmu_l2tlb_mb #(
                 .bypass_grant       (bypass_grant_vec[i]), // Logic: Bypass if allocated and buffer has no ready entry
 
                 // Feedback
-                .fb_match_id        (fb_valid && (fb_trans_id == i[ID_WIDTH-1:0])),
+                .fb_match_id        (fb_valid && (fb_trans_id == i[L2EID_WIDTH-1:0])),
                 .fb_hit             (fb_hit),
 
                 // Outputs

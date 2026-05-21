@@ -11,7 +11,7 @@ module mmu_ptw_top_sva #(
     parameter int ASID_WIDTH = 16,
     parameter int PGS_WIDTH  = 3,
     parameter int TYPE_WIDTH = 3,
-    parameter int ID_WIDTH   = 6,
+    parameter int ID_WIDTH   = 7,
     parameter int TAG_WIDTH  = 48,
     parameter int DATA_WIDTH = 42
 ) (

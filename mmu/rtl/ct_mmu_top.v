@@ -184,6 +184,10 @@ module ct_mmu_top(
     input logic           rtu_yy_xx_flush
 
 );
+    localparam int L1EID_WIDTH  = 3;
+    localparam int L2EID_WIDTH  = 4;
+    localparam int PTW_ID_WIDTH = L1EID_WIDTH + L2EID_WIDTH;
+
     logic [4 :0]  sysmap_mmu_flg0;
     logic [4 :0]  sysmap_mmu_flg1;
     logic [4 :0]  sysmap_mmu_flg2;
@@ -245,7 +249,7 @@ module ct_mmu_top(
     logic [2:0]  ptw_l1dtlb_ref_pgs;
     logic [27:0] ptw_l1dtlb_ref_ppn;
     logic [13:0] ptw_l1dtlb_ref_flg;
-    logic [5:0]  ptw_l1dtlb_id;
+    logic [PTW_ID_WIDTH-1:0]  ptw_l1dtlb_id;
     logic        ptw_l1dtlb_cmplt;
     logic        ptw_l1dtlb_pgflt;
     logic        ptw_l1dtlb_ref_acc_err;
@@ -314,14 +318,14 @@ module ct_mmu_top(
     logic        l2tlb_ptw_req;
     logic [2:0]  l2tlb_ptw_type;
     logic [26:0] l2tlb_ptw_vpn;
-    logic [5:0]  l2tlb_ptw_id;
+    logic [PTW_ID_WIDTH-1:0]  l2tlb_ptw_id;
     
     logic        ptw_l2tlb_ref_acc_err;
     logic        ptw_l2tlb_ref_pgflt;
     logic        ptw_l2tlb_ref_data_vld;
     logic        ptw_l2tlb_cmplt;
     logic [2:0]  ptw_l2tlb_type;
-    logic [5:0]  ptw_l2tlb_id;
+    logic [PTW_ID_WIDTH-1:0]  ptw_l2tlb_id;
     logic [13:0] ptw_l2tlb_flg;
     logic        ptw_jtlb_ready;
 
@@ -628,7 +632,10 @@ module ct_mmu_top(
     // Instance L2TLB (JTLB)
     //==========================================================
     // &Instance("mmu_l2tlb", "x_mmu_l2tlb");
-    mmu_l2tlb x_mmu_l2tlb (
+    mmu_l2tlb #(
+        .L1EID_WIDTH (L1EID_WIDTH),
+        .L2EID_WIDTH (L2EID_WIDTH)
+    ) x_mmu_l2tlb (
         .cpurst_b                   (cpurst_b),
         .forever_cpuclk             (forever_cpuclk),
         .pad_yy_icg_scan_en         (pad_yy_icg_scan_en),
@@ -857,7 +864,9 @@ module ct_mmu_top(
     // Instance PTW
     //==========================================================
     // &Instance("ptw", "x_ct_mmu_ptw");
-    ptw x_ct_mmu_ptw (
+    ptw #(
+        .ID_WIDTH (PTW_ID_WIDTH)
+    ) x_ct_mmu_ptw (
         .forever_cpuclk             (forever_cpuclk),
         .cpurst_b                   (cpurst_b),
         .cp0_mmu_icg_en             (cp0_mmu_icg_en),

@@ -2068,3 +2068,287 @@ overview
 
             12. v1 UVM 的最低验收标准是什么：只通过 directed sanity、覆盖主功能路径，还是必须包含随机并发、reset/abort、非法输入、RRPV corner case？
             回答：v1 最低验收标准为：transaction-level scoreboard 可用；合法 directed sanity 通过；覆盖 ITLB/DTLB/PFU/PTW/TLB operation 主功能路径；覆盖 reset-inv、warm reset、TLB invalidate/write/read/probe、PFU fault、PTW page fault/access error、MB retry/abort/reissue；具备基本随机并发和关键协议 assertion。非法输入负向测试和 RRPV/victim corner 不阻塞 v1 功能环境成型，可作为 v1.1 或专项验证。
+
+---
+---
+
+## 6. Phase 2 L2TLB 测试点清单
+
+本章为 Phase 2 重新整理的 L2TLB 测试点清单。前文功能描述和 5.13 UVM 策略问答仍是来源依据；`l2tlb_function_description.txt` 仍作为只读黄金输入，本 `.md` 只承载后续 audit 补充。
+
+### 6.1 Phase 2 边界
+
+- 普通 MMU UVM 激励边界以 IFU/LSU translation、CP0/CSR/TLB operation、PTW/PMP/sysmap、reset 等顶层真实接口为准。
+- `arb_*`、`queue_*`、`tlboper_*`、`l2tlb_*` 等内部信号只作为 monitor、checker、coverage、debug 输入；只有标记为 `Backdoor directed` 或 `White-box monitor/coverage` 的测试点可以依赖内部观察或受控 backdoor 初始化。
+- 现有 `l2tlb_tests` wrapper 只作为粗映射入口，不能因为 wrapper 名称存在就判定该测试点已经覆盖。
+- RRPV、victim、wbuf latest-wins 相关内容在 v1 中只作为 debug coverage 或 future replacement 专项，除非后续建立 cycle-accurate replacement reference model。
+
+### 6.2 测试点矩阵
+
+| ID | 功能域 | 规格来源章节 | 测试类型 | 目标行为 | 激励入口 | 可观察结果 | Checker | Coverage | 优先级 | 当前 UVM 入口 | 状态 | 备注 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| L2TLB_TP_001 | reset | overview, 1.1, 5.13.8 | Black-box functional | cold reset 后 ReqQ、MB、pipeline valid、PFU FSM、RRPV wbuf 均回到 idle 或 invalid | `cpurst_b` 上电复位 | 无伪 request、无伪 refill、无伪 fault，reset release 后可接受新请求 | reset drain checker；关键 valid 清零检查 | cold reset；reset 后首个 ITLB/DTLB/PFU 请求 | P0 | 需新增 reset directed | Planned | 覆盖 reset 结果类型 |
+| L2TLB_TP_002 | reset | 1.1, 1.9, 5.13.8 | Black-box functional | warm reset 打断 lookup、PTW、TLBOP、PFU 活跃窗口时清空 pending expectation | 活跃 transaction 期间拉低 `cpurst_b` | reset 后旧 completion 不被消费，新 transaction 从干净状态开始 | scoreboard pending clear；no stale response | warm reset x lookup/PTW/TLBOP/PFU | P0 | 需新增 warm reset directed | Planned | reset-inv 完成后模型应 all-invalid |
+| L2TLB_TP_003 | UVM boundary | overview, 5.13.1 | White-box monitor/coverage | 普通测试只通过顶层真实接口驱动，不直接驱动内部 L2TLB 端口 | IFU/LSU/CP0/PTW/PMP/sysmap 顶层 agent | 内部信号只被 probe 观察 | wrapper metadata audit | black-box vs white-box wrapper 分类 | P0 | `l2tlb_tests` 全量 audit | Planned | 防止假覆盖 |
+| L2TLB_TP_004 | ReqQ | 1.3, 1.6, 2.1 | Black-box functional | ITLB miss 分配 ReqQ entry0，credit 消耗和返回正确 | IFU miss 到 L1ITLB 后转发 L2TLB | `i_credit_return` 与 completion 或释放时机一致 | credit shadow；entry0 lifecycle checker | ITLB source；alloc/issue/dealloc | P0 | `test_mmu_dir_l2tlb_reqq_*` 粗映射 | Planned | 覆盖 ITLB source |
+| L2TLB_TP_005 | ReqQ | 1.3, 1.6, 2.1 | Black-box functional | DTLB load/store miss 分配 DTLB 专用 ReqQ entry，eid/type 保持正确 | LSU load/store miss 到 L1DTLB 后转发 L2TLB | `d_credit_return`、eid、load/store type 对齐 | credit and type shadow | DTLB load；DTLB store；multi-entry occupancy | P0 | `test_mmu_dir_l2tlb_reqq_dtlb_alloc_*` 粗映射 | Planned | 覆盖 DTLB load/store source |
+| L2TLB_TP_006 | ReqQ | 1.3, 2.1 | White-box monitor/coverage | 新请求同拍获得 grant 时允许 bypass issue，payload 稳定 | IFU/LSU miss 与 arbiter grant 同拍 | `queue_arb_*` payload 与请求一致 | payload stability checker | bypass issue；queued issue | P1 | 需加强 `l2tlb_reqq_*` wrapper | Planned | 内部观察点 |
+| L2TLB_TP_007 | ReqQ | 1.3, 2.1, 5.13.8 | Black-box functional | L2 miss 且 MB full 时 ReqQ 不释放请求，清 sent 后可 replay | 填满 MB 后再发 ITLB/DTLB miss | 无请求丢失，MB 空位释放后最终完成 | transaction lifetime checker | MB full retry；retry count 大于 0 | P0 | `test_mmu_dir_l2tlb_reqq_credit_full_no_return` 粗映射 | Planned | 覆盖 MB full retry 结果 |
+| L2TLB_TP_008 | ReqQ | 1.6, 2.1 | Black-box functional | hit、miss alloc、fault completion 均能归还对应 L1 credit | ITLB/DTLB hit、miss alloc、PTW disabled miss | credit return pulse 与 ReqQ dealloc 对齐 | credit accounting checker | hit return；refill return；fault return | P0 | `test_mmu_dir_l2tlb_reqq_credit_return_*` 粗映射 | Planned | 不把 wrapper 名称当覆盖结论 |
+| L2TLB_TP_009 | arbiter | overview, 1.4, 2.2 | White-box monitor/coverage | ReqQ、PFU、PTW、TLBOP 多来源同时有效时每拍最多一个访问 SRAM pipeline | 构造多 source 同拍请求 | `arb_l2tlb_req` 与 grant onehot0 一致 | arbiter onehot checker | source pairwise conflict；four-source conflict | P0 | `test_mmu_rand_l2tlb_bank_conflict_multi_source` 粗映射 | Planned | 单端口 SRAM 约束 |
+| L2TLB_TP_010 | arbiter | overview, 2.2, 5.13.8 | White-box monitor/coverage | 高优先级请求与普通 lookup 冲突时，grant 顺序符合规格并无 starvation | PTW refill、TLBOP、ReqQ、PFU 同拍竞争 | 被 grant source payload 进入 L2TLB | priority checker；fairness watchdog | PTW vs TLBOP；TLBOP vs ReqQ；ReqQ vs PFU | P0 | `test_mmu_dir_l2tlb_bank_write_conflict_*` 粗映射 | Planned | 需按 RTL/规格确认精确优先级 |
+| L2TLB_TP_011 | arbiter | 1.4, 2.2 | White-box monitor/coverage | grant source 的 VPN、type、eid、index、write、bank_sel 等 payload 不串源 | 多来源携带不同 payload 后交替 grant | `arb_l2tlb_*` 与 selected source 匹配 | source payload scoreboard | 每类 source payload sample | P0 | 需新增 arbiter payload monitor | Planned | Phase 6 可落到 probe |
+| L2TLB_TP_012 | tag/data lookup | 1.4, 1.7, 5.13.3 | Black-box functional | ITLB 4KB L2 single-hit 返回正确 PPN 和 flag，不进入 PTW | backdoor/TLBWI 安装 4KB entry 后 IFU miss | `l2tlb_l1itlb_ref_*` payload 正确 | L2 entry shadow compare | ITLB source；4KB；single-hit | P0 | `test_mmu_dir_l2tlb_tag_match_4k_hit` 粗映射 | Planned | 覆盖 single-hit 结果 |
+| L2TLB_TP_013 | tag/data lookup | 1.4, 1.7, 5.13.3 | Black-box functional | DTLB load/store 4KB L2 single-hit 返回对应 eid、PPN、flag | backdoor/TLBWI 安装 4KB entry 后 LSU load/store miss | `l2tlb_l1dtlb_ref_*` eid/type/payload 对齐 | transaction scoreboard | DTLB load；DTLB store；4KB | P0 | `test_mmu_dir_l2tlb_tag_match_4k_hit` 粗映射 | Planned | 覆盖 DTLB load/store source |
+| L2TLB_TP_014 | tag/data lookup | 1.4, 1.7, 5.13.8 | Black-box functional | 2MB 和 1GB entry 命中时按 page size mask VPN 并拼接 PA | 安装 2MB/1GB entry，改变页内 offset | 返回 PPN/PA 拼接符合 page size | PA splice checker | 2MB；1GB；offset variation | P0 | `test_mmu_dir_l2tlb_tag_match_2m_1g_huge` 粗映射 | Planned | 覆盖 page size |
+| L2TLB_TP_015 | tag/data lookup | 1.2, 1.4, 5.13.8 | Black-box functional | non-global entry 需要 ASID match，global entry 绕过 ASID match | 同 VA 下构造 ASID match/mismatch/global entry | only expected entry hit | ASID/global match checker | global/non-global x ASID match/mismatch | P0 | `test_mmu_rand_l2tlb_tag_match_cross_asid` 粗映射 | Planned | 与 TLBOP invalidate 交叉 |
+| L2TLB_TP_016 | lookup pipeline | 1.7, 5.13.8 | Backdoor directed | 构造多个 matching way 时外部 fault 或编码符合规格，且不当作 normal single-hit 更新 | backdoor 或受控 TLBWI/TLBWR 构造 multi-hit | L1/PFU 可见结果合法，内部 multi-hit 被分类 | external result checker；white-box multi-hit cover | multi-hit；ITLB/DTLB/PFU | P1 | `test_mmu_dir_rrpv_multiple_hits_same_vpn` 需重分类 | Planned | 覆盖 multi-hit 结果 |
+| L2TLB_TP_017 | miss buffer | overview, 1.5, 2.4 | Black-box functional | lookup miss 且 PTW enabled、MB 有空位时分配 MB 并发 PTW walk | ITLB/DTLB/PFU miss，`cp0_mmu_ptw_en=1` | MB entry valid，`l2tlb_ptw_req` eventually fire | MB shadow；PTW request checker | miss+MB alloc；ITLB/DTLB/PFU | P0 | `test_mmu_dir_l2tlb_mb_alloc_on_miss` 粗映射 | Planned | 覆盖 miss+MB alloc 结果 |
+| L2TLB_TP_018 | lookup pipeline | 1.2, 1.7, 5.13.8 | Black-box functional | PTW disabled miss 不发 PTW request，并向 L1/PFU 返回 fault 类完成 | `cp0_mmu_ptw_en=0` 后发 miss | `l2tlb_ptw_req=0`，completion/fault 编码正确 | PTW disabled checker | PTW disabled miss；ITLB/DTLB/PFU | P0 | 需新增 PTW disabled directed | Planned | 覆盖 PTW disabled miss 结果 |
+| L2TLB_TP_019 | miss buffer | 1.5, 2.4 | White-box monitor/coverage | MB issue 到 PTW 时 type、VPN、composite ID 保持原始请求归属 | MB alloc 后 PTW ready 拉高 | `l2tlb_ptw_type/vpn/id` 与 MB shadow 一致 | MB to PTW payload checker | MB issue order；ID bins | P0 | `test_mmu_rand_l2tlb_mb_issue_order` 粗映射 | Planned | PTW ID 是后续 SVA 重点 |
+| L2TLB_TP_020 | miss buffer | 1.5, 2.4, 5.13.8 | Black-box functional | MB full 时新 miss 不 overflow，不错误覆盖 entry，释放后可继续 | 填满 MB，再发新 miss，然后完成一个 PTW | occupancy 有界，新请求最终 retry 或完成 | no-overflow checker；retry scoreboard | MB full；release then replay | P0 | `test_mmu_dir_l2tlb_mb_full_stall` 粗映射 | Planned | 覆盖 MB full retry 结果 |
+| L2TLB_TP_021 | miss buffer | 2.4, 5.9, 5.13.6 | Black-box functional | 相同 VPN/ASID/type 的多个 miss 已分配到 MB 后不自动 merge，也不在发 PTW 前重新 lookup | 连续构造相同 VPN/ASID/type miss，使其进入不同 MB entry | 每个 valid MB entry 按自身 id/type issue PTW；ReqQ replay 的请求可因后续 refill 命中 | duplicate lifetime checker；PTW issue count checker | duplicate allocated entries；ReqQ replay after refill | P1 | `test_mmu_dir_l2tlb_mb_dup_alloc_prevention` 需重审/改名 | Planned | 修正：规格说明不要求 duplicate suppression |
+| L2TLB_TP_022 | miss buffer | 1.5, 2.4 | White-box monitor/coverage | PTW completion dealloc 与新 miss alloc 同拍时 occupancy 和 ID 无 double free/lost alloc | 构造 completion 与 new miss 同拍 | MB valid vector 与 shadow 一致 | alloc/dealloc accounting checker | same-cycle alloc/dealloc | P1 | `test_mmu_dir_l2tlb_mb_dealloc_on_complete` 需加强 | Planned | Phase 6 monitor 必须可采样 |
+| L2TLB_TP_023 | PTW interface | 1.5, 5.13.8 | Black-box functional | `ptw_ready` backpressure 期间 PTW request payload 稳定，ready 后 fire | MB issue 时拉低再释放 `ptw_ready` | request 保持，ready 后 handshake | PTW handshake checker | ready stall；ready release | P0 | PTW tests 可粗映射，L2 directed 需新增 | Planned | 外部 fairness 与 DUT progress 分开 |
+| L2TLB_TP_024 | PTW refill | overview, 1.5, 1.7 | Black-box functional | PTW data completion 对 ITLB/DTLB/PFU miss 归属正确，合法 refill 或 final response | PTW 返回 `data_vld` completion | L2 refill write 与 L1/PFU final response ID/type 对齐 | PTW transaction scoreboard | PTW refill source；ITLB/DTLB/PFU | P0 | PTW directed tests 粗映射 | Planned | 覆盖 PTW refill source |
+| L2TLB_TP_025 | PTW refill | 1.5, 1.7, 5.13.8 | Black-box functional | PTW page fault completion 不消费 payload，fault 归属原始请求 | PTW 返回 `pgflt` | L1/PFU fault completion 正确，不写入有效 translation | fault ownership checker | PTW page fault；ITLB/DTLB/PFU | P0 | PTW fault tests 粗映射 | Planned | 覆盖 PTW page fault 结果 |
+| L2TLB_TP_026 | PTW refill | 1.5, 1.7, 5.13.8 | Black-box functional | PTW access error completion 不消费 payload，fault 归属原始请求 | PTW 返回 `acc_err` | L1/PFU access error 或 error completion 正确 | access error checker | PTW access error；ITLB/DTLB/PFU | P0 | PTW accerr tests 粗映射 | Planned | 覆盖 PTW access error 结果 |
+| L2TLB_TP_027 | PTW interface | 1.5, 5.13.8 | Negative assertion | 非法 completion 组合、bad ID、无 outstanding completion 不进入普通功能比较 | negative PTW completion injection | assertion 或 error-handling 触发，未定义 payload 不比较 | negative protocol checker | bad ID；illegal data_vld/pgflt/acc_err | P1 | 需新增 negative suite | Planned | 普通随机不生成 |
+| L2TLB_TP_028 | PFU | 1.2, 1.8, 1.10 | Black-box functional | MMU off PFU 走 direct/sysmap/PMP 路径，不做普通 L2 lookup | `l1dtlb_xx_mmu_off=1`，`lsu_mmu_va2_vld` | `mmu_lsu_pa2` direct，sec/share/err 来自 sysmap/PMP 规则 | PFU direct path checker | PFU source；MMU off | P0 | 需新增 PFU directed | Planned | 覆盖 PFU source |
+| L2TLB_TP_029 | PFU | 1.2, 1.8, 1.10, 5.13.5 | Black-box functional | MMU on PFU L2 hit 后做 flag、privilege、MXR/SUM/MPRV/MPP、MAEE、PMP/sysmap 检查 | PFU request 命中 L2 entry | `pa2_vld/pa2_err/sec/share` 符合 PFU 规则 | PFU hit path checker | PFU L2 hit；permission pass | P0 | 需新增 PFU L2-hit directed | Planned | 不与 L1 permission checker 混淆 |
+| L2TLB_TP_030 | PFU | 1.5, 1.8, 5.13.5 | Black-box functional | PFU miss 后 PTW data completion 使用 PTW 结果完成 PFU，不做二次 L2 lookup | PFU miss，PTW 返回 data_vld | PFU final response 与 PTW result 对齐 | PFU PTW path checker | PFU miss；PTW data_vld | P0 | 需新增 PFU PTW directed | Planned | PFU 三路径之一 |
+| L2TLB_TP_031 | PFU | 1.2, 1.8, 5.13.5 | Black-box functional | PFU flag fault 产生 error completion，error 时 PA/sec/share 不作为比较对象 | 构造 flag 不满足 PFU 权限 | `mmu_lsu_pa2_vld=1` 且 `pa2_err=1` | PFU error classifier | PFU flag fault | P0 | 需新增 PFU fault directed | Planned | 覆盖 PFU flag fault 结果 |
+| L2TLB_TP_032 | PFU | 1.10, 5.13.5 | Black-box functional | PMP 或 sysmap deny/fault 使 PFU 返回 error，不污染成功 payload 检查 | PMP/sysmap 返回 deny/fault | `pa2_err=1`，deny 类型可分类 | PMP/sysmap deny checker | PFU PMP deny；PFU sysmap deny | P0 | 需新增 PFU PMP/sysmap directed | Planned | 覆盖 PFU PMP/sysmap deny 结果 |
+| L2TLB_TP_033 | PFU | 1.8, 5.13.5 | Black-box functional | PFU error 时只检查 valid/error 与分类，忽略 PA/sec/share payload 值 | PFU flag fault、PTW fault、PMP/sysmap deny | 不因 error payload 随机值误报 mismatch | payload ignore checker | PFU error payload bins | P0 | 需新增 scoreboard rule | Planned | Phase 4 会细化模型 |
+| L2TLB_TP_034 | TLB operation | overview, 1.9, 5.13.4 | Black-box functional | TLBP 对 valid、invalid、multi-hit、page-size 条件返回 probe 结果 | CP0/CSR TLBP request | `l2tlb_tlboper_va_hit/sel` 与预期一致 | TLBP scoreboard | TLBP source；hit/miss/multi-hit | P0 | TLBOP wrapper 需新增或加强 | Planned | 覆盖 TLBP source |
+| L2TLB_TP_035 | TLB operation | 1.9, 5.13.4 | Black-box functional | TLBR 按 index/way 读出 raw tag/data fields，invalid 也可读 raw 状态 | CP0/CSR TLBR request | readback fields 与 shadow 对齐 | TLBR raw read checker | TLBR source；valid/invalid | P0 | TLBOP wrapper 需新增或加强 | Planned | 覆盖 TLBR source |
+| L2TLB_TP_036 | TLB operation | 1.4, 1.9, 5.13.4 | Black-box functional | TLBWI 按指定 index/way 写 valid 或 invalid entry，后续 lookup/TLBP 观察自然结果 | CP0/CSR TLBWI request | tag/data 更新，L1/uTLB clear side effect 合法 | TLBWI shadow update checker | TLBWI source；valid/invalid；illegal pgs natural behavior | P0 | TLBOP write wrapper 需新增 | Planned | 覆盖 TLBWI source |
+| L2TLB_TP_037 | TLB operation | 1.3, 1.4, 1.9, 5.13.7 | Black-box functional | TLBWR 使用 DUT replacement 写入后，只检查功能可见结果，不比较 exact victim | CP0/CSR TLBWR request | 后续 lookup/TLBP/TLBR 能观察写入或合法替换结果 | functional result checker | TLBWR source；free-way pressure；max-RRPV pressure | P0 | RRPV victim wrapper 需重分类 | Planned | 覆盖 TLBWR source |
+| L2TLB_TP_038 | TLB operation | overview, 1.9, 5.13.4 | Black-box functional | INVVA_ALL 按 VA/page size 失效，不要求 ASID match，global 和 non-global 都可被清 | CP0/CSR INVVA_ALL request | matching VA entries invalid，non-matching 保留 | invalidate shadow checker | INVVA_ALL source；ASID mismatch；global | P0 | `test_mmu_dir_l2tlb_inv_va` 粗映射 | Planned | 覆盖 INVVA_ALL source |
+| L2TLB_TP_039 | TLB operation | overview, 1.9, 5.13.4 | Black-box functional | INVASID 扫描所有 set，只清 matching ASID 的 non-global entry，global 保留 | CP0/CSR INVASID request | target ASID non-global invalid，global remains | invalidate shadow checker | INVASID source；hit set；no-hit set | P0 | `test_mmu_dir_l2tlb_inv_asid` 粗映射 | Planned | 覆盖 INVASID source |
+| L2TLB_TP_040 | TLB operation | overview, 1.9, 5.13.4 | Black-box functional | INVVA_ASID 清目标 ASID non-global 和同 VA global entry | CP0/CSR INVVA_ASID request | matching entries invalid，其他 ASID non-global 保留 | invalidate shadow checker | INVVA_ASID source；global clear | P0 | `test_mmu_dir_l2tlb_inv_va_asid` 粗映射 | Planned | 覆盖 INVVA_ASID source |
+| L2TLB_TP_041 | TLB operation | overview, 1.9, 5.13.4 | Black-box functional | INVALL 扫描全部 set/way 清 valid tag，并清理 L1/uTLB 与 outstanding PTW/MB side effect | CP0/CSR INVALL request | L2 all-invalid，done after scan，相关 abort/clear 生效 | all-invalid checker；scan progress monitor | INVALL source；all set scan；abort side effect | P0 | `test_mmu_dir_l2tlb_inv_all` 粗映射 | Planned | 覆盖 INVALL source 和 reset/abort |
+| L2TLB_TP_042 | TLB operation | 1.9, 5.13.4 | White-box monitor/coverage | TLBOP request、grant、pipeline cmplt、source done 不得 early、missing 或 duplicate | TLBP/TLBR/TLBWI/TLBWR/INV* directed | done 与 operation lifecycle 一一对应 | TLBOP ordering checker | all TLBOP types；done latency bins | P0 | TLBOP wrapper 需统一 metadata | Planned | Phase 3 SVA 候选 |
+| L2TLB_TP_043 | TLB operation | 1.1, 1.9, 5.13.8 | Black-box functional | TLBOP 执行中 reset 时 pending 操作清空，reset 后模型 all-invalid | TLBOP scan/write 中拉 reset | 无旧 done 被消费，新请求正常 | reset plus TLBOP checker | reset during TLBP/TLBWI/INVALL | P0 | 需新增 TLBOP reset directed | Planned | reset 与 TLBOP 交叉 |
+| L2TLB_TP_044 | abort | overview, 1.9, 2.4, 5.13.6 | Black-box functional | `tlboper_ptw_abort` 清理或重发受影响 MB/PTW，stale completion 不写回旧 translation | outstanding PTW/MB 期间触发 invalidate abort | stale PTW completion ignored，合法 reissue/drain | stale completion checker | abort sent MB；abort unsent MB；late completion | P0 | MB/INV wrapper 需加强 | Planned | 覆盖 abort 结果类型 |
+| L2TLB_TP_045 | RRPV SRAM | 1.3, 1.4, 5.13.7 | White-box monitor/coverage | PTW refill、TLBWI/TLBWR 写有效 entry 时 RRPV 初始化行为可观察，但 v1 不以 exact 值做 pass/fail | refill/write 压力场景 | 功能可见 lookup 正确，RRPV sample 进入 debug coverage | functional checker；debug RRPV sampler | refill init；TLBWI/TLBWR init | P1 | `test_mmu_dir_rrpv_init_*` 需重分类 | Planned | 不做 exact RRPV oracle |
+| L2TLB_TP_046 | RRPV wbuf | 1.1, 1.3, 5.13.7 | White-box monitor/coverage | hit aging 与 refill 压力下 wbuf 不 overflow，full 时不得错误 grant 新 RRPV 更新 | high hit/refill pressure | no overflow，full stall 行为可分类 | wbuf no-overflow checker | wbuf full stall；hit promote pressure | P1 | `test_mmu_rand_rrpv_wbuf_no_overflow` 粗映射 | Planned | 可作为 debug assertion |
+| L2TLB_TP_047 | replacement | 1.3, 1.4, 5.13.7 | White-box monitor/coverage | victim/free-way/max-RRPV 行为 v1 只看写入后的功能结果，exact victim 留到 future 专项 | free-way 与 max-RRPV 压力 | 后续 lookup/TLBP/TLBR/invalidate 功能结果可解释 | functional visible checker | replacement pressure；future exact victim bins | P2 | `test_mmu_dir_rrpv_victim_*` 需重分类 | Planned | Future replacement 专项 |
+| L2TLB_TP_048 | illegal input | 5.13.8 | Negative assertion | 非法 access type、协议非法 page size、bad completion ID、credit overflow 不进入普通功能测试 | isolated negative injection | assertion 或 error-handling 触发，功能结果不比较 | negative checker | bad type；bad pgs；bad ID；credit overflow | P1 | 需新增 negative suite | Planned | 普通随机必须保持协议合法 |
+| L2TLB_TP_049 | timeout/fairness | 5.13.8 | Black-box functional | PTW ready wait、MB retry、TLBOP scan、wbuf stall 的 timeout 区分 TB fairness 与 DUT progress | backpressure 后 release 的 directed 场景 | fairness 满足后 eventually complete，否则分类报错 | timeout classifier | PTW wait；MB retry；TLBOP scan；wbuf stall | P0 | 需新增 scoreboard policy | Planned | 覆盖 timeout |
+| L2TLB_TP_050 | coverage closure | 5.13.8 | White-box monitor/coverage | source、result、page-size、ASID/global、control/reset/abort 覆盖矩阵收口或 waiver | audit regression list | coverage report 与 waiver 对齐 | traceability matrix checker | all required source/result bins | P0 | `l2tlb_tests` audit run list 需建立 | Planned | Phase 2 Excel 同步项 |
+| L2TLB_TP_051 | arbiter/PTW refill | 2.3, 5.9, 5.13.8 | White-box monitor/coverage | PTW read grant 后 `ptw_on` 阻塞非 PTW write 请求，直到 PTW write 被接收后释放 | PTW refill read/write 与 ReqQ/PFU/TLBOP 同时竞争 | `ptw_on=1` 窗口内只有对应 PTW write 可获 grant，释放后其他 source 可继续 | ptw_on exclusion checker；grant sequence checker | ptw_on stall；PTW read-to-write sequence | P0 | `test_mmu_dir_l2tlb_bank_write_conflict_ptw_prior` 需加强 | Planned | 覆盖 ptw_on stall |
+| L2TLB_TP_052 | arbiter/TLBOP | 2.3, 5.13.8 | White-box monitor/coverage | TLBOP 获 grant 后 `tlboper_on` 阻塞 ReqQ/PFU/PTW read，直到 tlb operation done | 扫描类 INVALL/INVASID 与普通 lookup/PTW/PFU 竞争 | `tlboper_on=1` 窗口内不 grant 非 TLBOP 请求，done 后恢复 | tlboper_on exclusion checker；done release checker | tlboper_on stall；scan done release | P0 | `test_mmu_dir_l2tlb_bank_write_conflict_tlbop_prior` 需加强 | Planned | 覆盖 tlboper_on stall |
+| L2TLB_TP_053 | PFU/arbiter | 2.3, 5.8, 5.13.8 | Black-box functional | MMU-on PFU request 获 grant 后 `prefetch_mask` 阻止同一持续 `lsu_mmu_va2_vld` 重复获 grant，直到 response 或 MB-full replay 边界 | PFU request 保持 valid，构造 hit、fault、MB full retry 三类结果 | 每笔 PFU 只接受一次；mask 在 `pa2_vld/pa2_err` 或 retry 条件后释放 | PFU accept counter；prefetch_mask release checker | prefetch_mask hit release；error release；retry release | P0 | 需新增 PFU mask directed | Planned | 覆盖 prefetch_mask retry |
+| L2TLB_TP_054 | arbiter/index | 2.2, 2.3, 5.13.8 | White-box monitor/coverage | VA[31:30] selector 与 page size 组合生成正确 skew index 和候选 bank mask | 构造 4 个 selector x 3 个 page size 的 lookup/PTW refill read | lookup 访问 all-bank；PTW read 的 `arb_l2tlb_bank_sel` 符合 mask_bank_sel 表 | index/bank mask sampler；hash/index consistency checker | selector 00/01/10/11 x 4KB/2MB/1GB | P1 | `test_mmu_dir_l2tlb_bank_skew_distribution` 粗映射 | Planned | 不要求 v1 hard close exact hash，至少 debug cover |
+| L2TLB_TP_055 | miss buffer | 2.4, 5.9 | Black-box functional | MB full 判断按 source 分区：ITLB 只看 entry0，DTLB/PFU 只看 entry1-entry8 | 分别填满 entry0 或 entry1-entry8 后发 ITLB/DTLB/PFU miss | ITLB 不借用 1..8；DTLB/PFU 不借用 entry0；可用分区内仍能分配 | MB partition checker | ITLB full；DTLB/PFU full；cross-partition non-blocking | P0 | `test_mmu_dir_l2tlb_mb_full_stall` 需拆分加强 | Planned | 比现有 TP_020 更细的 full 边界 |
+| L2TLB_TP_056 | PTW interface | 1.5, 5.9 | Black-box functional | 多个 sent MB entry 的 PTW completion 可乱序返回，必须只按 composite ID 释放和归属 | issue 多个 ITLB/DTLB/PFU miss 后乱序返回 completion | 对应 MB entry 释放，原始 L1/PFU ownership 正确，不依赖 issue 顺序 | PTW ID scoreboard；out-of-order completion checker | out-of-order data_vld；fault；mixed type | P0 | PTW tests 粗映射，L2 directed 需新增 | Planned | 补足 PTW ID 乱序语义 |
+| L2TLB_TP_057 | PFU | 5.8, 1.10 | Black-box functional | PMP `{L,X,W,R}` 与 sysmap `{SO,C,B,Share,Sec}`、MAEE 属性选择按 truth table 产生 PFU allow/deny/sec/share | 构造 MMU-off、MMU-on hit、PFU PTW completion 三路径的 PMP/sysmap/MAEE 组合 | `pa2_vld/pa2_err/sec/share` 与有效 privilege、MAEE、PMP lock 规则一致 | PFU attribute truth-table checker | PMP R/L combos；sysmap SO/C；MAEE 0/1 | P0 | 需新增 PFU truth-table directed | Planned | 细化 TP_029/032 |
+| L2TLB_TP_058 | control hazard | 5.9, 5.13.8 | Negative assertion | outstanding translation/PTW 存在时 SATP/ASID/control 改写必须先 drain/flush/abort；负向只检查 assertion/error handling | outstanding MB/PTW 期间注入 SATP/ASID/control 改写 | 普通测试不生成；负向测试期望 assertion 或 error classification | control hazard assertion checker | SATP write；ASID write；MMU/PTW enable change | P1 | 需新增 negative suite | Planned | 不作为正常功能 coverage |
+
+### 6.3 Phase 2 覆盖检查摘要
+
+| 检查项 | 覆盖测试点 |
+| --- | --- |
+| Source 类型：ITLB、DTLB load、DTLB store、PFU、PTW refill | L2TLB_TP_004, L2TLB_TP_005, L2TLB_TP_012, L2TLB_TP_013, L2TLB_TP_017, L2TLB_TP_024, L2TLB_TP_028..033 |
+| Source 类型：TLBP、TLBR、TLBWI、TLBWR | L2TLB_TP_034..037 |
+| Source 类型：INVALL、INVASID、INVVA_ALL、INVVA_ASID | L2TLB_TP_038..041 |
+| Result 类型：single-hit、miss+MB alloc、MB full retry、PTW disabled miss、multi-hit | L2TLB_TP_012..018, L2TLB_TP_020 |
+| Result 类型：PTW page fault、PTW access error、PFU flag fault、PFU PMP/sysmap deny | L2TLB_TP_025, L2TLB_TP_026, L2TLB_TP_031, L2TLB_TP_032, L2TLB_TP_057 |
+| Result 类型：reset、abort、timeout | L2TLB_TP_001, L2TLB_TP_002, L2TLB_TP_043, L2TLB_TP_044, L2TLB_TP_049, L2TLB_TP_051..053 |
+| RRPV/victim/wbuf 边界 | L2TLB_TP_045..047 |
+| Arbiter 阻塞状态：ptw_on、tlboper_on、prefetch_mask | L2TLB_TP_051..053 |
+| Skew/index/bank mask 与 selector | L2TLB_TP_054 |
+| MB 分区 full 与 PTW 乱序 completion | L2TLB_TP_055, L2TLB_TP_056 |
+| PFU 属性 truth table 与 control hazard | L2TLB_TP_057, L2TLB_TP_058 |
+| 非法输入负向测试 | L2TLB_TP_027, L2TLB_TP_048, L2TLB_TP_058 |
+
+## 7. Phase 3 L2TLB SVA Requirement
+
+本章为 Phase 3 补充的 L2TLB SVA 需求清单。前文功能描述、5.13 UVM 策略问答和第 6 章 Phase 2 测试点仍是来源依据；本章只定义 assertion/cover property 需求，不要求本阶段已经编写或绑定 SystemVerilog SVA 文件。
+
+### 7.1 Phase 3 边界
+
+- `must`：影响顶层协议、功能正确性或非法输入约束的 assertion，v1 UVM 实现阶段必须实现或给出 waiver。
+- `debug`：white-box 调试、coverage 或微架构定位增强项，不阻塞 v1 transaction-level 主功能环境成型。
+- `future`：replacement/RRPV exact model 等后续专项验证项，不纳入 v1 必须实现范围。
+- 普通功能随机和 directed sequence 只产生协议合法输入；非法 access type、bad PTW completion ID、credit overflow、多 TLB operation 同时驱动等场景只放入负向 assertion/error-handling tests。
+- 负向测试只检查 assertion 或 error handling 是否触发，不比较未定义功能结果。
+- reset 类 property 需要明确 reset assert 与 reset release 两类采样窗口；普通时序 property 默认使用 `disable iff (!cpurst_b)`。
+
+### 7.2 SVA Requirement 矩阵
+
+| SVA ID | 分类 | 关联测试点/风险 | 检查目标 | 触发条件 | 禁止/要求行为 | 绑定对象 | 采样信号 | reset disable | cover property |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| L2TLB_SVA_001 | must | L2TLB_TP_001, L2TLB_TP_002, L2TLB_TP_043 | reset 清空可观测 L2TLB 活跃状态 | `cpurst_b` assert 或 release 后第一个稳定采样窗口 | ReqQ/MB/PTW/PFU/TLBOP/pipeline valid 不得保留旧 transaction，不得产生伪 request/refill/fault | `ct_mmu_top` 或 `mmu_l2tlb`，必要时经 `mmu_dut_probes_if` 采样 | `l2_reqq_vld_vec`, `l2mb_vld_vec`, `l2tlb_ptw_req`, `ptw_l2tlb_cmplt`, `mmu_lsu_pa2_vld`, TLBOP done/abort 观察点 | reset assert 检查不使用 `disable iff`；release 后使用 `disable iff (!cpurst_b)` | 需要，覆盖 cold reset 与 warm reset |
+| L2TLB_SVA_002 | must | L2TLB_TP_001, L2TLB_TP_002 | reset-inv 完成边界 | reset release 后到 `ifu_cp0_rst_inv_req -> cp0_mmu_tlb_all_inv -> mmu_cp0_tlb_done -> cp0_ifu_rst_inv_done` 完成前 | 不允许普通 IFU/LSU/PFU translation 进入可检查窗口；若进入则按协议违规报错 | `ct_mmu_top` | reset-inv request/done、IFU/LSU VA valid、PFU valid | `disable iff (!cpurst_b)`，release 后生效 | 需要，覆盖 reset-inv wait 与完成后首笔请求 |
+| L2TLB_SVA_003 | must | L2TLB_TP_004, L2TLB_TP_005, L2TLB_TP_048 | L1 到 L2TLB request pulse 宽度 | `i_req_valid` 或 `d_req_valid` 为 1 | 合法请求必须是 1-cycle pulse；持续多拍 valid 属协议违规 | `mmu_l2tlb` 或 `mmu_l2tlb_reqq` | `i_req_valid`, `d_req_valid`, VPN/eid/type | `disable iff (!cpurst_b)` | 可选，覆盖 ITLB/DTLB request pulse |
+| L2TLB_SVA_004 | must | L2TLB_TP_004, L2TLB_TP_005, L2TLB_TP_048 | credit 协议合法性 | L1 request、credit return、entry full/empty 更新 | 无 credit 时不得发新请求；credit counter 不得 overflow/underflow；同拍 request+return 按协议抵消但不得依赖同拍复用未释放 entry | `ct_mmu_top`、`mmu_l2tlb_reqq` 或 credit checker bind | L1 credit count、`i_req_valid`, `d_req_valid`, `i_credit_return`, `d_credit_return`, ReqQ valid/rdy | `disable iff (!cpurst_b)` | 需要，覆盖 return、consume、同拍抵消 |
+| L2TLB_SVA_005 | must | L2TLB_TP_009, L2TLB_TP_010, L2TLB_TP_051..053 | arbiter grant onehot 与阻塞源隔离 | 多 source 请求同拍存在，或 ptw/tlboper/wbuf/prefetch mask active | 每拍最多一个 source 获 grant；被 block 的 source 不得 grant；payload 只来自获 grant source | `mmu_arb` | PTW/TLBOP/ReqQ/PFU request/grant、`arb_l2tlb_req`, `arb_l2tlb_acc_type`, block flags | `disable iff (!cpurst_b)` | 需要，覆盖 pairwise 与 four-source conflict |
+| L2TLB_SVA_006 | debug | L2TLB_TP_010, L2TLB_TP_051, L2TLB_TP_052 | 无阻塞时 arbitration priority 可观测 | PTW、TLBOP、ReqQ、PFU 同拍竞争且无 block 条件 | grant 顺序应满足 `PTW > TLBOP > ReqQ > PFU`；若 RTL 规格确认不同，Phase 6 实现前必须更新本条 waiver/规则 | `mmu_arb` | source request/grant、block flags、selected payload | `disable iff (!cpurst_b)` | 需要，覆盖每组优先级 |
+| L2TLB_SVA_007 | must | L2TLB_TP_004, L2TLB_TP_005, L2TLB_TP_055 | ReqQ source 分区 | ITLB/DTLB alloc 或 issue | ReqQ entry0 只服务 ITLB；entry1..8 只服务 DTLB load/store；issue type/eid 不得串源 | `mmu_l2tlb_reqq` | `i_req_valid`, `d_req_valid`, entry valid/rdy, issue_queue_id, issue_type, issue_eid | `disable iff (!cpurst_b)` | 需要，覆盖 ITLB entry0 与 DTLB entries |
+| L2TLB_SVA_008 | must | L2TLB_TP_007, L2TLB_TP_020 | ReqQ no-overflow 与 feedback ID 合法 | ReqQ full、feedback valid、miss retry/replay | full 时不得覆盖 valid entry；feedback ID 必须命中 outstanding entry；retry 必须保留请求生命周期用于后续 replay | `mmu_l2tlb_reqq` | entry valid/sent/rdy、`fb_valid`, `fb_trans_id`, `fb_miss_retry`, issue signals | `disable iff (!cpurst_b)` | 需要，覆盖 MB full retry 与 release then replay |
+| L2TLB_SVA_009 | must | L2TLB_TP_017, L2TLB_TP_020, L2TLB_TP_055 | MB 分区 full 与 alloc 合法性 | L2 miss 需要 MB alloc | ITLB 只使用 MB entry0；DTLB/PFU 只使用 entry1..8；对应分区 full 时不得 overflow 或覆盖 valid entry | `mmu_l2tlb_mb` | `req_valid`, `req_is_dtlb`, `req_alloc_valid`, MB entry valid/rdy/sent, alloc onehot | `disable iff (!cpurst_b)` | 需要，覆盖 ITLB full、DTLB/PFU full、cross-partition non-blocking |
+| L2TLB_SVA_010 | must | L2TLB_TP_019, L2TLB_TP_022, L2TLB_TP_056 | MB alloc/dealloc 与 payload accounting | 新 miss alloc 与 PTW completion dealloc 同拍或相邻拍 | 不得 double-free、lost-alloc 或错误释放；VPN/type/eid/queue_id 在 alloc、issue、completion 生命周期内保持归属 | `mmu_l2tlb_mb` | MB valid/rdy/sent、entry VPN/type/eid/queue_id、`fb_valid`, `fb_trans_id`, issue req/id/type/vpn | `disable iff (!cpurst_b)` | 需要，覆盖 same-cycle alloc/dealloc 与乱序 completion |
+| L2TLB_SVA_011 | must | L2TLB_TP_023 | PTW request ready backpressure payload 稳定 | `l2tlb_ptw_req=1` 且 `ptw_ready=0` | PTW request 的 id/type/vpn 必须保持稳定直到 ready/fire；ready 后 handshake 只能消费一笔 | `mmu_l2tlb` 或 `mmu_l2tlb_mb` | `l2tlb_ptw_req`, `ptw_ready`, `l2tlb_ptw_id`, `l2tlb_ptw_type`, `l2tlb_ptw_vpn` | `disable iff (!cpurst_b)` | 需要，覆盖 ready stall 与 release |
+| L2TLB_SVA_012 | must | L2TLB_TP_024..027 | PTW completion 结果组合合法 | `ptw_l2tlb_ref_cmplt` 或 completion result bits 变化 | `ref_data_vld/ref_pgflt/ref_acc_err` 在 completion 时必须合法互斥或唯一有效；`cmplt=0` 时三者必须为 0 | `mmu_l2tlb` 或 PTW/L2TLB interface bind | `ptw_l2tlb_ref_cmplt`, `ptw_l2tlb_ref_data_vld`, `ptw_l2tlb_ref_pgflt`, `ptw_l2tlb_ref_acc_err` | `disable iff (!cpurst_b)` | 需要，覆盖 data/page-fault/access-error |
+| L2TLB_SVA_013 | must | L2TLB_TP_027, L2TLB_TP_056 | PTW completion ID/type 匹配 outstanding MB | PTW completion 到达 | completion ID/type 必须匹配 valid outstanding MB entry；bad ID、无 outstanding completion 属负向 assertion 场景，不进入普通功能比较 | `mmu_l2tlb` 与 `mmu_l2tlb_mb` 组合采样，或经 probe checker | `ptw_l2tlb_ref_id`, `ptw_l2tlb_ref_type`, MB valid/sent/type/eid | `disable iff (!cpurst_b)` | 需要，覆盖 out-of-order valid/fault completion |
+| L2TLB_SVA_014 | must | L2TLB_TP_014, L2TLB_TP_016, L2TLB_TP_018 | terminal fault 不得错误 retry | final stage 出现 ReqQ multi-hit，或 ReqQ miss 且 PTW disabled | multi-hit 与 PTW disabled miss 必须释放对应 ReqQ entry 并返回 fault/complete，不得因 MB full 被错误 retry 或卡住 sent entry | `mmu_l2tlb` | `final_vld`, `final_cmp_with_va`, `final_acc_type`, `final_tlb_hit_mult`, `l2tlb_miss`, `cp0_mmu_ptw_en`, `l2tlb_reqq_fb_*` | `disable iff (!cpurst_b)` | 需要，覆盖 multi-hit 和 PTW disabled miss |
+| L2TLB_SVA_015 | must | L2TLB_TP_034..043 | TLBOP lifecycle ordering | TLBP/TLBR/TLBWI/TLBWR/INV* request 发起 | request、grant、pipeline cmplt、source done 必须一一对应；不得 early done、missing done、duplicate done；scan/write 类操作 done 必须在必要 L2 行为后产生 | `ct_mmu_tlboper`、`mmu_l2tlb` 或顶层 probe checker | TLBOP request/grant/cmplt/done、`tlboper_utlb_clr`, `tlboper_utlb_inv_va_req`, `tlboper_ptw_abort`, `mmu_lsu_tlb_inv_done`, `mmu_cp0_tlb_done` | `disable iff (!cpurst_b)` | 需要，覆盖所有 TLBOP type 与 done latency |
+| L2TLB_SVA_016 | must | L2TLB_TP_041, L2TLB_TP_044 | abort 后 stale completion 隔离 | `tlboper_ptw_abort` 影响 valid/sent MB 或 outstanding PTW | abort 前旧 completion 不得写回旧 translation，不得错误释放新上下文 entry；合法 reissue/drain 后 completion 才可归属 | `mmu_l2tlb_mb`、PTW/L2TLB interface 或 probe checker | `tlboper_ptw_abort`, MB valid/sent/id/type/vpn, `ptw_l2tlb_ref_cmplt/id/type`, refill/write/response signals | `disable iff (!cpurst_b)` | 需要，覆盖 sent/unsent MB 与 late completion |
+| L2TLB_SVA_017 | must | L2TLB_TP_058 | SATP/ASID/control hazard 禁止 | SATP、ASID、MMU enable、PTW enable、privilege、SUM/MXR/MPRV/MPP/MAEE 等 control 改写 | control 改写前相关 outstanding translation/PTW 必须已经 drain、flush 或 abort；负向测试只检查 assertion/error handling | `ct_mmu_top` 或 CP0/probe checker | CP0/CSR write strobes、control shadow、ReqQ/MB/PTW outstanding、abort/flush/done | `disable iff (!cpurst_b)` | 需要，覆盖 SATP、ASID、PTW enable、privilege change |
+| L2TLB_SVA_018 | must | L2TLB_TP_048 | no-X 协议防护 | 有效 request、write、completion、response、done beat | valid 时关键 payload/control 不得为 X/Z；非法 X 输入属于协议错误，不进入普通功能结果比较 | `ct_mmu_top`, `mmu_l2tlb`, `mmu_l2tlb_reqq`, `mmu_l2tlb_mb` | IFU/LSU VA、ReqQ payload、arb payload、PTW completion、TLBOP payload、L1/PFU response payload | `disable iff (!cpurst_b)` | 可选，覆盖每类 interface valid |
+| L2TLB_SVA_019 | debug | L2TLB_TP_051 | `ptw_on` 原子 refill 阻塞 | PTW read grant 后到对应 PTW write accepted 前 | `ptw_on` 窗口只允许对应 PTW write 获 grant；非 PTW write source 不得 grant；write accepted 后释放 | `mmu_arb` 或 probe checker | `ptw_on`, PTW read/write grant, `arb_l2tlb_acc_type`, source grants | `disable iff (!cpurst_b)` | 需要，覆盖 ptw_on stall 与 read-to-write sequence |
+| L2TLB_SVA_020 | debug | L2TLB_TP_052 | `tlboper_on` 阻塞 | TLBOP grant 后到 tlb operation done 前 | `tlboper_on` 窗口不得 grant ReqQ/PFU/PTW read；done 后允许恢复其他 source | `mmu_arb` 或 `ct_mmu_tlboper` probe checker | `tlboper_on`, source grants, TLBOP done | `disable iff (!cpurst_b)` | 需要，覆盖 scan done release |
+| L2TLB_SVA_021 | debug | L2TLB_TP_053 | PFU `prefetch_mask` 去重与释放 | MMU-on PFU request 被接受后，`lsu_mmu_va2_vld` 持续保持 | 同一持续 PFU request 不得重复 accept；mask 在 `pa2_vld/pa2_err` 或 MB-full retry 边界释放 | `mmu_l2tlb` 或 `mmu_arb` probe checker | `lsu_mmu_va2_vld`, `prefetch_mask`, PFU grant, `mmu_lsu_pa2_vld`, `mmu_lsu_pa2_err`, `l2tlb_arb_pfu_miss_mb_full` | `disable iff (!cpurst_b)` | 需要，覆盖 hit/error/retry release |
+| L2TLB_SVA_022 | debug | L2TLB_TP_046 | RRPV wbuf no-overflow/no-wrong-grant | hit aging/refill 压力下 wbuf push/pop/full | wbuf 不得 overflow；full 时不得错误 grant 会产生新 RRPV update 的访问；具体 count 水位不作为 v1 transaction scoreboard 条件 | `mmu_l2tlb_rrpv_wbuf` 或 `mmu_l2tlb` | `push_req`, `pop_grant`, `full`, `empty`, internal count if exposed, `l2tlb_arb_rrpv_wbuf_full` | `disable iff (!cpurst_b)` | 需要，覆盖 full stall 与 hit promote pressure |
+| L2TLB_SVA_023 | future | L2TLB_TP_047 | exact victim/free-way/max-RRPV 选择 | TLBWR 或 PTW refill 需要 victim way | 只有建立 cycle-accurate replacement model 后才检查 victim way 是否符合 free-way/max-RRPV/hash/index 规则 | `mmu_l2tlb_replacement_policy` | `entry_vld`, `entry_rrpv`, `mask_way`, `victim_way_out`, `hit/miss/ptw_req` | `disable iff (!cpurst_b)` | future cover，v1 不要求闭合 |
+| L2TLB_SVA_024 | future | L2TLB_TP_045, L2TLB_TP_046, L2TLB_TP_047 | RRPV wbuf latest-wins/merge/same-cycle bypass 精确性 | 同 bank/index push、lookup bypass、pop/drain 交叠 | 只有 future replacement 专项建立 RRPV reference model 后，才检查 latest-wins、merge、same-cycle push bypass、invalid entry RRPV drain 等精确行为 | `mmu_l2tlb_rrpv_wbuf` | `push_req`, `push_idx`, `push_vld`, `push_data`, `lookup_req`, `lookup_idx`, `bypassed_rrpv_rdata`, `sram_*` | `disable iff (!cpurst_b)` | future cover，v1 只保留 debug sampling |
+
+### 7.3 must/debug/future 汇总
+
+| 分类 | SVA ID | v1 处理要求 |
+| --- | --- | --- |
+| must | L2TLB_SVA_001..005, L2TLB_SVA_007..018 | Phase 6 SVA 实现阶段必须实现或逐条给出 waiver。waiver 必须说明替代 checker、不可观测原因或绑定风险。 |
+| debug | L2TLB_SVA_006, L2TLB_SVA_019..022 | 建议优先实现为 white-box assertion/cover property，用于定位仲裁、阻塞、PFU mask 和 RRPV wbuf 问题；不阻塞 v1 transaction-level 主功能成型。 |
+| future | L2TLB_SVA_023, L2TLB_SVA_024 | 留给 replacement/RRPV exact 专项；v1 不因 exact victim、exact RRPV 或 latest-wins 未检查而 fail。 |
+
+### 7.4 非法输入 SVA 使用规则
+
+- 非法 access type、bad PTW completion ID、completion result 非法组合、credit overflow、多个 TLB operation 同时驱动等协议非法输入不进入普通随机或主功能 directed sequence。
+- 负向测试可以定向注入上述非法输入，但 pass/fail 只看对应 `must` assertion 或 error handling 是否触发，不比较 DUT 未定义 payload 或后续功能结果。
+- 对 tag/data 中的非法 page size、invalid tag 携带 nonzero payload、multi-hit 等可通过 backdoor 或 TLBWI directed 构造的状态，按测试点说明检查自然功能结果或 debug coverage，不把协议非法激励混入普通功能流量。
+- 如果 Phase 6 实现时发现某条 `must` SVA 缺少稳定可绑定信号，必须在 Phase 6 progress 中记录 waiver 或先补 probe，再实现 SVA。
+
+## 8. Phase 4 L2TLB Scoreboard / Reference Model 建模要求
+
+本章为 Phase 4 补充 L2TLB scoreboard 和 reference model 的建模边界。输入依据为前文功能描述、5.13 UVM 策略问答、第 6 章 `L2TLB_TP_001..058` 测试点和第 7 章 `L2TLB_SVA_001..024` SVA requirement。本章只定义后续 UVM 实现必须遵守的建模规则，不要求本阶段修改 SystemVerilog/UVM 行为代码。
+
+### 8.1 Phase 4 边界
+
+- v1 scoreboard 采用 transaction-level reference model。pass/fail 以 MMU 顶层可见 translation request/response、PFU response、PTW completion 归属和软件可见 TLB operation 结果为主。
+- ReqQ、miss buffer、lookup pipeline、arbiter block flag、RRPV/write buffer、hash/index/victim 选择不建立 cycle-accurate golden model。它们可以作为 white-box monitor、coverage、debug log 和 SVA 输入。
+- L2 direct hit scoreboard 只检查 tag/data/page size/ASID/global/PA payload 等 L2 功能可见结果，不在 L2 层重复判定 L1 permission fault。
+- fault 或 no-pavld 场景只比较 completion/fault class，不比较 VPN、PPN、flags 等 payload，避免把无效 payload 当成功能 mismatch。
+- PTW miss、PTW completion、L2 refill、L1/PFU 最终响应必须在完整 MMU transaction scoreboard 中归属，不允许只在 `mmu_l2tlb` direct response 端口做局部判断。
+- reset 拉低时清空所有 pending expectation 和寄存器型 shadow；reset-inv 完成后，L2 entry shadow 按 all-invalid 重建。
+- illegal input 只进入负向 assertion/error-handling 测试。普通 scoreboard 不比较协议非法输入导致的未定义功能结果。
+
+### 8.2 v1 Transaction Pass/Fail 范围
+
+| 范围 | 输入事务 | 期望输出 | 不检查项 | 关联测试点/SVA |
+| --- | --- | --- | --- | --- |
+| IFU/LSU L2 direct hit | 顶层 IFU/LSU request，L2 hit 观察点，L2 entry shadow | hit 后返回正确 page size、PPN/PA payload、completion/fault class | L1 permission fault、exact way aging、RRPV update | L2TLB_TP_012, L2TLB_TP_013, L2TLB_SVA_014 |
+| IFU/LSU miss + PTW | L2 miss、MB alloc、PTW request、PTW completion、L1 final response | 原 request owner 最终收到 refill、page fault 或 access error；completion ID/type 归属正确 | PTW latency cycle accuracy、MB exact entry 选择以外的微架构状态 | L2TLB_TP_017..027, L2TLB_TP_056, L2TLB_SVA_009..013 |
+| PFU MMU-off direct | `lsu_mmu_va2_vld`、MMU disabled/control shadow、PMP/sysmap shadow | `pa2_vld/pa2_err/sec/share` 与 direct-map PMP/sysmap/MAEE 规则一致 | L2 tag/data lookup、RRPV、MB | L2TLB_TP_028, L2TLB_TP_057 |
+| PFU MMU-on L2 hit | PFU accepted request、L2 entry shadow、PMP/sysmap shadow | hit path 完成 PFU flag/PMP/sysmap 判定，返回 allow/deny/sec/share | L1 permission model、exact RRPV aging | L2TLB_TP_029..032, L2TLB_TP_053, L2TLB_TP_057 |
+| PFU MMU-on PTW completion | PFU miss、MB/PTW shadow、PTW completion、PMP/sysmap shadow | completion 归属 PFU owner，最终 `pa2_vld/pa2_err` 与 PTW/PMP/sysmap 结果一致 | refill 后二次查表 cycle 行为 | L2TLB_TP_033, L2TLB_TP_056, L2TLB_TP_057 |
+| TLBP/TLBR | CP0/TLBOP request，L2 entry shadow | TLBP hit/miss 与 index/entry 内容可见结果正确；TLBR 读出软件可见字段 | invalid entry 的 stale data 是否为 0，exact scan latency | L2TLB_TP_034, L2TLB_TP_035, L2TLB_SVA_015 |
+| TLBWI/TLBWR | CP0/TLB write request，TLBOP done | L2 entry shadow 被写入或覆盖，后续 lookup/TLBP/TLBR 结果匹配 | TLBWR exact victim/RRPV/free-way 选择 | L2TLB_TP_036, L2TLB_TP_037, L2TLB_TP_047 |
+| INVALL/INVASID/INVVA_ALL/INVVA_ASID | LSU/CP0 invalidate request，TLBOP done | L2 entry shadow 中匹配 entry 失效；后续 lookup/TLBP miss 或 TLBR visible state 符合预期 | RRPV 是否清零、每个 invalid write beat 的 exact timing | L2TLB_TP_038..041, L2TLB_SVA_015, L2TLB_SVA_016 |
+| reset/abort/control hazard | reset、reset-inv、PTW abort、SATP/ASID/control change | pending expectation 清空或被合法 abort；stale completion 不污染新上下文 | reset 内部扫描 exact latency，非法 hazard 后未定义 payload | L2TLB_TP_001, L2TLB_TP_002, L2TLB_TP_043, L2TLB_TP_044, L2TLB_TP_058 |
+| timeout/fairness | ready/backpressure/full/stall 场景 | TB fairness 满足后 DUT eventually complete；否则按分类报错 | 固定最大微架构 latency，外部永久 backpressure 下的 DUT forward progress | L2TLB_TP_049, L2TLB_TP_051..053 |
+
+### 8.3 Reference Model 状态影子
+
+| Shadow | 维护内容 | 输入更新源 | 输出/使用者 | 不检查项 |
+| --- | --- | --- | --- | --- |
+| L2 entry shadow | per entry valid、VPN/tag、ASID、G、PGS、PPN、flags；tag.valid=0 时功能视为 invalid | backdoor directed 初始化、TLBWI、TLBWR、PTW refill、INV*、reset-inv complete | L2 lookup hit/miss、TLBP/TLBR、invalidate 后续检查、direct hit payload 比较 | exact physical SRAM bank/index timing；invalid entry stale data/RRPV |
+| ReqQ shadow | 已接受的 IFU/DTLB request 生命周期、source、VPN、type、eid、queue owner、retry 状态 | IFU/LSU monitor accepted request、credit return、ReqQ feedback、reset/abort | 检查请求未丢失、MB full retry 后可重发、credit/owner 归属 | 每拍 grant priority、ReqQ entry exact age、internal sent/rdy cycle accuracy |
+| Miss buffer shadow | miss owner、source、VPN、type、l1 eid、queue id、PTW composite ID、sent/aborted/dealloc 状态 | L2 miss allocation、PTW request fire、PTW completion、TLBOP abort、reset | PTW completion ID/type 归属、L1/PFU 最终 response 归属、out-of-order completion 检查 | exact entry victim 选择以外的内部时序；sent bit 每拍波形 |
+| PTW transaction shadow | L2 miss 到 PTW request，再到 data/page-fault/access-error completion 的端到端事务 | MB shadow、PTW request/ready、PTW completion、PTW source model 输出 | 生成 L1/PFU final response 期望，区分 data_vld/page fault/access error | PTW 内部 TWU stage cycle accuracy；PDE cache exact replacement |
+| PFU path shadow | PFU accepted request、MMU enable、PTW enable、PMP/sysmap/MAEE、L2 hit/miss/PTW result | PFU monitor、CP0 shadow、PMP/sysmap cfg、L2/PTW observation | MMU-off direct、MMU-on hit、MMU-on PTW completion 三路径 expected response | prefetch_mask 内部实现细节，除去重/释放协议外不做功能比较 |
+| TLBOP shadow | 当前 operation type、VA、ASID、write entry payload、done/abort 状态 | CP0/LSU TLBOP monitor、TLBOP probe、L2 entry shadow update | TLBP/TLBR expected result；TLBWI/TLBWR/INV* 对 L2 shadow 的更新 | scan exact latency；TLBWR exact victim；RRPV update |
+| Control/reset shadow | SATP、ASID、MMU enable、PTW enable、privilege、SUM/MXR/MPRV/MPP/MAEE、reset/reset-inv/abort epoch | CP0 monitor、reset signal、reset-inv done、TLBOP abort | 所有 transaction 的上下文选择、pending clear、stale completion 隔离 | 非法 mid-transaction control change 的功能 payload |
+| Replacement/RRPV debug shadow | optional debug counters：wbuf full/empty、push/pop、victim observed、RRPV bins | `mmu_dut_probes_if`、RRPV SVA/coverage | coverage/debug/no-overflow/no-wrong-grant | exact victim way、exact RRPV value、latest-wins merge 规则 |
+
+### 8.4 L2 Direct Hit 比较规则
+
+- 只有当 request 被 scoreboard 认定为合法 accepted transaction，且 L2 entry shadow 中存在唯一匹配 entry 时，才生成 L2 direct hit 期望。
+- tag 比较使用 VPN、ASID、G 和 page size 规则：G entry 不依赖当前 ASID；non-G entry 必须 ASID 匹配；page size 决定 VPN 低位是否作为 page offset extension。
+- data 比较使用 PPN、PGS 和 flags。PA payload 按 page size 将 entry PPN 与 request VA offset/VPN 低位组合。
+- L2 direct hit 不判定 PTE.V/R/W/X/U/A/D permission fault；这些 fault 归 L1 hit model、PFU hit path 或 PTW/PMP/sysmap 对应 reference model 处理。
+- 若 L2 观察到 multi-hit，scoreboard 只检查外部 fault/completion 编码，内部 coverage 记录 multi-hit source；不比较任意一个 hit way 的 payload。
+- 若 expected 为 miss 但 DUT 返回 hit，或 expected 为 hit 但 DUT miss/返回错误 payload，归类为 transaction mismatch，错误报告必须包含 source、VPN、ASID、G、PGS、expected PPN/flags 和 DUT payload。
+
+### 8.5 Fault / no-pavld Payload Ignore 规则
+
+- `cmplt=1,pavld=0,pgflt=1` 场景只比较 page-fault class，不比较 VPN、PPN、flags 或 sec/share/cache attribute payload。
+- PTW access error、PMP/sysmap deny、PFU flag fault 只比较 fault/deny class 和 owner 归属；payload 字段全部 ignore，除非对应接口规格明确要求 payload 清零。
+- PTW disabled miss 与 multi-hit 对 L1 可表现为同一类 page fault；外部 scoreboard 只比较相同响应编码，white-box coverage 必须区分两类原因。
+- negative assertion test 中 bad completion ID、非法 result bit 组合或 X payload 触发后，不继续做普通功能结果比较。
+
+### 8.6 PFU 三路径建模
+
+- MMU-off direct path：不访问 L2 entry shadow，PA 由 VA direct-map 得到；PFU response 只由 direct-map sysmap、PMP flag、MAEE/control shadow 决定。
+- MMU-on L2 hit path：先用 L2 entry shadow 产生 translation payload，再在 PFU path shadow 中检查 PFU flag fault、PMP/sysmap deny、sec/share/cache attribute。
+- MMU-on PTW completion path：PFU miss 进入 MB/PTW shadow，PTW completion 直接归属原 PFU request；scoreboard 不要求 refill 后再二次 lookup 才生成 PFU response。
+- `prefetch_mask` 相关行为作为 accepted-once/release checker 和 coverage：同一持续 PFU request 不得被重复接受，mask 在 valid/error 或 MB-full retry 边界释放。
+
+### 8.7 PTW Completion 归属规则
+
+- PTW request fire 时，PTW transaction shadow 必须记录 composite ID、source、VPN、type、L1 eid/PFU owner、SATP/ASID/control snapshot。
+- PTW completion 可乱序返回；scoreboard 按 completion ID/type 匹配 outstanding PTW transaction，不按 issue 顺序匹配。
+- data_vld completion 更新 L2 entry shadow，并向原 owner 生成最终 refill/response 期望；page fault 和 access error completion 不更新 L2 valid entry，只生成 fault 期望。
+- abort/reset/control epoch change 后，旧 completion 不得写入当前 L2 shadow，也不得释放或完成新 epoch transaction；若 DUT 明确丢弃旧 completion，scoreboard 同步 retire 或 classify 为 aborted。
+- MB 释放是内部一致性观察点；transaction pass/fail 以原 L1/PFU 最终 response 和 L2 entry shadow 后续可见行为为准。
+
+### 8.8 TLB Operation 对模型的影响
+
+| Operation | L2 shadow 更新/期望 | Scoreboard 检查 | 不检查项 |
+| --- | --- | --- | --- |
+| TLBP | 不修改 L2 entry shadow | 按 VA/ASID/G/page size 规则返回 hit/miss 和可见 index/result | exact scan latency，内部候选 way 顺序 |
+| TLBR | 不修改 L2 entry shadow | 按指定 index/way 或 DUT visible read index 返回软件可见字段；valid=0 时只要求 invalid 语义 | invalid entry stale data 是否清零 |
+| TLBWI | 指定 entry 写入 L2 entry shadow；valid=0 写入视为 invalidate | 后续 lookup/TLBP/TLBR 与写入字段一致 | RRPV 初值、write buffer drain timing |
+| TLBWR | 写入 L2 entry shadow，但 v1 不预测 exact victim；directed test 需要通过 TLBR/lookup 探测或约束可见落点 | 后续 translation 可命中/可失效，TLBR/TLBP visible result 合法 | free-way/max-RRPV/victim exact 规则 |
+| INVALL | 全部 valid entry 置 invalid | 后续所有相关 lookup/TLBP miss；reset-inv 后 all-invalid | 每个 set/way invalid write beat timing |
+| INVASID | non-G 且 ASID 匹配 entry 置 invalid，G entry 保留 | 多 ASID/global directed 后检查保留/失效结果 | L1 内部 flush exact timing |
+| INVVA_ALL | VA 匹配 entry 置 invalid，不区分 ASID；具体按规格定义的 page-size match | VA 相关 lookup/TLBP miss，非匹配 entry 保留 | exact scan order |
+| INVVA_ASID | VA 与 ASID 均匹配的 non-G entry 置 invalid；G entry 按规格保留 | VA+ASID targeted invalidation 结果正确 | RRPV 清零 |
+
+### 8.9 Replacement / RRPV 边界
+
+- v1 不预测 exact victim way、exact RRPV value、RRPV wbuf latest-wins、same-cycle bypass 或 drain 后 SRAM 数值。
+- TLBWR/PTW refill 的功能检查以软件可见结果为准：合法写入或 refill 后对应 translation 应可命中，invalidate 后应失效，TLBR/TLBP 对可见字段符合 shadow。
+- 若 directed test 必须检查某个具体 way，必须使用 backdoor 初始化、TLBR 探测或内部 monitor 先确认落点；不能在没有 replacement model 时把 victim way 作为主功能 fail 条件。
+- RRPV/wbuf 在 v1 只做 no-overflow、full 时 no-wrong-grant、debug coverage 和 future 专项 trace。future 若要升级为强检查，必须先补全 hash/index/RRPV SRAM/wbuf merge/latest-wins reference model。
+
+### 8.10 Timeout / Fairness 分类
+
+- timeout 报错必须区分外部 fairness 和 DUT forward progress。若 PTW ready、LSU/PMP/sysmap response 或其他外部 backpressure 永久不释放，归 TB fairness violation。
+- 当外部 fairness 已满足后，ReqQ retry、MB full release、PTW completion、TLBOP scan done、PFU response 或 wbuf drain 仍不推进，归 DUT forward-progress violation。
+- timeout checker 需要记录 oldest transaction age、source、VPN/type/eid、当前 backpressure 原因、最近一次 grant/completion/abort 事件，避免只输出固定周期超时。
+- 对 reset/abort/control hazard epoch 内的 pending transaction，timeout checker 必须先 retire 或 classify 为 aborted，不得继续等待旧 transaction completion。
+
+### 8.11 不作为 v1 Transaction Scoreboard Pass/Fail 的项目
+
+- exact replacement victim way、free-way 选择、max-RRPV 选择和 exact RRPV 数值。
+- RRPV write buffer latest-wins、same-cycle merge、invalid entry pending update 是否被清除或覆盖。
+- ReqQ、MB、pipeline、arbiter block flag、TLBOP scan 的逐周期状态，除非对应 SVA 或 debug checker 明确要求。
+- hash/index/bank mask 的 exact hard close；v1 至少做 selector/page-size debug coverage，强检查留给后续专项。
+- fault/no-pavld 场景下的 VPN/PPN/flags/sec/share/cache attribute payload。
+- L2 direct hit 层面的 PTE permission fault 判定。
+- illegal protocol input 后的普通功能结果。
+
+### 8.12 与现有 UVM 架构的对齐
+
+- `mmu_ref_model.svh` 已提供 Sv39/PMP/SysMap transaction-level translation model，可作为完整 MMU translation reference 的基础；Phase 6 若扩展 L2 shadow，应避免破坏现有 IFU/LSU/PFU 顶层 compare API。
+- `mmu_translation_sb.svh` 已接入 IFU/LSU/PFU 顶层响应和部分 L2/PTW white-box diagnostic shadow；Phase 6 应在这里或相邻 L2 专用组件中合并 PTW completion 归属和 L2 entry shadow，而不是只增加局部 direct-port checker。
+- `mmu_invalidate_sb.svh` 当前主要计数 invalidate event；Phase 6 需要把 INV* 对 L2 entry shadow 的影响补齐，或把 invalidate event 接入统一 L2 shadow owner。
+- `mmu_dut_probes_if.sv` 已暴露 L2 final、ReqQ、MB、PTW、TLBOP、PFU/PMP/sysmap 等观察点；这些 probe 用于 debug/coverage/SVA 和 root-cause dump，不替代 transaction-level expected/actual 比较。
+- 后续实现如果发现某个 Phase 4 必需输入缺少稳定 monitor transaction，应先在 Phase 6A 补 probe/monitor，再在 Phase 6C 补 scoreboard；不得用不稳定 `$root` 层级引用绕过 monitor 边界。
+
+### 8.13 Phase 4 退出检查摘要
+
+| 检查项 | 状态 |
+| --- | --- |
+| 定义 v1 transaction scoreboard 边界 | 已完成 |
+| 定义 L2 entry、ReqQ、MB、PTW、PFU、TLBOP、control/reset、replacement shadow | 已完成 |
+| 定义 L2 direct hit 比较规则 | 已完成 |
+| 定义 fault/no-pavld payload ignore 规则 | 已完成 |
+| 定义 PFU 三路径建模规则 | 已完成 |
+| 定义 PTW completion 到 L1/PFU 最终响应的事务归属 | 已完成 |
+| 定义 TLB operation 对 reference model 的影响 | 已完成 |
+| 明确 replacement/RRPV 不作为 v1 transaction pass/fail | 已完成 |
+| 明确 timeout/fairness 分类 | 已完成 |
+| 对齐现有 UVM reference model、translation scoreboard、invalidate scoreboard 和 probe interface | 已完成 |

@@ -1,7 +1,7 @@
 ﻿# MMU Verification Plan
 
 > **DUT**：`mmu/rtl/ct_mmu_top.v`（OpenRISCV2030 MMU，Sv39 分页）
-> **文档版本**：v7.2（PMP Agent 验证计划完善：pmp/rtl 精读补丁 + 独立 PMP Agent 子节 + 13 条 F7.NEW.10..22 + 19 条 TC + 10 条 SVA + 7 条 CG + 4 条 PMP 风险）
+> **文档版本**：v7.6-L2TLB-Audit（同步 L2TLB audit package：测试点、SVA requirement、scoreboard/reference model 建模边界）
 > **发布日期**：2026-04-23
 > **模板依据**：[doc/IC验证计划_报告_签核清单.md](IC验证计划_报告_签核清单.md) §1.2 IP 验证计划模板
 > **UVM 环境搭建参考**：[doc/MMU_UVM_搭建计划_v2_代码级.md](MMU_UVM_搭建计划_v2_代码级.md)
@@ -21,6 +21,7 @@
 | v7.3 | 2026-04-23 | Verification Team | **信号归属修订**（对照 `mmu_l1dtlb.sv` / `ct_mmu_regs.v` 精读）：将 `mmu_lsu_tlb_busy` / `mmu_lsu_tlb_wakeup[11:0]` / `mmu_lsu_mmu_en` 三个信号的接口表归属由 row 7（PTW 取 PTE 通道）/ row 13（全局使能）搬至 row 15（L1DTLB 出 LSU 广播通道，扩展）；`mmu_lsu_tlb_busy` 收敛为任意 L1DTLB MB 在途即拉高（`|mb_entry_vld`），`mmu_lsu_tlb_wakeup` 收敛为完成事件广播解挂（`sel_ptw/sel_jtlb/sel_wfi/l1dtlb_expt_for_taken` → `12'hfff`）；`mmu_lsu_mmu_en` 语义归 L1DTLB 域但注明 RTL 驱动源为 `ct_mmu_regs.v#L645` SATP.mode 判定；row 7/13 文本同步裁剪，PTW→LSU 握手注记指向新 row 15。 |
 | v7.4 | 2026-04-25 | Verification Team | **IFU miss-hold + LSU expt lifecycle 补充**：新增 core 场景 IFU miss-hold 协议（miss 期间 PC/取指冻结，不允许新 PC 请求进入 MMU，直到该 miss 请求完成；abort/flush 例外）；新增 LSU 异常 CAM 生命周期验证点（产生→挂起→唤醒→命中回放→消费删除），并补充双口同拍命中 port0 优先消费策略测试；新增对应 sequence/test/coverage/SVA 条目。 |
 | v7.5-L1DTLB-Audit | 2026-05-10 | Phase14 Closure Owner | 同步 L1DTLB audit package：`doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` chapter 3.9 SVA requirement list、chapter 3.10 65 条 required test scenarios、`L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` HPDcache-style Excel testplan、以及 `make l1dtlb_audit_check` / `make l1dtlb_audit_run_cov` 入口。UVM 代码仍以最终稳定分支的 run/cov 结果为签核证据。 |
+| v7.6-L2TLB-Audit | 2026-05-21 | L2TLB Audit Owner | 同步 L2TLB audit package：`doc/l2tlb_uvm_audit/l2tlb_function_description.md` Phase 2 `L2TLB_TP_001..058` 测试点、Phase 3 `L2TLB_SVA_001..024` SVA requirement、Phase 4 scoreboard/reference model 建模边界，以及 `L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` Excel testplan。若旧 F3/F5/TLBOP 条目与 L2TLB audit `.md` 冲突，Phase 6 重写或删除旧条目前以 audit `.md` 为准；本次同步不声明 UVM/RTL 实现已完成。 |
 | v7.2 | 2026-04-23 | Verification Team | **PMP Agent 验证计划完善**（对照 `pmp/rtl/ct_pmp_top.v` / `ct_pmp_regs.v` / `ct_pmp_comp_hit.v` / `ct_pmp_acc.v` 精读；用户澄清：**RTL 为 PMP 旧版本实例化 5 个 `ct_pmp_acc`（x_ct_pmp_acc0..4），spec 目标 8 端口**）：（1）**§2.3 Row 8 修订**：确认 `pmp_mmu_flg[3:0]={L,X,W,R}`（bit[3]=L，ct_pmp_acc.v:L163/L195），pmpcfg2 硬连线 0、pmp8-15 不实现（ct_pmp_regs.v:L512），NA4 未实现（ct_pmp_comp_hit.v:L59 `na4_addr_match=1'b0`），L-bit 复位清 0（ct_pmp_regs.v:L83-L88，偏离 RISC-V 规范）；（2）**F7.1 追加 RTL-Gap-PMP.1 注记**：当前 RTL 仅实例化 5 个 `ct_pmp_acc`，spec 目标 8 端口存在端口缺口；（3）**F7.2 纠错**：`pmp_mmu_flg[3]` 含义由"Reserved"→"L 锁定"，补充 WARL bits[6:5]=0 注记；（4）**§4.2 PMP Agent 独立子节**（§4.2.6）：Driver / Responder / Reference Model / Coverage Matrix / Sequence Library 全要素；（5）**F7.NEW.10..F7.NEW.22 新增 13 条**：TOR 级联 / TOR 零宽 / NAPOT 掩码 / NAPOT 非法 / NA4 未实现 / 优先级 lowest-idx / 默认权限 M=all U=none / flg bit 顺序 / L-lock+TOR 依赖 / L 复位清 / MPRV 端口差异 / pmpcfg2 零 / 5-vs-8 端口并发；（6）**18+1 条 TC**：TC-PMP-TOR-CHAIN-001 / TOR-ZERO-LEN-001 / TOR-LOCK-DEP-001 / NAPOT-ALL-SIZES-001 / NAPOT-ILLEGAL-001 / NA4-UNSUPPORTED-001 / PRIORITY-LOWEST-IDX-001 / DEFAULT-M-ALLOW-001 / DEFAULT-U-DENY-001 / FLG-LXWR-ORDER-001 / L-BIT-LOCK-001 / L-BIT-RESET-CLR-001 / MPRV-PORT2-IMMUNE-001 / MPRV-PORT3-FETCH-MASK-001 / PMPCFG2-ZERO-001 / PMPADDR8-15-NOOP-001 / 5PORT-CONCURRENT-001 / 8PORT-CONCURRENT-001 / CSR-WARL-RSVD-001；（7）**10 条 SVA**：`sva_pmp_flg_bit_layout` / `sva_pmp_priority_lowest_wins` / `sva_pmp_tor_chain` / `sva_pmp_napot_mask_shape` / `sva_pmp_na4_never_hits` / `sva_pmp_l_bit_lock_no_update` / `sva_pmp_m_mode_no_match_allow` / `sva_pmp_u_mode_no_match_deny` / `sva_pmp_mprv_port2_zero` / `sva_pmp_mprv_port3_fetch_mask`；（8）**7 条 CG**：`cg_pmp_addr_mode_per_entry` / `cg_pmp_napot_size` / `cg_pmp_priority_hit_index` / `cg_pmp_priv_perm_matrix` / `cg_pmp_lock_sequence` / `cg_pmp_mprv_scenarios` / `cg_pmp_port_concurrency`；（9）**4 条新风险**：R-NEW.PMP.1（RTL 5 vs 规格 8 端口，高）/ R-NEW.PMP.2（NA4 未实现，中）/ R-NEW.PMP.3（L bit 复位清除偏离规范，中）/ R-NEW.PMP.4（pmpcfg2 硬连线 0，低） |
 
 ---
@@ -557,6 +558,14 @@ Known legacy wording superseded by this import:
 | F3.NEW.3        | `mmu_l2tlb` + `mmu_arb`                        | **`l2tlb_arb_ptw_cmplt` PTW 操作完成通知 Arbiter（v4.0 新增，P1）**                                                                                                                                                                                                                                                                                                                                                                            | PTW 完成页表遍历并将 Refill 数据写回 L2TLB 后，L2TLB 拉高 `l2tlb_arb_ptw_cmplt`（1-bit，单周期脉冲），通知 Arbiter 本次 PTW 触发操作已结束，Arbiter 可释放相关占用资源并允许下一次调度；验证：（1）Refill 写入后次周期脉冲准时出现；（2）脉冲持续正好 1 周期；（3）Arbiter 收到后正确开放下次 PTW 仲裁（源自 L2TLB_Interface.md §3.1）                                                                                                                                                                                                                   | [mmu_l2tlb.sv](mmu/rtl/mmu_l2tlb.sv), [mmu_arb.sv](mmu/rtl/mmu_arb.sv)                                                                                       | P1                                     | TC-L2TLB-PTW-CMPLT-001                                        |
 | F3.NEW.4        | `mmu_l2tlb` / `ptw`                            | **PTW→L2TLB 回填双信号语义：`ptw_l2tlb_ref_cmplt` vs `ptw_l2tlb_ref_data_vld`（v4.0 新增，P0）**                                                                                                                                                                                                                                                                                                                                            | 二者独立语义：`ref_cmplt=1, ref_data_vld=1` = 正常 Refill（写 Tag+Data+RRPV）；`ref_cmplt=1, ref_data_vld=0` = Walk 完成但无有效数据（Page Fault — `ptw_l2tlb_ref_pgflt=1` 或 Access Error — `ptw_l2tlb_ref_acc_err=1`），L2TLB 仅释放 Miss Buffer Entry 不写入 Tag/Data；`ref_cmplt=0, ref_data_vld=1` 非法；需验证四种合法组合及 Page Fault/Access Fault 路径的 MB Entry 正确释放与异常上报（源自 L2TLB_Interface.md §4.2）                                                                                                                  | [mmu_l2tlb_mb.sv](mmu/rtl/mmu_l2tlb_mb.sv), [mmu_l2tlb_mb_entry.sv](mmu/rtl/mmu_l2tlb_mb_entry.sv), [ptw.sv](mmu/rtl/ptw.sv)                                    | P0                                     | TC-PTW-L2REF-NOVALID-001                                      |
 | F3.NEW.5        | `mmu_l2tlb` + `ptw`                            | **`l2tlb_ptw_id` 复合 ID 端到端完整性追踪（v4.0 新增，P0；增强 F3.13）**                                                                                                                                                                                                                                                                                                                                                                       | `l2tlb_ptw_id[L1EID_WIDTH+L2EID_WIDTH-1:0]` 为复合 ID：高位段 = L1 DTLB Miss Buffer Entry ID（L1EID），低位段 = L2TLB Miss Buffer Entry ID（L2EID）；PTW 完成遍历后通过 `ptw_l2tlb_ref_id` 原样返回，L2TLB 用 L2EID 定位本级 Miss Buffer Entry 执行 Refill 写入与释放，再用 L1EID 通知对应 L1DTLB Miss Buffer Entry 触发重查；验证：（1）ID 在请求→遍历→回填全流程不被篡改（不变性断言）；（2）L2EID 正确路由到 L2TLB Miss Buffer；（3）L1EID 正确路由到 L1DTLB Miss Buffer；（4）多并发 Miss 时 ID 不交叉污染（源自 L2TLB_Interface.md §4.1/§4.2） | [mmu_l2tlb.sv](mmu/rtl/mmu_l2tlb.sv), [mmu_l2tlb_mb.sv](mmu/rtl/mmu_l2tlb_mb.sv), [ptw.sv](mmu/rtl/ptw.sv), [mmu_l1dtlb_install.sv](mmu/rtl/mmu_l1dtlb_install.sv) | P0                                     | TC-L2PTW-ID-CHAIN-001, TC-L2PTW-ID-MULTI-MISS-001             |
+
+#### 5.2.1 L2TLB audit import / override (v7.6)
+
+The L2TLB audit package in [doc/l2tlb_uvm_audit/l2tlb_function_description.md](l2tlb_uvm_audit/l2tlb_function_description.md) is imported as the current authority for the Phase 2~4 L2TLB verification scope. It defines `L2TLB_TP_001..058`, `L2TLB_SVA_001..024`, and the transaction-level scoreboard/reference model boundary for ReqQ, arbiter, tag/data/RRPV arrays, lookup pipeline, miss buffer, PFU, PTW refill, TLB operation, reset/abort, timeout/fairness, and illegal-input handling.
+
+If legacy F3/F5/TLBOP rows conflict with this audit package, the audit `.md` takes precedence until Phase 6 rewrites or removes the legacy row. Existing rows are intentionally retained for traceability; wrapper names or historical test names do not close an audit item unless the run proves targeted stimulus, checker, coverage, or an approved waiver for the matching `L2TLB_TP_###`.
+
+Scoreboard implementation must follow the Phase 4 boundary: v1 pass/fail is transaction-level and checks MMU-visible translation, PFU response, PTW completion ownership, and software-visible TLB operation results. Exact victim way, exact RRPV value, RRPV write-buffer latest-wins behavior, per-cycle ReqQ/MB/pipeline/arbiter state, and fault/no-pavld payload values are not v1 transaction scoreboard fail conditions unless a dedicated SVA/debug checker explicitly owns them.
 
 ---
 
@@ -1567,6 +1576,22 @@ The following covergroups are mandatory for closing the L1DTLB audit package. Th
 
 L1DTLB functional coverage target: **100% of the 65 section-3.10 scenarios, 64 audit IDs, and 27 SVA cover properties**, with explicit waiver/issue ID for any legal gap. No uncovered L1DTLB P0/P1 audit item may be hidden under the global `dtlb_cg` percentage.
 
+#### 7.2.2 L2TLB audit coverage import (v7.6)
+
+The following coverage groups are mandatory for closing the L2TLB audit package. They import Phase 2 `L2TLB_TP_001..058` and Phase 4 scoreboard/reference model decisions from [doc/l2tlb_uvm_audit/l2tlb_function_description.md](l2tlb_uvm_audit/l2tlb_function_description.md). These items refine the older generic `l2tlb_reqq_cg`, `l2tlb_bank_cg`, `mbuf_alloc_cg`, `rrpv_wbuf_cg`, `tlb_inv_cg`, and `cg_xbar_select` entries; they are not optional aliases.
+
+| L2TLB covergroup | Sample location | Required bins / crosses | Testpoint source | Closure note |
+| --- | --- | --- | --- | --- |
+| `cg_l2tlb_reset_abort_ctrl` | top monitor + L2TLB/probe bind | cold reset, reset-inv wait/done, PTW abort, TLBOP abort, stale completion after abort/reset, SATP/ASID/control hazard negative class | `L2TLB_TP_001`, `L2TLB_TP_002`, `L2TLB_TP_043`, `L2TLB_TP_044`, `L2TLB_TP_058` | Abort/reset coverage must prove pending transactions are retired or classified before checking new-epoch results. |
+| `cg_l2tlb_reqq_arb_lookup` | ReqQ, arbiter, L2 final response probes | ITLB, DTLB load, DTLB store, PFU, PTW refill, TLBOP source arbitration; one-grant-per-cycle; L2 single-hit, miss, multi-hit, MB-full retry, PTW-disabled miss | `L2TLB_TP_003..019`, `L2TLB_TP_049..053` | Generic wrapper execution is insufficient; each source/result bin needs targeted stimulus and checker evidence. |
+| `cg_l2tlb_entry_payload` | L2 entry shadow + tag/data bind | 4KB/2MB/1GB, ASID match/mismatch, global vs non-global, PA payload composition, fault/no-pavld payload ignore, multi-hit diagnostic | `L2TLB_TP_012..016`, `L2TLB_TP_027`, `L2TLB_TP_048` | Fault/no-pavld bins compare class and owner only, not stale VPN/PPN/flags payload. |
+| `cg_l2tlb_mb_ptw_refill` | MB/PTW monitors + L2 entry shadow | MB alloc, duplicate miss, MB full retry/replay, PTW request fire, data_vld refill, page fault, access error, out-of-order completion ID/type ownership | `L2TLB_TP_017..027`, `L2TLB_TP_056` | Completion ownership must be checked end-to-end to original L1/PFU owner, not only at the L2 direct response port. |
+| `cg_l2tlb_pfu_path` | PFU monitor + PMP/sysmap/control shadow | MMU-off direct path, MMU-on L2 hit, MMU-on PTW completion, PFU flag fault, PMP/sysmap deny, MAEE/sysmap attribute matrix, `prefetch_mask` accept/release | `L2TLB_TP_028..033`, `L2TLB_TP_053`, `L2TLB_TP_057` | PFU path closure requires response class plus attribute/security/share evidence. |
+| `cg_l2tlb_tlbop` | CP0/LSU TLBOP monitor + L2 shadow | TLBP, TLBR, TLBWI, TLBWR, INVALL, INVASID, INVVA_ALL, INVVA_ASID; global entry behavior; targeted VA/ASID/page-size invalidate | `L2TLB_TP_034..041`, `L2TLB_TP_047` | TLBWR exact victim is not a v1 fail condition unless directed setup first proves the visible landing entry. |
+| `cg_l2tlb_replacement_debug` | RRPV/replacement/wbuf bind | hit promote, miss aging, wbuf push/pop/full, no-overflow, no-wrong-grant, victim observed bins, exact RRPV/victim future trace | `L2TLB_TP_045..047` | Exact victim, exact RRPV, and latest-wins merge are debug/future coverage unless a future replacement model is approved. |
+
+L2TLB functional coverage target: **100% of the 58 Phase 2 testpoints and all implemented `L2TLB_SVA_###` cover properties**, with an explicit waiver or issue ID for any legal gap. No uncovered L2TLB P0/P1 audit item may be hidden under a generic L2TLB wrapper or legacy covergroup percentage.
+
 功能覆盖率目标：**100%**（未覆盖点必须评审豁免）。
 
 ### 7.3 断言覆盖率（SVA 清单）
@@ -1607,6 +1632,26 @@ L1DTLB assertion closure gates:
 2. All `L1DTLB_SVA_C001..C027` cover properties must either hit in `l1dtlb_audit_run_cov` or carry an explicit waiver/issue ID.
 3. SVA cannot replace scoreboard checks for architecturally visible PA/attribute/fault results; PLRU exact victim and internal replacement shape remain whitebox-only checks.
 4. Legal no-response scenarios must be classified before missing-response assertions fire, especially MB CAM hit, MB full drop, abort side-effect suppression, and RTU flush kill.
+
+#### 7.3.2 L2TLB SVA import (v7.6)
+
+Section 7 of [doc/l2tlb_uvm_audit/l2tlb_function_description.md](l2tlb_uvm_audit/l2tlb_function_description.md) is imported as the required SVA intent for `mmu_l2tlb_sva.sv`, `mmu_l2tlb_rrpv_sva.sv`, `mmu_arb_sva.sv`, TLBOP-related binds, and related top/probe checkers. The imported matrix contains 24 requirement rows (`L2TLB_SVA_001..024`) classified as `must`, `debug`, and `future`.
+
+| Bind scope | Imported SVA intent | Representative SVA IDs | Coverage tie-in |
+| --- | --- | --- | --- |
+| `ct_mmu_top` / reset-control probes | reset clean state, reset-inv window, abort stale completion, SATP/ASID/control hazard, no-X on legal outputs | `L2TLB_SVA_001`, `L2TLB_SVA_002`, `L2TLB_SVA_016..018` | `cg_l2tlb_reset_abort_ctrl` |
+| `mmu_arb` / L2 arbitration path | onehot grant, legal source selection, PTW/TLBOP/ReqQ/PFU ordering diagnostics, no wrong grant under backpressure | `L2TLB_SVA_003..006`, `L2TLB_SVA_019` | `cg_l2tlb_reqq_arb_lookup` |
+| ReqQ and miss buffer | ReqQ/MB overflow prevention, MB allocation/retry legality, PTW ID ownership, stale completion filtering | `L2TLB_SVA_007..013` | `cg_l2tlb_mb_ptw_refill` |
+| L2 lookup and TLBOP | single-hit/multi-hit/fault class handling, TLBOP done ordering, invalidate/write side-effect legality | `L2TLB_SVA_014`, `L2TLB_SVA_015`, `L2TLB_SVA_020` | `cg_l2tlb_entry_payload`, `cg_l2tlb_tlbop` |
+| PFU path | accepted-once PFU request, `prefetch_mask` release, response ownership across hit/error/retry | `L2TLB_SVA_021` | `cg_l2tlb_pfu_path` |
+| RRPV/replacement debug binds | wbuf no-overflow/no-wrong-grant, exact victim future, latest-wins/merge future | `L2TLB_SVA_022..024` | `cg_l2tlb_replacement_debug` |
+
+L2TLB assertion closure gates:
+
+1. All `must` rows (`L2TLB_SVA_001..005`, `L2TLB_SVA_007..018`) must be implemented in Phase 6 or carry an explicit waiver explaining alternate checker coverage, observability limits, or binding risk.
+2. `debug` rows (`L2TLB_SVA_006`, `L2TLB_SVA_019..022`) should be implemented as white-box assertions or cover properties where stable probes exist; unimplemented debug rows must not be counted as transaction scoreboard pass/fail gaps.
+3. `future` rows (`L2TLB_SVA_023`, `L2TLB_SVA_024`) remain outside v1 closure until a replacement/RRPV exact reference model is approved.
+4. Negative illegal-input tests close through assertion/error-handling behavior only; ordinary functional scoreboard comparison must not continue after bad ID, illegal result combination, or protocol-illegal stimulus.
 
 断言覆盖率：**100% 被触发**（未触发需分析）。
 
@@ -1799,5 +1844,31 @@ scoreboard observability boundaries.
 The chapter 3.9 SVA matrix is a requirement list. Individual SVA implementation
 and binding status must be reviewed against the current UVM/testbench branch
 before being treated as signoff evidence.
+
+## Appendix F: L2TLB Audit Synchronization
+
+This appendix records the L2TLB audit package that extends the F3 L2TLB/JTLB
+verification scope without rewriting the legacy F3/F5/TLBOP rows in this
+document.
+
+| Artifact | Path | Verification use |
+| --- | --- | --- |
+| L2TLB golden input | `doc/l2tlb_uvm_audit/l2tlb_function_description.txt` | Read-only source captured before audit edits; do not update during Phase 5 |
+| L2TLB functional/audit specification | `doc/l2tlb_uvm_audit/l2tlb_function_description.md` | Authority for Phase 2 `L2TLB_TP_001..058`, Phase 3 `L2TLB_SVA_001..024`, and Phase 4 scoreboard/reference model boundaries |
+| L2TLB Excel testplan | `doc/l2tlb_uvm_audit/L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` | Review artifact aligned one-to-one with `L2TLB_TP_001..058` |
+| L2TLB audit implementation plan | `doc/l2tlb_uvm_audit/L2TLB_UVM_Audit_ImplementationPlan.md` | Phase plan for document audit, main-plan sync, and later UVM implementation |
+| L2TLB audit progress | `doc/l2tlb_uvm_audit/progress.md` | Current completion state for Phase 0~7 and Phase 6 entry guard |
+| Phase 6 build plan entry | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_BuildPlan.md` | To be created when Phase 6 starts; not created by Phase 5 |
+| Phase 6 progress entry | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_Progress.md` | To be created when Phase 6 starts; not created by Phase 5 |
+
+The 58 L2TLB testpoint rows cover reset, ReqQ, arbitration, tag/data/page-size
+lookup, miss buffer and PTW refill, PFU paths, TLB operations, RRPV/replacement
+debug scope, abort, timeout/fairness, and illegal-input negative checks.
+
+The 24 L2TLB SVA rows are requirement intents. Individual SVA implementation,
+binding status, run logs, coverage hits, and waivers must be reviewed in Phase 6
+before being treated as signoff evidence. This Phase 5 synchronization does not
+claim that UVM monitor, scoreboard, SVA, tests, coverage, RTL, or Makefile
+changes have been implemented.
 
 *END OF DOCUMENT*

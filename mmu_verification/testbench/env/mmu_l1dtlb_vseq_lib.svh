@@ -44,6 +44,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   mmu_env        m_env_h;
   virtual lsu_if m_lsu_vif;
+  virtual misc_if m_misc_vif;
   virtual mmu_dut_probes_if m_probe_vif;
   bit            m_terminal_timeout_seen;
 
@@ -366,6 +367,68 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(8);
   endtask
 
+  protected task wait_l1d_mb_valid(string ctx, int unsigned max_cycles = 1024);
+    bit seen;
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for MB valid"})
+      wait_lsu_cycles(8);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_mb_vld != 8'h00)
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for L1DTLB MB valid"})
+        seen = 1'b1;
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task wait_l1d_mb_vpn(
+    string ctx,
+    va_t va,
+    int unsigned max_cycles = 1024
+  );
+    bit seen;
+    logic [26:0] vpn;
+    seen = 1'b0;
+    vpn = va[38:12];
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for MB VPN"})
+      wait_lsu_cycles(8);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          for (int i = 0; i < 8; i++) begin
+            if (m_probe_vif.mon_cb.l1d_mb_vld[i]
+                && (m_probe_vif.mon_cb.l1d_mb_vpn[i] == vpn))
+              seen = 1'b1;
+          end
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for L1DTLB MB VPN 0x%07h", ctx, vpn))
+        seen = 1'b1;
+      end
+    join_any
+    disable fork;
+  endtask
+
   protected task wait_pipe0_terminal(
     string ctx,
     bit expect_success,
@@ -380,6 +443,20 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
     seen = 1'b0;
     success = 1'b0;
+    pa_vld       = m_lsu_vif.monitor_cb.mmu_lsu_pa0_vld;
+    page_fault   = m_lsu_vif.monitor_cb.mmu_lsu_page_fault0;
+    access_fault = m_lsu_vif.monitor_cb.mmu_lsu_access_fault0;
+    if (pa_vld || page_fault) begin
+      seen = 1'b1;
+      success = pa_vld && !page_fault && !access_fault;
+      if (expect_success && !success) begin
+        `uvm_error(get_type_name(),
+          $sformatf("%s: expected successful pipe0 terminal response, got pa_vld=%0b page_fault=%0b access_fault=%0b",
+            ctx, pa_vld, page_fault, access_fault))
+      end
+      return;
+    end
+
     for (int unsigned i = 0; i < max_cycles; i++) begin
       @(m_lsu_vif.monitor_cb);
       pa_vld       = m_lsu_vif.monitor_cb.mmu_lsu_pa0_vld;
@@ -844,6 +921,18 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(4);
   endtask
 
+  protected task raw_rtu_flush();
+    if (m_misc_vif == null) begin
+      send_rtu_flush();
+      return;
+    end
+    @(m_misc_vif.driver_cb);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+    @(m_misc_vif.driver_cb);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+    wait_lsu_cycles(4);
+  endtask
+
   protected task scenario_smoke_p0();
     do_bringup(32, 39'h10_0000);
     fill_page(0, 1'b0, 1'b0);
@@ -870,9 +959,13 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   protected task scenario_hit_miss();
     do_bringup(48, 39'h10_0000);
     fill_page(0);
+    configure_ptw_delay(48, 96);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_hit_miss_prefill", 262144, 8);
     raw_pipe01(va_page(0), va_page(16), 7'd8, 7'd9, 1'b0, 1'b0);
-    wait_lsu_cycles(40);
+    wait_l1d_mb_vpn("l1dtlb_hit_miss_mb_cam_wait", va_page(16), 256);
+    raw_pipe1(va_page(16), 7'd10, 1'b0);
+    wait_lsu_cycles(120);
+    configure_ptw_delay(1, 4);
   endtask
 
   protected task scenario_dual_miss_same();
@@ -1017,10 +1110,10 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       wait_lsu_cycles(24);
       set_pmp_allow_all();
     end else if (tc_id == "DTLB_FAULT_OVERLAP_PIPE_001") begin
+      fill_page(44);
       map_special_page(45, 1'b0, 1'b0, 1'b0, 1'b1, 1'b1, 1'b0);
       raw_pipe0(va_page(45), 7'd18);
       wait_l1d_expt_write("l1dtlb_fault_overlap_pf_entry");
-      fill_page(44);
       set_pmp_deny_rw();
       raw_pipe0_back_to_back(va_page(44), 7'd17, 1'b0, va_page(45), 7'd18, 1'b0);
       wait_lsu_cycles(48);
@@ -1310,12 +1403,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     do_bringup(96, 39'h10_0000);
     configure_ptw_delay(48, 96);
     raw_pipe0(va_page(50), 7'd4);
-    wait_lsu_cycles(2);
-    send_rtu_flush();
+    wait_l1d_mb_valid("l1dtlb_flush_race_p0_mb_valid", 256);
+    raw_rtu_flush();
     wait_lsu_cycles(120);
     raw_pipe01(va_page(51), va_page(52), 7'd5, 7'd6);
-    wait_lsu_cycles(2);
-    send_rtu_flush();
+    wait_l1d_mb_valid("l1dtlb_flush_race_dual_mb_valid", 256);
+    raw_rtu_flush();
     wait_lsu_cycles(160);
     configure_ptw_delay(1, 4);
   endtask
@@ -1384,6 +1477,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     bit decoded_shell;
     m_env_h = get_env();
     m_lsu_vif = m_env_h.m_lsu.vif;
+    m_misc_vif = m_env_h.m_misc.vif;
     m_terminal_timeout_seen = 1'b0;
     if (m_lsu_vif == null)
       `uvm_fatal(get_type_name(), "LSU VIF is null")

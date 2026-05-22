@@ -89,6 +89,14 @@ class mmu_translation_sb extends uvm_scoreboard;
   int unsigned m_lsu_satp_midwalk_waive_rsp;
   int unsigned m_ifu_accerr_waive_rsp;
   int unsigned m_ifu_refpgflt_waive_rsp;
+  int unsigned m_lsu_phase6b_expt_classified_rsp;
+  int unsigned m_lsu_phase6b_expt_timing_classified_rsp;
+  int unsigned m_lsu_phase6b_expt_orphan_rsp;
+  int unsigned m_lsu_phase6b_pmp_t1_classified_rsp;
+  int unsigned m_lsu_phase6b_satp_midwalk_classified_rsp;
+  int unsigned m_lsu_phase6b_stamo_classified_rsp;
+  int unsigned m_lsu_phase6b_direct_map_classified_rsp;
+  int unsigned m_lsu_phase6b_remaining_broad_waive_rsp;
   bit          m_allow_satp_midwalk_old_accept;
 
   localparam int DTLB_EXPT_CAM_DEPTH = 8;
@@ -192,6 +200,14 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_lsu_satp_midwalk_waive_rsp = 0;
     m_ifu_accerr_waive_rsp = 0;
     m_ifu_refpgflt_waive_rsp = 0;
+    m_lsu_phase6b_expt_classified_rsp = 0;
+    m_lsu_phase6b_expt_timing_classified_rsp = 0;
+    m_lsu_phase6b_expt_orphan_rsp = 0;
+    m_lsu_phase6b_pmp_t1_classified_rsp = 0;
+    m_lsu_phase6b_satp_midwalk_classified_rsp = 0;
+    m_lsu_phase6b_stamo_classified_rsp = 0;
+    m_lsu_phase6b_direct_map_classified_rsp = 0;
+    m_lsu_phase6b_remaining_broad_waive_rsp = 0;
     m_allow_satp_midwalk_old_accept = 1'b0;
     m_last_l2_ref_valid = 1'b0;
     m_last_l2_ref_pavld = 1'b0;
@@ -781,6 +797,35 @@ class mmu_translation_sb extends uvm_scoreboard;
     return ref_rsp;
   endfunction
 
+  protected function string _lsu_pipe_label(input string channel);
+    if (channel == "LSU_P1")
+      return "pipe=1";
+    if (channel == "LSU_P0")
+      return "pipe=0";
+    return "pipe=-1";
+  endfunction
+
+  protected function void _phase6b_log_classification(
+    input string        channel,
+    input string        cls,
+    input va_t          va,
+    input bit [27:0]    req_vpn,
+    input bit [6:0]     iid,
+    input xlation_rsp_t ref_rsp,
+    input bit [27:0]    dut_pa,
+    input bit           dut_fault,
+    input bit           tr_pgflt,
+    input bit           tr_access_fault,
+    input string        extra = ""
+  );
+    `uvm_info(get_type_name(),
+      $sformatf("[%s] PHASE6B_TRANSLATION_CLASS class=%s cycle=%0d %s iid=%0d VA=0x%010h vpn=0x%07h ref.exc=%s ref.deny=%0b ref.ppn=0x%07h dut.pa=0x%07h dut_fault=%0b dut.pgflt=%0b dut.acflt=%0b %s",
+        channel, cls, m_probe_cycle, _lsu_pipe_label(channel), iid, {1'b0, va},
+        req_vpn[26:0], ref_rsp.exc.name(), ref_rsp.deny, ref_rsp.ppn,
+        dut_pa, dut_fault, tr_pgflt, tr_access_fault, extra),
+      UVM_MEDIUM)
+  endfunction
+
   // =========================================================================
   // write_ifu — IFU fetch translation check
   //   Access type: ACC_FETCH
@@ -881,6 +926,11 @@ class mmu_translation_sb extends uvm_scoreboard;
       `uvm_error(get_type_name(),
         $sformatf("[LSU_P1] STAMO vld: expected dut.pa=lsu_mmu_stamo_pa, got pa=0x%07h stamo=0x%07h (VA=0x%010h)",
           tr.pa, tr.stamo_pa_at_rsp, {1'b0, va}))
+    end else if (tr.stamo_vld_at_rsp) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[LSU_P1] PHASE6B_TRANSLATION_CLASS class=stamo_pipe1_bypass trigger=monitor_rsp iid=%0d VA=0x%010h dut.pa=0x%07h stamo_pa=0x%07h",
+          tr.id, {1'b0, va}, tr.pa, tr.stamo_pa_at_rsp),
+        UVM_MEDIUM)
     end
 
     _compare(.channel("LSU_P1"), .va(va), .ref_rsp(ref_rsp),
@@ -971,12 +1021,31 @@ class mmu_translation_sb extends uvm_scoreboard;
   // =========================================================================
   virtual function void report_phase(uvm_phase phase);
     `uvm_info(get_type_name(),
-      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d lsu_expt_replay_rsp=%0d lsu_expt_replay_timing_waive_rsp=%0d lsu_expt_replay_orphan_rsp=%0d lsu_pmp_t1_waive_rsp=%0d lsu_satp_midwalk_waive_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d",
+      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d lsu_expt_replay_rsp=%0d lsu_expt_replay_timing_waive_rsp=%0d lsu_expt_replay_orphan_rsp=%0d lsu_pmp_t1_waive_rsp=%0d lsu_satp_midwalk_waive_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d p6b_expt=%0d p6b_expt_timing=%0d p6b_expt_orphan=%0d p6b_pmp_t1=%0d p6b_satp_midwalk=%0d p6b_stamo=%0d p6b_direct=%0d p6b_remaining_broad=%0d",
         m_total_checked, m_mismatch, m_lsu_fault_replay_rsp, m_lsu_replay_mismatch,
         m_lsu_replay_waive_rsp, m_lsu_expt_replay_rsp,
         m_lsu_expt_replay_timing_waive_rsp, m_lsu_expt_replay_orphan_rsp,
         m_lsu_pmp_t1_waive_rsp, m_lsu_satp_midwalk_waive_rsp,
-        m_ifu_accerr_waive_rsp, m_ifu_refpgflt_waive_rsp),
+        m_ifu_accerr_waive_rsp, m_ifu_refpgflt_waive_rsp,
+        m_lsu_phase6b_expt_classified_rsp,
+        m_lsu_phase6b_expt_timing_classified_rsp,
+        m_lsu_phase6b_expt_orphan_rsp,
+        m_lsu_phase6b_pmp_t1_classified_rsp,
+        m_lsu_phase6b_satp_midwalk_classified_rsp,
+        m_lsu_phase6b_stamo_classified_rsp,
+        m_lsu_phase6b_direct_map_classified_rsp,
+        m_lsu_phase6b_remaining_broad_waive_rsp),
+      UVM_NONE)
+    `uvm_info({get_type_name(), "::PHASE6B_TRANSLATION_TAXONOMY"},
+      $sformatf("status=implemented lsu_expt=%0d lsu_expt_timing=%0d lsu_expt_orphan=%0d lsu_pmp_t1=%0d lsu_satp_midwalk=%0d lsu_stamo=%0d lsu_direct=%0d remaining_broad_waive=%0d diagnostics='cycle,pipe,iid,va,vpn,reason,source,ref,dut'",
+        m_lsu_phase6b_expt_classified_rsp,
+        m_lsu_phase6b_expt_timing_classified_rsp,
+        m_lsu_phase6b_expt_orphan_rsp,
+        m_lsu_phase6b_pmp_t1_classified_rsp,
+        m_lsu_phase6b_satp_midwalk_classified_rsp,
+        m_lsu_phase6b_stamo_classified_rsp,
+        m_lsu_phase6b_direct_map_classified_rsp,
+        m_lsu_phase6b_remaining_broad_waive_rsp),
       UVM_NONE)
     if (m_mismatch > 0)
       `uvm_error(get_type_name(),
@@ -1032,6 +1101,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit lsu_expt_orphan;
     bit lsu_pmp_t1_waive;
     bit lsu_satp_midwalk_waive;
+    bit lsu_direct_map_class;
+    bit lsu_stamo_class;
     ptw_req_shadow_entry_t lsu_satp_midwalk_req_ent;
     longint unsigned lsu_satp_midwalk_refill_age;
     longint unsigned lsu_satp_midwalk_satp_age;
@@ -1130,34 +1201,90 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     skip_lsu_dtlb_ref_compare = lsu_expt_replay_rsp;
 
+    lsu_direct_map_class = dbg_valid
+      && !tr_mmu_en
+      && !skip_ref_ppn_check;
+
+    lsu_stamo_class = dbg_valid
+      && skip_ref_ppn_check
+      && (channel == "LSU_P1");
+
     lsu_satp_midwalk_waive = _lsu_satp_midwalk_old_refill_waive(
       channel, ref_rsp, exp_fault, dut_fault, req_vpn[26:0], lsu_iid, dut_pa,
       tr_mmu_en, skip_ref_ppn_check, skip_lsu_dtlb_ref_compare,
       lsu_satp_midwalk_req_ent,
       lsu_satp_midwalk_refill_age, lsu_satp_midwalk_satp_age);
 
-    if (lsu_expt_replay_rsp)
+    if (lsu_expt_replay_rsp) begin
       m_lsu_expt_replay_rsp++;
+      m_lsu_phase6b_expt_classified_rsp++;
+      _phase6b_log_classification(channel, "expt_replay", va, req_vpn,
+        lsu_iid, ref_rsp, dut_pa, dut_fault, tr_pgflt, tr_access_fault,
+        $sformatf("shadow_hit=%0b cur_wr_hit=%0b shadow_pgflt=%0b shadow_acflt=%0b eid=%0d expt_match=%0b vpn_bypass=%0b",
+          lsu_expt_cam_hit, lsu_expt_cur_wr_hit, lsu_expt_cam_ent.pgflt,
+          lsu_expt_cam_ent.acflt, lsu_expt_cam_ent.eid, dtlb_expt_match,
+          lsu_req_vpn_bypass_sig));
+    end
 
     if (skip_lsu_dtlb_ref_compare)
       m_lsu_replay_waive_rsp++;
 
-    if (lsu_expt_timing_waive)
+    if (lsu_expt_timing_waive) begin
       m_lsu_expt_replay_timing_waive_rsp++;
+      m_lsu_phase6b_expt_timing_classified_rsp++;
+      _phase6b_log_classification(channel, "expt_timing_boundary", va, req_vpn,
+        lsu_iid, ref_rsp, dut_pa, dut_fault, tr_pgflt, tr_access_fault,
+        "pre_sel/vpn-bypass response precedes aligned fault class");
+    end
 
-    if (lsu_satp_midwalk_waive)
+    if (lsu_satp_midwalk_waive) begin
       m_lsu_satp_midwalk_waive_rsp++;
+      m_lsu_phase6b_satp_midwalk_classified_rsp++;
+      _phase6b_log_classification(channel, "satp_midwalk_old_refill", va, req_vpn,
+        lsu_iid, ref_rsp, dut_pa, dut_fault, tr_pgflt, tr_access_fault,
+        $sformatf("refill_age_cycles=%0d satp_age_cycles=%0d old_satp_ppn=0x%07h new_satp_ppn=0x%07h old_asid=0x%04h new_asid=0x%04h",
+          lsu_satp_midwalk_refill_age, lsu_satp_midwalk_satp_age,
+          m_prev_satp_ppn, m_cur_satp_ppn, m_prev_satp_asid, m_cur_satp_asid));
+    end
+
+    if (lsu_pmp_t1_waive) begin
+      m_lsu_phase6b_pmp_t1_classified_rsp++;
+      _phase6b_log_classification(channel, "pmp_t1_access_fault_owned_by_l1dtlb_sb",
+        va, req_vpn, lsu_iid, ref_rsp, dut_pa, dut_fault,
+        tr_pgflt, tr_access_fault,
+        "translation SB skips only T0 fault mismatch; Phase6B token queue owns previous-T1 access_fault");
+    end
+
+    if (lsu_direct_map_class) begin
+      m_lsu_phase6b_direct_map_classified_rsp++;
+      _phase6b_log_classification(channel, "direct_map", va, req_vpn,
+        lsu_iid, ref_rsp, dut_pa, dut_fault, tr_pgflt, tr_access_fault,
+        "mmu_lsu_mmu_en=0");
+    end
+
+    if (lsu_stamo_class) begin
+      m_lsu_phase6b_stamo_classified_rsp++;
+      _phase6b_log_classification(channel, "stamo_pipe1_bypass", va, req_vpn,
+        lsu_iid, ref_rsp, dut_pa, dut_fault, tr_pgflt, tr_access_fault,
+        "pipe1 PA sourced from LSU STAMO path");
+    end
+
+    if (skip_lsu_dtlb_ref_compare && lsu_expt_orphan)
+      m_lsu_phase6b_remaining_broad_waive_rsp++;
 
     if (lsu_expt_replay_rsp && lsu_expt_cam_hit && !lsu_expt_cur_wr_hit && dtlb_expt_match)
       _dtlb_expt_cam_clear_match(lsu_iid, req_vpn[26:0]);
 
     if (lsu_expt_orphan) begin
       m_lsu_expt_replay_orphan_rsp++;
+      m_lsu_phase6b_expt_orphan_rsp++;
       `uvm_warning(get_type_name(),
-        $sformatf("[%s][EXPT_REPLAY_ORPHAN] iid=%0d vpn=0x%07h VA=0x%010h expt_match=%0b req_vpn_pa=%0b pre_sel_probe=%0b dut_fault=%0b dut.pa=0x%07h ref.exc=%s ref.deny=%0b",
-          channel, lsu_iid, req_vpn[26:0], {1'b0, va}, dtlb_expt_match,
+        $sformatf("[%s][PHASE6B_EXPT_REPLAY_ORPHAN] class=expt_orphan cycle=%0d %s iid=%0d vpn=0x%07h VA=0x%010h expt_match=%0b req_vpn_pa=%0b pre_sel_probe=%0b dut_fault=%0b dut.pa=0x%07h ref.exc=%s ref.deny=%0b remaining_broad_waive=%0d",
+          channel, m_probe_cycle, _lsu_pipe_label(channel), lsu_iid,
+          req_vpn[26:0], {1'b0, va}, dtlb_expt_match,
           lsu_req_vpn_bypass_sig, lsu_pre_sel_probe_sig, dut_fault, dut_pa,
-          ref_rsp.exc.name(), ref_rsp.deny))
+          ref_rsp.exc.name(), ref_rsp.deny,
+          m_lsu_phase6b_remaining_broad_waive_rsp))
     end
 
     // IFU access-fault can surface in two observable forms:
@@ -1278,7 +1405,7 @@ class mmu_translation_sb extends uvm_scoreboard;
     end else begin
       if (skip_lsu_dtlb_ref_compare) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] VA=0x%010h iid=%0d  DTLB expt replay/pre_sel path: compare waived  ref.exc=%s  shadow_hit=%0b cur_wr_hit=%0b pgflt=%0b acflt=%0b eid=%0d timing_waive=%0b orphan=%0b expt_match=%0b vpn_bypass=%0b dut.pgflt=%0b dut.acflt=%0b dut.pa=0x%07h req_vpn=0x%07h",
+          $sformatf("[%s] PHASE6B_TRANSLATION_CLASS class=expt_replay compare=classified_skip VA=0x%010h iid=%0d ref.exc=%s shadow_hit=%0b cur_wr_hit=%0b pgflt=%0b acflt=%0b eid=%0d timing_boundary=%0b orphan=%0b expt_match=%0b vpn_bypass=%0b dut.pgflt=%0b dut.acflt=%0b dut.pa=0x%07h req_vpn=0x%07h",
             channel, {1'b0, va}, lsu_iid, ref_rsp.exc.name(),
             lsu_expt_cam_hit, lsu_expt_cur_wr_hit, lsu_expt_cam_ent.pgflt, lsu_expt_cam_ent.acflt,
             lsu_expt_cam_ent.eid, lsu_expt_timing_waive, lsu_expt_orphan,
@@ -1287,12 +1414,12 @@ class mmu_translation_sb extends uvm_scoreboard;
           UVM_HIGH)
       end else if (lsu_pmp_t1_waive) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] VA=0x%010h  LSU PMP deny is checked as T1 access_fault by L1DTLB spec SB; T0 PA response fault mismatch waived  ref.exc=%s ref.deny=%0b dut.pgflt=%0b dut.acflt=%0b",
+          $sformatf("[%s] PHASE6B_TRANSLATION_CLASS class=pmp_t1_access_fault_owned_by_l1dtlb_sb compare=classified_skip VA=0x%010h ref.exc=%s ref.deny=%0b dut.pgflt=%0b dut.acflt=%0b",
             channel, {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, tr_pgflt, tr_access_fault),
           UVM_HIGH)
       end else if (lsu_satp_midwalk_waive) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] PTW_TRANSLATION_SB_WAIVE class=satp_midwalk_old_refill VA=0x%010h iid=%0d req_vpn=0x%07h ref.exc=%s ref.deny=%0b dut.pa=0x%07h ptw_ref_ppn=0x%07h refill_age_cycles=%0d satp_age_cycles=%0d old_satp_ppn=0x%07h new_satp_ppn=0x%07h old_asid=0x%04h new_asid=0x%04h",
+          $sformatf("[%s] PHASE6B_TRANSLATION_CLASS class=satp_midwalk_old_refill compare=classified_skip VA=0x%010h iid=%0d req_vpn=0x%07h ref.exc=%s ref.deny=%0b dut.pa=0x%07h ptw_ref_ppn=0x%07h refill_age_cycles=%0d satp_age_cycles=%0d old_satp_ppn=0x%07h new_satp_ppn=0x%07h old_asid=0x%04h new_asid=0x%04h",
             channel, {1'b0, va}, lsu_iid, req_vpn[26:0], ref_rsp.exc.name(),
             ref_rsp.deny, dut_pa, m_last_ptw_ref_ppn, lsu_satp_midwalk_refill_age,
             lsu_satp_midwalk_satp_age, m_prev_satp_ppn, m_cur_satp_ppn,
@@ -1315,7 +1442,7 @@ class mmu_translation_sb extends uvm_scoreboard;
           UVM_HIGH)
       end else if (skip_ref_ppn_check) begin
         `uvm_info(get_type_name(),
-          $sformatf("[%s] VA=0x%010h  STAMO mux: fault check PASS (dut.pa=0x%07h; ref not compared)  exc=%s",
+          $sformatf("[%s] PHASE6B_TRANSLATION_CLASS class=stamo_pipe1_bypass compare=classified_skip VA=0x%010h dut.pa=0x%07h ref.exc=%s",
             channel, {1'b0, va}, dut_pa, ref_rsp.exc.name()),
           UVM_MEDIUM)
       end else begin

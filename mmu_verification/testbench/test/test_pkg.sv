@@ -56,6 +56,7 @@ package test_pkg;
   `include "l1itlb_tests/l1itlb_tests_suite.svh"
   `include "l1dtlb_tests/l1dtlb_tests_suite.svh"
   `include "l2tlb_tests/l2tlb_tests_suite.svh"
+  `include "l2tlb_tests/l2tlb_phase6e_suite.svh"
   `include "ptw_tests/ptw_tests_suite.svh"
   `include "tlbop_tests/tlbop_tests_suite.svh"
   `include "pmp_tests/pmp_tests_suite.svh"

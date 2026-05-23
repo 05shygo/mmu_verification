@@ -1,0 +1,3 @@
+# Phase 6E L2TLB RRPV/replacement debug-only list.
+# Exact victim/RRPV/latest-wins closure remains Phase6F/future.
+test_l2tlb_p6e_rrpv_debug_pressure

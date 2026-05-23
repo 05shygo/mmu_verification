@@ -1,0 +1,4 @@
+# Phase 6E L2TLB negative-only list.
+# Keep this list out of normal functional directed regressions.
+test_l2tlb_p6e_ptw_disabled_fault_accerr
+test_l2tlb_p6e_negative_ptw_completion_control

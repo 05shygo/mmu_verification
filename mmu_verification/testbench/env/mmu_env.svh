@@ -33,6 +33,7 @@ class mmu_env extends uvm_env;
   // ── Phase 5: Translation scoreboard ─────────────────────────────────────
   mmu_translation_sb m_translation_sb;
   mmu_invalidate_sb  m_invalidate_sb;
+  mmu_l2tlb_txn_shadow m_l2tlb_shadow;
 
   // ── Phase 5 (Engineer A): misc agent + credit SB + perf monitor ─────────
   misc_agent         m_misc;
@@ -204,6 +205,9 @@ class mmu_env extends uvm_env;
     m_ref = mmu_ref_model::type_id::create("m_ref", this);
     // Inject shared page table reference BEFORE run_phase
     m_ref.m_pt = m_pt_mem;
+    m_l2tlb_shadow = mmu_l2tlb_txn_shadow::type_id::create("m_l2tlb_shadow");
+    uvm_config_db #(mmu_l2tlb_txn_shadow)::set(this, "*", "L2TLB_TXN_SHADOW",
+      m_l2tlb_shadow);
 
     if (m_cfg.en_ptw_source_monitor
         || m_cfg.en_ptw_source_ref_model
@@ -220,9 +224,12 @@ class mmu_env extends uvm_env;
     if (m_cfg.en_translation_sb) begin
       m_translation_sb        = mmu_translation_sb::type_id::create("m_translation_sb", this);
       m_translation_sb.m_ref  = m_ref;
+      m_translation_sb.m_l2_shadow = m_l2tlb_shadow;
     end
-    if (m_cfg.en_invalidate_sb)
+    if (m_cfg.en_invalidate_sb) begin
       m_invalidate_sb = mmu_invalidate_sb::type_id::create("m_invalidate_sb", this);
+      m_invalidate_sb.m_l2_shadow = m_l2tlb_shadow;
+    end
 
     // Phase 5 (Engineer A): misc agent (ACTIVE by default)
     m_misc    = misc_agent::type_id::create("m_misc",    this);

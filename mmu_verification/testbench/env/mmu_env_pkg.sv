@@ -28,6 +28,7 @@ package mmu_env_pkg;
   `include "mmu_page_table_mem.svh"  // Phase 4: shared shadow page table
   `include "mmu_ref_model.svh"       // Phase 4: Sv39 reference model
   `include "ptw_source_types.svh"     // PTW source-side shared types/helpers
+  `include "mmu_l2tlb_txn_shadow.svh" // Phase 6C: L2TLB transaction shadow
   `include "ptw_pde_cache_model.svh"  // PTW stage-4 abstract PDE cache model
   `include "ptw_scenario_db.svh"      // PTW stage-3 scenario/event logger
   `include "ptw_source_monitor.svh"   // PTW source-side monitor

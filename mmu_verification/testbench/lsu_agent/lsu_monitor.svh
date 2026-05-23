@@ -761,10 +761,12 @@ class lsu_monitor extends uvm_monitor;
         tr.kind = LSU_PIPE2;
         tr.va2  = vif.monitor_cb.lsu_mmu_va2;
         tr.va2_valid = 1'b1;
+        _sample_obs_common(tr);
+        tr.req_type = 3'd2;
         has_visible_req = 1'b1;
         m_p2_rsp_seen = 1'b0;
         m_pending_p2.push_back(_clone_txn(tr, "lsu_p2_req_pending"));
-        ap_pipe2_req.write(tr);
+        ap_pipe2_req.write(_clone_txn(tr, "lsu_p2_req_ap"));
       end
 
       if (vif.monitor_cb.mmu_lsu_pa2_vld && !prev_rsp_seen) begin
@@ -774,10 +776,26 @@ class lsu_monitor extends uvm_monitor;
         tr.pa           = vif.monitor_cb.mmu_lsu_pa2;
         tr.sec          = vif.monitor_cb.mmu_lsu_sec2;
         tr.access_fault = vif.monitor_cb.mmu_lsu_pa2_err;
+        tr.mmu_en       = vif.monitor_cb.mmu_lsu_mmu_en;
+        _sample_obs_common(tr);
+        tr.req_type     = 3'd2;
         if (m_pending_p2.size() > 0) begin
           req_tr = m_pending_p2.pop_front();
           tr.va2 = req_tr.va2;
           tr.va2_valid = 1'b1;
+          if (!tr.obs_valid && req_tr.obs_valid) begin
+            tr.obs_valid = req_tr.obs_valid;
+            tr.eff_priv  = req_tr.eff_priv;
+            tr.mprv      = req_tr.mprv;
+            tr.mpp       = req_tr.mpp;
+            tr.mxr       = req_tr.mxr;
+            tr.sum       = req_tr.sum;
+            tr.maee      = req_tr.maee;
+            tr.asid      = req_tr.asid;
+            tr.satp_ppn  = req_tr.satp_ppn;
+            tr.req_type  = req_tr.req_type;
+            tr.direct_map = req_tr.direct_map;
+          end
           m_p2_rsp_seen = 1'b1;
         end else begin
           if (has_visible_req && m_p2_rsp_seen) begin
@@ -793,7 +811,7 @@ class lsu_monitor extends uvm_monitor;
           end
         end
         if (publish_rsp)
-          ap_pipe2_rsp.write(tr);
+          ap_pipe2_rsp.write(_clone_txn(tr, "lsu_p2_rsp_ap"));
       end
 
       if (!vif.monitor_cb.lsu_mmu_va2_vld && has_visible_req) begin

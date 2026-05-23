@@ -75,6 +75,7 @@ class mmu_translation_sb extends uvm_scoreboard;
 
   // ── Reference model (injected from mmu_env.build_phase) ──────────────────
   mmu_ref_model m_ref;
+  mmu_l2tlb_txn_shadow m_l2_shadow;
 
   // ── Statistics ────────────────────────────────────────────────────────────
   int unsigned m_total_checked;
@@ -185,6 +186,10 @@ class mmu_translation_sb extends uvm_scoreboard;
   bit          m_last_ptw_l2_ref_pgflt;
   bit          m_last_ptw_l2_ref_acc_err;
   time         m_last_ptw_l2_ref_time;
+  bit          m_l2_prev_reset_asserted;
+  bit          m_l2_prev_tlboper_ptw_abort;
+  bit          m_l2_prev_rtu_flush;
+  bit          m_l2_prev_utlb_clr;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -259,6 +264,11 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_last_ptw_l2_ref_pgflt = 1'b0;
     m_last_ptw_l2_ref_acc_err = 1'b0;
     m_last_ptw_l2_ref_time = 0;
+    m_l2_prev_reset_asserted = 1'b0;
+    m_l2_prev_tlboper_ptw_abort = 1'b0;
+    m_l2_prev_rtu_flush = 1'b0;
+    m_l2_prev_utlb_clr = 1'b0;
+    m_l2_shadow = null;
     _ptw_req_shadow_clear_all();
   endfunction
 
@@ -272,6 +282,10 @@ class mmu_translation_sb extends uvm_scoreboard;
       `uvm_info(get_type_name(),
         "MMU_DUT_PROBES_VIF not in config_db — LSU_P1 whitebox root-cause dump will be unavailable",
         UVM_LOW)
+    if (m_l2_shadow == null) begin
+      if (!uvm_config_db #(mmu_l2tlb_txn_shadow)::get(this, "", "L2TLB_TXN_SHADOW", m_l2_shadow))
+        m_l2_shadow = mmu_l2tlb_txn_shadow::type_id::create("m_l2_shadow");
+    end
     m_allow_satp_midwalk_old_accept = $test$plusargs("ALLOW_SATP_MIDWALK_OLD_ACCEPT");
   endfunction
 
@@ -280,11 +294,32 @@ class mmu_translation_sb extends uvm_scoreboard;
       return;
 
     forever begin
+      bit cur_reset_asserted;
+      bit cur_tlboper_ptw_abort;
+      bit cur_rtu_flush;
+      bit cur_utlb_clr;
+
       @(v_probe.mon_cb);
+      cur_reset_asserted = (v_probe.rst_ni !== 1'b1);
+      cur_tlboper_ptw_abort = v_probe.mon_cb.tlboper_ptw_abort;
+      cur_rtu_flush = v_probe.mon_cb.rtu_yy_xx_flush;
+      cur_utlb_clr = v_probe.mon_cb.tlboper_utlb_clr;
       m_probe_cycle++;
-      if (v_probe.rst_ni !== 1'b1
-          || v_probe.mon_cb.rtu_yy_xx_flush
-          || v_probe.mon_cb.tlboper_utlb_clr
+      if (m_l2_shadow != null)
+        m_l2_shadow.m_cycle = m_probe_cycle;
+      if (m_l2_shadow != null) begin
+        if (cur_reset_asserted && !m_l2_prev_reset_asserted)
+          m_l2_shadow.on_reset();
+        if (!cur_reset_asserted && cur_tlboper_ptw_abort && !m_l2_prev_tlboper_ptw_abort)
+          m_l2_shadow.on_abort("tlboper_ptw_abort");
+        if (!cur_reset_asserted && cur_rtu_flush && !m_l2_prev_rtu_flush)
+          m_l2_shadow.on_abort("rtu_yy_xx_flush");
+        if (!cur_reset_asserted && cur_utlb_clr && !m_l2_prev_utlb_clr)
+          m_l2_shadow.on_control_epoch("tlboper_utlb_clr");
+      end
+      if (cur_reset_asserted
+          || cur_rtu_flush
+          || cur_utlb_clr
           || v_probe.mon_cb.tlboper_utlb_inv_va_req) begin
         _dtlb_expt_cam_clear_all();
       end else begin
@@ -301,12 +336,12 @@ class mmu_translation_sb extends uvm_scoreboard;
                                v_probe.mon_cb.l1d_expt_wr1_acflt,
                                v_probe.mon_cb.l1d_expt_wr1_eid);
       end
-      if (v_probe.rst_ni !== 1'b1
-          || v_probe.mon_cb.rtu_yy_xx_flush
-          || v_probe.mon_cb.tlboper_ptw_abort) begin
+      if (cur_reset_asserted
+          || cur_rtu_flush
+          || cur_tlboper_ptw_abort) begin
         _ptw_req_shadow_clear_all();
       end
-      if (v_probe.rst_ni !== 1'b1) begin
+      if (cur_reset_asserted) begin
         m_last_l2tlb_ptw_req_valid = 1'b0;
         m_satp_snapshot_valid = 1'b0;
         m_satp_change_valid = 1'b0;
@@ -329,7 +364,7 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_last_satp_change_cycle = m_probe_cycle;
         m_satp_change_valid = 1'b1;
       end
-      if (v_probe.mon_cb.tlboper_ptw_abort) begin
+      if (cur_tlboper_ptw_abort) begin
         m_last_tlboper_ptw_abort_cycle = m_probe_cycle;
         m_last_l2tlb_ptw_req_valid = 1'b0;
         m_last_satp_root_changed = 1'b0;
@@ -360,6 +395,18 @@ class mmu_translation_sb extends uvm_scoreboard;
                               v_probe.mon_cb.ptw_cp0_sum,
                               v_probe.mon_cb.ptw_cp0_mprv,
                               v_probe.mon_cb.ptw_cp0_mpp);
+        if (m_l2_shadow != null) begin
+          m_l2_shadow.on_ptw_request(v_probe.mon_cb.l2tlb_ptw_id,
+            v_probe.mon_cb.l2tlb_ptw_type,
+            v_probe.mon_cb.l2tlb_ptw_vpn,
+            v_probe.mon_cb.regs_ptw_cur_asid,
+            v_probe.mon_cb.regs_ptw_satp_ppn,
+            v_probe.mon_cb.ptw_cp0_priv_mode,
+            v_probe.mon_cb.ptw_cp0_mxr,
+            v_probe.mon_cb.ptw_cp0_sum,
+            v_probe.mon_cb.ptw_cp0_mprv,
+            v_probe.mon_cb.ptw_cp0_mpp);
+        end
       end
       if (v_probe.mon_cb.l2_dtlb_ref_pavld || v_probe.mon_cb.l2_dtlb_ref_cmplt) begin
         m_last_l2_ref_valid = 1'b1;
@@ -368,6 +415,15 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_last_l2_ref_vpn   = v_probe.mon_cb.l2_dtlb_ref_vpn;
         m_last_l2_ref_ppn   = v_probe.mon_cb.l2_dtlb_ref_ppn;
         m_last_l2_ref_time  = $time;
+      end
+      if (m_l2_shadow != null) begin
+        m_l2_shadow.on_l2_final(v_probe.mon_cb.l2_final_vld,
+          v_probe.mon_cb.l2_final_tlb_hit,
+          v_probe.mon_cb.l2_miss,
+          v_probe.mon_cb.l2_final_is_dtlb,
+          v_probe.mon_cb.l2_final_vpn,
+          v_probe.mon_cb.l2_final_hit_ppn,
+          v_probe.mon_cb.regs_ptw_cur_asid);
       end
       if (v_probe.mon_cb.ptw_l1d_ref_cmplt) begin
         m_last_ptw_ref_valid = 1'b1;
@@ -396,6 +452,21 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_last_ptw_l2_ref_acc_err = v_probe.mon_cb.ptw_l2tlb_ref_acc_err;
         m_last_ptw_l2_ref_time    = $time;
       end
+      if (m_l2_shadow != null) begin
+        m_l2_shadow.on_ptw_completion(v_probe.mon_cb.ptw_l2tlb_cmplt,
+          v_probe.mon_cb.ptw_l2tlb_ref_data_vld,
+          v_probe.mon_cb.ptw_l2tlb_ref_pgflt,
+          v_probe.mon_cb.ptw_l2tlb_ref_acc_err,
+          v_probe.mon_cb.ptw_l2tlb_id,
+          v_probe.mon_cb.ptw_l2tlb_type,
+          v_probe.mon_cb.ptw_arb_ref_tag_din,
+          v_probe.mon_cb.ptw_arb_ref_data_din,
+          v_probe.mon_cb.ptw_l2tlb_flg);
+      end
+      m_l2_prev_reset_asserted = cur_reset_asserted;
+      m_l2_prev_tlboper_ptw_abort = cur_tlboper_ptw_abort;
+      m_l2_prev_rtu_flush = cur_rtu_flush;
+      m_l2_prev_utlb_clr = cur_utlb_clr;
     end
   endtask
 
@@ -972,6 +1043,16 @@ class mmu_translation_sb extends uvm_scoreboard;
     ref_rsp = m_ref.translate(va, ACC_PFU, 4);
     exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
     dut_fault = tr.access_fault;
+    if (m_l2_shadow != null) begin
+      m_l2_shadow.on_pfu_response(1'b1,
+        (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_deny : 1'b0,
+        (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_acc_fault : tr.access_fault,
+        (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_flag_fault : 1'b0,
+        tr.va2[26:0],
+        tr.pa,
+        (tr.mmu_en === 1'b0),
+        tr.asid);
+    end
 
     // Pipe2 top-level reports a combined translation/PMP error bit.  Check the
     // fault bit first so an unexpected PMP deny is not misdiagnosed as PA=0.
@@ -1047,6 +1128,9 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_lsu_phase6b_direct_map_classified_rsp,
         m_lsu_phase6b_remaining_broad_waive_rsp),
       UVM_NONE)
+    if (m_l2_shadow != null)
+      $display("[PHASE6C_L2_SHADOW] component=%s %s",
+        get_full_name(), m_l2_shadow.summary());
     if (m_mismatch > 0)
       `uvm_error(get_type_name(),
         $sformatf("Translation SB FAILED: %0d mismatch(es) detected!", m_mismatch))

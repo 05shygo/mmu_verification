@@ -21,6 +21,7 @@ class mmu_invalidate_sb extends uvm_scoreboard;
   // Inputs
   uvm_tlm_analysis_fifo #(lsu_txn) af_inv;
   uvm_tlm_analysis_fifo #(cp0_txn) af_cp0;
+  mmu_l2tlb_txn_shadow m_l2_shadow;
 
   // Stats for Phase 6 sign-off
   int unsigned m_n_invalidations;
@@ -35,6 +36,7 @@ class mmu_invalidate_sb extends uvm_scoreboard;
     m_n_inv_done_seen = 0;
     m_n_cp0_all_inv   = 0;
     m_mismatch        = 0;
+    m_l2_shadow       = null;
     foreach (m_n_inv_kind[i]) m_n_inv_kind[i] = 0;
   endfunction
 
@@ -42,6 +44,12 @@ class mmu_invalidate_sb extends uvm_scoreboard;
     super.build_phase(phase);
     af_inv = new("af_inv", this);
     af_cp0 = new("af_cp0", this);
+    if (m_l2_shadow == null) begin
+      if (!uvm_config_db #(mmu_l2tlb_txn_shadow)::get(this, "", "L2TLB_TXN_SHADOW", m_l2_shadow))
+        `uvm_info(get_type_name(),
+          "L2TLB_TXN_SHADOW not in config_db - invalidate SB will keep local counters only",
+          UVM_LOW)
+    end
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -66,6 +74,8 @@ class mmu_invalidate_sb extends uvm_scoreboard;
       m_n_invalidations++;
       m_n_inv_kind[int'(tr.inv_kind)]++;
       if (tr.inv_done) m_n_inv_done_seen++;
+      if (m_l2_shadow != null)
+        m_l2_shadow.on_lsu_invalidate(tr.inv_kind, tr.inv_va, tr.inv_asid);
 
       `uvm_info(get_type_name(),
         $sformatf("[INV_SB] LSU inv: kind=%s va=0x%07h asid=0x%04h done=%0b",
@@ -80,6 +90,8 @@ class mmu_invalidate_sb extends uvm_scoreboard;
       af_cp0.get(tr);
       if ((tr.op == CP0_TLB_ALL_INV) && tr.tlb_done) begin
         m_n_cp0_all_inv++;
+        if (m_l2_shadow != null)
+          m_l2_shadow.on_cp0_all_inv();
         `uvm_info(get_type_name(),
           $sformatf("[INV_SB] CP0 tlb_all_inv done observed (count=%0d)", m_n_cp0_all_inv),
           UVM_HIGH)
@@ -101,6 +113,9 @@ class mmu_invalidate_sb extends uvm_scoreboard;
         m_n_cp0_all_inv,
         m_mismatch),
       UVM_NONE)
+    if (m_l2_shadow != null)
+      $display("[PHASE6C_L2_SHADOW] component=%s %s",
+        get_full_name(), m_l2_shadow.summary());
 
     if (m_mismatch > 0) begin
       `uvm_error(get_type_name(),

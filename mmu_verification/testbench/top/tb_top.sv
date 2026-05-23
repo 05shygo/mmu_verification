@@ -768,7 +768,8 @@ module tb_top;
   // PTW chain diagnostic only: samples internal state without changing DUT behavior.
   always @(posedge forever_cpuclk) begin
     if (cpurst_b) begin
-      if (ptw_mem_if_inst.lsu_mmu_data_vld
+      if ($test$plusargs("PTW_CHAIN_DBG") &&
+          (ptw_mem_if_inst.lsu_mmu_data_vld
           || ptw_mem_if_inst.lsu_mmu_bus_error
           || u_dut.tlboper_ptw_abort
           || u_dut.x_ct_mmu_ptw.abort_flop
@@ -778,7 +779,7 @@ module tb_top;
           || (|u_dut.x_ct_mmu_ptw.twu_mbuf_req)
           || (|u_dut.x_ct_mmu_ptw.twu_arb_ref_req)
           || u_dut.x_ct_mmu_ptw.pgflt_vld
-          || u_dut.x_ct_mmu_ptw.acc_err_vld) begin
+          || u_dut.x_ct_mmu_ptw.acc_err_vld)) begin
         $display({"[PTW_CHAIN_DBG][MBUF] t=%0t abort=%0b abort_flop=%0b ",
                   "lsu_vld=%0b buserr=%0b data=0x%016h req=%0b req_addr=0x%010h grant=0x%03h ",
                   "entry_vld=0x%03h entry_on=0x%03h entry_get=0x%03h wb_req=0x%03h wb_grant=0x%03h ",

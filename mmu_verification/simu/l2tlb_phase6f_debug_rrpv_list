@@ -1,0 +1,4 @@
+# Phase 6F L2TLB RRPV/replacement debug classification list.
+# This list may close only debug SVA/coverage and visible-result evidence.
+# Exact victim, exact RRPV value, and wbuf latest-wins/merge remain future.
+test_l2tlb_p6e_rrpv_debug_pressure

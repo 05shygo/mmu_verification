@@ -65,6 +65,12 @@ module mmu_arb_sva (
   a_wbuf_full_blocks_new_reads: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     l2tlb_arb_rrpv_wbuf_full |-> !(arb_ptw_grant || arb_tlboper_grant || arb_reqq_grant || arb_pfu_grant));
 
+  // L2TLB_SVA_022 / Phase6F: wbuf full blocks only new RRPV-producing reads.
+  // PTW writeback is the drain-side architectural update and must remain legal.
+  a_wbuf_full_allows_ptw_writeback: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (l2tlb_arb_rrpv_wbuf_full && ptw_write_req2 && ptw_on && !tlboper_on)
+      |-> arb_ptw_write_grant);
+
   a_prefetch_mask_blocks_pfu_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     prefetch_mask |-> !arb_pfu_grant);
 
@@ -134,5 +140,13 @@ module mmu_arb_sva (
 
   c_prefetch_mask_release: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     prefetch_mask ##1 (mmu_lsu_pa2_err || mmu_lsu_pa2_vld || l2tlb_arb_pfu_miss_mb_full) ##1 !prefetch_mask);
+
+  c_wbuf_full_blocks_new_reads: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    l2tlb_arb_rrpv_wbuf_full
+    && (ptw_arb_req || tlboper_arb_req || issue_valid || lsu_mmu_va2_vld)
+    && !(arb_ptw_grant || arb_tlboper_grant || arb_reqq_grant || arb_pfu_grant));
+
+  c_wbuf_full_allows_ptw_writeback: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    l2tlb_arb_rrpv_wbuf_full && arb_ptw_write_grant);
 
 endmodule

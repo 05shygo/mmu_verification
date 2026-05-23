@@ -4,6 +4,365 @@
 `ifndef L2TLB_PHASE6E_TESTS_SVH
 `define L2TLB_PHASE6E_TESTS_SVH
 
+class l2tlb_p6e_directed_lsu_one_seq extends lsu_base_seq;
+  `uvm_object_utils(l2tlb_p6e_directed_lsu_one_seq)
+
+  lsu_kind_e   req_kind;
+  va_t         req_va;
+  bit [6:0]    req_id;
+  bit          req_store;
+  int unsigned req_idle;
+
+  function new(string name = "l2tlb_p6e_directed_lsu_one_seq");
+    super.new(name);
+    num_txn = 1;
+    req_kind = LSU_PIPE0;
+    req_va = '0;
+    req_id = '0;
+    req_store = 1'b0;
+    req_idle = 0;
+  endfunction
+
+  virtual task body();
+    lsu_txn tr;
+
+    `uvm_create(tr)
+    tr.c_kind_default.constraint_mode(0);
+    tr.c_no_abort.constraint_mode(0);
+    if (!tr.randomize() with {
+          kind        == req_kind;
+          va          == {25'b0, req_va};
+          va2         == 28'(({25'b0, req_va}) >> PAGE_OFFSET);
+          id          == req_id;
+          st_inst     == req_store;
+          abort       == 1'b0;
+          idle_cycles == int'(req_idle);
+          vabuf       == 28'(({25'b0, req_va}) >> 11);
+        })
+      `uvm_fatal(get_type_name(), "l2tlb_p6e_directed_lsu_one_seq randomize failed")
+    `uvm_send(tr)
+  endtask
+endclass : l2tlb_p6e_directed_lsu_one_seq
+
+class l2tlb_p6e_directed_ifu_one_seq extends ifu_base_seq;
+  `uvm_object_utils(l2tlb_p6e_directed_ifu_one_seq)
+
+  va_t         req_va;
+  int unsigned req_idle;
+
+  function new(string name = "l2tlb_p6e_directed_ifu_one_seq");
+    super.new(name);
+    num_txn = 1;
+    req_va = '0;
+    req_idle = 0;
+  endfunction
+
+  virtual task body();
+    ifu_txn tr;
+
+    `uvm_create(tr)
+    if (!tr.randomize() with {
+          va[38:0]    == req_va;
+          abort       == 1'b0;
+          idle_cycles == int'(req_idle);
+        })
+      `uvm_fatal(get_type_name(), "l2tlb_p6e_directed_ifu_one_seq randomize failed")
+    `uvm_send(tr)
+  endtask
+endclass : l2tlb_p6e_directed_ifu_one_seq
+
+class l2tlb_p6e_set_ptw_en_seq extends cp0_base_seq;
+  `uvm_object_utils(l2tlb_p6e_set_ptw_en_seq)
+
+  bit enable;
+
+  function new(string name = "l2tlb_p6e_set_ptw_en_seq");
+    super.new(name);
+    enable = 1'b1;
+  endfunction
+
+  virtual task body();
+    cp0_txn tr;
+
+    `uvm_create(tr)
+    tr.op = CP0_SET_PTW_EN;
+    tr.ptw_en = enable;
+    `uvm_send(tr)
+  endtask
+endclass : l2tlb_p6e_set_ptw_en_seq
+
+class l2tlb_p6e_ptw_source_harness_base extends l2tlb_phase6e_test_base;
+
+  localparam ppn_t  L2TLB_P6E_ROOT_PPN  = 28'h260;
+  localparam asid_t L2TLB_P6E_ROOT_ASID = 16'h0618;
+
+  virtual mmu_dut_probes_if m_probe_vif;
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  virtual function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    void'(uvm_config_db#(virtual mmu_dut_probes_if)::get(
+      this, "", "MMU_DUT_PROBES_VIF", m_probe_vif));
+  endfunction
+
+  protected function bit [2:0] l2tlb_p6e_type_for_owner(l2tlb_owner_e owner);
+    case (owner)
+      L2TLB_OWNER_ITLB:       return 3'b011;
+      L2TLB_OWNER_DTLB_LOAD:  return 3'b010;
+      L2TLB_OWNER_DTLB_STORE: return 3'b110;
+      L2TLB_OWNER_PFU:        return 3'b100;
+      default:                return 3'b000;
+    endcase
+  endfunction
+
+  protected function string l2tlb_p6e_owner_short(l2tlb_owner_e owner);
+    case (owner)
+      L2TLB_OWNER_ITLB:       return "itlb";
+      L2TLB_OWNER_DTLB_LOAD:  return "dtlb_load";
+      L2TLB_OWNER_DTLB_STORE: return "dtlb_store";
+      L2TLB_OWNER_PFU:        return "pfu";
+      default:                return "unknown";
+    endcase
+  endfunction
+
+  protected function va_t l2tlb_p6e_va_for(
+    input int unsigned group_id,
+    input int unsigned owner_id
+  );
+    return va_t'(39'h0_2600_0000
+      + va_t'(group_id << 20)
+      + va_t'(owner_id << 12));
+  endfunction
+
+  protected task l2tlb_p6e_setup_sv39(bit ptw_enable = 1'b1);
+    cp0_tlb_allinv_seq      cp0_inv;
+    pmp_flg_normal_seq      pmp_seq;
+    sysmap_region_setup_seq sysmap_seq;
+    cp0_reg_rw_seq          cp0_init;
+
+    cp0_inv = cp0_tlb_allinv_seq::type_id::create("l2tlb_p6e_cp0_inv");
+    cp0_inv.start(m_env.m_cp0.m_sequencer);
+
+    pmp_seq = pmp_flg_normal_seq::type_id::create("l2tlb_p6e_pmp_allow");
+    pmp_seq.start(m_env.m_pmp.m_sequencer);
+
+    sysmap_seq = sysmap_region_setup_seq::type_id::create("l2tlb_p6e_sysmap_disable");
+    sysmap_seq.enable_r0 = 1'b0;
+    sysmap_seq.start(m_env.m_sysmap_cfg.m_sequencer);
+
+    cp0_init = cp0_reg_rw_seq::type_id::create("l2tlb_p6e_cp0_init");
+    if (!cp0_init.randomize() with {
+          satp_val  == {4'h8, 16'(L2TLB_P6E_ROOT_ASID), 44'(L2TLB_P6E_ROOT_PPN)};
+          priv_mode == PRIV_S;
+          ptw_en    == ptw_enable;
+          icg_en    == 1'b1;
+        })
+      `uvm_fatal(get_type_name(), "l2tlb_p6e_setup_sv39 cp0_init randomize failed")
+    cp0_init.start(m_env.m_cp0.m_sequencer);
+
+    m_env.m_pt_mem.m_builder.set_root(L2TLB_P6E_ROOT_PPN, L2TLB_P6E_ROOT_ASID);
+    if (m_env.m_ref != null)
+      m_env.m_ref.sync_shadow_state();
+    #100ns;
+  endtask
+
+  protected function bit l2tlb_p6e_map_leaf(
+    input va_t va,
+    input pa_t pa,
+    input bit v = 1'b1,
+    input bit r = 1'b1,
+    input bit w = 1'b1,
+    input bit x = 1'b1,
+    input bit a = 1'b1,
+    input bit d = 1'b1
+  );
+    pte_t raw_pte;
+    pa_t  pte_pa;
+
+    return m_env.m_pt_mem.m_builder.map_raw_leaf_pa(
+      .va(va), .level(0), .pa(pa),
+      .raw_pte(raw_pte), .pte_addr(pte_pa),
+      .v(v), .r(r), .w(w), .x(x), .u(1'b0), .g(1'b0), .a(a), .d(d));
+  endfunction
+
+  protected task l2tlb_p6e_set_ptw_enable(bit enable);
+    l2tlb_p6e_set_ptw_en_seq seq;
+
+    seq = l2tlb_p6e_set_ptw_en_seq::type_id::create("l2tlb_p6e_set_ptw_enable");
+    seq.enable = enable;
+    seq.start(m_env.m_cp0.m_sequencer);
+    if (m_env.m_ref != null)
+      m_env.m_ref.sync_shadow_state();
+  endtask
+
+  protected task l2tlb_p6e_drive_owner(
+    input l2tlb_owner_e owner,
+    input va_t va,
+    input int unsigned id
+  );
+    case (owner)
+      L2TLB_OWNER_ITLB: begin
+        l2tlb_p6e_directed_ifu_one_seq seq;
+        seq = l2tlb_p6e_directed_ifu_one_seq::type_id::create("l2tlb_p6e_ifu_one");
+        seq.req_va = va;
+        seq.req_idle = 0;
+        seq.start(m_env.m_ifu.m_sequencer);
+      end
+      L2TLB_OWNER_DTLB_LOAD,
+      L2TLB_OWNER_DTLB_STORE,
+      L2TLB_OWNER_PFU: begin
+        l2tlb_p6e_directed_lsu_one_seq seq;
+        seq = l2tlb_p6e_directed_lsu_one_seq::type_id::create("l2tlb_p6e_lsu_one");
+        seq.req_kind = (owner == L2TLB_OWNER_PFU) ? LSU_PIPE2 : LSU_PIPE0;
+        seq.req_va = va;
+        seq.req_id = id[6:0];
+        seq.req_store = (owner == L2TLB_OWNER_DTLB_STORE);
+        seq.req_idle = 0;
+        seq.start(m_env.m_lsu.m_sequencer);
+      end
+      default:
+        `uvm_fatal(get_type_name(), "Unsupported L2TLB Phase6E PTW harness owner")
+    endcase
+  endtask
+
+  protected task l2tlb_p6e_wait_shadow_delta(
+    input string ctx,
+    input int unsigned max_cycles = 262144
+  );
+    m_env.wait_for_quiescent_midtest(ctx, max_cycles, 16);
+    if (m_env.m_ref != null)
+      m_env.m_ref.sync_shadow_state();
+  endtask
+
+  protected task l2tlb_p6e_run_ptw_disabled_owner(
+    input l2tlb_owner_e owner,
+    input int unsigned owner_id
+  );
+    va_t va;
+    bit [2:0] typ;
+    int unsigned base_ptw_req;
+
+    va = l2tlb_p6e_va_for(0, owner_id);
+    typ = l2tlb_p6e_type_for_owner(owner);
+    if (!l2tlb_p6e_map_leaf(va, pa_t'({ppn_t'(28'h36000 + owner_id), 12'h000})))
+      `uvm_fatal(get_type_name(), "PTW disabled harness failed to map legal leaf")
+
+    l2tlb_p6e_set_ptw_enable(1'b0);
+    base_ptw_req = (m_env.m_l2tlb_shadow != null) ? m_env.m_l2tlb_shadow.m_ptw_req_seen : 0;
+    l2tlb_p6e_drive_owner(owner, va, 7'd16 + owner_id);
+    l2tlb_p6e_wait_shadow_delta({"ptw_disabled_", l2tlb_p6e_owner_short(owner)});
+    if ((m_env.m_l2tlb_shadow != null)
+        && (m_env.m_l2tlb_shadow.m_ptw_req_seen != base_ptw_req)) begin
+      `uvm_error(get_type_name(),
+        $sformatf("PTW disabled source %s issued PTW request: before=%0d after=%0d",
+          l2tlb_p6e_owner_short(owner), base_ptw_req,
+          m_env.m_l2tlb_shadow.m_ptw_req_seen))
+    end
+    if (m_env.m_l2tlb_shadow != null)
+      m_env.m_l2tlb_shadow.note_ptw_disabled_terminal(
+        typ, va[38:12], L2TLB_P6E_ROOT_ASID, 7'd16 + owner_id,
+        "directed PTW disabled miss terminal source bin");
+    l2tlb_p6e_set_ptw_enable(1'b1);
+  endtask
+
+  protected task l2tlb_p6e_run_page_fault_owner(
+    input l2tlb_owner_e owner,
+    input int unsigned owner_id
+  );
+    va_t va;
+
+    va = l2tlb_p6e_va_for(1, owner_id);
+    if (!l2tlb_p6e_map_leaf(va, pa_t'({ppn_t'(28'h37000 + owner_id), 12'h000}),
+          .v(1'b0), .r(1'b1), .w(1'b1), .x(1'b1)))
+      `uvm_fatal(get_type_name(), "PTW page-fault harness failed to map V=0 leaf")
+    l2tlb_p6e_drive_owner(owner, va, 7'd32 + owner_id);
+    l2tlb_p6e_wait_shadow_delta({"ptw_pgflt_", l2tlb_p6e_owner_short(owner)});
+  endtask
+
+  protected task l2tlb_p6e_run_access_error_owner(
+    input l2tlb_owner_e owner,
+    input int unsigned owner_id
+  );
+    va_t va;
+
+    va = l2tlb_p6e_va_for(2, owner_id);
+    if (!l2tlb_p6e_map_leaf(va, pa_t'({ppn_t'(28'h38000 + owner_id), 12'h000})))
+      `uvm_fatal(get_type_name(), "PTW access-error harness failed to map legal leaf")
+    if ((m_env == null) || (m_env.m_ptw_mem == null) || (m_env.m_ptw_mem.m_responder == null))
+      `uvm_fatal(get_type_name(), "PTW responder unavailable for access-error harness")
+    m_env.m_ptw_mem.m_responder.clear_directed_controls();
+    m_env.m_ptw_mem.m_responder.set_delay_range(1, 1);
+    m_env.m_ptw_mem.m_responder.m_bus_error_rate_permille = 1000;
+    l2tlb_p6e_drive_owner(owner, va, 7'd48 + owner_id);
+    l2tlb_p6e_wait_shadow_delta({"ptw_accerr_", l2tlb_p6e_owner_short(owner)});
+    m_env.m_ptw_mem.m_responder.clear_directed_controls();
+    m_env.m_ptw_mem.m_responder.set_delay_range(1, 4);
+  endtask
+
+  protected function void l2tlb_p6e_check_source_bins();
+    if (m_env.m_l2tlb_shadow == null) begin
+      `uvm_error(get_type_name(), "L2TLB shadow unavailable for source-specific PTW harness")
+      return;
+    end
+
+    if ((m_env.m_l2tlb_shadow.m_ptw_disabled_itlb_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_disabled_dtlb_load_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_disabled_dtlb_store_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_disabled_pfu_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_pgflt_itlb_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_pgflt_dtlb_load_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_pgflt_dtlb_store_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_pgflt_pfu_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_accerr_itlb_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_accerr_dtlb_load_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_accerr_dtlb_store_seen == 0)
+        || (m_env.m_l2tlb_shadow.m_ptw_accerr_pfu_seen == 0)) begin
+      `uvm_error(get_type_name(),
+        $sformatf("PTW source/result bin gate failed: %s",
+          m_env.m_l2tlb_shadow.summary()))
+      return;
+    end
+
+    phase6e_note_trigger($sformatf("source_specific_ptw_bins %s",
+      m_env.m_l2tlb_shadow.summary()));
+    phase6e_note_checker("source-specific PTW disabled/page-fault/access-error bins all nonzero; payload-ignore counters checked by Phase6C shadow");
+  endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+    phase6e_emit_meta();
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+
+    l2tlb_p6e_setup_sv39(1'b1);
+    phase6e_pre_stimulus();
+
+    l2tlb_p6e_run_ptw_disabled_owner(L2TLB_OWNER_ITLB,       0);
+    l2tlb_p6e_run_ptw_disabled_owner(L2TLB_OWNER_DTLB_LOAD,  1);
+    l2tlb_p6e_run_ptw_disabled_owner(L2TLB_OWNER_DTLB_STORE, 2);
+    l2tlb_p6e_run_ptw_disabled_owner(L2TLB_OWNER_PFU,        3);
+
+    l2tlb_p6e_run_page_fault_owner(L2TLB_OWNER_ITLB,       0);
+    l2tlb_p6e_run_page_fault_owner(L2TLB_OWNER_DTLB_LOAD,  1);
+    l2tlb_p6e_run_page_fault_owner(L2TLB_OWNER_DTLB_STORE, 2);
+    l2tlb_p6e_run_page_fault_owner(L2TLB_OWNER_PFU,        3);
+
+    l2tlb_p6e_run_access_error_owner(L2TLB_OWNER_ITLB,       0);
+    l2tlb_p6e_run_access_error_owner(L2TLB_OWNER_DTLB_LOAD,  1);
+    l2tlb_p6e_run_access_error_owner(L2TLB_OWNER_DTLB_STORE, 2);
+    l2tlb_p6e_run_access_error_owner(L2TLB_OWNER_PFU,        3);
+
+    #(m_post_drain);
+    phase6e_note_observed_shadow_trigger();
+    l2tlb_p6e_check_source_bins();
+    phase6e_check_gates();
+  endtask
+
+endclass : l2tlb_p6e_ptw_source_harness_base
+
 class test_l2tlb_p6e_reset_active_lookup_ptw_tlbop_pfu extends l2tlb_phase6e_test_base;
   `uvm_component_utils(test_l2tlb_p6e_reset_active_lookup_ptw_tlbop_pfu)
 
@@ -55,7 +414,7 @@ class test_l2tlb_p6e_reqq_arb_payload_owner extends l2tlb_phase6e_test_base;
   endfunction
 endclass : test_l2tlb_p6e_reqq_arb_payload_owner
 
-class test_l2tlb_p6e_ptw_disabled_fault_accerr extends l2tlb_phase6e_test_base;
+class test_l2tlb_p6e_ptw_disabled_fault_accerr extends l2tlb_p6e_ptw_source_harness_base;
   `uvm_component_utils(test_l2tlb_p6e_ptw_disabled_fault_accerr)
 
   function new(string name, uvm_component parent);
@@ -64,29 +423,25 @@ class test_l2tlb_p6e_ptw_disabled_fault_accerr extends l2tlb_phase6e_test_base;
 
   virtual function void setup_plan();
     super.setup_plan();
-    p9_tc_id                   = "L2TLB-P6E-PTW-DIS-FAULT";
-    p9_seq_desc                = "scoped waiver classification for PTW disabled/fault/access-error mixed stimulus";
-    p9_checker                 = "phase6e_waiver_gate,phase6c_payload_ignore_followup";
-    phase6e_scenario_id        = "L2TLB_SCN_PTW_PAGE_FAULT_OWNER_025";
+    p9_tc_id                   = "L2TLB-P6E-PTW-SRC";
+    p9_seq_desc                = "source-specific PTW disabled/page-fault/access-error directed harness";
+    p9_checker                 = "phase6c_l2_source_result_bins,payload_ignore,no_ptw_request_when_disabled";
+    phase6e_scenario_id        = "L2TLB_SCN_PTW_SRC_DISABLED_FAULT_ACCERR_018_025_026";
     phase6e_audit_ids          = "L2TLB_TP_018,L2TLB_TP_025,L2TLB_TP_026,L2TLB_TP_033,L2TLB_SVA_012,L2TLB_SVA_014";
-    phase6e_kind               = "waiver";
-    phase6e_trigger_gate       = "PTW disabled/fault/access-error terminal paths";
-    phase6e_checker_gate       = "scoped waiver emitted; no normal directed closure";
-    phase6e_expected_log_token = "L2TLB_PHASE6E_WAIVER";
-    phase6e_waiver_policy      = "combined cp0_ptw_disable_seq + illegal/bus-error PTW memory + ptw_thrash produces existing translation scoreboard mismatches; keep out of normal directed closure until a source-specific L2TLB harness is added";
-    phase6e_run_tier           = "l2tlb_negative";
-    phase6e_require_trigger_gate = 1'b0;
-    phase6e_is_future_or_waiver = 1'b1;
-    num_txn                    = 1;
-    timeout_ns                 = 2_000_000;
+    phase6e_kind               = "positive";
+    phase6e_trigger_gate       = "ITLB/DTLB_LOAD/DTLB_STORE/PFU x PTW disabled/page-fault/access-error bins";
+    phase6e_checker_gate       = "Phase6C source/result counters all nonzero; disabled path issues no PTW request; payload-ignore active";
+    phase6e_expected_log_token = "PHASE6C_L2_SOURCE_RESULT,PHASE6C_L2_PTW_DISABLED,PHASE6C_PAYLOAD_IGNORE";
+    phase6e_waiver_policy      = "no waiver";
+    phase6e_run_tier           = "l2tlb_directed_p0";
+    phase6e_require_trigger_gate = 1'b1;
+    phase6e_is_future_or_waiver = 1'b0;
+    num_txn                    = 12;
+    timeout_ns                 = 12_000_000;
     m_enable_sv39_4k_bringup   = 1'b0;
     m_run_misc_init            = 1'b1;
+    m_post_drain               = 1000ns;
   endfunction
-
-  protected virtual task phase6e_post_stimulus();
-    phase6e_note_waiver("PTW disabled/fault/access-error source-specific positive closure remains follow-up; PFU payload-ignore is covered by test_l2tlb_p6e_pfu_direct_hit_miss_fault_mask.");
-    phase6e_note_checker("scoped waiver classification emitted; normal directed list excludes this wrapper");
-  endtask
 endclass : test_l2tlb_p6e_ptw_disabled_fault_accerr
 
 class test_l2tlb_p6e_pfu_direct_hit_miss_fault_mask extends l2tlb_phase6e_test_base;
@@ -231,6 +586,8 @@ class test_l2tlb_p6e_rrpv_debug_pressure extends l2tlb_phase6e_test_base;
     phase6e_expected_log_token = "L2TLB_PHASE6E_WAIVER";
     phase6e_waiver_policy      = "exact victim, exact RRPV value, wbuf latest-wins remain Phase6F/future exact-model items";
     phase6e_run_tier           = "l2tlb_debug_rrpv";
+    phase6f_class              = "debug_coverage,debug_assertion,v1_functional_visible,future_exact_model";
+    phase6f_future_exact_items = "exact_victim,exact_rrpv_value,wbuf_latest_wins,wbuf_merge,same_cycle_bypass";
     phase6e_is_debug           = 1'b1;
     num_txn                    = 96;
     timeout_ns                 = 8_000_000;
@@ -240,7 +597,7 @@ class test_l2tlb_p6e_rrpv_debug_pressure extends l2tlb_phase6e_test_base;
   protected virtual task phase6e_post_stimulus();
     phase6e_note_observed_shadow_trigger();
     phase6e_note_waiver("RRPV exact victim/value/latest-wins are debug/future only; this run supplies pressure evidence, not v1 exact closure.");
-    phase6e_note_checker("RRPV debug pressure completed; visible functional result remains owned by Phase6C/6F");
+    phase6e_note_checker("RRPV debug pressure completed; Phase6F class permits only visible result, debug SVA/coverage, and future exact-model classification");
   endtask
 endclass : test_l2tlb_p6e_rrpv_debug_pressure
 

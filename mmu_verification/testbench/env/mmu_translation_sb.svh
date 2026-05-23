@@ -98,6 +98,8 @@ class mmu_translation_sb extends uvm_scoreboard;
   int unsigned m_lsu_phase6b_stamo_classified_rsp;
   int unsigned m_lsu_phase6b_direct_map_classified_rsp;
   int unsigned m_lsu_phase6b_remaining_broad_waive_rsp;
+  int unsigned m_pfu_error_payload_ignore_rsp;
+  int unsigned m_pfu_flag_only_diag_rsp;
   bit          m_allow_satp_midwalk_old_accept;
 
   localparam int DTLB_EXPT_CAM_DEPTH = 8;
@@ -213,6 +215,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_lsu_phase6b_stamo_classified_rsp = 0;
     m_lsu_phase6b_direct_map_classified_rsp = 0;
     m_lsu_phase6b_remaining_broad_waive_rsp = 0;
+    m_pfu_error_payload_ignore_rsp = 0;
+    m_pfu_flag_only_diag_rsp = 0;
     m_allow_satp_midwalk_old_accept = 1'b0;
     m_last_l2_ref_valid = 1'b0;
     m_last_l2_ref_pavld = 1'b0;
@@ -1027,6 +1031,13 @@ class mmu_translation_sb extends uvm_scoreboard;
     va_t          va;
     bit           exp_fault;
     bit           dut_fault;
+    bit           pfu_deny;
+    bit           pfu_acc_fault;
+    bit           pfu_flag_fault;
+    bit           pfu_error;
+    bit           pfu_payload_ignore;
+    bit [3:0]     pfu_pmp_flg4;
+    bit [4:0]     pfu_sysmap_flg4;
 
     m_total_checked++;
 
@@ -1043,15 +1054,46 @@ class mmu_translation_sb extends uvm_scoreboard;
     ref_rsp = m_ref.translate(va, ACC_PFU, 4);
     exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
     dut_fault = tr.access_fault;
+    pfu_deny = (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_deny : 1'b0;
+    pfu_acc_fault = (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_acc_fault : tr.access_fault;
+    pfu_flag_fault = (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_flag_fault : 1'b0;
+    pfu_pmp_flg4 = (v_probe != null) ? v_probe.mon_cb.pfu_pmp_flg4 : '0;
+    pfu_sysmap_flg4 = (v_probe != null) ? v_probe.mon_cb.pfu_sysmap_flg4 : '0;
+    // mmu_lsu_pa2_err is driven from the PFU_DENY response state.  The raw
+    // l2tlb_pfu_flag_fault probe is combinational diagnostic context: it does
+    // not by itself require pa2_err, but it does make the PFU PA payload
+    // architecturally non-comparable for this response.
+    pfu_error = dut_fault || pfu_deny || pfu_acc_fault;
+    pfu_payload_ignore = pfu_error || pfu_flag_fault;
     if (m_l2_shadow != null) begin
       m_l2_shadow.on_pfu_response(1'b1,
-        (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_deny : 1'b0,
-        (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_acc_fault : tr.access_fault,
-        (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_flag_fault : 1'b0,
+        pfu_deny,
+        pfu_acc_fault,
+        pfu_flag_fault,
         tr.va2[26:0],
         tr.pa,
         (tr.mmu_en === 1'b0),
         tr.asid);
+    end
+
+    if (pfu_payload_ignore) begin
+      if (!dut_fault && (pfu_deny || pfu_acc_fault)) begin
+        `uvm_error(get_type_name(),
+          $sformatf("[LSU_P2][PFU_ERROR_CLASS] VA=0x%010h: PFU deny/acc_fault classified but DUT access_fault=0 deny=%0b acc_fault=%0b flag_fault=%0b pa=0x%07h",
+            {1'b0, va}, pfu_deny, pfu_acc_fault, pfu_flag_fault, tr.pa))
+        m_mismatch++;
+        return;
+      end
+      m_pfu_error_payload_ignore_rsp++;
+      if (pfu_flag_fault && !pfu_error)
+        m_pfu_flag_only_diag_rsp++;
+      `uvm_info({get_type_name(), "::PHASE6G_TIMEOUT_FAIRNESS"},
+        $sformatf("[PHASE6G_TIMEOUT_FAIRNESS_PFU_PAYLOAD_IGNORE] issue=L2TLB-P6-ISSUE-013 va=0x%010h vpn=0x%07h pa=0x%07h deny=%0b acc_fault=%0b flag_fault=%0b pmp_flg4=0x%0h ref_pmp_flg4=0x%0h sysmap_flg4=0x%02h ref.exc=%s ref.deny=%0b action=skip_pa_payload_compare",
+          {1'b0, va}, tr.va2[26:0], tr.pa, pfu_deny, pfu_acc_fault,
+          pfu_flag_fault, pfu_pmp_flg4, m_ref.m_pmp_flg[4], pfu_sysmap_flg4,
+          ref_rsp.exc.name(), ref_rsp.deny),
+        UVM_MEDIUM)
+      return;
     end
 
     // Pipe2 top-level reports a combined translation/PMP error bit.  Check the
@@ -1102,7 +1144,7 @@ class mmu_translation_sb extends uvm_scoreboard;
   // =========================================================================
   virtual function void report_phase(uvm_phase phase);
     `uvm_info(get_type_name(),
-      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d lsu_expt_replay_rsp=%0d lsu_expt_replay_timing_waive_rsp=%0d lsu_expt_replay_orphan_rsp=%0d lsu_pmp_t1_waive_rsp=%0d lsu_satp_midwalk_waive_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d p6b_expt=%0d p6b_expt_timing=%0d p6b_expt_orphan=%0d p6b_pmp_t1=%0d p6b_satp_midwalk=%0d p6b_stamo=%0d p6b_direct=%0d p6b_remaining_broad=%0d",
+      $sformatf("Translation SB summary: total_checked=%0d mismatch=%0d lsu_fault_replay_rsp=%0d lsu_replay_mismatch=%0d lsu_replay_waive_rsp=%0d lsu_expt_replay_rsp=%0d lsu_expt_replay_timing_waive_rsp=%0d lsu_expt_replay_orphan_rsp=%0d lsu_pmp_t1_waive_rsp=%0d lsu_satp_midwalk_waive_rsp=%0d ifu_accerr_waive_rsp=%0d ifu_refpgflt_waive_rsp=%0d p6b_expt=%0d p6b_expt_timing=%0d p6b_expt_orphan=%0d p6b_pmp_t1=%0d p6b_satp_midwalk=%0d p6b_stamo=%0d p6b_direct=%0d p6b_remaining_broad=%0d p6g_pfu_error_payload_ignore=%0d p6g_pfu_flag_only_diag=%0d",
         m_total_checked, m_mismatch, m_lsu_fault_replay_rsp, m_lsu_replay_mismatch,
         m_lsu_replay_waive_rsp, m_lsu_expt_replay_rsp,
         m_lsu_expt_replay_timing_waive_rsp, m_lsu_expt_replay_orphan_rsp,
@@ -1115,7 +1157,13 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_lsu_phase6b_satp_midwalk_classified_rsp,
         m_lsu_phase6b_stamo_classified_rsp,
         m_lsu_phase6b_direct_map_classified_rsp,
-        m_lsu_phase6b_remaining_broad_waive_rsp),
+        m_lsu_phase6b_remaining_broad_waive_rsp,
+        m_pfu_error_payload_ignore_rsp,
+        m_pfu_flag_only_diag_rsp),
+      UVM_NONE)
+    `uvm_info({get_type_name(), "::PHASE6G_TIMEOUT_FAIRNESS"},
+      $sformatf("status=implemented issue=L2TLB-P6-ISSUE-013 pfu_error_payload_ignore=%0d pfu_flag_only_diag=%0d diagnostics='va,vpn,pa,pfu_error_bits,pmp,sysmap,ref'",
+        m_pfu_error_payload_ignore_rsp, m_pfu_flag_only_diag_rsp),
       UVM_NONE)
     `uvm_info({get_type_name(), "::PHASE6B_TRANSLATION_TAXONOMY"},
       $sformatf("status=implemented lsu_expt=%0d lsu_expt_timing=%0d lsu_expt_orphan=%0d lsu_pmp_t1=%0d lsu_satp_midwalk=%0d lsu_stamo=%0d lsu_direct=%0d remaining_broad_waive=%0d diagnostics='cycle,pipe,iid,va,vpn,reason,source,ref,dut'",

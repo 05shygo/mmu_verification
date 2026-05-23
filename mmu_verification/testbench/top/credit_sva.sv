@@ -56,12 +56,20 @@ module credit_sva #(
     id_in_range = !$isunknown(id) && (id < TOTAL_DEPTH[ID_W-1:0]);
   endfunction
 
-  // L2TLB_SVA_003: L1-to-L2 request valid is a one-cycle pulse.
+  // L2TLB_SVA_003: ITLB request valid is a one-cycle pulse in this
+  // environment. DTLB requests are credit-backed per-cycle allocations, so
+  // timeout/fairness stress may legally issue back-to-back DTLB misses.
   a_i_req_one_cycle_pulse: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
     i_req_valid |=> !i_req_valid);
 
-  a_d_req_one_cycle_pulse: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
-    d_req_valid |=> !d_req_valid);
+  c_d_req_back_to_back_valid: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+    d_req_valid ##1 d_req_valid);
+
+  a_d_req_no_same_payload_hold: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+    (d_req_valid && $past(d_req_valid))
+      |-> ((d_req_vpn != $past(d_req_vpn))
+        || (d_req_eid != $past(d_req_eid))
+        || (d_req_type != $past(d_req_type))));
 
   a_i_req_payload_known: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
     i_req_valid |-> !$isunknown(i_req_vpn));

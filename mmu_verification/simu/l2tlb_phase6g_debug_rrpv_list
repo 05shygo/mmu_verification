@@ -1,0 +1,5 @@
+# Phase 6G L2TLB RRPV/replacement debug list.
+# This list can close debug evidence only. Exact victim, exact RRPV value,
+# wbuf latest-wins, merge, and same-cycle bypass remain future exact-model
+# items unless a dedicated exact model is implemented.
+test_l2tlb_p6e_rrpv_debug_pressure

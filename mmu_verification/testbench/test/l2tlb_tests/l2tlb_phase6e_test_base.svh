@@ -20,6 +20,8 @@ class l2tlb_phase6e_test_base extends phase9_generated_test_base;
   string phase6e_expected_log_token;
   string phase6e_waiver_policy;
   string phase6e_run_tier;
+  string phase6f_class;
+  string phase6f_future_exact_items;
 
   bit phase6e_require_trigger_gate;
   bit phase6e_require_checker_gate;
@@ -63,6 +65,8 @@ class l2tlb_phase6e_test_base extends phase9_generated_test_base;
     phase6e_expected_log_token  = "";
     phase6e_waiver_policy       = "no waiver";
     phase6e_run_tier            = "l2tlb_directed_p0";
+    phase6f_class                = "";
+    phase6f_future_exact_items   = "";
     phase6e_require_trigger_gate = 1'b1;
     phase6e_require_checker_gate = 1'b1;
     phase6e_is_negative          = 1'b0;
@@ -211,6 +215,11 @@ class l2tlb_phase6e_test_base extends phase9_generated_test_base;
       phase6e_expected_log_token, phase6e_waiver_policy,
       phase6e_bool_name(phase6e_require_trigger_gate),
       phase6e_bool_name(phase6e_require_checker_gate));
+    if (phase6f_class != "") begin
+      $display("[L2TLB_PHASE6F_META] test=%s scenario_id=%s audit_ids=\"%s\" phase6f_class=\"%s\" future_exact_items=\"%s\"",
+        get_type_name(), phase6e_scenario_id, phase6e_audit_ids,
+        phase6f_class, phase6f_future_exact_items);
+    end
   endfunction
 
   protected virtual function void phase6e_note_trigger(string evidence);
@@ -265,6 +274,12 @@ class l2tlb_phase6e_test_base extends phase9_generated_test_base;
       get_type_name(), phase6e_scenario_id, phase6e_audit_ids, phase6e_kind,
       phase6e_run_tier, phase6e_trigger_count, phase6e_checker_count,
       phase6e_waiver_count, phase6e_is_future_or_waiver);
+    if (phase6f_class != "") begin
+      $display("[L2TLB_PHASE6F_CLOSE] test=%s scenario_id=%s phase6f_class=\"%s\" trigger_count=%0d checker_count=%0d future_exact_items=\"%s\"",
+        get_type_name(), phase6e_scenario_id, phase6f_class,
+        phase6e_trigger_count, phase6e_checker_count,
+        phase6f_future_exact_items);
+    end
   endfunction
 
   virtual task run_test_body();

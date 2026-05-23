@@ -50,6 +50,7 @@ module mmu_ptw_lsu_protocol_sva (
   int unsigned cp_lsu_bus_error_no_chk_hits;
   int unsigned cp_lsu_abort_no_create_hits;
   int unsigned cp_lsu_abort_drop_hits;
+  int unsigned cp_lsu_abort_entry_clear_hits;
 
   assign response_event = lsu_mmu_data_vld || lsu_mmu_bus_error;
   assign accept_event   = |mmu_lsu_data_req_grant;
@@ -211,8 +212,18 @@ module mmu_ptw_lsu_protocol_sva (
     cp_lsu_abort_drop_hits++;
   end
 
-  a_mbuf_ptr_only_on_response: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b || !past_valid)
-    $changed(mbuf_entry_on) |-> ($past(accept_event) || $past(response_event)));
+  // mbuf_entry_on is the per-entry LSU outstanding marker. It is set by an
+  // accepted request, cleared by an LSU response, and synchronously cleared by
+  // TLBOP abort through mbuf_all_clr.
+  a_mbuf_entry_on_changes_on_lifecycle_event: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b || !past_valid)
+    $changed(mbuf_entry_on) |-> ($past(accept_event)
+                                 || $past(response_event)
+                                 || $past(tlboper_ptw_abort)));
+
+  cp_lsu_abort_entry_clear: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b || !past_valid)
+    $past(tlboper_ptw_abort && (|mbuf_entry_on)) && (mbuf_entry_on == 9'b0)) begin
+    cp_lsu_abort_entry_clear_hits++;
+  end
 
   final begin
     $display("PTW_SVA_COVER module=mmu_ptw_lsu_protocol_sva name=cp_mbuf_grant_onehot req=PTW-SVA-MBUF-001 hits=%0d", cp_mbuf_grant_onehot_hits);
@@ -225,6 +236,7 @@ module mmu_ptw_lsu_protocol_sva (
     $display("PTW_SVA_COVER module=mmu_ptw_lsu_protocol_sva name=cp_lsu_bus_error_no_chk req=PTW-SVA-MBUF-008 hits=%0d", cp_lsu_bus_error_no_chk_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_lsu_protocol_sva name=cp_lsu_abort_no_create req=PTW-SVA-MBUF-002 hits=%0d", cp_lsu_abort_no_create_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_lsu_protocol_sva name=cp_lsu_abort_drop req=PTW-SVA-MBUF-010,PTW-SVA-MBUF-011 hits=%0d", cp_lsu_abort_drop_hits);
+    $display("PTW_SVA_COVER module=mmu_ptw_lsu_protocol_sva name=cp_lsu_abort_entry_clear req=PTW-SVA-MBUF-010,PTW-SVA-MBUF-011 hits=%0d", cp_lsu_abort_entry_clear_hits);
   end
 
 endmodule

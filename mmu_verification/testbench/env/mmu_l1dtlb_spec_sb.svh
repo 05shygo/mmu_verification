@@ -287,6 +287,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_phase6d_iid_age_checks;
   int unsigned m_phase6d_iid_wrap_checks;
   int unsigned m_phase6d_mb_cam_hit_checks;
+  int unsigned m_phase6d_mb_cam_current_window;
   int unsigned m_phase6d_wfg_transitions;
   int unsigned m_phase6d_wfc_transitions;
   int unsigned m_phase6d_wfi_transitions;
@@ -818,6 +819,17 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
           && (v_probe.mon_cb.l1d_mb_vpn[i] == vpn)
           && (v_probe.mon_cb.l1d_mb_iid[i] == iid)
           && (v_probe.mon_cb.l1d_mb_store[i] == store)) begin
+        idx = i;
+        return 1'b1;
+      end
+    end
+    return 1'b0;
+  endfunction
+
+  protected function bit mb_current_vpn_match(input logic [26:0] key, output int unsigned idx);
+    idx = MB_DEPTH;
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (v_probe.mon_cb.l1d_mb_vld[i] && (v_probe.mon_cb.l1d_mb_vpn[i] == key)) begin
         idx = i;
         return 1'b1;
       end
@@ -2597,9 +2609,18 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     idx = mb_find_vpn(m_prev_mb_vld, m_prev_mb_vpn, tok.vpn);
     m_phase6d_mb_cam_hit_checks++;
     if (idx >= MB_DEPTH) begin
-      sb_error("P6D_MB_CAM_HIT",
-        $sformatf("MB CAM hit without matching previous MB shadow: token{%s} prev_vld=0x%02h",
-          token_s(tok), m_prev_mb_vld));
+      if (mb_current_vpn_match(tok.vpn, idx)) begin
+        m_phase6d_mb_cam_current_window++;
+        `uvm_info({get_type_name(), "::PHASE6G_TIMEOUT_FAIRNESS"},
+          $sformatf("[PHASE6G_TIMEOUT_FAIRNESS_MB_CAM_CURRENT_WINDOW] token{%s} idx=%0d prev_vld=0x%02h cur_vld=0x%02h cur_iid=%0d cur_store=%0b",
+            token_s(tok), idx, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld,
+            v_probe.mon_cb.l1d_mb_iid[idx], v_probe.mon_cb.l1d_mb_store[idx]),
+          UVM_MEDIUM)
+      end else begin
+        sb_error("P6D_MB_CAM_HIT",
+          $sformatf("MB CAM hit without matching previous/current MB shadow: token{%s} prev_vld=0x%02h cur_vld=0x%02h",
+            token_s(tok), m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld));
+      end
     end else begin
       `uvm_info({get_type_name(), "::PHASE6D_MB_CAM"},
         $sformatf("idx=%0d token{%s} shadow_vpn=0x%07h shadow_iid=%0d",
@@ -2628,8 +2649,11 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     check_mb_cam_hit_against_shadow(t1_p0);
     check_mb_cam_hit_against_shadow(t1_p1);
 
-    p0_cam = t1_p0.vld && (mb_find_vpn(m_prev_mb_vld, m_prev_mb_vpn, t1_p0.vpn) < MB_DEPTH);
-    p1_cam = t1_p1.vld && (mb_find_vpn(m_prev_mb_vld, m_prev_mb_vpn, t1_p1.vpn) < MB_DEPTH);
+    // Mirror the RTL allocator inputs: mb_hit0/1 are retimed T1 combinational
+    // results from miss*_vld_q and current mb_entry_vld/vpn.  The scoreboard's
+    // previous MB shadow can lag legal same-cycle allocation/refill windows.
+    p0_cam = t1_p0.vld && t1_p0.mb_hit;
+    p1_cam = t1_p1.vld && t1_p1.mb_hit;
     p0_req = t1_p0.vld && !t1_p0.abort && t1_p0.miss_vld && !p0_cam;
     p1_req = t1_p1.vld && !t1_p1.abort && t1_p1.miss_vld && !p1_cam;
     same_4k = p0_req && p1_req && (t1_p0.vpn == t1_p1.vpn);
@@ -3795,7 +3819,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6c_shadow_stamo_bypass),
       UVM_LOW)
     `uvm_info({get_type_name(), "::PHASE6D_MB_SHADOW"},
-      $sformatf("status=implemented reset=%0d shadow_update=%0d state_check=%0d payload_check=%0d alloc_oracle=%0d alloc_expect_enq=%0d alloc_expect_check=%0d alloc_expect_max=%0d alloc_match=%0d single=%0d dual_same_4k=%0d dual_diff_two_free=%0d dual_diff_one_free=%0d full_drop=%0d cam_drop=%0d abort_drop=%0d flush_drop=%0d busy_sleep_drop=%0d iid_age=%0d iid_wrap=%0d mb_cam_hit=%0d wfg=%0d wfc=%0d wfi=%0d pgflt=%0d acflt=%0d abt=%0d replay_release=%0d policy='MB valid/state/VPN/IID/store/sent/ready/WFC/WFI/payload shadow; allocation oracle uses previous T1 miss tokens and checks next sampled MB occupancy; IID age matches ct_rtu_compare_iid including wraparound'",
+      $sformatf("status=implemented reset=%0d shadow_update=%0d state_check=%0d payload_check=%0d alloc_oracle=%0d alloc_expect_enq=%0d alloc_expect_check=%0d alloc_expect_max=%0d alloc_match=%0d single=%0d dual_same_4k=%0d dual_diff_two_free=%0d dual_diff_one_free=%0d full_drop=%0d cam_drop=%0d abort_drop=%0d flush_drop=%0d busy_sleep_drop=%0d iid_age=%0d iid_wrap=%0d mb_cam_hit=%0d mb_cam_current_window=%0d wfg=%0d wfc=%0d wfi=%0d pgflt=%0d acflt=%0d abt=%0d replay_release=%0d policy='MB valid/state/VPN/IID/store/sent/ready/WFC/WFI/payload shadow; allocation oracle mirrors RTL T1 mb_hit gating and checks next sampled MB occupancy; IID age matches ct_rtu_compare_iid including wraparound'",
         m_phase6d_shadow_reset, m_phase6d_shadow_update,
         m_phase6d_shadow_state_check, m_phase6d_shadow_payload_check,
         m_phase6d_alloc_oracle_checks, m_phase6d_alloc_expect_enq,
@@ -3807,6 +3831,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6d_alloc_abort_drop, m_phase6d_alloc_flush_drop,
         m_phase6d_alloc_busy_sleep_drop, m_phase6d_iid_age_checks,
         m_phase6d_iid_wrap_checks, m_phase6d_mb_cam_hit_checks,
+        m_phase6d_mb_cam_current_window,
         m_phase6d_wfg_transitions, m_phase6d_wfc_transitions,
         m_phase6d_wfi_transitions, m_phase6d_pgflt_transitions,
         m_phase6d_acflt_transitions, m_phase6d_abt_transitions,

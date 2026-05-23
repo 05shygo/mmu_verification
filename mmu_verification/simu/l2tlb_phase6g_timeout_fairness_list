@@ -1,0 +1,4 @@
+# Phase 6G L2TLB timeout/fairness targeted list.
+# Seed 64001 is closed in the Phase6G evidence manifest after root-cause and
+# remains here as a focused replay list for timeout/fairness regression.
+test_l2tlb_p6e_timeout_fairness_release

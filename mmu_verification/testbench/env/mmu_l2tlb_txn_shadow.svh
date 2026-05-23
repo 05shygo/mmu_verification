@@ -109,6 +109,18 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
   int unsigned m_cp0_all_inv_seen;
   int unsigned m_mismatch;
   int unsigned m_waived_or_future;
+  int unsigned m_ptw_disabled_itlb_seen;
+  int unsigned m_ptw_disabled_dtlb_load_seen;
+  int unsigned m_ptw_disabled_dtlb_store_seen;
+  int unsigned m_ptw_disabled_pfu_seen;
+  int unsigned m_ptw_pgflt_itlb_seen;
+  int unsigned m_ptw_pgflt_dtlb_load_seen;
+  int unsigned m_ptw_pgflt_dtlb_store_seen;
+  int unsigned m_ptw_pgflt_pfu_seen;
+  int unsigned m_ptw_accerr_itlb_seen;
+  int unsigned m_ptw_accerr_dtlb_load_seen;
+  int unsigned m_ptw_accerr_dtlb_store_seen;
+  int unsigned m_ptw_accerr_pfu_seen;
 
   function new(string name = "mmu_l2tlb_txn_shadow");
     super.new(name);
@@ -143,6 +155,18 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     m_cp0_all_inv_seen = 0;
     m_mismatch = 0;
     m_waived_or_future = 0;
+    m_ptw_disabled_itlb_seen = 0;
+    m_ptw_disabled_dtlb_load_seen = 0;
+    m_ptw_disabled_dtlb_store_seen = 0;
+    m_ptw_disabled_pfu_seen = 0;
+    m_ptw_pgflt_itlb_seen = 0;
+    m_ptw_pgflt_dtlb_load_seen = 0;
+    m_ptw_pgflt_dtlb_store_seen = 0;
+    m_ptw_pgflt_pfu_seen = 0;
+    m_ptw_accerr_itlb_seen = 0;
+    m_ptw_accerr_dtlb_load_seen = 0;
+    m_ptw_accerr_dtlb_store_seen = 0;
+    m_ptw_accerr_pfu_seen = 0;
     `uvm_info(get_type_name(),
       $sformatf("[PHASE6C_L2_SHADOW_RESET] reason=%s epoch=%0d", reason, m_epoch),
       UVM_HIGH)
@@ -478,6 +502,8 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
         data[41:14], data[13:0] | flags, m_ptw[idx].owner, "PTW_REFILL");
     end else begin
       m_ptw_fault_seen++;
+      note_source_result_bin(cls, m_ptw[idx].owner, m_ptw[idx].vpn,
+        m_ptw[idx].asid, typ, id, "PTW completion source/result bin");
       note_payload_ignore(cls, m_ptw[idx].owner, m_ptw[idx].vpn,
         m_ptw[idx].asid, typ, id, "PTW completion fault/no-pavld payload ignored");
     end
@@ -489,6 +515,69 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
       UVM_HIGH)
 
     m_ptw[idx].valid = 1'b0;
+  endfunction
+
+  function void note_ptw_disabled_terminal(
+    input bit [2:0] typ,
+    input bit [26:0] vpn,
+    input bit [15:0] asid,
+    input bit [PTW_ID_WIDTH-1:0] id,
+    input string reason = "PTW disabled miss terminal response"
+  );
+    l2tlb_owner_e owner;
+
+    owner = owner_from_type(typ);
+    case (owner)
+      L2TLB_OWNER_ITLB:       m_ptw_disabled_itlb_seen++;
+      L2TLB_OWNER_DTLB_LOAD:  m_ptw_disabled_dtlb_load_seen++;
+      L2TLB_OWNER_DTLB_STORE: m_ptw_disabled_dtlb_store_seen++;
+      L2TLB_OWNER_PFU:        m_ptw_disabled_pfu_seen++;
+      default: begin
+        record_mismatch(L2TLB_MISMATCH_UVM_BUG, "PTW_DISABLED_OWNER",
+          vpn, asid, typ, owner, "ITLB/DTLB_LOAD/DTLB_STORE/PFU", "UNKNOWN");
+        return;
+      end
+    endcase
+
+    note_payload_ignore(L2TLB_RSP_PAGE_FAULT, owner, vpn, asid, typ, id, reason);
+    `uvm_info(get_type_name(),
+      $sformatf("[PHASE6C_L2_PTW_DISABLED] owner=%s id=0x%02h type=0x%0h vpn=0x%07h asid=0x%04h epoch=%0d cycle=%0d reason=%s",
+        owner_name(owner), id, typ, vpn, asid, m_epoch, m_cycle, reason),
+      UVM_MEDIUM)
+  endfunction
+
+  function void note_source_result_bin(
+    input l2tlb_rsp_class_e cls,
+    input l2tlb_owner_e owner,
+    input bit [26:0] vpn,
+    input bit [15:0] asid,
+    input bit [2:0] typ,
+    input bit [PTW_ID_WIDTH-1:0] id,
+    input string reason
+  );
+    if (cls == L2TLB_RSP_PAGE_FAULT) begin
+      case (owner)
+        L2TLB_OWNER_ITLB:       m_ptw_pgflt_itlb_seen++;
+        L2TLB_OWNER_DTLB_LOAD:  m_ptw_pgflt_dtlb_load_seen++;
+        L2TLB_OWNER_DTLB_STORE: m_ptw_pgflt_dtlb_store_seen++;
+        L2TLB_OWNER_PFU:        m_ptw_pgflt_pfu_seen++;
+        default: begin end
+      endcase
+    end else if (cls == L2TLB_RSP_ACCESS_FAULT) begin
+      case (owner)
+        L2TLB_OWNER_ITLB:       m_ptw_accerr_itlb_seen++;
+        L2TLB_OWNER_DTLB_LOAD:  m_ptw_accerr_dtlb_load_seen++;
+        L2TLB_OWNER_DTLB_STORE: m_ptw_accerr_dtlb_store_seen++;
+        L2TLB_OWNER_PFU:        m_ptw_accerr_pfu_seen++;
+        default: begin end
+      endcase
+    end
+
+    `uvm_info(get_type_name(),
+      $sformatf("[PHASE6C_L2_SOURCE_RESULT] class=%s owner=%s id=0x%02h type=0x%0h vpn=0x%07h asid=0x%04h epoch=%0d cycle=%0d reason=%s",
+        rsp_class_name(cls), owner_name(owner), id, typ, vpn, asid,
+        m_epoch, m_cycle, reason),
+      UVM_MEDIUM)
   endfunction
 
   function void note_payload_ignore(
@@ -606,12 +695,18 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
   endfunction
 
   function string summary();
-    return $sformatf("phase6c_l2_shadow epoch=%0d cycles=%0d ptw_req=%0d ptw_data=%0d ptw_fault=%0d stale=%0d orphan=%0d l2_hit=%0d l2_miss=%0d l2_hit_mismatch=%0d l2_hit_waived=%0d pfu=%0d payload_ignore=%0d inv=%0d cp0_all_inv=%0d mismatch=%0d waived_future=%0d reset_epochs=%0d abort_epochs=%0d control_epochs=%0d",
+    return $sformatf("phase6c_l2_shadow epoch=%0d cycles=%0d ptw_req=%0d ptw_data=%0d ptw_fault=%0d stale=%0d orphan=%0d l2_hit=%0d l2_miss=%0d l2_hit_mismatch=%0d l2_hit_waived=%0d pfu=%0d payload_ignore=%0d inv=%0d cp0_all_inv=%0d mismatch=%0d waived_future=%0d reset_epochs=%0d abort_epochs=%0d control_epochs=%0d ptw_disabled_itlb=%0d ptw_disabled_dtlb_load=%0d ptw_disabled_dtlb_store=%0d ptw_disabled_pfu=%0d ptw_pgflt_itlb=%0d ptw_pgflt_dtlb_load=%0d ptw_pgflt_dtlb_store=%0d ptw_pgflt_pfu=%0d ptw_accerr_itlb=%0d ptw_accerr_dtlb_load=%0d ptw_accerr_dtlb_store=%0d ptw_accerr_pfu=%0d",
       m_epoch, m_cycle, m_ptw_req_seen, m_ptw_data_seen, m_ptw_fault_seen,
       m_ptw_stale_seen, m_ptw_orphan_seen, m_l2_hit_seen, m_l2_miss_seen,
       m_l2_hit_mismatch, m_l2_hit_waived, m_pfu_seen, m_pfu_payload_ignore_seen,
       m_inv_seen, m_cp0_all_inv_seen, m_mismatch, m_waived_or_future,
-      m_reset_epoch_count, m_abort_epoch_count, m_control_epoch_count);
+      m_reset_epoch_count, m_abort_epoch_count, m_control_epoch_count,
+      m_ptw_disabled_itlb_seen, m_ptw_disabled_dtlb_load_seen,
+      m_ptw_disabled_dtlb_store_seen, m_ptw_disabled_pfu_seen,
+      m_ptw_pgflt_itlb_seen, m_ptw_pgflt_dtlb_load_seen,
+      m_ptw_pgflt_dtlb_store_seen, m_ptw_pgflt_pfu_seen,
+      m_ptw_accerr_itlb_seen, m_ptw_accerr_dtlb_load_seen,
+      m_ptw_accerr_dtlb_store_seen, m_ptw_accerr_pfu_seen);
   endfunction
 
 endclass : mmu_l2tlb_txn_shadow

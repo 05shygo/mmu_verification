@@ -1,0 +1,3 @@
+# Phase 6G L2TLB negative/waiver classification list.
+# Do not include these in normal positive directed pass-rate closure.
+test_l2tlb_p6e_negative_ptw_completion_control

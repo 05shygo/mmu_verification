@@ -691,6 +691,20 @@ Assertion fail 处理分类：
 | Coverage/SVA/log | Debug coverage 未达不阻塞 v1 closure，但必须记录缺口；future exact coverage 不计入 v1 完成率。 |
 | Waiver | Future exact checks 必须显式列为 future 或 waiver，不能静默视为 covered。 |
 
+#### Phase 6F 实施完成记录（2026-05-23）
+
+本轮完成 Phase6F 可实现部分：`L2TLB_SVA_022` 的 wbuf/arbiter debug assertion baseline、RRPV debug run-list、metadata 分类和 targeted run evidence。未修改 DUT/RTL，未建立 exact replacement/RRPV model。
+
+| 检查项 | 完成证据 |
+| --- | --- |
+| 修改范围 | 新增 `mmu_verification/testbench/top/mmu_l2tlb_rrpv_wbuf_sva.sv`；强化 `mmu_verification/testbench/top/mmu_arb_sva.sv` 的 wbuf-full no-wrong-grant/PTW-writeback guard；更新 `tb_top.sv` 参数化 bind、`Files.f`、`cov_hier.cfg`、Phase6E base/test metadata 和 `simu/l2tlb_phase6f_debug_rrpv_list`；只改 testbench/SVA/doc/run-list，未改 DUT/RTL。 |
+| v1/debug/future 分类 | `test_l2tlb_p6e_rrpv_debug_pressure` 输出 `L2TLB_PHASE6F_META/CLOSE`，`phase6f_class="debug_coverage,debug_assertion,v1_functional_visible,future_exact_model"`，`future_exact_items="exact_victim,exact_rrpv_value,wbuf_latest_wins,wbuf_merge,same_cycle_bypass"`。 |
+| Debug assertion | `mmu_l2tlb_rrpv_wbuf_sva` 检查 reset、count/status、push/pop accept accounting、no overflow/no underflow、valid-bank payload known、lookup known；`mmu_arb_sva` 检查 wbuf full 不泄漏新读 grant，且不误阻塞合法 PTW writeback。 |
+| Run 证据 | `make comp_fast` pass；`python3 scripts/run_test.py --reg-list simu/l2tlb_phase6f_debug_rrpv_list --mode run_check --seeds 65001 --timeout 10000000 --jobs 1 --uvm-err-only 1 --uvm-config-db-trace 0` pass；`check_sim_status.sh` pass；日志无 `failed at`、无 `PHASE6C_L2_MISMATCH`，`UVM_ERROR=0`、`UVM_FATAL=0`。 |
+| Trigger/coverage evidence | Shadow delta：`ptw_req=48 ptw_data=48 l2_hit=96 l2_miss=48 inv=1 cp0_all_inv=2 abort_epoch=1 control_epoch=2 activity=246`。Cover 命中：`c_rrpv_wbuf_push_new_entry=96`、`c_rrpv_wbuf_pop=96`、`c_rrpv_wbuf_lookup_bypass_hit=48`。 |
+| Cover hole / 6G follow-up | `c_rrpv_wbuf_cam_hit_update`、`full_seen`、`true_full_block`、`full_release`、`push_pop_same_cycle`、`c_wbuf_full_blocks_new_reads`、`c_wbuf_full_allows_ptw_writeback` 均为 0，必须转 Phase6G targeted coverage 或 waiver；本轮 PASS 不能关闭 full/latest-wins/same-cycle 行为。 |
+| Future exact item | exact victim/free-way/max-RRPV、exact RRPV value、wbuf latest-wins/merge/same-cycle bypass、PTW/TLBOP pending conflict 仍为 future exact-model；不能由 `credit_sb`、generic RRPV wrapper 或本次 debug SVA pass 关闭。 |
+
 ### Phase 6G：coverage、regression 与最终收口
 
 目标：定义 UVM 修改补充工作可以关闭所需的证据。
@@ -819,6 +833,45 @@ Closure checklist：
 | Pass/fail | 目标回归无未解释 UVM_ERROR/UVM_FATAL；P0/P1 TP 和 must SVA 全部 implemented+evidence、approved waiver、future 或 blocked reason；未完成门禁不得标为 Complete。 |
 | Coverage/SVA/log | Coverage threshold 必须在运行前记录；report 不可用时允许 log fallback，但必须记录工具限制和替代证据。 |
 | Waiver | 未达 coverage、未触发场景、SVA cover 缺口必须逐项 waiver 或移入具名 future phase；waiver 需要 approver 和风险说明。 |
+
+#### Phase 6G 实施完成记录（2026-05-23）
+
+本轮已实现 Phase6G closure infrastructure，且 default manifest/scanner gate 已 PASS。所有关闭结论以 manifest/scanner 证据为准，不能用 generic regression PASS 替代；PTW disabled/fault/access-error source-specific harness 已用 manifest closure row 关闭，negative injector 和 RRPV exact/wbuf 项仍以 waiver/future 形式保留风险边界。
+
+| 项目 | 结果 |
+| --- | --- |
+| 新增 artifact | `simu/l2tlb_phase6g_smoke_list`、`simu/l2tlb_phase6g_targeted_list`、`simu/l2tlb_phase6g_negative_list`、`simu/l2tlb_phase6g_debug_rrpv_list`、`simu/l2tlb_phase6g_timeout_fairness_list`、`simu/l2tlb_phase6g_evidence_manifest.tsv`、`scripts/l2tlb_phase6g_closure.py`、`scripts/l2tlb_phase6g_replay.py`。 |
+| 证据模型 | Manifest 逐 row 记录 `closure/negative/debug/waived/future_exact_model/blocked`，并要求 exact `L2TLB_TP_xxx`、`L2TLB_SVA_xxx`、issue 或 waiver linkage；scanner 检查 report token、required counter、required cover、UVM summary、bad log pattern 和 blocked/waiver/future 合法性。 |
+| 运行证据 | `make comp_fast` pass；Phase6G smoke list 3/3 pass，targeted list 更新后 5/5 generic pass，negative list 1/1 pass，debug RRPV list 1/1 pass；`python3 -m py_compile` 和 `git diff --check` pass。 |
+| Closure gate | Timeout/fairness 与 TLBOP/PTW LSU root-cause 修复后，`python3 scripts/l2tlb_phase6g_closure.py --manifest simu/l2tlb_phase6g_evidence_manifest.tsv --compile-log output/logs/comp_fast.log` 输出 `STATUS=PASS PASS=12 OPEN=0 FAIL=0 TOTAL=12`。 |
+| Closed blocker | `P6E_TLBOP_INV_ABORT` closure：`test_l2tlb_p6e_tlbop_inv_abort_lifecycle` seed 64001 复跑 `UVM_ERROR=0`、无 `failed at`，shadow delta `inv=109 abort_epoch=109 control_epoch=9253`，`cp_lsu_abort_entry_clear=6`；root-cause 为 PTW LSU SVA 未建模合法 TLBOP abort clear。 |
+| Closed blocker | `P6G_TIMEOUT_FAIRNESS_CLOSURE` closure：`test_l2tlb_p6e_timeout_fairness_release` seed 64001 复跑 `UVM_ERROR=0`、`UVM_FATAL=0`、`PHASE6C_L2_SHADOW:mismatch=0`，shadow delta `activity=544 pfu=52 payload_ignore=52`，`credit_sva.c_d_req_back_to_back_valid=2`；链接已关闭的 `L2TLB-P6-ISSUE-013`。 |
+| Closed blocker | `P6E_PTW_SOURCE_FAULT_CLOSURE` closure：`test_l2tlb_p6e_ptw_disabled_fault_accerr` seed 64001 复跑 `UVM_ERROR=0`、`UVM_FATAL=0`；`PHASE6C_L2_SHADOW` 显示 `ptw_disabled_*` 四源均为 1、`ptw_pgflt_*` 四源均 >0、`ptw_accerr_*` 四源均 >0、`payload_ignore=17`、`mismatch=0`、`waived_future=0`；更新后的 targeted list 5/5 pass，closure scanner PASS。 |
+| Waiver/future | bad completion/control-hazard injector、exact victim/RRPV value、wbuf latest-wins/merge/same-cycle bypass 仍保留 waiver/future row；不得计为功能 closure。 |
+| Review 结论 | Phase6G run-list/manifest/scanner/replay flow 已落地并能防止表面通过；timeout/fairness、TLBOP/PTW LSU root-cause 和 PTW source-specific harness 已关闭，default gate PASS。negative injector 和 exact RRPV/wbuf 缺口仍保留 waiver/future，不作为 blocked row。 |
+
+#### Phase 6G Open Closure Plan（2026-05-23）
+
+以下计划用于承接 Phase6G `Implemented-open` 后的剩余验证工作。关闭顺序必须以提高 DUT 验证质量为准；任何条目在没有 trigger、checker/SVA、coverage 或 approved waiver/future 证据前，不得因为 wrapper 名称、generic regression pass、`UVM_ERROR=0`、总 coverage 或历史日志而标记为完成。
+
+| 优先级 | 计划项 / 相关 ID | 当前状态 | DUT 验证风险 | 必须实现的动作 | 退出标准 |
+| --- | --- | --- | --- | --- | --- |
+| P0 | Timeout/fairness root-cause：`L2TLB_TP_049..050`、`L2TLB-P6-ISSUE-013`、`P6G_TIMEOUT_FAIRNESS_CLOSURE` | Closed；seed 64001 已 `UVM_ERROR=0`、shadow mismatch=0 | 初始失败来自 testbench 过严/滞后判断：PFU flag-only 诊断位参与 PA payload compare、L1DTLB MB CAM 只看上一拍 shadow、ReqQ SVA 不允许合法 back-to-back DTLB request | 已实现 PFU payload-ignore classifier、MB current-window classifier、DTLB back-to-back ReqQ SVA policy；manifest row 更新为 closure | Targeted timeout/fairness seed 64001 clean；`activity=544 pfu=52 payload_ignore=52`；`c_d_req_back_to_back_valid=2`；无未解释 UVM_ERROR/UVM_FATAL 或 bad log pattern |
+| P0 | TLBOP/INV/abort lifecycle：`L2TLB_TP_034..044`、`L2TLB_SVA_015..016`、`L2TLB-P6-ISSUE-015`、`P6E_TLBOP_INV_ABORT` | Closed；seed 64001 已无 `failed at` | TLBP/TLBR/TLBWI/TLBWR/INV/abort 的 request/grant/done、epoch、payload side-effect 可能被错误关闭 | 已 root-cause：`mbuf_entry_on` 是 entry lifecycle marker，会在合法 TLBOP abort clear 中改变；SVA 改为 accept/response/abort lifecycle event，并新增 abort-entry-clear cover | TLBOP/INV/abort directed row 有 trigger + lifecycle checker/SVA pass；`UVM_ERROR=0`、bad-pattern scan clean、`cp_lsu_abort_entry_clear=6` |
+| P0 | PTW disabled/fault/access-error source-specific harness：`L2TLB_TP_018`、`025`、`026`、`033`、`L2TLB_SVA_012`、`014` | Closed；`P6E_PTW_SOURCE_FAULT_CLOSURE` seed 64001 | 原风险是 PTW disabled、page fault、access error 和 PFU error payload 只被粗粒度日志覆盖，未证明 source-specific final response 和 Phase4 payload-ignore 规则正确 | 已新增 directed positive harness，区分 ITLB/DTLB load/DTLB store/PFU；shadow 记录 final response classifier、disabled terminal classifier、payload-ignore evidence；`L2TLB-WAIVE-P6E-001` 已被 closure row supersede | Manifest `closure` row 要求 12 个 source/result counter 全部 >0、`payload_ignore>0`、`mismatch=0`、`waived_future=0`、`UVM_ERROR/FATAL=0`；更新后 targeted list 5/5 pass，closure scanner `STATUS=PASS PASS=12 OPEN=0 FAIL=0 TOTAL=12` |
+| P0 | Negative injector：bad PTW completion、illegal input、OOO、control hazard；`L2TLB_TP_027`、`048`、`056`、`058`、`L2TLB_SVA_012`、`013`、`017`、`018`、`L2TLB-WAIVE-P6E-002` | Waived/Open；legacy OOO wrapper obsolete | 非法输入或协议违例可能混入 normal functional coverage，或者 expected assertion/error 没有被正确分类 | 建独立 negative suite；注入 bad ID/completion、bad type/page-size、credit overflow、control/control-write hazard；normal list 与 negative list 分离 | Negative list 的 expected assertion/error 分类正确；normal functional regression 不依赖 negative fail；每个 negative TP 有 manifest row 或 approved waiver |
+| P1 | TLBP/TLBR/TLBWI/TLBWR exact decode/readback：`L2TLB_TP_034..037`、Phase6C remaining hole | Open | CP0/TLBOP path 可能只验证到 wrapper 运行，未证明 transaction decode、readback data、entry shadow side-effect 正确 | 在 scoreboard/ref-model 中补 CP0/TLBOP transaction decode、readback compare、L2 entry shadow effect；补 TLBR/TLBWI/TLBWR directed evidence | Exact transaction/readback mismatch 为 0；entry shadow 与 final response 一致；coverage/manifest 逐 ID 记录 |
+| P1 | ReqQ/arbiter/ownership fine-grain closure：`L2TLB_TP_004..011`、`019..024`、`051..055`、`L2TLB_SVA_003..006`、`019..020` | Partial/Open | payload no-cross、source ownership、ptw_on/tlboper_on stall-release、pairwise/four-source conflict 可能未被精确覆盖 | 补 source trigger counter、owner checker、no-cross/no-overwrite/no-stale checker 或 SVA；覆盖 pairwise/four-source、prefetch mask、MB partition full | 每个 arbiter/flow-control bin 有 trigger + checker/SVA evidence；无 owner 丢失或 payload cross；未达 bin 进入 waiver/future |
+| P1 | PFU source/truth-table closure：`L2TLB_TP_028..033`、`053`、`057`、`L2TLB_SVA_021` | Partial/Open | PFU 粗粒度 pass 不能证明 MMU-off direct、MMU-on L2 hit、PTW path、flag/PMP/sysmap、prefetch mask 和 attribute truth-table 全覆盖 | 补 PFU source-specific directed runs 和 attribute truth-table cover；把 PFU fault/error payload 与 Phase4 ignore 规则绑定 | PFU source/result/truth-table bin 全部命中或 waiver；PFU 相关 manifest row 不只依赖 wrapper 名称 |
+| P1 | RRPV/replacement exact model 与 WBUF：`L2TLB_TP_045..047`、`L2TLB_SVA_022..024`、`L2TLB-P6-ISSUE-014`、`L2TLB-WAIVE-P6F-001/002` | Debug/Future/Open | replacement 可见结果、wbuf full/CAM-hit/latest-wins/same-cycle/PTW-writeback 行为可能未被持续观测，exact victim/RRPV 不应被误判为已关闭 | 保持 exact victim/free-way/max-RRPV、exact RRPV value、latest-wins/CAM merge/same-cycle bypass 为 future 或实现精确模型；补 debug cover hole targeted runs | Debug bins 有 cover/SVA evidence；exact model 项要么实现并通过，要么保留 approved future/waiver；v1 functional closure 不被 exact-model 缺口污染 |
+| P1 | Coverage/URG/report threshold 与 integration/nightly closure：`L2TLB_TP_050`、Phase6G coverage/checklist | Open | 只有 manifest/scanner 不能替代真实 coverage threshold、L2-specific report 和全局回归防回退证据 | 固定运行前 threshold；执行 `l2tlb_coverage`/URG 或 L2 log fallback；补 integration/nightly candidate list；报告 source/result/page/ASID/control/error/debug bins | Coverage report 或 fallback summary 可追溯；未达项进入 issue/waiver/future；closure tiers 100% effective pass；任何 xfail 绑定 issue/waiver |
+| P1 | Waiver/future approval closure：所有 `L2TLB-WAIVE-*`、future exact rows | Open；部分 approver 为 `TBD` | 未签核 waiver/future 会把真实验证缺口伪装成已接受风险 | 为每条 waiver/future 补 owner、approver、风险、替代证据、后续 phase 或不实现理由；未批准项保持 open/blocker | 所有 waiver/future 有 approver 和风险接受记录；未批准 waiver 不得关闭 P0/P1 TP 或 must SVA |
+
+执行约束：
+
+- 任何修复或新增测试都必须同步更新 `simu/l2tlb_phase6g_evidence_manifest.tsv`、closure report、`progress.md` 和相关 run list。
+- 若 root-cause 指向 DUT/RTL bug，先记录 issue、最小复现、期望/实际行为和质量风险；DUT/RTL 修改仍需明确同意。
+- 若发现 BuildPlan 仍漏掉金标准要求，以 `l2tlb_function_description.md` 为准补计划、测试、checker/SVA、coverage 或 waiver/future，不能为了关闭表格降低验证严格度。
 
 ## 4. 候选交付物矩阵
 

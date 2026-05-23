@@ -117,6 +117,7 @@ logic [13:0]  dutlb_pre_flg;
 logic [27:0]  dutlb_pre_pa;
 logic [2 :0]  dutlb_pre_pgs;
 logic         dutlb_pre_sel;
+logic         dutlb_stamo_pre_sel;
 logic         dutlb_req_id_older;
 logic         dutlb_va_illegal;
 logic         lsu_va_chg;
@@ -185,7 +186,8 @@ assign dutlb_page_fault = ( !dutlb_fin_flg[0]
 
 assign mmu_lsu_page_fault_x = dutlb_page_fault && !dutlb_off_hit;
 
-assign mmu_lsu_access_fault_x = jtlb_acc_fault_flop
+assign mmu_lsu_access_fault_x = (expt_match_x && expt_acflt_x)
+                            || jtlb_acc_fault_flop
                             || !pmp_mmu_flg_x[0] && (pmp_read_type || dutlb_ori_read_x)
                                && !(cp0_mach_mode && !pmp_mmu_flg_x[3])
                                && pmp_flg_vld
@@ -193,7 +195,7 @@ assign mmu_lsu_access_fault_x = jtlb_acc_fault_flop
                                && !(cp0_mach_mode && !pmp_mmu_flg_x[3])
                                && pmp_flg_vld;
 
-assign dutlb_acc_flt_x = jtlb_acc_fault_flop;
+assign dutlb_acc_flt_x = (expt_match_x && expt_acflt_x) || jtlb_acc_fault_flop;
 
 // PLRU Update
 always @(posedge dplru_clk or negedge cpurst_b) begin
@@ -264,9 +266,11 @@ assign dutlb_pre_sel = dutlb_off_hit
                      | !lsu_mmu_va_vld_x
                      | dutlb_va_illegal
                      | dutlb_expt_match
-                     | lsu_mmu_stamo_vld_x;
+                     | dutlb_stamo_pre_sel;
 
-assign dutlb_pre_pa[PPN_WIDTH-1:0] = lsu_mmu_stamo_vld_x ? lsu_mmu_stamo_pa_x[PPN_WIDTH-1:0]
+assign dutlb_stamo_pre_sel = lsu_mmu_stamo_vld_x & !dutlb_expt_match;
+
+assign dutlb_pre_pa[PPN_WIDTH-1:0] = dutlb_stamo_pre_sel ? lsu_mmu_stamo_pa_x[PPN_WIDTH-1:0]
                                                          : dutlb_off_pa[PPN_WIDTH-1:0];
 
 assign dutlb_pre_flg[FLG_WIDTH-1:0] = dutlb_off_flg[FLG_WIDTH-1:0];
@@ -291,7 +295,7 @@ always @(posedge dutlb_clk or negedge cpurst_b) begin
   if(!cpurst_b)
     jtlb_acc_fault_flop <= 1'b0;
   else
-    jtlb_acc_fault_flop <= expt_match_x & expt_acflt_x & !lsu_mmu_abort_x;
+    jtlb_acc_fault_flop <= 1'b0;
 end
 
 //----------------------------------------------------------
@@ -331,7 +335,9 @@ always @(posedge pabuf_clk) begin
 end
 
 assign dutlb_va_chg_x = lsu_va_chg;
-assign mmu_pmp_pa_x[PPN_WIDTH-1:0] = dutlb_pa_buf[PPN_WIDTH-1:0];
+assign mmu_pmp_pa_x[PPN_WIDTH-1:0] = dutlb_expt_match
+                                    ? dutlb_fin_pa[PPN_WIDTH-1:0]
+                                    : dutlb_pa_buf[PPN_WIDTH-1:0];
 assign utlb_req_vpn_x[VPN_WIDTH-1:0] = lsu_mmu_va_x[VPN_WIDTH+11:12];
 assign mmu_sysmap_pa_x[PPN_WIDTH-1:0] = lsu_mmu_va_x[VPN_WIDTH+12:12];
 

@@ -309,6 +309,7 @@ module tb_top;
   assign dut_probes_if.l1d_mb_wfi        = u_dut.u_mmu_l1dtlb.mb_entry_wfi;
   assign dut_probes_if.l1d_mb_store      = u_dut.u_mmu_l1dtlb.mb_entry_store;
   assign dut_probes_if.l1d_sched_credit_cnt = u_dut.u_mmu_l1dtlb.x_scheduler.credit_cnt;
+  assign dut_probes_if.l1d_l2_credit_ret = u_dut.l2tlb_dutlb_credit_return;
   assign dut_probes_if.l1d_l2_req_vld    = u_dut.u_mmu_l1dtlb.dutlb_l2tlb_req_vld;
   assign dut_probes_if.l1d_l2_req_vpn    = u_dut.u_mmu_l1dtlb.dutlb_l2tlb_req_vpn;
   assign dut_probes_if.l1d_l2_req_eid    = u_dut.u_mmu_l1dtlb.dutlb_l2tlb_req_eid;

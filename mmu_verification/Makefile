@@ -395,6 +395,17 @@ L1DTLB_TESTPOINT_AUDIT    ?= $(L1DTLB_AUDIT_DIR)/l1dtlb_testpoint_audit.md
 L1DTLB_TESTPLAN_XLSX      ?= $(L1DTLB_AUDIT_DIR)/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx
 L1DTLB_DIRECTED_GROUP     ?= l1dtlb_tests
 L1DTLB_AUDIT_SEED         ?= 97101
+L1DTLB_PHASE6G_SMOKE_LIST ?= $(SIMU_DIR)/l1dtlb_phase6g_smoke_list
+L1DTLB_PHASE6G_TARGETED_LIST ?= $(SIMU_DIR)/l1dtlb_phase6g_targeted_list
+L1DTLB_PHASE6G_EVIDENCE_MANIFEST ?= $(SIMU_DIR)/l1dtlb_phase6g_evidence_manifest.tsv
+L1DTLB_PHASE6G_CLOSURE    ?= $(PROJECT_DIR)/scripts/l1dtlb_phase6g_closure.py
+L1DTLB_PHASE6G_REPLAY     ?= $(PROJECT_DIR)/scripts/l1dtlb_phase6g_replay.py
+L1DTLB_PHASE6G_SMOKE_SEEDS ?= 97101
+L1DTLB_PHASE6G_TARGETED_SEEDS ?= 97101
+L1DTLB_PHASE6G_SMOKE_SUMMARY ?= $(REGRESS_DIR)/l1dtlb_phase6g_smoke/summary.txt
+L1DTLB_PHASE6G_TARGETED_SUMMARY ?= $(REGRESS_DIR)/l1dtlb_phase6g_targeted/summary.txt
+L1DTLB_PHASE6G_REPLAY_SUMMARY ?= $(REGRESS_DIR)/l1dtlb_phase6g_replay/summary.txt
+L1DTLB_PHASE6G_CLOSURE_REPORT ?= $(REGRESS_DIR)/l1dtlb_phase6g_closure/closure_report.md
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -542,6 +553,13 @@ print-l1dtlb-audit:
 	@echo "L1DTLB_TESTPLAN_XLSX   = $(L1DTLB_TESTPLAN_XLSX)"
 	@echo "L1DTLB_DIRECTED_GROUP  = $(L1DTLB_DIRECTED_GROUP)"
 	@echo "L1DTLB_AUDIT_SEED      = $(L1DTLB_AUDIT_SEED)"
+	@echo "L1DTLB_PHASE6G_SMOKE_LIST = $(L1DTLB_PHASE6G_SMOKE_LIST)"
+	@echo "L1DTLB_PHASE6G_TARGETED_LIST = $(L1DTLB_PHASE6G_TARGETED_LIST)"
+	@echo "L1DTLB_PHASE6G_EVIDENCE_MANIFEST = $(L1DTLB_PHASE6G_EVIDENCE_MANIFEST)"
+	@echo "L1DTLB_PHASE6G_CLOSURE = $(L1DTLB_PHASE6G_CLOSURE)"
+	@echo "L1DTLB_PHASE6G_REPLAY = $(L1DTLB_PHASE6G_REPLAY)"
+	@echo "L1DTLB_PHASE6G_REPLAY_SUMMARY = $(L1DTLB_PHASE6G_REPLAY_SUMMARY)"
+	@echo "L1DTLB_PHASE6G_CLOSURE_REPORT = $(L1DTLB_PHASE6G_CLOSURE_REPORT)"
 
 l1dtlb_audit_check:
 	@test -f "$(L1DTLB_FUNC_DESC)" || (echo "ERROR: missing $(L1DTLB_FUNC_DESC)"; exit 2)
@@ -554,6 +572,56 @@ l1dtlb_audit_run: l1dtlb_audit_check
 
 l1dtlb_audit_run_cov: l1dtlb_audit_check
 	$(MAKE) run_cov TEST_NAME=$(L1DTLB_DIRECTED_GROUP) SEED=$(L1DTLB_AUDIT_SEED) UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0
+
+l1dtlb_phase6g_check: l1dtlb_audit_check
+	@test -f "$(L1DTLB_PHASE6G_SMOKE_LIST)" || (echo "ERROR: missing $(L1DTLB_PHASE6G_SMOKE_LIST)"; exit 2)
+	@test -f "$(L1DTLB_PHASE6G_TARGETED_LIST)" || (echo "ERROR: missing $(L1DTLB_PHASE6G_TARGETED_LIST)"; exit 2)
+	@test -f "$(L1DTLB_PHASE6G_EVIDENCE_MANIFEST)" || (echo "ERROR: missing $(L1DTLB_PHASE6G_EVIDENCE_MANIFEST)"; exit 2)
+	@test -f "$(L1DTLB_PHASE6G_CLOSURE)" || (echo "ERROR: missing $(L1DTLB_PHASE6G_CLOSURE)"; exit 2)
+	@test -f "$(L1DTLB_PHASE6G_REPLAY)" || (echo "ERROR: missing $(L1DTLB_PHASE6G_REPLAY)"; exit 2)
+	@echo "L1DTLB Phase6G closure assets present."
+
+l1dtlb_phase6g_smoke: comp_fast l1dtlb_phase6g_check
+	@$(MAKE) regress \
+		LIST="$(L1DTLB_PHASE6G_SMOKE_LIST)" \
+		REGRESS_MODE=run_check \
+		REGRESS_NAME=l1dtlb_phase6g_smoke \
+		REGRESS_SEEDS="$(L1DTLB_PHASE6G_SMOKE_SEEDS)" \
+		REGRESS_SUMMARY="$(L1DTLB_PHASE6G_SMOKE_SUMMARY)" \
+		REGRESS_MIN_PASS_RATE=1.0 \
+		REGRESS_JOBS=1 \
+		REGRESS_FAIL_FAST=1 \
+		UVM_ERR_ONLY=0 \
+		UVM_CONFIG_DB_TRACE=0
+
+l1dtlb_phase6g_targeted: comp_fast l1dtlb_phase6g_check
+	@$(MAKE) regress \
+		LIST="$(L1DTLB_PHASE6G_TARGETED_LIST)" \
+		REGRESS_MODE=run_check \
+		REGRESS_NAME=l1dtlb_phase6g_targeted \
+		REGRESS_SEEDS="$(L1DTLB_PHASE6G_TARGETED_SEEDS)" \
+		REGRESS_SUMMARY="$(L1DTLB_PHASE6G_TARGETED_SUMMARY)" \
+		REGRESS_MIN_PASS_RATE=1.0 \
+		REGRESS_JOBS=1 \
+		REGRESS_FAIL_FAST=1 \
+		UVM_ERR_ONLY=0 \
+		UVM_CONFIG_DB_TRACE=0
+
+l1dtlb_phase6g_replay: comp_fast l1dtlb_phase6g_check
+	$(PYTHON) "$(L1DTLB_PHASE6G_REPLAY)" \
+		--manifest "$(L1DTLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--summary "$(L1DTLB_PHASE6G_REPLAY_SUMMARY)" \
+		--mode run_check \
+		--uvm-err-only 0 \
+		--uvm-config-db-trace 0 \
+		--fail-fast
+
+l1dtlb_phase6g_closure: l1dtlb_phase6g_check
+	$(PYTHON) "$(L1DTLB_PHASE6G_CLOSURE)" \
+		--manifest "$(L1DTLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--log-dir "$(LOG_DIR)" \
+		--compile-log "$(LOG_DIR)/comp_fast.log" \
+		--report "$(L1DTLB_PHASE6G_CLOSURE_REPORT)"
 
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
@@ -683,6 +751,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         phase14_make_parallel_shards regress_v4_full_parallel phase14_show_parallel_failures phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         print-l1dtlb-audit l1dtlb_audit_check l1dtlb_audit_run l1dtlb_audit_run_cov \
+        l1dtlb_phase6g_check l1dtlb_phase6g_smoke l1dtlb_phase6g_targeted l1dtlb_phase6g_replay l1dtlb_phase6g_closure \
         phase12_exit_check phase12_pgflt_urg_probe
 
 all: comp run

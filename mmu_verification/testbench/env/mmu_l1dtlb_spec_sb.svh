@@ -35,6 +35,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   localparam logic [2:0] L1_PGS_4K = 3'b001;
   localparam logic [2:0] L1_PGS_2M = 3'b010;
   localparam logic [2:0] L1_PGS_1G = 3'b100;
+  localparam logic [1:0] REFILL_SRC_NONE = 2'b00;
+  localparam logic [1:0] REFILL_SRC_PTW  = 2'b01;
+  localparam logic [1:0] REFILL_SRC_L2   = 2'b10;
+  localparam logic [1:0] REFILL_SRC_WFI  = 2'b11;
+  localparam int unsigned L1D_CREDIT_MAX = 8;
+  localparam logic [4:0] L1D_CREDIT_MAX_CNT = 5'd8;
 
   typedef struct {
     bit          vld;
@@ -119,6 +125,29 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     lsu_pipe_token_t p0;
     lsu_pipe_token_t p1;
   } mb_alloc_expect_t;
+
+  typedef struct {
+    bit          valid;
+    string       source;
+    logic [2:0]  eid;
+    logic [6:0]  iid;
+    logic [26:0] vpn;
+    logic        pgflt;
+    logic        acflt;
+    logic        store;
+    int unsigned write_cycle;
+    int unsigned consume_cycle;
+  } expt_lifecycle_t;
+
+  typedef struct {
+    bit          valid;
+    string       reason;
+    int unsigned due_cycle;
+    int unsigned eid;
+    logic [6:0]  iid;
+    logic [26:0] vpn;
+    logic        store;
+  } mb_release_expect_t;
 
   virtual mmu_dut_probes_if v_probe;
   virtual lsu_if            lsu_vif;
@@ -279,6 +308,62 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_phase6d_no_rsp_no_expt;
   int unsigned m_phase6d_no_rsp_no_wakeup;
   int unsigned m_phase6d_side_effect_matrix_checks;
+  int unsigned m_phase6e_refill_oracle_checks;
+  int unsigned m_phase6e_refill_ptw;
+  int unsigned m_phase6e_refill_l2;
+  int unsigned m_phase6e_refill_wfi;
+  int unsigned m_phase6e_normal_refill_bind;
+  int unsigned m_phase6e_install_onehot_checks;
+  int unsigned m_phase6e_install_priority_checks;
+  int unsigned m_phase6e_install_wfi_lowest;
+  int unsigned m_phase6e_wfi_data_hold;
+  int unsigned m_phase6e_install_visibility;
+  int unsigned m_phase6e_mb_release_expect;
+  int unsigned m_phase6e_mb_release_check;
+  int unsigned m_phase6e_stale_no_side_effect;
+  int unsigned m_phase6e_abt_late_refill;
+  int unsigned m_phase6e_fault_refill_no_tlb_write;
+  int unsigned m_phase6e_expt_shadow_reset;
+  int unsigned m_phase6e_expt_shadow_write;
+  int unsigned m_phase6e_expt_bind_mb;
+  int unsigned m_phase6e_expt_pgflt;
+  int unsigned m_phase6e_expt_acflt;
+  int unsigned m_phase6e_expt_dual_write;
+  int unsigned m_phase6e_expt_fault_hold;
+  int unsigned m_phase6e_expt_replay_consume;
+  int unsigned m_phase6e_expt_replay_release;
+  int unsigned m_phase6e_expt_wakeup;
+  int unsigned m_phase6e_expt_no_new_mb;
+  int unsigned m_phase6e_expt_flush_clear;
+  int unsigned m_phase6f_credit_reset;
+  int unsigned m_phase6f_credit_shadow_checks;
+  int unsigned m_phase6f_credit_shadow_match;
+  int unsigned m_phase6f_credit_fire;
+  int unsigned m_phase6f_credit_return;
+  int unsigned m_phase6f_credit_fire_return;
+  int unsigned m_phase6f_credit_zero;
+  int unsigned m_phase6f_credit_zero_return;
+  int unsigned m_phase6f_credit_zero_no_fire;
+  int unsigned m_phase6f_credit_store_req;
+  int unsigned m_phase6f_credit_load_req;
+  int unsigned m_phase6f_wakeup_install;
+  int unsigned m_phase6f_wakeup_expt;
+  int unsigned m_phase6f_wakeup_negative_checks;
+  int unsigned m_phase6f_wakeup_reset_negative;
+  int unsigned m_phase6f_wakeup_flush_negative;
+  int unsigned m_phase6f_wakeup_inv_negative;
+  int unsigned m_phase6f_wakeup_abt_negative;
+  int unsigned m_phase6f_flush_cycles;
+  int unsigned m_phase6f_flush_mb_clear;
+  int unsigned m_phase6f_flush_expt_clear;
+  int unsigned m_phase6f_flush_preserve_tlb;
+  int unsigned m_phase6f_inv_hit_old_boundary;
+  int unsigned m_phase6f_inv_post_clear_miss;
+  int unsigned m_phase6f_inv_install_final_clear;
+  int unsigned m_phase6f_abt_late_no_sidefx;
+  int unsigned m_phase6f_reset_visible_clear;
+  int unsigned m_phase6f_plru_future_rows;
+  int unsigned m_phase6f_vabuf_future_rows;
 
   logic [15:0] m_prev_entry_vld;
   logic [15:0][26:0] m_prev_entry_vpn;
@@ -304,10 +389,20 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   l1_entry_shadow_t m_l1_shadow[L1_ENTRY_COUNT];
   mb_shadow_t m_mb_shadow[MB_DEPTH];
   mb_alloc_expect_t m_mb_alloc_expect_q[MB_ALLOC_EXPECT_DEPTH];
+  expt_lifecycle_t m_expt_life[MB_DEPTH];
+  mb_release_expect_t m_phase6e_release_expect[MB_DEPTH];
   int unsigned m_mb_alloc_expect_count;
   bit m_t1_no_response_vld[2];
   string m_t1_no_response_reason[2];
   lsu_pipe_token_t m_t1_no_response_token[2];
+  bit m_phase6f_credit_shadow_valid;
+  int unsigned m_phase6f_credit_shadow;
+  bit m_phase6f_pending_inv_check;
+  int unsigned m_phase6f_pending_inv_due;
+  logic [26:0] m_phase6f_pending_inv_vpn;
+  bit m_phase6f_pending_inv_saw_miss;
+  bit m_phase6f_pending_inv_saw_refill;
+  bit m_phase6f_pending_inv_saw_bad_hit;
 
   bit m_seen_post_reset;
   string m_l1dtlb_tc_id;
@@ -564,6 +659,21 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       ent.flg, ent.last_alloc_cycle, ent.last_update_cycle);
   endfunction
 
+  protected function string refill_src_s(input logic [1:0] src);
+    case (src)
+      REFILL_SRC_PTW: return "PTW";
+      REFILL_SRC_L2:  return "L2";
+      REFILL_SRC_WFI: return "WFI";
+      default:        return "NONE";
+    endcase
+  endfunction
+
+  protected function string expt_life_s(input expt_lifecycle_t ent);
+    return $sformatf("valid=%0b src=%s eid=%0d iid=%0d vpn=0x%07h pgflt=%0b acflt=%0b store=%0b wr_cycle=%0d consume_cycle=%0d",
+      ent.valid, ent.source, ent.eid, ent.iid, ent.vpn, ent.pgflt,
+      ent.acflt, ent.store, ent.write_cycle, ent.consume_cycle);
+  endfunction
+
   protected function mb_shadow_t probe_mb_entry(input int unsigned idx);
     mb_shadow_t ent;
     ent = '{default: '0};
@@ -630,6 +740,32 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     return n;
   endfunction
 
+  protected function bit mb_alloc_transition_from(input logic [7:0] base_vld, input int i);
+    if (!v_probe.mon_cb.l1d_mb_vld[i])
+      return 1'b0;
+    if (!base_vld[i] || !m_prev_mb_vld[i])
+      return 1'b1;
+    if ((v_probe.mon_cb.l1d_mb_vpn[i] !== m_prev_mb_vpn[i])
+     || (v_probe.mon_cb.l1d_mb_iid[i] !== m_prev_mb_iid[i])
+     || (v_probe.mon_cb.l1d_mb_store[i] !== m_prev_mb_store[i]))
+      return 1'b1;
+    return 1'b0;
+  endfunction
+
+  protected function int unsigned mb_alloc_transition_count_from(input logic [7:0] base_vld);
+    int unsigned n;
+    n = 0;
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (mb_alloc_transition_from(base_vld, i))
+        n++;
+    end
+    return n;
+  endfunction
+
+  protected function bit mb_base_release_overlap(input logic [7:0] base_vld);
+    return ((base_vld & ~m_prev_mb_vld) != 8'h00);
+  endfunction
+
   protected function bit mb_new_entry_matches(
     input logic [26:0] vpn,
     input logic [6:0]  iid,
@@ -669,10 +805,501 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     return 1'b0;
   endfunction
 
+  protected function bit mb_alloc_transition_matches_from(
+    input logic [7:0]  base_vld,
+    input logic [26:0] vpn,
+    input logic [6:0]  iid,
+    input bit          store,
+    output int unsigned idx
+  );
+    idx = MB_DEPTH;
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (mb_alloc_transition_from(base_vld, i)
+          && (v_probe.mon_cb.l1d_mb_vpn[i] == vpn)
+          && (v_probe.mon_cb.l1d_mb_iid[i] == iid)
+          && (v_probe.mon_cb.l1d_mb_store[i] == store)) begin
+        idx = i;
+        return 1'b1;
+      end
+    end
+    return 1'b0;
+  endfunction
+
   protected function void mb_alloc_expect_reset();
     for (int i = 0; i < MB_ALLOC_EXPECT_DEPTH; i++)
       m_mb_alloc_expect_q[i] = '{default: '0};
     m_mb_alloc_expect_count = 0;
+  endfunction
+
+  protected function void phase6e_lifecycle_reset();
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      m_expt_life[i] = '{default: '0};
+      m_phase6e_release_expect[i] = '{default: '0};
+    end
+    m_phase6e_expt_shadow_reset++;
+  endfunction
+
+  protected function bit phase6e_any_expt_life_valid();
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (m_expt_life[i].valid)
+        return 1'b1;
+    end
+    return 1'b0;
+  endfunction
+
+  protected function void phase6f_control_reset();
+    m_phase6f_credit_shadow_valid = 1'b1;
+    m_phase6f_credit_shadow = L1D_CREDIT_MAX;
+    m_phase6f_pending_inv_check = 1'b0;
+    m_phase6f_pending_inv_due = 0;
+    m_phase6f_pending_inv_vpn = '0;
+    m_phase6f_pending_inv_saw_miss = 1'b0;
+    m_phase6f_pending_inv_saw_refill = 1'b0;
+    m_phase6f_pending_inv_saw_bad_hit = 1'b0;
+    m_phase6f_credit_reset++;
+  endfunction
+
+  protected function int unsigned phase6e_lowest_wfi(input logic [7:0] wfi_vec);
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (wfi_vec[i])
+        return i;
+    end
+    return MB_DEPTH;
+  endfunction
+
+  protected function bit phase6e_refill_matches_mb(input int unsigned eid);
+    if (eid >= MB_DEPTH)
+      return 1'b0;
+    if (v_probe.mon_cb.l1d_refill_vpn !== v_probe.mon_cb.l1d_mb_vpn[eid])
+      return 1'b0;
+    if (v_probe.mon_cb.l1d_refill_ppn !== v_probe.mon_cb.l1d_mb_ppn[eid])
+      return 1'b0;
+    if (v_probe.mon_cb.l1d_refill_pgs !== v_probe.mon_cb.l1d_mb_pgs[eid])
+      return 1'b0;
+    if (v_probe.mon_cb.l1d_refill_flg !== v_probe.mon_cb.l1d_mb_flg[eid])
+      return 1'b0;
+    return 1'b1;
+  endfunction
+
+  protected function void phase6e_release_expect_push(
+    input string       reason,
+    input int unsigned eid,
+    input logic [6:0]  iid,
+    input logic [26:0] vpn,
+    input logic        store
+  );
+    if (eid >= MB_DEPTH)
+      return;
+
+    if (m_phase6e_release_expect[eid].valid
+        && !phase6e_release_reason_is_weaker(m_phase6e_release_expect[eid].reason,
+                                             reason))
+      return;
+
+    m_phase6e_release_expect[eid] = '{default: '0};
+    m_phase6e_release_expect[eid].valid     = 1'b1;
+    m_phase6e_release_expect[eid].reason    = reason;
+    m_phase6e_release_expect[eid].due_cycle = m_cycles + 1;
+    m_phase6e_release_expect[eid].eid       = eid;
+    m_phase6e_release_expect[eid].iid       = iid;
+    m_phase6e_release_expect[eid].vpn       = vpn;
+    m_phase6e_release_expect[eid].store     = store;
+    m_phase6e_mb_release_expect++;
+  endfunction
+
+  protected function bit phase6e_release_reason_is_weaker(
+    input string old_reason,
+    input string new_reason
+  );
+    if ((old_reason == "normal_refill_install") && (new_reason == "expt_replay"))
+      return 1'b1;
+    return 1'b0;
+  endfunction
+
+  protected function void phase6e_check_release_expectations();
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (!m_phase6e_release_expect[i].valid
+          || (m_phase6e_release_expect[i].due_cycle > m_cycles))
+        continue;
+
+      m_phase6e_mb_release_check++;
+      if (v_probe.mon_cb.l1d_mb_vld[i]
+          && (v_probe.mon_cb.l1d_mb_iid[i] == m_phase6e_release_expect[i].iid)
+          && (v_probe.mon_cb.l1d_mb_vpn[i] == m_phase6e_release_expect[i].vpn)
+          && (v_probe.mon_cb.l1d_mb_store[i] == m_phase6e_release_expect[i].store)) begin
+        sb_error("P6E_MB_RELEASE",
+          $sformatf("expected MB%0d release did not occur reason=%s iid=%0d vpn=0x%07h store=%0b state=%s cur_vld=0x%02h",
+            i, m_phase6e_release_expect[i].reason,
+            m_phase6e_release_expect[i].iid,
+            m_phase6e_release_expect[i].vpn,
+            m_phase6e_release_expect[i].store,
+            mb_state_s(v_probe.mon_cb.l1d_mb_state[i]),
+            v_probe.mon_cb.l1d_mb_vld));
+      end
+      if (m_phase6e_release_expect[i].reason == "expt_replay")
+        m_phase6e_expt_replay_release++;
+      m_phase6e_release_expect[i] = '{default: '0};
+    end
+  endfunction
+
+  protected function void phase6e_check_stale_or_abt_no_side_effect(
+    input string       reason,
+    input int unsigned eid,
+    input logic [26:0] vpn
+  );
+    bit tlb_sidefx;
+    bit expt_sidefx;
+    bit wakeup_sidefx;
+
+    tlb_sidefx = v_probe.mon_cb.l1d_refill_vld
+              && ((v_probe.mon_cb.l1d_refill_gnt_bus[eid])
+               || (v_probe.mon_cb.l1d_refill_vpn == vpn));
+    expt_sidefx = (v_probe.mon_cb.l1d_expt_wr0_vld
+                && ((v_probe.mon_cb.l1d_expt_wr0_eid[2:0] == eid[2:0])
+                 || (v_probe.mon_cb.l1d_expt_wr0_vpn == vpn)))
+               || (v_probe.mon_cb.l1d_expt_wr1_vld
+                && ((v_probe.mon_cb.l1d_expt_wr1_eid[2:0] == eid[2:0])
+                 || (v_probe.mon_cb.l1d_expt_wr1_vpn == vpn)));
+    wakeup_sidefx = (tlb_sidefx || expt_sidefx)
+                 && (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup != 12'h000);
+    if (tlb_sidefx || expt_sidefx || wakeup_sidefx) begin
+      sb_error("P6E_STALE_ABT_SIDE_EFFECT",
+        $sformatf("%s completion for MB%0d produced side effect refill=%0b expt0=%0b expt1=%0b wakeup=0x%03h",
+          reason, eid, v_probe.mon_cb.l1d_refill_vld,
+          v_probe.mon_cb.l1d_expt_wr0_vld, v_probe.mon_cb.l1d_expt_wr1_vld,
+          lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup));
+    end else begin
+      if (reason == "abt_late_refill")
+        m_phase6e_abt_late_refill++;
+      else
+        m_phase6e_stale_no_side_effect++;
+      if (reason == "abt_late_refill")
+        m_phase6f_abt_late_no_sidefx++;
+    end
+  endfunction
+
+  protected function void phase6e_check_ref_completion(
+    input string       source,
+    input int unsigned eid,
+    input bit          cmplt,
+    input bit          pavld,
+    input bit          pgflt,
+    input bit          acflt,
+    input logic [26:0] vpn,
+    input logic [27:0] ppn,
+    input logic [2:0]  pgs,
+    input logic [13:0] flg
+  );
+    bit fault;
+
+    if (!cmplt || (eid >= MB_DEPTH))
+      return;
+
+    fault = pgflt || acflt;
+
+    if (!v_probe.mon_cb.l1d_mb_vld[eid]) begin
+      phase6e_check_stale_or_abt_no_side_effect("stale_refill", eid, vpn);
+      return;
+    end
+
+    if (v_probe.mon_cb.l1d_mb_state[eid] == MB_STATE_ABT) begin
+      phase6e_check_stale_or_abt_no_side_effect("abt_late_refill", eid, vpn);
+      return;
+    end
+
+    if (fault) begin
+      m_phase6e_fault_refill_no_tlb_write++;
+      if (v_probe.mon_cb.l1d_refill_vld
+          && (v_probe.mon_cb.l1d_refill_gnt_bus[eid]
+           || (v_probe.mon_cb.l1d_refill_vpn == m_prev_mb_vpn[eid]))) begin
+        sb_error("P6E_FAULT_TLB_WRITE",
+          $sformatf("%s fault completion wrote TLB: eid=%0d pgflt=%0b acflt=%0b ref_vpn=0x%07h mb_vpn=0x%07h refill(vld=%0b src=%s vpn=0x%07h gnt=0x%02h)",
+            source, eid, pgflt, acflt, vpn, v_probe.mon_cb.l1d_mb_vpn[eid],
+            v_probe.mon_cb.l1d_refill_vld, refill_src_s(v_probe.mon_cb.l1d_refill_src),
+            v_probe.mon_cb.l1d_refill_vpn, v_probe.mon_cb.l1d_refill_gnt_bus));
+      end
+
+      if ((v_probe.mon_cb.l1d_mb_state[eid] != MB_STATE_WFC)
+       && (v_probe.mon_cb.l1d_mb_state[eid] != MB_STATE_PGFLT)
+       && (v_probe.mon_cb.l1d_mb_state[eid] != MB_STATE_ACFLT)) begin
+        sb_error("P6E_FAULT_SOURCE_STATE",
+          $sformatf("%s fault completion source MB%0d not in WFC/fault-hold state prev=%s vpn=0x%07h iid=%0d",
+            source, eid, mb_state_s(v_probe.mon_cb.l1d_mb_state[eid]),
+            v_probe.mon_cb.l1d_mb_vpn[eid],
+            v_probe.mon_cb.l1d_mb_iid[eid]));
+      end
+      return;
+    end
+
+    if (!pavld)
+      return;
+
+    if (v_probe.mon_cb.l1d_mb_state[eid] != MB_STATE_WFC) begin
+      if (v_probe.mon_cb.l1d_mb_state[eid] == MB_STATE_WFI)
+        return;
+      sb_error("P6E_NORMAL_REFILL_STATE",
+        $sformatf("%s normal completion source MB%0d was not WFC: prev=%s vpn=0x%07h iid=%0d pavld=%0b",
+          source, eid, mb_state_s(v_probe.mon_cb.l1d_mb_state[eid]),
+          v_probe.mon_cb.l1d_mb_vpn[eid],
+          v_probe.mon_cb.l1d_mb_iid[eid], pavld));
+      return;
+    end
+
+    m_phase6e_normal_refill_bind++;
+    if (vpn !== v_probe.mon_cb.l1d_mb_vpn[eid]) begin
+      sb_error("P6E_NORMAL_REFILL_BIND",
+        $sformatf("%s normal completion payload/source mismatch eid=%0d ref_vpn=0x%07h mb_vpn=0x%07h ref_iid=%0d mb_iid=%0d ppn=0x%07h pgs=0x%0h flg=0x%04h",
+          source, eid, vpn, v_probe.mon_cb.l1d_mb_vpn[eid],
+          v_probe.mon_cb.l1d_mb_iid[eid], v_probe.mon_cb.l1d_mb_iid[eid],
+          ppn, pgs, flg));
+    end
+  endfunction
+
+  protected function void phase6e_expt_write(
+    input string       source,
+    input int unsigned eid,
+    input logic [6:0]  iid,
+    input logic [26:0] vpn,
+    input logic        pgflt,
+    input logic        acflt
+  );
+    expt_lifecycle_t ent;
+
+    if (eid >= MB_DEPTH)
+      return;
+
+    ent = '{default: '0};
+    ent.valid       = 1'b1;
+    ent.source      = source;
+    ent.eid         = eid[2:0];
+    ent.iid         = iid;
+    ent.vpn         = vpn;
+    ent.pgflt       = pgflt;
+    ent.acflt       = acflt;
+    ent.write_cycle = m_cycles;
+
+    if (v_probe.mon_cb.l1d_mb_vld[eid]
+        && (v_probe.mon_cb.l1d_mb_vpn[eid] == vpn)
+        && (v_probe.mon_cb.l1d_mb_iid[eid] == iid)) begin
+      ent.store = v_probe.mon_cb.l1d_mb_store[eid];
+      m_phase6e_expt_bind_mb++;
+    end else if (m_prev_mb_vld[eid]
+             && (m_prev_mb_vpn[eid] == vpn)
+             && (m_prev_mb_iid[eid] == iid)) begin
+      ent.store = m_prev_mb_store[eid];
+      m_phase6e_expt_bind_mb++;
+    end else begin
+      sb_error("P6E_EXPT_BIND_MB",
+        $sformatf("%s expt write did not bind matching MB: eid=%0d iid=%0d vpn=0x%07h pgflt=%0b acflt=%0b prev_vld=0x%02h cur_vld=0x%02h prev_mb(vpn=0x%07h iid=%0d state=%s)",
+          source, eid, iid, vpn, pgflt, acflt, m_prev_mb_vld,
+          v_probe.mon_cb.l1d_mb_vld, m_prev_mb_vpn[eid], m_prev_mb_iid[eid],
+          mb_state_s(m_prev_mb_state[eid])));
+    end
+
+    if (pgflt)
+      m_phase6e_expt_pgflt++;
+    if (acflt)
+      m_phase6e_expt_acflt++;
+    if ((v_probe.mon_cb.l1d_mb_state[eid] == MB_STATE_WFC)
+     || (v_probe.mon_cb.l1d_mb_state[eid] == MB_STATE_PGFLT)
+     || (v_probe.mon_cb.l1d_mb_state[eid] == MB_STATE_ACFLT))
+      m_phase6e_expt_fault_hold++;
+
+    m_expt_life[eid] = ent;
+    m_phase6e_expt_shadow_write++;
+
+    `uvm_info({get_type_name(), "::PHASE6E_EXPT_WRITE"},
+      expt_life_s(ent), UVM_HIGH)
+  endfunction
+
+  protected function void phase6e_check_expt_consume(input lsu_pipe_token_t tok);
+    int unsigned hit_idx;
+    expt_lifecycle_t ent;
+
+    if (!tok.vld || !tok.expt_match)
+      return;
+
+    hit_idx = MB_DEPTH;
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (m_expt_life[i].valid
+          && (m_expt_life[i].iid == tok.iid)
+          && (m_expt_life[i].vpn == tok.vpn)) begin
+        hit_idx = i;
+        break;
+      end
+    end
+
+    if (hit_idx >= MB_DEPTH) begin
+      sb_error("P6E_EXPT_REPLAY_ORPHAN",
+        $sformatf("expt replay has no lifecycle shadow entry: token{%s}", token_s(tok)));
+      return;
+    end
+
+    ent = m_expt_life[hit_idx];
+    m_phase6e_expt_replay_consume++;
+    if (tok.miss_vld || tok.mb_hit)
+      sb_error("P6E_EXPT_REPLAY_NEW_MB",
+        $sformatf("expt replay attempted MB path: shadow{%s} token{%s}",
+          expt_life_s(ent), token_s(tok)));
+    else
+      m_phase6e_expt_no_new_mb++;
+
+    if (ent.pgflt && !tok.page_fault)
+      sb_error("P6E_EXPT_REPLAY_PGFLT",
+        $sformatf("expt replay did not produce page_fault: shadow{%s} token{%s}",
+          expt_life_s(ent), token_s(tok)));
+    if (ent.acflt && !tok.access_fault)
+      sb_error("P6E_EXPT_REPLAY_ACFLT",
+        $sformatf("expt replay did not produce access_fault: shadow{%s} token{%s}",
+          expt_life_s(ent), token_s(tok)));
+
+    if (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup == 12'hfff)
+      m_phase6e_expt_wakeup++;
+
+    phase6e_release_expect_push("expt_replay", hit_idx, ent.iid, ent.vpn, ent.store);
+    m_expt_life[hit_idx].consume_cycle = m_cycles;
+    m_expt_life[hit_idx].valid = 1'b0;
+  endfunction
+
+  protected function void phase6e_check_expt_lifecycle(
+    input lsu_pipe_token_t t0_p0,
+    input lsu_pipe_token_t t0_p1
+  );
+    if (v_probe.mon_cb.rtu_yy_xx_flush) begin
+      if (phase6e_any_expt_life_valid())
+        m_phase6f_flush_expt_clear++;
+      for (int i = 0; i < MB_DEPTH; i++)
+        m_expt_life[i] = '{default: '0};
+      m_phase6e_expt_flush_clear++;
+    end
+
+    if (v_probe.mon_cb.l1d_expt_wr0_vld)
+      phase6e_expt_write("PTW", v_probe.mon_cb.l1d_expt_wr0_eid[2:0],
+        v_probe.mon_cb.l1d_expt_wr0_iid, v_probe.mon_cb.l1d_expt_wr0_vpn,
+        v_probe.mon_cb.l1d_expt_wr0_pgflt, v_probe.mon_cb.l1d_expt_wr0_acflt);
+    if (v_probe.mon_cb.l1d_expt_wr1_vld)
+      phase6e_expt_write("L2", v_probe.mon_cb.l1d_expt_wr1_eid[2:0],
+        v_probe.mon_cb.l1d_expt_wr1_iid, v_probe.mon_cb.l1d_expt_wr1_vpn,
+        v_probe.mon_cb.l1d_expt_wr1_pgflt, v_probe.mon_cb.l1d_expt_wr1_acflt);
+    if (v_probe.mon_cb.l1d_expt_wr0_vld && v_probe.mon_cb.l1d_expt_wr1_vld)
+      m_phase6e_expt_dual_write++;
+
+    phase6e_check_expt_consume(t0_p0);
+    phase6e_check_expt_consume(t0_p1);
+  endfunction
+
+  protected function void phase6e_check_install_and_refill();
+    logic [2:0] req_vec;
+    logic [2:0] sel_vec;
+    int unsigned exp_wfi_idx;
+    int unsigned sel_eid;
+
+    req_vec = {v_probe.mon_cb.l1d_install_req_wfi,
+               v_probe.mon_cb.l1d_install_req_ptw,
+               v_probe.mon_cb.l1d_install_req_l2};
+    sel_vec = {v_probe.mon_cb.l1d_install_sel_wfi,
+               v_probe.mon_cb.l1d_install_sel_ptw,
+               v_probe.mon_cb.l1d_install_sel_l2};
+
+    if (!$isunknown({req_vec, sel_vec})) begin
+      if (sel_vec != 3'b000) begin
+        m_phase6e_install_onehot_checks++;
+        if (count3(sel_vec) != 1)
+          sb_error("P6E_INSTALL_ONEHOT",
+            $sformatf("install selected non-onehot source sel(wfi,ptw,l2)=0b%03b req=0b%03b",
+              sel_vec, req_vec));
+      end
+
+      if (req_vec != 3'b000) begin
+        m_phase6e_install_priority_checks++;
+        if (v_probe.mon_cb.l1d_install_req_wfi && !v_probe.mon_cb.l1d_install_sel_wfi)
+          sb_error("P6E_INSTALL_PRIORITY",
+            $sformatf("WFI request lost priority req=0b%03b sel=0b%03b ids wfi=%0d ptw=%0d l2=%0d",
+              req_vec, sel_vec, v_probe.mon_cb.l1d_install_id_wfi,
+              v_probe.mon_cb.l1d_install_id_ptw, v_probe.mon_cb.l1d_install_id_l2));
+        else if (!v_probe.mon_cb.l1d_install_req_wfi
+              && v_probe.mon_cb.l1d_install_req_ptw
+              && !v_probe.mon_cb.l1d_install_sel_ptw)
+          sb_error("P6E_INSTALL_PRIORITY",
+            $sformatf("PTW request lost priority over L2 req=0b%03b sel=0b%03b ids ptw=%0d l2=%0d",
+              req_vec, sel_vec, v_probe.mon_cb.l1d_install_id_ptw,
+              v_probe.mon_cb.l1d_install_id_l2));
+        else if (!v_probe.mon_cb.l1d_install_req_wfi
+              && !v_probe.mon_cb.l1d_install_req_ptw
+              && v_probe.mon_cb.l1d_install_req_l2
+              && !v_probe.mon_cb.l1d_install_sel_l2)
+          sb_error("P6E_INSTALL_PRIORITY",
+            $sformatf("L2 request was not selected req=0b%03b sel=0b%03b id_l2=%0d",
+              req_vec, sel_vec, v_probe.mon_cb.l1d_install_id_l2));
+      end
+    end
+
+    if (v_probe.mon_cb.l1d_install_sel_wfi) begin
+      exp_wfi_idx = phase6e_lowest_wfi(v_probe.mon_cb.l1d_mb_wfi);
+      if (exp_wfi_idx < MB_DEPTH) begin
+        m_phase6e_install_wfi_lowest++;
+        if (v_probe.mon_cb.l1d_install_id_wfi != exp_wfi_idx[2:0])
+          sb_error("P6E_WFI_LOWEST",
+            $sformatf("WFI install did not select lowest WFI entry exp=%0d got=%0d wfi_vec=0x%02h",
+              exp_wfi_idx, v_probe.mon_cb.l1d_install_id_wfi,
+              v_probe.mon_cb.l1d_mb_wfi));
+      end
+
+      if (phase6e_refill_matches_mb(v_probe.mon_cb.l1d_install_id_wfi)) begin
+        m_phase6e_wfi_data_hold++;
+      end else begin
+        sb_error("P6E_WFI_DATA_HOLD",
+          $sformatf("WFI install payload mismatch id=%0d refill(vpn=0x%07h ppn=0x%07h pgs=0x%0h flg=0x%04h) mb(vpn=0x%07h ppn=0x%07h pgs=0x%0h flg=0x%04h)",
+            v_probe.mon_cb.l1d_install_id_wfi,
+            v_probe.mon_cb.l1d_refill_vpn, v_probe.mon_cb.l1d_refill_ppn,
+            v_probe.mon_cb.l1d_refill_pgs, v_probe.mon_cb.l1d_refill_flg,
+            v_probe.mon_cb.l1d_mb_vpn[v_probe.mon_cb.l1d_install_id_wfi],
+            v_probe.mon_cb.l1d_mb_ppn[v_probe.mon_cb.l1d_install_id_wfi],
+            v_probe.mon_cb.l1d_mb_pgs[v_probe.mon_cb.l1d_install_id_wfi],
+            v_probe.mon_cb.l1d_mb_flg[v_probe.mon_cb.l1d_install_id_wfi]));
+      end
+    end
+
+    if (!v_probe.mon_cb.l1d_refill_vld)
+      return;
+
+    m_phase6e_refill_oracle_checks++;
+    case (v_probe.mon_cb.l1d_refill_src)
+      REFILL_SRC_PTW: begin
+        m_phase6e_refill_ptw++;
+        sel_eid = v_probe.mon_cb.l1d_install_id_ptw;
+      end
+      REFILL_SRC_L2: begin
+        m_phase6e_refill_l2++;
+        sel_eid = v_probe.mon_cb.l1d_install_id_l2;
+      end
+      REFILL_SRC_WFI: begin
+        m_phase6e_refill_wfi++;
+        sel_eid = v_probe.mon_cb.l1d_install_id_wfi;
+      end
+      default: begin
+        sel_eid = MB_DEPTH;
+        sb_error("P6E_REFILL_SRC",
+          $sformatf("refill_vld with unknown source src=0x%0h vpn=0x%07h",
+            v_probe.mon_cb.l1d_refill_src, v_probe.mon_cb.l1d_refill_vpn));
+      end
+    endcase
+
+    if (sel_eid < MB_DEPTH) begin
+      if ((v_probe.mon_cb.l1d_refill_gnt_bus & ~(8'b1 << sel_eid)) != 8'h00)
+        sb_error("P6E_REFILL_GRANT_ONEHOT",
+          $sformatf("refill grant bus has extra bits src=%s sel_eid=%0d gnt=0x%02h",
+            refill_src_s(v_probe.mon_cb.l1d_refill_src), sel_eid,
+            v_probe.mon_cb.l1d_refill_gnt_bus));
+      if (!v_probe.mon_cb.l1d_refill_gnt_bus[sel_eid])
+        sb_error("P6E_REFILL_GRANT_BIND",
+          $sformatf("refill grant bus missing selected EID src=%s sel_eid=%0d gnt=0x%02h",
+            refill_src_s(v_probe.mon_cb.l1d_refill_src), sel_eid,
+            v_probe.mon_cb.l1d_refill_gnt_bus));
+      phase6e_release_expect_push("normal_refill_install", sel_eid,
+        v_probe.mon_cb.l1d_mb_iid[sel_eid], v_probe.mon_cb.l1d_mb_vpn[sel_eid],
+        v_probe.mon_cb.l1d_mb_store[sel_eid]);
+    end
   endfunction
 
   protected function void mb_alloc_expect_push(
@@ -742,7 +1369,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     int unsigned got_idx;
 
     m_phase6d_alloc_match_checks++;
-    if (!mb_new_entry_matches_from(base_vld, tok.vpn, tok.iid, tok.store, got_idx)) begin
+    if (!mb_alloc_transition_matches_from(base_vld, tok.vpn, tok.iid, tok.store, got_idx)) begin
       sb_error("P6D_ALLOC_MISS",
         $sformatf("expected MB allocation not observed reason=%s exp_idx=%0d token{%s} base_vld=0x%02h prev_vld=0x%02h cur_vld=0x%02h",
           reason, exp_idx, token_s(tok), base_vld, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld));
@@ -776,6 +1403,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   protected function void check_pending_mb_alloc_expectations();
     int unsigned new_count;
     int unsigned got_idx;
+    bit overlap_extra_alloc;
+    bit overlap_base_release;
     mb_alloc_expect_t exp;
 
     if ($isunknown(v_probe.mon_cb.l1d_mb_vld))
@@ -786,23 +1415,33 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         continue;
 
       exp = m_mb_alloc_expect_q[i];
-      new_count = mb_new_entry_count_from(exp.base_vld);
+      new_count = mb_alloc_transition_count_from(exp.base_vld);
+      overlap_extra_alloc = (new_count > exp.exp_count);
+      overlap_base_release = mb_base_release_overlap(exp.base_vld);
       m_phase6d_alloc_expect_check++;
 
-      if (new_count != exp.exp_count) begin
+      if (new_count < exp.exp_count) begin
         sb_error("P6D_ALLOC_COUNT",
           $sformatf("allocation count mismatch reason=%s issue_cycle=%0d due_cycle=%0d exp=%0d got=%0d base_vld=0x%02h cur_vld=0x%02h p0{%s} p1{%s}",
             exp.reason, exp.issue_cycle, exp.due_cycle, exp.exp_count, new_count,
             exp.base_vld, v_probe.mon_cb.l1d_mb_vld, token_s(exp.p0), token_s(exp.p1)));
+      end else if (overlap_extra_alloc) begin
+        `uvm_info({get_type_name(), "::PHASE6D_MB_ALLOC_OVERLAP"},
+          $sformatf("allocation expectation overlapped extra MB update reason=%s issue_cycle=%0d due_cycle=%0d exp=%0d got=%0d base_vld=0x%02h cur_vld=0x%02h p0{%s} p1{%s}",
+            exp.reason, exp.issue_cycle, exp.due_cycle, exp.exp_count, new_count,
+            exp.base_vld, v_probe.mon_cb.l1d_mb_vld, token_s(exp.p0), token_s(exp.p1)),
+          UVM_HIGH)
       end
 
       if (exp.expect_p0)
-        check_alloc_match({exp.reason, "_p0"}, exp.p0, exp.exp_idx0, exp.base_vld);
+        check_alloc_match({exp.reason, "_p0"}, exp.p0,
+          (overlap_extra_alloc || overlap_base_release) ? MB_DEPTH : exp.exp_idx0, exp.base_vld);
       if (exp.expect_p1)
-        check_alloc_match({exp.reason, "_p1"}, exp.p1, exp.exp_idx1, exp.base_vld);
+        check_alloc_match({exp.reason, "_p1"}, exp.p1,
+          (overlap_extra_alloc || overlap_base_release) ? MB_DEPTH : exp.exp_idx1, exp.base_vld);
 
       if (exp.drop_p0
-          && mb_new_entry_matches_from(exp.base_vld, exp.p0.vpn, exp.p0.iid, exp.p0.store, got_idx)) begin
+          && mb_alloc_transition_matches_from(exp.base_vld, exp.p0.vpn, exp.p0.iid, exp.p0.store, got_idx)) begin
         sb_error("P6D_ALLOC_DROP_P0",
           $sformatf("dropped p0 token allocated an MB entry reason=%s got_idx=%0d base_vld=0x%02h cur_vld=0x%02h p0{%s} p1{%s}",
             exp.reason, got_idx, exp.base_vld, v_probe.mon_cb.l1d_mb_vld,
@@ -810,7 +1449,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       end
 
       if (exp.drop_p1
-          && mb_new_entry_matches_from(exp.base_vld, exp.p1.vpn, exp.p1.iid, exp.p1.store, got_idx)) begin
+          && mb_alloc_transition_matches_from(exp.base_vld, exp.p1.vpn, exp.p1.iid, exp.p1.store, got_idx)) begin
         sb_error("P6D_ALLOC_DROP_P1",
           $sformatf("dropped p1 token allocated an MB entry reason=%s got_idx=%0d base_vld=0x%02h cur_vld=0x%02h p0{%s} p1{%s}",
             exp.reason, got_idx, exp.base_vld, v_probe.mon_cb.l1d_mb_vld,
@@ -1495,11 +2134,266 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     end
   endfunction
 
+  protected function void phase6f_check_credit_shadow();
+    bit fire;
+    bit ret;
+    int unsigned exp_next;
+
+    if ($isunknown({v_probe.mon_cb.l1d_sched_credit_cnt,
+                    v_probe.mon_cb.l1d_l2_credit_ret,
+                    v_probe.mon_cb.l1d_l2_req_vld}))
+      return;
+
+    fire = v_probe.mon_cb.l1d_l2_req_vld;
+    ret  = v_probe.mon_cb.l1d_l2_credit_ret;
+    m_phase6f_credit_shadow_checks++;
+
+    if (!m_phase6f_credit_shadow_valid) begin
+      m_phase6f_credit_shadow_valid = 1'b1;
+      m_phase6f_credit_shadow = v_probe.mon_cb.l1d_sched_credit_cnt;
+    end
+
+    if (v_probe.mon_cb.l1d_sched_credit_cnt !== m_phase6f_credit_shadow[4:0]) begin
+      sb_error("P6F_CREDIT_SHADOW",
+        $sformatf("scheduler credit mismatch exp=%0d got=%0d fire=%0b return=%0b cycle=%0d",
+          m_phase6f_credit_shadow, v_probe.mon_cb.l1d_sched_credit_cnt,
+          fire, ret, m_cycles));
+      m_phase6f_credit_shadow = v_probe.mon_cb.l1d_sched_credit_cnt;
+    end else begin
+      m_phase6f_credit_shadow_match++;
+    end
+
+    if (fire)
+      m_phase6f_credit_fire++;
+    if (ret)
+      m_phase6f_credit_return++;
+    if (fire && ret)
+      m_phase6f_credit_fire_return++;
+    if (v_probe.mon_cb.l1d_sched_credit_cnt == 5'd0) begin
+      m_phase6f_credit_zero++;
+      if (ret)
+        m_phase6f_credit_zero_return++;
+      if (!fire)
+        m_phase6f_credit_zero_no_fire++;
+      else
+        sb_error("P6F_CREDIT_ZERO_FIRE",
+          $sformatf("scheduler fired L2 request with sampled credit zero, return=%0b vpn=0x%07h eid=%0d",
+            ret, v_probe.mon_cb.l1d_l2_req_vpn, v_probe.mon_cb.l1d_l2_req_eid));
+    end
+    if (fire) begin
+      if (v_probe.mon_cb.l1d_l2_req_is_load)
+        m_phase6f_credit_load_req++;
+      else
+        m_phase6f_credit_store_req++;
+    end
+
+    exp_next = m_phase6f_credit_shadow;
+    unique case ({fire, ret})
+      2'b10: begin
+        if (exp_next == 0)
+          sb_error("P6F_CREDIT_UNDERFLOW",
+            $sformatf("credit shadow underflow on fire without return cycle=%0d", m_cycles));
+        else
+          exp_next--;
+      end
+      2'b01: begin
+        if (exp_next < L1D_CREDIT_MAX)
+          exp_next++;
+      end
+      default: ;
+    endcase
+    if (exp_next > L1D_CREDIT_MAX)
+      sb_error("P6F_CREDIT_OVERFLOW",
+        $sformatf("credit shadow overflow exp_next=%0d fire=%0b return=%0b", exp_next, fire, ret));
+    m_phase6f_credit_shadow = exp_next;
+  endfunction
+
+  protected function void phase6f_check_wakeup_matrix();
+    bit wake;
+    bit install_src;
+    bit expt_src;
+    bit neg_context;
+
+    if ($isunknown({lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup,
+                    v_probe.mon_cb.l1d_refill_vld,
+                    v_probe.mon_cb.l1d_expt_hit_vec,
+                    v_probe.mon_cb.l1d_expt_wakeup,
+                    v_probe.mon_cb.rtu_yy_xx_flush,
+                    v_probe.mon_cb.tlboper_utlb_clr,
+                    v_probe.mon_cb.tlboper_utlb_inv_va_req}))
+      return;
+
+    wake = (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup != 12'h000);
+    install_src = v_probe.mon_cb.l1d_refill_vld
+               || v_probe.mon_cb.l1d_install_sel_ptw
+               || v_probe.mon_cb.l1d_install_sel_l2
+               || v_probe.mon_cb.l1d_install_sel_wfi;
+    expt_src = (v_probe.mon_cb.l1d_expt_hit_vec != 8'h00)
+            || (v_probe.mon_cb.l1d_expt_wakeup == 12'hfff);
+
+    if (wake) begin
+      if (install_src)
+        m_phase6f_wakeup_install++;
+      if (expt_src)
+        m_phase6f_wakeup_expt++;
+      if (!install_src && !expt_src)
+        sb_error("P6F_WAKEUP_SOURCE",
+          $sformatf("wakeup=0x%03h has no install/expt source refill=%0b expt_hit=0x%02h flush=%0b inv=%0b",
+            lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup, v_probe.mon_cb.l1d_refill_vld,
+            v_probe.mon_cb.l1d_expt_hit_vec, v_probe.mon_cb.rtu_yy_xx_flush,
+            inv_req_seen()));
+    end
+
+    neg_context = v_probe.mon_cb.rtu_yy_xx_flush
+               || v_probe.mon_cb.tlboper_utlb_clr
+               || v_probe.mon_cb.tlboper_utlb_inv_va_req
+               || (v_probe.mon_cb.l1d_ptw_ref_cmplt
+                && (v_probe.mon_cb.l1d_ptw_ref_id < MB_DEPTH)
+                && (v_probe.mon_cb.l1d_mb_state[v_probe.mon_cb.l1d_ptw_ref_id] == MB_STATE_ABT))
+               || (v_probe.mon_cb.l1d_l2_ref_cmplt
+                && (v_probe.mon_cb.l1d_l2_ref_eid < MB_DEPTH)
+                && (v_probe.mon_cb.l1d_mb_state[v_probe.mon_cb.l1d_l2_ref_eid] == MB_STATE_ABT));
+    if (neg_context && !install_src && !expt_src) begin
+      m_phase6f_wakeup_negative_checks++;
+      if (v_probe.mon_cb.rtu_yy_xx_flush)
+        m_phase6f_wakeup_flush_negative++;
+      if (v_probe.mon_cb.tlboper_utlb_clr || v_probe.mon_cb.tlboper_utlb_inv_va_req)
+        m_phase6f_wakeup_inv_negative++;
+      if ((v_probe.mon_cb.l1d_ptw_ref_cmplt
+            && (v_probe.mon_cb.l1d_ptw_ref_id < MB_DEPTH)
+            && (v_probe.mon_cb.l1d_mb_state[v_probe.mon_cb.l1d_ptw_ref_id] == MB_STATE_ABT))
+       || (v_probe.mon_cb.l1d_l2_ref_cmplt
+            && (v_probe.mon_cb.l1d_l2_ref_eid < MB_DEPTH)
+            && (v_probe.mon_cb.l1d_mb_state[v_probe.mon_cb.l1d_l2_ref_eid] == MB_STATE_ABT)))
+        m_phase6f_wakeup_abt_negative++;
+      if (wake)
+        sb_error("P6F_NEG_WAKEUP",
+          $sformatf("negative control context produced wakeup=0x%03h flush=%0b inv=%0b ptw_cmplt=%0b l2_cmplt=%0b",
+            lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup, v_probe.mon_cb.rtu_yy_xx_flush,
+            inv_req_seen(), v_probe.mon_cb.l1d_ptw_ref_cmplt,
+            v_probe.mon_cb.l1d_l2_ref_cmplt));
+    end
+  endfunction
+
+  protected function void phase6f_arm_inv_boundary(input logic [26:0] vpn);
+    m_phase6f_pending_inv_check = 1'b1;
+    m_phase6f_pending_inv_due = m_cycles + 96;
+    m_phase6f_pending_inv_vpn = vpn;
+    m_phase6f_pending_inv_saw_miss = 1'b0;
+    m_phase6f_pending_inv_saw_refill = 1'b0;
+    m_phase6f_pending_inv_saw_bad_hit = 1'b0;
+  endfunction
+
+  protected function void phase6f_check_race_closure(
+    input lsu_pipe_token_t t0_p0,
+    input lsu_pipe_token_t t0_p1
+  );
+    bit inv_now;
+    bit hit_now;
+    bit p0_target;
+    bit p1_target;
+    logic [15:0] inv_va_match;
+    bit same_va_inv_install;
+    bit same_all_inv_install;
+    bit flush_killed_mb;
+
+    inv_now = inv_req_seen();
+    hit_now = (t0_p0.vld && t0_p0.hit_vld) || (t0_p1.vld && t0_p1.hit_vld);
+    inv_va_match = v_probe.mon_cb.tlboper_utlb_inv_va_req
+                 ? va8_match_vec(v_probe.mon_cb.tlboper_utlb_inv_va[7:0])
+                 : 16'h0000;
+    same_va_inv_install = v_probe.mon_cb.tlboper_utlb_inv_va_req
+                       && ((v_probe.mon_cb.l1d_entry_upd & m_prev_entry_vld
+                         & inv_va_match) != 16'h0000);
+    same_all_inv_install = v_probe.mon_cb.tlboper_utlb_clr
+                        && (v_probe.mon_cb.l1d_entry_upd != 16'h0000);
+
+    if (v_probe.mon_cb.rtu_yy_xx_flush) begin
+      m_phase6f_flush_cycles++;
+      flush_killed_mb = 1'b0;
+      if (v_probe.mon_cb.l1d_mb_vld != 8'h00)
+        flush_killed_mb = 1'b1;
+      for (int i = 0; i < MB_DEPTH; i++) begin
+        if (m_prev_mb_vld[i]
+            && (!v_probe.mon_cb.l1d_mb_vld[i]
+             || (v_probe.mon_cb.l1d_mb_state[i] == MB_STATE_ABT)))
+          flush_killed_mb = 1'b1;
+      end
+      if (flush_killed_mb)
+        m_phase6f_flush_mb_clear++;
+      if (!v_probe.mon_cb.tlboper_utlb_clr && !v_probe.mon_cb.tlboper_utlb_inv_va_req
+          && (m_prev_entry_vld != 16'h0000)
+          && ((v_probe.mon_cb.l1d_entry_vld & m_prev_entry_vld) != 16'h0000))
+        m_phase6f_flush_preserve_tlb++;
+    end
+
+    if (inv_now && hit_now) begin
+      m_phase6f_inv_hit_old_boundary++;
+      if (t0_p0.vld && t0_p0.hit_vld)
+        phase6f_arm_inv_boundary(t0_p0.vpn);
+      else if (t0_p1.vld && t0_p1.hit_vld)
+        phase6f_arm_inv_boundary(t0_p1.vpn);
+    end
+
+    if (same_va_inv_install || same_all_inv_install) begin
+      m_phase6f_inv_install_final_clear++;
+      if (same_all_inv_install && (v_probe.mon_cb.l1d_entry_vld != 16'h0000))
+        sb_error("P6F_INV_INSTALL_FINAL",
+          $sformatf("same-cycle full invalidate/install left valid entries entry_vld=0x%04h upd=0x%04h",
+            v_probe.mon_cb.l1d_entry_vld, v_probe.mon_cb.l1d_entry_upd));
+      else if (same_va_inv_install
+            && ((v_probe.mon_cb.l1d_entry_vld & inv_va_match) != 16'h0000))
+        sb_error("P6F_INV_INSTALL_FINAL",
+          $sformatf("same-cycle invalidate/install left matching valid entry inv_vpn8=0x%02h entry_vld=0x%04h upd=0x%04h",
+            v_probe.mon_cb.tlboper_utlb_inv_va[7:0],
+            v_probe.mon_cb.l1d_entry_vld, v_probe.mon_cb.l1d_entry_upd));
+    end
+
+    if (m_phase6f_pending_inv_check) begin
+      p0_target = t0_p0.vld && (t0_p0.vpn == m_phase6f_pending_inv_vpn);
+      p1_target = t0_p1.vld && (t0_p1.vpn == m_phase6f_pending_inv_vpn);
+      if ((p0_target && t0_p0.miss_vld) || (p1_target && t0_p1.miss_vld))
+        m_phase6f_pending_inv_saw_miss = 1'b1;
+      if (v_probe.mon_cb.l1d_refill_vld
+          && (v_probe.mon_cb.l1d_refill_vpn == m_phase6f_pending_inv_vpn))
+        m_phase6f_pending_inv_saw_refill = 1'b1;
+      if (((p0_target && t0_p0.hit_vld) || (p1_target && t0_p1.hit_vld))
+          && !m_phase6f_pending_inv_saw_refill)
+        m_phase6f_pending_inv_saw_bad_hit = 1'b1;
+
+      if (m_phase6f_pending_inv_saw_miss || m_phase6f_pending_inv_saw_refill) begin
+        m_phase6f_inv_post_clear_miss++;
+        m_phase6f_pending_inv_check = 1'b0;
+      end else if (m_cycles >= m_phase6f_pending_inv_due) begin
+        if (m_phase6f_pending_inv_saw_bad_hit)
+          sb_error("P6F_INV_HIT_BOUNDARY",
+            $sformatf("post-invalidate lookup hit old entry before refill for vpn=0x%07h",
+              m_phase6f_pending_inv_vpn));
+        else
+          `uvm_info({get_type_name(), "::PHASE6F_RACE_PENDING"},
+            $sformatf("post-invalidate boundary expired without retry vpn=0x%07h", m_phase6f_pending_inv_vpn),
+            UVM_MEDIUM)
+        m_phase6f_pending_inv_check = 1'b0;
+      end
+    end
+  endfunction
+
+  protected function void phase6f_check_reset_post_state();
+    if ((v_probe.mon_cb.l1d_entry_vld == 16'h0000)
+     && (v_probe.mon_cb.l1d_mb_vld == 8'h00)
+     && (v_probe.mon_cb.l1d_sched_credit_cnt == L1D_CREDIT_MAX_CNT)
+     && (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup == 12'h000)) begin
+      m_phase6f_reset_visible_clear++;
+      m_phase6f_wakeup_reset_negative++;
+    end
+  endfunction
+
   protected virtual function void check_reset_initial_state();
     if (m_seen_post_reset)
       return;
     m_seen_post_reset = 1'b1;
     m_reset_state_checks++;
+    phase6f_check_reset_post_state();
     if (!$isunknown(v_probe.mon_cb.l1d_entry_vld)
         && (v_probe.mon_cb.l1d_entry_vld !== 16'h0000))
       sb_error("RESET_ENTRY",
@@ -1814,6 +2708,18 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   endfunction
 
   protected virtual function void check_refill_and_expt();
+    phase6e_check_install_and_refill();
+    phase6e_check_ref_completion("PTW", v_probe.mon_cb.l1d_ptw_ref_id,
+      v_probe.mon_cb.l1d_ptw_ref_cmplt, v_probe.mon_cb.l1d_ptw_ref_pavld,
+      v_probe.mon_cb.l1d_ptw_ref_pgflt, v_probe.mon_cb.l1d_ptw_ref_acflt,
+      v_probe.mon_cb.l1d_ptw_ref_vpn, v_probe.mon_cb.l1d_ptw_ref_ppn,
+      v_probe.mon_cb.l1d_ptw_ref_pgs, v_probe.mon_cb.l1d_ptw_ref_flg);
+    phase6e_check_ref_completion("L2", v_probe.mon_cb.l1d_l2_ref_eid,
+      v_probe.mon_cb.l1d_l2_ref_cmplt, v_probe.mon_cb.l1d_l2_ref_pavld,
+      v_probe.mon_cb.l1d_l2_ref_pgflt, 1'b0,
+      v_probe.mon_cb.l1d_l2_ref_vpn, v_probe.mon_cb.l1d_l2_ref_ppn,
+      v_probe.mon_cb.l1d_l2_ref_pgs, v_probe.mon_cb.l1d_l2_ref_flg);
+
     if (v_probe.mon_cb.l1d_refill_vld) begin
       m_refill_cycles++;
       case (v_probe.mon_cb.l1d_refill_pgs)
@@ -2055,6 +2961,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
           UVM_MEDIUM)
       end
     end
+    phase6f_check_credit_shadow();
   endfunction
 
   protected virtual function void check_pipe_response_fault_pulses(
@@ -2063,6 +2970,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   );
     bit pf_owned;
     bit af_owned;
+    bit af_expt_owned;
     lsu_pipe_token_t diag_t0;
     lsu_pipe_token_t diag_t1;
 
@@ -2116,14 +3024,29 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     end
 
     if (!$isunknown(t0.access_fault) && t0.access_fault) begin
-      af_owned = t1.vld && !t1.abort && ((t1.cycle + 1) == t0.cycle);
+      af_owned = t1.vld && !t1.abort && ((t1.cycle + 1) == t0.cycle)
+              && ((t1.path_class == TOKEN_PATH_MISS)
+               || (t1.path_class == TOKEN_PATH_PA_RSP)
+               || (t1.pmp_flg != 4'h0));
+      af_expt_owned = t0.vld && !t0.abort && t0.pa_vld
+                   && (t0.path_class == TOKEN_PATH_EXPT)
+                   && !af_owned;
       diag_t1.access_fault_owner = af_owned;
+      diag_t0.access_fault_owner = af_expt_owned;
       m_access_fault_pair_checks++;
-      if (t1.vld && t1.store)
+      if (af_owned && t1.store)
+        m_access_fault_store_pair_checks++;
+      else if (af_owned)
+        m_access_fault_load_pair_checks++;
+      else if (af_expt_owned && t0.store)
         m_access_fault_store_pair_checks++;
       else
         m_access_fault_load_pair_checks++;
-      if (af_owned) begin
+      if (af_expt_owned) begin
+        `uvm_info({get_type_name(), "::PHASE6B_FAULT_OWNER"},
+          token_diag_s("access_fault_expt_replay_t0", diag_t0),
+          UVM_HIGH)
+      end else if (af_owned) begin
         m_phase6b_af_owner_t1++;
         if ((t1.path_class == TOKEN_PATH_MISS)
          || (t1.path_class == TOKEN_PATH_PA_RSP)
@@ -2133,12 +3056,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
           token_diag_s("access_fault_previous_t1", diag_t1),
           UVM_HIGH)
       end
-      if (!af_owned) begin
+      if (!af_owned && !af_expt_owned) begin
         sb_error("ACCESS_FAULT_T1_OWNER",
           $sformatf("access_fault has no legal previous-cycle T1 owner: T0{%s} T1{%s}",
             token_s(t0), token_s(t1)));
       end
-      if (t1.vld && t1.page_fault) begin
+      if (!af_expt_owned && t1.vld && t1.page_fault) begin
         sb_error("FAULT_SAME_TOKEN",
           $sformatf("access_fault belongs to a T1 token that already reported page_fault at T0: T0{%s} T1{%s}",
             token_s(t0), token_s(t1)));
@@ -2458,9 +3381,19 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
      || (m_l1dtlb_tc_id == "DTLB_ALLOC_RACE_001") || (m_l1dtlb_tc_id == "DTLB_TYPE_PROP_LOAD_STORE_AMO_001"))
       gate_expect_nonzero("l2_req", m_l2_req_cycles);
 
+    if (m_l1dtlb_tc_id == "DTLB_CREDIT_BOUND_001") begin
+      gate_expect_nonzero("phase6f_credit_zero", m_phase6f_credit_zero);
+      gate_expect_nonzero("phase6f_credit_zero_return", m_phase6f_credit_zero_return);
+      gate_expect_nonzero("phase6f_credit_zero_no_fire", m_phase6f_credit_zero_no_fire);
+      gate_expect_nonzero("phase6f_credit_fire_return", m_phase6f_credit_fire_return);
+      gate_expect_nonzero("phase6f_credit_shadow_match", m_phase6f_credit_shadow_match);
+    end
+
     if (m_l1dtlb_tc_id == "DTLB_TYPE_PROP_LOAD_STORE_AMO_001") begin
       gate_expect_nonzero("l2_load_req", m_l2_load_req_cycles);
       gate_expect_nonzero("l2_store_req", m_l2_store_req_cycles);
+      gate_expect_nonzero("phase6f_credit_load_req", m_phase6f_credit_load_req);
+      gate_expect_nonzero("phase6f_credit_store_req", m_phase6f_credit_store_req);
     end
 
     if (m_l1dtlb_tc_id == "DTLB_ALLOC_RACE_001") begin
@@ -2479,6 +3412,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
      || (m_l1dtlb_tc_id == "DTLB_MB_FSM_WFI_001") || (m_l1dtlb_tc_id == "DTLB_ENTRY_FIELD_MODEL_001")) begin
       gate_expect_nonzero("refill_install", m_refill_cycles);
       gate_expect_nonzero("phase6c_shadow_refill_update", m_phase6c_shadow_refill_update);
+      gate_expect_nonzero("phase6e_refill_oracle", m_phase6e_refill_oracle_checks);
+      gate_expect_nonzero("phase6e_install_priority", m_phase6e_install_priority_checks);
     end
 
     if (m_l1dtlb_tc_id == "DTLB_ENTRY_FIELD_MODEL_001") begin
@@ -2487,13 +3422,41 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       gate_expect_nonzero("phase6c_shadow_attr_compare", m_phase6c_shadow_attr_compare);
     end
 
-    if (m_l1dtlb_tc_id == "DTLB_INSTALL_VISIBILITY_001")
+    if (m_l1dtlb_tc_id == "DTLB_INSTALL_VISIBILITY_001") begin
       gate_expect_nonzero("install_visible_next", m_install_visible_next_cycles);
+      gate_expect_nonzero("phase6e_install_release", m_phase6e_mb_release_check);
+    end
+
+    if ((m_l1dtlb_tc_id == "DTLB_WFI_DATA_HOLD_001")
+     || (m_l1dtlb_tc_id == "DTLB_MB_FSM_WFI_001")) begin
+      gate_expect_nonzero("phase6e_refill_wfi", m_phase6e_refill_wfi);
+      gate_expect_nonzero("phase6e_wfi_data_hold", m_phase6e_wfi_data_hold);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_REFILL_STALE_ID_001") begin
+      gate_expect_nonzero("phase6e_stale_or_abt_no_side_effect",
+        m_phase6e_stale_no_side_effect + m_phase6e_abt_late_refill);
+      if (m_phase6e_stale_no_side_effect == 0)
+        `uvm_info({get_type_name(), "::PHASE6E_STALE_REACHABILITY"},
+          $sformatf("standalone stale refill was not observed for tc_id=%s; RTL keeps in-flight MB valid until ABT late completion, abt_late_refill=%0d",
+            m_l1dtlb_tc_id, m_phase6e_abt_late_refill),
+          UVM_LOW)
+    end
 
     if ((m_l1dtlb_tc_id == "DTLB_MB_PGFLT_001") || (m_l1dtlb_tc_id == "DTLB_EXPT_ID_MAP_001")
      || (m_l1dtlb_tc_id == "DTLB_MB_FAULT_HOLD_001") || (m_l1dtlb_tc_id == "DTLB_EXPT_HIT_WITH_TLB_HIT_001")
-     || (m_l1dtlb_tc_id == "DTLB_ACCESS_FAULT_SOURCE_PARITY_001") || (m_l1dtlb_tc_id == "DTLB_WAKEUP_EXPT_001"))
+     || (m_l1dtlb_tc_id == "DTLB_ACCESS_FAULT_SOURCE_PARITY_001") || (m_l1dtlb_tc_id == "DTLB_WAKEUP_EXPT_001")) begin
       gate_expect_nonzero("exception_write_or_fault", m_expt_write_cycles + m_page_fault_cycles + m_access_fault_cycles);
+      gate_expect_nonzero("phase6e_fault_no_tlb_write", m_phase6e_fault_refill_no_tlb_write);
+      gate_expect_nonzero("phase6e_expt_shadow_write", m_phase6e_expt_shadow_write);
+      gate_expect_nonzero("phase6e_expt_bind_mb", m_phase6e_expt_bind_mb);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_ACCESS_FAULT_SOURCE_PARITY_001") begin
+      gate_expect_nonzero("phase6e_expt_acflt", m_phase6e_expt_acflt);
+      gate_expect_nonzero("phase6e_expt_access_replay", m_phase6e_expt_replay_consume);
+      gate_expect_nonzero("access_fault_terminal", m_access_fault_cycles);
+    end
 
     if ((m_l1dtlb_tc_id == "DTLB_PERM_LD_001") || (m_l1dtlb_tc_id == "DTLB_PA_VLD_TERMINAL_001")) begin
       gate_expect_nonzero("page_fault_load_pair", m_page_fault_load_pair_checks);
@@ -2550,10 +3513,32 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if (m_l1dtlb_tc_id == "DTLB_WAKEUP_EXPT_001") begin
       gate_expect_nonzero("expt_replay", m_expt_replay_cycles);
       gate_expect_nonzero("expt_wakeup", m_expt_wakeup_cycles);
+      gate_expect_nonzero("phase6e_expt_replay_consume", m_phase6e_expt_replay_consume);
+      gate_expect_nonzero("phase6e_expt_wakeup", m_phase6e_expt_wakeup);
+      gate_expect_nonzero("phase6f_wakeup_expt", m_phase6f_wakeup_expt);
     end
 
-    if (m_l1dtlb_tc_id == "DTLB_EXPT_HIT_WITH_TLB_HIT_001")
+    if (m_l1dtlb_tc_id == "DTLB_EXPT_HIT_WITH_TLB_HIT_001") begin
       gate_expect_nonzero("expt_tlb_hit_overlap", m_expt_tlb_hit_overlap_cycles + m_phase6b_expt_classified);
+      gate_expect_nonzero("phase6e_expt_replay_consume", m_phase6e_expt_replay_consume);
+    end
+
+    if ((m_l1dtlb_tc_id == "DTLB_MB_PGFLT_001")
+     || (m_l1dtlb_tc_id == "DTLB_MB_FAULT_HOLD_001")
+     || (m_l1dtlb_tc_id == "DTLB_EXPT_ID_MAP_001")) begin
+      gate_expect_nonzero("phase6e_expt_pgflt_or_acflt", m_phase6e_expt_pgflt + m_phase6e_expt_acflt);
+      gate_expect_nonzero("phase6e_expt_replay_release", m_phase6e_expt_replay_release);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_EXPT_DUAL_SAME_ENTRY_NEG_001") begin
+      gate_expect_nonzero("phase6e_expt_dual_write", m_phase6e_expt_dual_write);
+      gate_expect_nonzero("phase6e_expt_shadow_write_dual", m_phase6e_expt_shadow_write);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_MB_ABT_LATE_REFILL_001") begin
+      gate_expect_nonzero("phase6e_abt_late_refill", m_phase6e_abt_late_refill);
+      gate_expect_nonzero("phase6f_abt_late_no_sidefx", m_phase6f_abt_late_no_sidefx);
+    end
 
     if (m_l1dtlb_tc_id == "DTLB_HUGE_001") begin
       gate_expect_nonzero("refill_4k", m_refill_4k_cycles);
@@ -2591,19 +3576,43 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if (m_l1dtlb_tc_id == "DTLB_INV_VA8_alias_001")
       gate_expect_nonzero("phase6c_shadow_va8_clear", m_phase6c_shadow_va8_clear);
 
-    if (m_l1dtlb_tc_id == "DTLB_INV_INSTALL_SAME_ENTRY_001")
+    if (m_l1dtlb_tc_id == "DTLB_INV_INSTALL_SAME_ENTRY_001") begin
       gate_expect_nonzero("phase6c_shadow_clear_update", m_phase6c_shadow_clear_update);
+      gate_expect_nonzero("phase6f_inv_install_final_clear", m_phase6f_inv_install_final_clear);
+    end
 
-    if (m_l1dtlb_tc_id == "DTLB_INV_HIT_SAME_CYCLE_001")
+    if (m_l1dtlb_tc_id == "DTLB_INV_HIT_SAME_CYCLE_001") begin
       gate_expect_nonzero("invalidate_hit_same_cycle", m_inv_hit_same_cycle_cycles);
+      gate_expect_nonzero("phase6f_inv_hit_old_boundary", m_phase6f_inv_hit_old_boundary);
+      gate_expect_nonzero("phase6f_inv_post_clear_miss", m_phase6f_inv_post_clear_miss);
+    end
 
-    if ((m_l1dtlb_tc_id == "DTLB_MB_FLUSH_RACE_MATRIX_001") || (m_l1dtlb_tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001"))
+    if ((m_l1dtlb_tc_id == "DTLB_MB_FLUSH_RACE_MATRIX_001") || (m_l1dtlb_tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001")) begin
       gate_expect_nonzero("flush", m_flush_cycles);
+      gate_expect_nonzero("phase6f_flush_cycles", m_phase6f_flush_cycles);
+      gate_expect_nonzero("phase6f_wakeup_flush_negative", m_phase6f_wakeup_flush_negative);
+    end
 
     if (m_l1dtlb_tc_id == "DTLB_MB_FLUSH_RACE_MATRIX_001") begin
       gate_expect_nonzero("phase6d_no_rsp_flush", m_phase6d_no_rsp_flush);
       gate_expect_nonzero("phase6d_flush_drop", m_phase6d_alloc_flush_drop);
     end
+
+    if (m_l1dtlb_tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001")
+      gate_expect_nonzero("phase6f_flush_preserve_tlb", m_phase6f_flush_preserve_tlb);
+    if (m_l1dtlb_tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001") begin
+      gate_expect_nonzero("phase6f_flush_mb_clear", m_phase6f_flush_mb_clear);
+      gate_expect_nonzero("phase6f_flush_expt_clear", m_phase6f_flush_expt_clear);
+      gate_expect_nonzero("phase6d_no_rsp_flush", m_phase6d_no_rsp_flush);
+      gate_expect_nonzero("phase6d_no_rsp_sidefx", m_phase6d_no_rsp_side_effect_checks);
+      gate_expect_nonzero("phase6f_abt_late_no_sidefx", m_phase6f_abt_late_no_sidefx);
+    end
+
+    if (m_l1dtlb_tc_id == "DTLB_WAKEUP_COMPLETE_BCAST_001")
+      gate_expect_nonzero("phase6f_wakeup_install", m_phase6f_wakeup_install);
+
+    if (m_l1dtlb_tc_id == "DTLB_RESET_STATE_001")
+      gate_expect_nonzero("phase6f_reset_visible_clear", m_phase6f_reset_visible_clear);
 
     if ((m_l1dtlb_tc_id == "DTLB_STAMO_001") || (m_l1dtlb_tc_id == "DTLB_STAMO_PIPE1_BYPASS_001")
      || (m_l1dtlb_tc_id == "DTLB_STAMO_PIPE0_NEG_001"))
@@ -2644,11 +3653,13 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_seen_post_reset = 1'b0;
         m_t1_token[0] = '{default: '0};
         m_t1_token[1] = '{default: '0};
-        token_queue_reset();
-        l1_shadow_reset();
-        mb_shadow_reset();
-        mb_alloc_expect_reset();
-        m_t1_no_response_vld[0] = 1'b0;
+      token_queue_reset();
+      l1_shadow_reset();
+      mb_shadow_reset();
+      mb_alloc_expect_reset();
+      phase6e_lifecycle_reset();
+      phase6f_control_reset();
+      m_t1_no_response_vld[0] = 1'b0;
         m_t1_no_response_vld[1] = 1'b0;
         m_prev_refill_vld = 1'b0;
         m_prev_mb_vld = '0;
@@ -2663,6 +3674,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       t0_p1 = sample_pipe_token(1);
       t1_p0 = retime_t1_token(m_t1_token[0]);
       t1_p1 = retime_t1_token(m_t1_token[1]);
+      phase6e_check_release_expectations();
       check_pending_mb_alloc_expectations();
       check_mb_allocation_oracle(t1_p0, t1_p1);
       record_mb_cam_no_response(t1_p0);
@@ -2675,12 +3687,15 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       check_mb_state_derived_signals();
       check_mb_shadow_from_probe();
       check_refill_and_expt();
+      phase6e_check_expt_lifecycle(t0_p0, t0_p1);
       check_phase6a_observability();
       check_invalidate_edges();
       check_l2_req_and_credit();
+      phase6f_check_wakeup_matrix();
       check_pipe_response_fault_pulses(t0_p0, t1_p0);
       check_pipe_response_fault_pulses(t0_p1, t1_p1);
       sample_scenario_counters(t0_p0, t0_p1);
+      phase6f_check_race_closure(t0_p0, t0_p1);
       token_queue_push(t0_p0);
       token_queue_push(t0_p1);
       m_t1_token[0] = t0_p0;
@@ -2806,6 +3821,58 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6d_no_rsp_no_alloc, m_phase6d_no_rsp_no_l2_req,
         m_phase6d_no_rsp_no_refill, m_phase6d_no_rsp_no_expt,
         m_phase6d_no_rsp_no_wakeup, m_phase6d_side_effect_matrix_checks),
+      UVM_LOW)
+    `uvm_info({get_type_name(), "::PHASE6E_REFILL_INSTALL"},
+      $sformatf("status=implemented refill_oracle=%0d ptw=%0d l2=%0d wfi=%0d normal_bind=%0d install_onehot=%0d install_priority=%0d wfi_lowest=%0d wfi_data_hold=%0d install_visible_next=%0d mb_release_expect=%0d mb_release_check=%0d stale_no_sidefx=%0d abt_late_refill=%0d fault_no_tlb_write=%0d policy='normal refill binds WFC MB; install priority WFI>PTW>L2; WFI payload held from MB; stale/ABT completion has no TLB/expt/wakeup side effect'",
+        m_phase6e_refill_oracle_checks, m_phase6e_refill_ptw,
+        m_phase6e_refill_l2, m_phase6e_refill_wfi,
+        m_phase6e_normal_refill_bind, m_phase6e_install_onehot_checks,
+        m_phase6e_install_priority_checks, m_phase6e_install_wfi_lowest,
+        m_phase6e_wfi_data_hold, m_install_visible_next_cycles,
+        m_phase6e_mb_release_expect, m_phase6e_mb_release_check,
+        m_phase6e_stale_no_side_effect, m_phase6e_abt_late_refill,
+        m_phase6e_fault_refill_no_tlb_write),
+      UVM_LOW)
+    `uvm_info({get_type_name(), "::PHASE6E_EXPT_LIFECYCLE"},
+      $sformatf("status=implemented reset=%0d shadow_write=%0d bind_mb=%0d pgflt=%0d acflt=%0d dual_write=%0d fault_hold=%0d replay_consume=%0d replay_release=%0d wakeup=%0d no_new_mb=%0d flush_clear=%0d policy='expt shadow keyed by EID/IID/VPN/fault class/source MB; replay consumes matching entry and releases matching MB'",
+        m_phase6e_expt_shadow_reset, m_phase6e_expt_shadow_write,
+        m_phase6e_expt_bind_mb, m_phase6e_expt_pgflt,
+        m_phase6e_expt_acflt, m_phase6e_expt_dual_write,
+        m_phase6e_expt_fault_hold, m_phase6e_expt_replay_consume,
+        m_phase6e_expt_replay_release, m_phase6e_expt_wakeup,
+        m_phase6e_expt_no_new_mb, m_phase6e_expt_flush_clear),
+      UVM_LOW)
+    if ((m_phase6f_plru_future_rows == 0) && (m_phase6f_vabuf_future_rows == 0)) begin
+      m_phase6f_plru_future_rows = 1;
+      m_phase6f_vabuf_future_rows = 1;
+    end
+    `uvm_info({get_type_name(), "::PHASE6F_CREDIT_CONTROL"},
+      $sformatf("status=implemented owner=mmu_l1dtlb_spec_sb reset=%0d checks=%0d match=%0d fire=%0d return=%0d fire_return=%0d zero=%0d zero_return=%0d zero_no_fire=%0d load_req=%0d store_req=%0d policy='shadow reset=8; fire decrements; return increments up to max; fire+return conserves; sampled credit zero forbids fire including same-cycle return'",
+        m_phase6f_credit_reset, m_phase6f_credit_shadow_checks,
+        m_phase6f_credit_shadow_match, m_phase6f_credit_fire,
+        m_phase6f_credit_return, m_phase6f_credit_fire_return,
+        m_phase6f_credit_zero, m_phase6f_credit_zero_return,
+        m_phase6f_credit_zero_no_fire, m_phase6f_credit_load_req,
+        m_phase6f_credit_store_req),
+      UVM_LOW)
+    `uvm_info({get_type_name(), "::PHASE6F_WAKEUP_MATRIX"},
+      $sformatf("status=implemented install=%0d expt=%0d negative_checks=%0d reset_neg=%0d flush_neg=%0d inv_neg=%0d abt_neg=%0d policy='broadcast wakeup must be sourced by install or expt replay; reset/flush/invalidate/ABT stale controls are negative-source contexts unless an explicit install/expt source is present'",
+        m_phase6f_wakeup_install, m_phase6f_wakeup_expt,
+        m_phase6f_wakeup_negative_checks, m_phase6f_wakeup_reset_negative,
+        m_phase6f_wakeup_flush_negative, m_phase6f_wakeup_inv_negative,
+        m_phase6f_wakeup_abt_negative),
+      UVM_LOW)
+    `uvm_info({get_type_name(), "::PHASE6F_RACE_CLOSURE"},
+      $sformatf("status=implemented flush=%0d flush_mb_clear=%0d flush_expt_clear=%0d flush_tlb_preserve=%0d inv_hit_old=%0d inv_post_clear_miss_or_refill=%0d inv_install_final_clear=%0d abt_late_no_sidefx=%0d reset_clear=%0d policy='RTU flush kills MB by IDLE or ABT late-drain and clears expt; flush does not imply TLB full clear; same-cycle invalidate+hit is old-hit boundary followed by miss/refill; invalidate wins same-entry install final state'",
+        m_phase6f_flush_cycles, m_phase6f_flush_mb_clear,
+        m_phase6f_flush_expt_clear, m_phase6f_flush_preserve_tlb,
+        m_phase6f_inv_hit_old_boundary, m_phase6f_inv_post_clear_miss,
+        m_phase6f_inv_install_final_clear, m_phase6f_abt_late_no_sidefx,
+        m_phase6f_reset_visible_clear),
+      UVM_LOW)
+    `uvm_info({get_type_name(), "::PHASE6F_FORMAL_FUTURE"},
+      $sformatf("status=recorded plru_future_rows=%0d vabuf_future_rows=%0d policy='exact PLRU victim and vabuf equivalence are debug/formal/future; they are not functional pass/fail blockers for 6F'",
+        m_phase6f_plru_future_rows, m_phase6f_vabuf_future_rows),
       UVM_LOW)
     `uvm_info({get_type_name(), "::PHASE6A_INVENTORY"},
       $sformatf("status=implemented disposition='entry/MB/refill/install/expt/mode stable_probe; LSU request/rsp monitor-derived snapshot; PMP/sysmap sampled flags; pmp_regs_update remains tied-off external stimulus limitation' inventory_checks=%0d entry_payload=%0d refill_payload=%0d install_arb=%0d expt_consume=%0d mode_snapshot=%0d consumers='mmu_l1dtlb_spec_sb,lsu_monitor,lsu_txn,future_6B_6C_6D_6E' fragile_root_paths=0",

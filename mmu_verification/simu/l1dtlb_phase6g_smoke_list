@@ -1,0 +1,5 @@
+# Phase 6G L1DTLB directed smoke list.
+# Purpose: quick reset/observability/basic-hit health before targeted closure.
+test_mmu_l1dtlb_dtlb_ref_model_observability_001
+test_mmu_l1dtlb_dtlb_reset_state_001
+test_mmu_l1dtlb_dtlb_hit_001

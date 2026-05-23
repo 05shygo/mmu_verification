@@ -36,6 +36,9 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   `uvm_object_utils(l1dtlb_directed_vseq)
 
+  localparam logic [2:0] L1D_MB_STATE_WFC = 3'b010;
+  localparam logic [2:0] L1D_MB_STATE_ABT = 3'b101;
+
   string        tc_id;
   string        scenario_id;
   string        scenario_intent;
@@ -197,11 +200,15 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_INV_004",
       "DTLB_INV_VA8_alias_001",
       "DTLB_INV_HIT_SAME_CYCLE_001",
-      "DTLB_INV_INSTALL_SAME_ENTRY_001",
-      "DTLB_CLEANUP_SCOPE_MATRIX_001": begin
+      "DTLB_INV_INSTALL_SAME_ENTRY_001": begin
         scn = L1DTLB_SCN_INVALIDATE;
         sid = "L1DTLB_TS_INV_TLBOPER_CLR";
         intent = "invalidate/cleanup scope";
+      end
+      "DTLB_CLEANUP_SCOPE_MATRIX_001": begin
+        scn = L1DTLB_SCN_FLUSH_RACE;
+        sid = "L1DTLB_TS_FLUSH_RTU_CLEAR_SCOPE";
+        intent = "RTU flush clears MB/expt without implying TLB entry clear";
       end
       "DTLB_CREDIT_001",
       "DTLB_CREDIT_002",
@@ -297,6 +304,14 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     return cva[38:11];
   endfunction
 
+  protected function logic [15:0] probe_va8_match_vec(input logic [7:0] vpn8);
+    probe_va8_match_vec = 16'h0000;
+    if (m_probe_vif == null)
+      return probe_va8_match_vec;
+    for (int i = 0; i < 16; i++)
+      probe_va8_match_vec[i] = (m_probe_vif.mon_cb.l1d_entry_vpn[i][7:0] == vpn8);
+  endfunction
+
   protected task wait_lsu_cycles(int unsigned n);
     repeat (n) @(m_lsu_vif.driver_cb);
   endtask
@@ -324,6 +339,71 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         repeat (max_cycles) @(m_probe_vif.mon_cb);
         `uvm_warning(get_type_name(), {ctx, ": timed out waiting for L1DTLB exception write"})
         seen = 1'b1;
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
+  protected task wait_l1d_access_expt_write(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 524288
+  );
+    bit done;
+    seen = 1'b0;
+    done = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for access exception write"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (!done) begin
+          @(m_probe_vif.mon_cb);
+          if ((m_probe_vif.mon_cb.l1d_expt_wr0_vld && m_probe_vif.mon_cb.l1d_expt_wr0_acflt)
+           || (m_probe_vif.mon_cb.l1d_expt_wr1_vld && m_probe_vif.mon_cb.l1d_expt_wr1_acflt)) begin
+            seen = 1'b1;
+            done = 1'b1;
+          end
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for L1DTLB access exception write"})
+        done = 1'b1;
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
+  protected task wait_l1d_dual_expt_write(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 524288,
+    input bit warn_on_timeout = 1'b1
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe dual exception write"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_expt_wr0_vld && m_probe_vif.mon_cb.l1d_expt_wr1_vld)
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for simultaneous L1DTLB exception writes"})
       end
     join_any
     disable fork;
@@ -367,6 +447,153 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(8);
   endtask
 
+  protected task wait_l1d_wfi_install(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 4096,
+    input bit warn_on_timeout = 1'b1
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe WFI install"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_install_sel_wfi
+              || (m_probe_vif.mon_cb.l1d_refill_vld
+               && (m_probe_vif.mon_cb.l1d_refill_src == 2'b11)))
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for L1DTLB WFI install"})
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
+  protected task wait_l1d_ptw_l2_collision(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 4096,
+    input bit warn_on_timeout = 1'b1
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe PTW/L2 collision"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_ptw_ref_cmplt
+              && m_probe_vif.mon_cb.l1d_l2_ref_cmplt
+              && m_probe_vif.mon_cb.l1d_refill_vld)
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for same-cycle PTW/L2 refill collision"})
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
+  protected task wait_l1d_wfi_collision_sequence(
+    string ctx,
+    output bit collision_seen,
+    output bit wfi_seen,
+    input int unsigned max_cycles = 4096,
+    input bit warn_on_timeout = 1'b1
+  );
+    bit done;
+    bit arm_wfi;
+
+    collision_seen = 1'b0;
+    wfi_seen = 1'b0;
+    done = 1'b0;
+    arm_wfi = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe WFI collision sequence"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (!done) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_ptw_ref_cmplt
+              && m_probe_vif.mon_cb.l1d_l2_ref_cmplt
+              && m_probe_vif.mon_cb.l1d_refill_vld) begin
+            collision_seen = 1'b1;
+            arm_wfi = 1'b1;
+          end
+          if (arm_wfi
+              && (m_probe_vif.mon_cb.l1d_install_sel_wfi
+               || (m_probe_vif.mon_cb.l1d_refill_vld
+                && (m_probe_vif.mon_cb.l1d_refill_src == 2'b11)))) begin
+            wfi_seen = 1'b1;
+            done = 1'b1;
+          end
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!(collision_seen && wfi_seen) && warn_on_timeout)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for PTW/L2 collision followed by WFI install"})
+        done = 1'b1;
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
+  protected task wait_l1d_stale_or_abt_refill(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 4096
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe stale/ABT refill"})
+      wait_lsu_cycles(256);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          for (int i = 0; i < 8; i++) begin
+            if (((m_probe_vif.mon_cb.l1d_ptw_ref_cmplt && (m_probe_vif.mon_cb.l1d_ptw_ref_id == i[2:0]))
+              || (m_probe_vif.mon_cb.l1d_l2_ref_cmplt && (m_probe_vif.mon_cb.l1d_l2_ref_eid == i[2:0])))
+             && (m_probe_vif.mon_cb.l1d_mb_state[i] inside {3'b000, 3'b011, 3'b100, 3'b101})) begin
+              seen = 1'b1;
+            end
+          end
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for stale/ABT refill completion"})
+      end
+    join_any
+    disable fork;
+    wait_lsu_cycles(8);
+  endtask
+
   protected task wait_l1d_mb_valid(string ctx, int unsigned max_cycles = 1024);
     bit seen;
     seen = 1'b0;
@@ -387,6 +614,98 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         repeat (max_cycles) @(m_probe_vif.mon_cb);
         if (!seen)
           `uvm_warning(get_type_name(), {ctx, ": timed out waiting for L1DTLB MB valid"})
+        seen = 1'b1;
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task wait_l1d_mb_empty(
+    string ctx,
+    output bit empty,
+    input int unsigned max_cycles = 4096
+  );
+    empty = 1'b0;
+    if (m_probe_vif == null) begin
+      wait_lsu_cycles(32);
+      empty = 1'b1;
+      return;
+    end
+    fork
+      begin
+        while (!empty) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_mb_vld == 8'h00)
+            empty = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!empty)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for L1DTLB MB empty, mb_vld=0x%02h",
+              ctx, m_probe_vif.mon_cb.l1d_mb_vld))
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task wait_l1d_inv_install_conflict(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 512,
+    input bit warn_on_timeout = 1'b0
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe invalidate/install conflict"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+    fork
+      begin
+        for (int unsigned cyc = 0; (cyc < max_cycles) && !seen; cyc++) begin
+          @(m_probe_vif.mon_cb);
+          if ((m_probe_vif.mon_cb.tlboper_utlb_clr
+               && (m_probe_vif.mon_cb.l1d_entry_upd != 16'h0000))
+           || (m_probe_vif.mon_cb.tlboper_utlb_inv_va_req
+               && ((m_probe_vif.mon_cb.l1d_entry_upd
+                  & m_probe_vif.mon_cb.l1d_entry_vld
+                  & probe_va8_match_vec(m_probe_vif.mon_cb.tlboper_utlb_inv_va[7:0])) != 16'h0000)))
+            seen = 1'b1;
+        end
+      end
+    join
+    if (!seen && warn_on_timeout)
+      `uvm_warning(get_type_name(), {ctx, ": did not observe same-cycle invalidate/install conflict"})
+  endtask
+
+  protected task wait_l1d_tlboper_clr(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 256,
+    input bit warn_on_timeout = 1'b1
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe tlboper_utlb_clr"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.tlboper_utlb_clr)
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(), {ctx, ": timed out waiting for tlboper_utlb_clr"})
         seen = 1'b1;
       end
     join_any
@@ -423,6 +742,45 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         if (!seen)
           `uvm_warning(get_type_name(),
             $sformatf("%s: timed out waiting for L1DTLB MB VPN 0x%07h", ctx, vpn))
+        seen = 1'b1;
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task wait_l1d_mb_vpn_state(
+    string ctx,
+    va_t va,
+    logic [2:0] state,
+    int unsigned max_cycles = 1024
+  );
+    bit seen;
+    logic [26:0] vpn;
+    seen = 1'b0;
+    vpn = va[38:12];
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for MB VPN/state"})
+      wait_lsu_cycles(8);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          for (int i = 0; i < 8; i++) begin
+            if (m_probe_vif.mon_cb.l1d_mb_vld[i]
+                && (m_probe_vif.mon_cb.l1d_mb_vpn[i] == vpn)
+                && (m_probe_vif.mon_cb.l1d_mb_state[i] == state))
+              seen = 1'b1;
+          end
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for L1DTLB MB VPN 0x%07h state 0x%0h",
+              ctx, vpn, state))
         seen = 1'b1;
       end
     join_any
@@ -494,6 +852,16 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     end
   endtask
 
+  protected task force_ptw_bus_error_by_count(int unsigned accept_count, bit enable = 1'b1);
+    if ((m_env_h != null) && (m_env_h.m_ptw_mem != null) && (m_env_h.m_ptw_mem.m_responder != null))
+      m_env_h.m_ptw_mem.m_responder.set_bus_error_for_count(accept_count, enable);
+  endtask
+
+  protected task force_ptw_delay_by_count(int unsigned accept_count, int unsigned delay);
+    if ((m_env_h != null) && (m_env_h.m_ptw_mem != null) && (m_env_h.m_ptw_mem.m_responder != null))
+      m_env_h.m_ptw_mem.m_responder.set_delay_for_count(accept_count, delay);
+  endtask
+
   protected task set_mxr_sum(bit mxr, bit sum);
     cp0_mxr_sum_cross_seq seq;
     seq = cp0_mxr_sum_cross_seq::type_id::create("l1dtlb_set_mxr_sum");
@@ -556,6 +924,67 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     if (m_env_h.m_ref != null)
       m_env_h.m_ref.sync_shadow_state();
     wait_lsu_cycles(2);
+  endtask
+
+  protected task set_ptw_enable(bit enable);
+    cp0_txn tr;
+    tr = cp0_txn::type_id::create("l1dtlb_set_ptw_enable");
+    tr.op     = CP0_SET_PTW_EN;
+    tr.ptw_en = enable;
+    start_item(tr, -1, p_sequencer.cp0_sqr);
+    finish_item(tr);
+    if (m_env_h.m_ref != null)
+      m_env_h.m_ref.sync_shadow_state();
+    wait_lsu_cycles(2);
+  endtask
+
+  protected task set_cskyee(bit enable);
+    cp0_txn tr;
+    tr = cp0_txn::type_id::create("l1dtlb_set_cskyee");
+    tr.op     = CP0_SET_CSKYEE;
+    tr.cskyee = enable;
+    start_item(tr, -1, p_sequencer.cp0_sqr);
+    finish_item(tr);
+    wait_lsu_cycles(2);
+  endtask
+
+  protected task cp0_write_reg(bit [1:0] reg_num, bit [63:0] wdata);
+    cp0_txn tr;
+    tr = cp0_txn::type_id::create("l1dtlb_cp0_write_reg");
+    tr.op      = CP0_WRITE_REG;
+    tr.reg_num = reg_num;
+    tr.wdata   = wdata;
+    start_item(tr, -1, p_sequencer.cp0_sqr);
+    finish_item(tr);
+    wait_lsu_cycles(2);
+  endtask
+
+  protected task cp0_tlb_all_inv(string ctx = "l1dtlb_cp0_tlb_all_inv");
+    cp0_tlb_allinv_seq seq;
+    seq = cp0_tlb_allinv_seq::type_id::create(ctx);
+    seq.start(p_sequencer.cp0_sqr);
+    wait_lsu_cycles(2);
+  endtask
+
+  protected task cp0_tlbwr_entry(
+    va_t va,
+    ppn_t ppn,
+    int unsigned index,
+    bit valid = 1'b1,
+    bit indexed = 1'b0
+  );
+    bit [63:0] mel;
+    bit [63:0] meh;
+    set_cskyee(1'b1);
+    cp0_write_reg(2'd0, 64'(index[11:0]));
+    mel = {5'b0, 21'b0, ppn[27:0], 2'b0, 1'b1, 1'b1,
+           1'b0, 1'b0, 1'b1, 1'b1, 1'b1, valid};
+    meh = {18'b0, va[38:12], 3'b001, m_asid};
+    cp0_write_reg(2'd1, mel);
+    cp0_write_reg(2'd2, meh);
+    cp0_write_reg(2'd3, indexed ? 64'h0000_0000_2000_0000
+                                 : 64'h0000_0000_1000_0000);
+    wait_lsu_cycles(12);
   endtask
 
   protected task do_bringup(int unsigned nmap = 48, va_t base = 39'h10_0000);
@@ -1184,14 +1613,118 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   endtask
 
   protected task scenario_inv_install_same_entry();
-    do_bringup(96, 39'h10_0000);
-    configure_ptw_delay(24, 48);
+    bit done;
+    bit attempt_seen;
+    bit mb_empty;
+    bit cal_done;
+    bit collision_seen;
+    bit wfi_seen;
+    int unsigned hit_gap;
+    int unsigned start_gap;
+    int unsigned end_gap;
+    int unsigned attempt_id;
+
+    do_bringup(320, 39'h10_0000);
+    configure_ptw_delay(18, 18);
     fill_page(2);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_install_seed", 524288, 8);
-    raw_pipe0(va_page(44), 7'd15);
-    wait_lsu_cycles(3);
-    raw_inv_pulse(INV_ALL, 39'h0, m_asid, 1'b0, 1'b0);
-    wait_lsu_cycles(260);
+
+    cal_done = 1'b0;
+    hit_gap = 0;
+    for (int unsigned gap = 0; gap < 72 && !cal_done; gap++) begin
+      int unsigned l2_idx;
+      int unsigned ptw_idx;
+      l2_idx = 32 + gap;
+      ptw_idx = 128 + gap;
+      collision_seen = 1'b0;
+      wfi_seen = 1'b0;
+      cp0_tlbwr_entry(va_page(l2_idx), ppn_t'(m_leaf_ppn0 + ppn_t'(l2_idx)),
+        ((va_page(l2_idx) >> 12) & 'hff), 1'b1, 1'b1);
+      configure_ptw_delay(12, 12);
+      fork
+        begin
+          wait_l1d_wfi_collision_sequence(
+            $sformatf("l1dtlb_inv_install_wfi_cal_gap_%0d", gap),
+            collision_seen, wfi_seen, 768, 1'b0);
+        end
+        begin
+          raw_pipe0(va_page(ptw_idx), 7'(7'd40 + gap[6:0]), 1'b0, 1'b0);
+          wait_lsu_cycles(gap);
+          raw_pipe0(va_page(l2_idx), 7'(7'd8 + gap[6:0]), 1'b0, 1'b0);
+        end
+      join
+      if (collision_seen && wfi_seen) begin
+        hit_gap = gap;
+        cal_done = 1'b1;
+      end
+      wait_l1d_mb_empty($sformatf("l1dtlb_inv_install_cal_gap_%0d_drain", gap),
+        mb_empty, 4096);
+      if (!mb_empty) begin
+        raw_rtu_flush();
+        wait_l1d_mb_empty($sformatf("l1dtlb_inv_install_cal_gap_%0d_flush_drain", gap),
+          mb_empty, 4096);
+      end
+    end
+
+    done = 1'b0;
+    attempt_id = 0;
+    if (cal_done) begin
+      start_gap = (hit_gap > 4) ? (hit_gap - 4) : 0;
+      end_gap = hit_gap + 8;
+    end else begin
+      start_gap = 0;
+      end_gap = 71;
+    end
+
+    for (int unsigned gap = start_gap; (gap <= end_gap) && !done; gap++) begin
+      for (int unsigned inv_delay = 0; (inv_delay <= 5) && !done; inv_delay++) begin
+        int unsigned l2_idx;
+        int unsigned ptw_idx;
+        l2_idx = 32 + attempt_id;
+        ptw_idx = 192 + attempt_id;
+        attempt_id++;
+        if (ptw_idx >= m_nmap)
+          ptw_idx = 192 + (attempt_id % 96);
+        if (l2_idx >= 160)
+          l2_idx = 32 + (attempt_id % 96);
+
+        attempt_seen = 1'b0;
+        cp0_tlbwr_entry(va_page(l2_idx), ppn_t'(m_leaf_ppn0 + ppn_t'(l2_idx)),
+          ((va_page(l2_idx) >> 12) & 'hff), 1'b1, 1'b1);
+        configure_ptw_delay(12, 12);
+        fork
+          begin
+            wait_l1d_inv_install_conflict(
+              $sformatf("l1dtlb_inv_install_gap_%0d_invdelay_%0d", gap, inv_delay),
+              attempt_seen, 1024, 1'b0);
+          end
+          begin
+            raw_pipe0(va_page(ptw_idx), 7'(7'd40 + attempt_id[6:0]), 1'b0, 1'b0);
+            wait_lsu_cycles(gap);
+            raw_pipe0(va_page(l2_idx), 7'(7'd8 + attempt_id[6:0]), 1'b0, 1'b0);
+            wait_lsu_cycles(inv_delay);
+            cp0_tlb_all_inv($sformatf("l1dtlb_inv_install_cp0_all_gap_%0d_delay_%0d",
+              gap, inv_delay));
+          end
+        join
+        if (attempt_seen)
+          done = 1'b1;
+        wait_lsu_cycles(40);
+        wait_l1d_mb_empty(
+          $sformatf("l1dtlb_inv_install_gap_%0d_invdelay_%0d_drain", gap, inv_delay),
+          mb_empty, 4096);
+        if (!mb_empty) begin
+          raw_rtu_flush();
+          wait_l1d_mb_empty(
+            $sformatf("l1dtlb_inv_install_gap_%0d_invdelay_%0d_flush_drain", gap, inv_delay),
+            mb_empty, 4096);
+        end
+      end
+    end
+
+    if (!done)
+      `uvm_warning(get_type_name(),
+        "DTLB_INV_INSTALL_SAME_ENTRY_001 did not observe same-cycle invalidate/install conflict")
     configure_ptw_delay(1, 4);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_inv_install_done", 524288, 16);
   endtask
@@ -1207,15 +1740,41 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   endtask
 
   protected task scenario_credit();
-    do_bringup(96, 39'h10_0000);
-    configure_ptw_delay(32, 96);
-    for (int unsigned i = 0; i < 16; i++) begin
-      bit [6:0] iid;
-      iid = i % 12;
-      raw_pipe0(va_page(i + 36), iid, (i[0] == 1'b1), 1'b0);
-      wait_lsu_cycles(1);
+    if (tc_id == "DTLB_CREDIT_BOUND_001") begin
+      do_bringup(144, 39'h10_0000);
+      configure_ptw_delay(96, 160);
+      raw_inv_pulse(INV_ALL, 39'h0, m_asid, 1'b0, 1'b1);
+      for (int unsigned i = 0; i < 16; i += 2) begin
+        raw_pipe01(va_page(i + 36), va_page(i + 37),
+          7'(i % 12), 7'((i + 1) % 12), i[1], !i[1]);
+      end
+    end else begin
+      do_bringup(96, 39'h10_0000);
+      configure_ptw_delay(32, 96);
+      for (int unsigned i = 0; i < 24; i++) begin
+        bit [6:0] iid;
+        iid = i % 12;
+        raw_pipe0(va_page(i + 36), iid, (i[0] == 1'b1), 1'b0);
+        wait_lsu_cycles(1);
+      end
     end
-    wait_lsu_cycles(260);
+    wait_lsu_cycles(420);
+    if (tc_id == "DTLB_CREDIT_BOUND_001") begin
+      bit mb_empty;
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_credit_bound_zero_drain", 524288, 16);
+      configure_ptw_delay(6, 6);
+      for (int unsigned gap = 0; gap < 24; gap++) begin
+        raw_pipe0(va_page(56 + (gap * 3)), 7'((gap + 20) % 96), gap[0], 1'b0);
+        wait_lsu_cycles(gap);
+        raw_pipe0(va_page(57 + (gap * 3)), 7'((gap + 21) % 96), !gap[0], 1'b0);
+        wait_lsu_cycles(28);
+        wait_l1d_mb_empty($sformatf("l1dtlb_credit_bound_req_ret_gap_%0d", gap), mb_empty, 2048);
+        if (!mb_empty) begin
+          raw_rtu_flush();
+          wait_l1d_mb_empty($sformatf("l1dtlb_credit_bound_req_ret_gap_%0d_flush", gap), mb_empty, 1024);
+        end
+      end
+    end
     configure_ptw_delay(1, 4);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_credit", 524288, 16);
   endtask
@@ -1260,6 +1819,14 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   endtask
 
   protected task scenario_refill();
+    if ((tc_id == "DTLB_MB_FSM_WFI_001") || (tc_id == "DTLB_WFI_DATA_HOLD_001")) begin
+      scenario_refill_wfi_collision();
+      return;
+    end
+    if (tc_id == "DTLB_REFILL_STALE_ID_001") begin
+      scenario_refill_stale_id();
+      return;
+    end
     do_bringup(96, 39'h10_0000);
     configure_ptw_delay(6, 16);
     raw_pipe0(va_page(44), 7'd4);
@@ -1269,6 +1836,66 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     fill_page(44);
     fill_page(45);
     configure_ptw_delay(1, 4);
+  endtask
+
+  protected task scenario_refill_wfi_collision();
+    bit collision_seen;
+    bit wfi_seen;
+    bit mb_empty;
+    bit done;
+    int unsigned l2_idx;
+    int unsigned ptw_idx;
+    int unsigned gap;
+
+    done = 1'b0;
+    do_bringup(192, 39'h10_0000);
+
+    for (int unsigned trial = 0; trial < 72 && !done; trial++) begin
+      gap     = trial;
+      l2_idx  = 32 + trial;
+      ptw_idx = 96 + trial;
+
+      cp0_tlbwr_entry(va_page(l2_idx), ppn_t'(m_leaf_ppn0 + ppn_t'(l2_idx)),
+        ((va_page(l2_idx) >> 12) & 'hff), 1'b1, 1'b1);
+      configure_ptw_delay(12, 12);
+      raw_pipe0(va_page(ptw_idx), 7'(7'd40 + gap[6:0]), 1'b0, 1'b0);
+      wait_lsu_cycles(gap);
+      raw_pipe0(va_page(l2_idx), 7'(7'd8 + gap[6:0]), 1'b0, 1'b0);
+      wait_l1d_wfi_collision_sequence($sformatf("l1dtlb_wfi_collision_gap_%0d", gap),
+        collision_seen, wfi_seen, 512, 1'b0);
+      if (collision_seen && wfi_seen) begin
+        done = 1'b1;
+      end else begin
+        wait_l1d_mb_empty($sformatf("l1dtlb_wfi_gap_%0d_drain", gap), mb_empty, 2048);
+        if (!mb_empty) begin
+          raw_rtu_flush();
+          wait_l1d_mb_empty($sformatf("l1dtlb_wfi_gap_%0d_flush_drain", gap), mb_empty, 512);
+        end
+      end
+    end
+
+    configure_ptw_delay(1, 4);
+    if (!done) begin
+      `uvm_warning(get_type_name(), "DTLB WFI directed collision did not observe PTW/L2 collision plus WFI install")
+      raw_rtu_flush();
+      wait_l1d_mb_empty("l1dtlb_wfi_collision_final_flush", mb_empty, 1024);
+    end
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_wfi_collision_done", 524288, 16);
+  endtask
+
+  protected task scenario_refill_stale_id();
+    bit seen;
+    do_bringup(96, 39'h10_0000);
+    configure_ptw_delay(64, 96);
+    raw_pipe0(va_page(44), 7'd6, 1'b0, 1'b0);
+    wait_l1d_mb_vpn_state("l1dtlb_stale_id_wfc", va_page(44), L1D_MB_STATE_WFC, 512);
+    raw_rtu_flush();
+    wait_l1d_mb_vpn_state("l1dtlb_stale_id_abt", va_page(44), L1D_MB_STATE_ABT, 512);
+    wait_l1d_stale_or_abt_refill("l1dtlb_stale_id_late_refill", seen, 512);
+    configure_ptw_delay(1, 4);
+    if (!seen)
+      `uvm_warning(get_type_name(), "DTLB_REFILL_STALE_ID_001 did not observe stale/ABT late refill completion")
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_stale_id_done", 524288, 16);
   endtask
 
   protected task scenario_install_visibility();
@@ -1303,6 +1930,36 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       configure_ptw_delay(1, 4);
       return;
     end
+    if (tc_id == "DTLB_MB_ABT_LATE_REFILL_001") begin
+      configure_ptw_delay(64, 96);
+      raw_pipe0(va_page(44), 7'd6, 1'b0, 1'b0);
+      wait_l1d_mb_vpn_state("l1dtlb_abt_late_refill_wfc", va_page(44), L1D_MB_STATE_WFC, 512);
+      raw_rtu_flush();
+      wait_l1d_mb_vpn_state("l1dtlb_abt_late_refill_abt", va_page(44), L1D_MB_STATE_ABT, 512);
+      wait_lsu_cycles(160);
+      configure_ptw_delay(1, 4);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_abt_late_refill_done", 524288, 16);
+      return;
+    end
+    if (tc_id == "DTLB_ACCESS_FAULT_SOURCE_PARITY_001") begin
+      bit acflt_seen;
+      configure_ptw_delay(1, 1, 1000);
+      raw_pipe0(va_page(44), 7'd10, 1'b0, 1'b0);
+      wait_l1d_access_expt_write("l1dtlb_access_fault_source_acflt_entry", acflt_seen, 8192);
+      configure_ptw_delay(1, 4);
+      if (acflt_seen) begin
+        raw_pipe0(va_page(44), 7'd10, 1'b0, 1'b0);
+      end else begin
+        raw_rtu_flush();
+      end
+      wait_lsu_cycles(16);
+      m_env_h.wait_for_quiescent_midtest("l1dtlb_access_fault_source_done", 524288, 16);
+      return;
+    end
+    if (tc_id == "DTLB_EXPT_DUAL_SAME_ENTRY_NEG_001") begin
+      scenario_dual_exception_write();
+      return;
+    end
     send_lsu_item(LSU_PIPE0, va_page(46), 7'd6, 1'b0);
     send_lsu_item(LSU_PIPE1, va_page(47), 7'd7, 1'b1);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_fault_refill_before_replay", 524288, 16);
@@ -1317,6 +1974,52 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_fault_refill_after_second_replay", 524288, 16);
     send_rtu_flush();
     configure_ptw_delay(1, 4);
+  endtask
+
+  protected task scenario_dual_exception_write();
+    bit dual_seen;
+    bit mb_empty;
+    bit done;
+    int unsigned ptw_idx;
+    int unsigned l2_miss_idx;
+    int unsigned gap;
+
+    done = 1'b0;
+
+    set_ptw_enable(1'b0);
+    configure_ptw_delay(10, 10);
+
+    for (int unsigned trial = 0; trial < 48 && !done; trial++) begin
+      gap         = 1 + trial;
+      ptw_idx     = 47 + trial;
+      l2_miss_idx = 160 + trial;
+
+      set_ptw_enable(1'b1);
+      map_special_page(ptw_idx, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+      raw_pipe0(va_page(ptw_idx), 7'(7'd40 + gap[6:0]), 1'b0, 1'b0);
+      wait_lsu_cycles(gap);
+      set_ptw_enable(1'b0);
+      raw_pipe1(va_page(l2_miss_idx), 7'(7'd8 + gap[6:0]), 1'b1, 1'b0);
+      wait_l1d_dual_expt_write($sformatf("l1dtlb_dual_expt_gap_%0d", gap), dual_seen, 192, 1'b0);
+      if (dual_seen) begin
+        done = 1'b1;
+        raw_pipe0(va_page(ptw_idx), 7'(7'd40 + gap[6:0]), 1'b0, 1'b0);
+        raw_pipe1(va_page(l2_miss_idx), 7'(7'd8 + gap[6:0]), 1'b1, 1'b0);
+        wait_l1d_mb_empty($sformatf("l1dtlb_dual_expt_gap_%0d_replay_drain", gap), mb_empty, 2048);
+      end else begin
+        raw_rtu_flush();
+        wait_l1d_mb_empty($sformatf("l1dtlb_dual_expt_gap_%0d_flush_drain", gap), mb_empty, 1024);
+      end
+    end
+
+    set_ptw_enable(1'b1);
+    configure_ptw_delay(1, 4);
+    if (!done) begin
+      `uvm_warning(get_type_name(), "DTLB_EXPT_DUAL_SAME_ENTRY_NEG_001 did not observe simultaneous dual exception writes")
+      raw_rtu_flush();
+      wait_l1d_mb_empty("l1dtlb_dual_exception_final_flush", mb_empty, 1024);
+    end
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_dual_exception_write_done", 524288, 16);
   endtask
 
   protected task scenario_wakeup_expt();
@@ -1401,10 +2104,24 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   protected task scenario_flush_race();
     do_bringup(96, 39'h10_0000);
+    if (tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001") begin
+      fill_page(0);
+      map_special_page(46, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+      raw_pipe0(va_page(46), 7'd11);
+      wait_l1d_expt_write("l1dtlb_cleanup_scope_expt_entry");
+      raw_rtu_flush();
+      wait_lsu_cycles(24);
+    end
     configure_ptw_delay(48, 96);
     raw_pipe0(va_page(50), 7'd4);
     wait_l1d_mb_valid("l1dtlb_flush_race_p0_mb_valid", 256);
+    if (tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001")
+      raw_pipe0(va_page(0), 7'd9);
     raw_rtu_flush();
+    if (tc_id == "DTLB_CLEANUP_SCOPE_MATRIX_001") begin
+      wait_lsu_cycles(24);
+      raw_pipe0(va_page(0), 7'd10);
+    end
     wait_lsu_cycles(120);
     raw_pipe01(va_page(51), va_page(52), 7'd5, 7'd6);
     wait_l1d_mb_valid("l1dtlb_flush_race_dual_mb_valid", 256);

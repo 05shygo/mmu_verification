@@ -179,62 +179,115 @@ Strict exit gate:
 
 ### Phase 6F: Credit, Wakeup, Flush, Invalidate, and Race Closure
 
-Goal: close the remaining shared-control and race behavior with explicit models or waivers.
+Goal: close the remaining shared-control and race behavior with explicit models, directed trigger evidence, or explicit future/formal rows.  Phase 6F must not close by wrapper name, SVA name, or a PASS summary alone.
 
 Candidate landing areas:
 
 - `mmu_verification/testbench/env/mmu_l1dtlb_spec_sb.svh`
-- `mmu_verification/testbench/env/mmu_credit_sb.svh`
-- `mmu_verification/testbench/env/mmu_invalidate_sb.svh` if selected as invalidate owner
+- `mmu_verification/testbench/env/mmu_credit_sb.svh` only if the project chooses to refactor the shared credit owner out of the L1DTLB spec scoreboard
+- `mmu_verification/testbench/env/mmu_invalidate_sb.svh` only if selected as the single invalidate owner
 - Existing L1DTLB SVA files
 
 Required implementation output:
 
-- Add or share an exact L1DTLB scheduler credit shadow: reset value, range, request-fire decrement, credit-return increment, `credit=0+return` no same-cycle fire, and `credit>0+return+fire` conservation.
-- Close wakeup source and negative-source matrix.
-- Model RTU flush as clearing MB/expt only, unless a separate TLB clear/invalidate signal is observed.
-- Close invalidate+hit same-cycle old-hit boundary, invalidate+install same-entry final state, reset exception visibility, and ABT/stale late refill race side effects.
-- Keep `vabuf` and exact PLRU victim as formal/debug/future unless the spec and observability are extended.
+- Select one UVM owner for exact L1DTLB scheduler credit.  The default owner is `mmu_l1dtlb_spec_sb.svh`; scheduler SVA is corroborating protocol evidence, not a second scoreboard owner.
+- The credit model must check reset/max value, range, request-fire decrement, credit-return increment, `credit=0+return` no same-cycle fire, and `credit>0+return+fire` conservation.  A clean run with `fire_return=0` is partial evidence only.
+- The wakeup matrix must classify install and exception replay as positive sources.  Reset, RTU flush, invalidate, and ABT/stale completion are negative-source contexts unless an explicit install/expt source is present in the same sampled cycle.
+- RTU flush must be modeled as clearing MB/expt and killing in-flight side effects.  It must not imply full TLB entry clear unless `tlboper_utlb_clr`, `regs_utlb_clr`, or a VA invalidate source is observed.
+- Invalidate+hit same cycle must allow the current-cycle old-hit response, then require a later miss/refill before the invalidated entry can be used as a valid hit again.
+- Invalidate+install same entry must prove clear-wins final state with a clean directed run; logs with unrelated assertions, MB drain timeouts, or zero same-cycle cover do not close this row.
+- ABT/stale late refill closure must reject TLB install, exception write, and wakeup side effects, and must distinguish inherited Phase 6E ABT evidence from a Phase 6F race-matrix report.
+- `vabuf` functional equivalence and exact PLRU victim selection remain debug/formal/future rows unless the spec and observability are extended.  Vabuf-change cover is useful evidence but not an equivalence proof.
+
+Evidence discipline:
+
+| Evidence class | Required treatment |
+| --- | --- |
+| Clean closure evidence | `UVM_ERROR=0`, `UVM_FATAL=0`, no unexpected assertion failure, no unwaived `SCENARIO_GATE`, and nonzero target checker/cover counters. |
+| Warning-bearing evidence | May support analysis only after the warning source is named and accepted; it cannot close a row that requires warning-free directed evidence. |
+| Rejected evidence | Must be recorded in the Progress issue/evidence log before any status update.  For example, a same-cycle invalidate/install run with MB drain timeout warnings or TWU assertion failure is not closure evidence. |
+| Inherited evidence | Earlier 6D/6E ABT, flush, or wakeup evidence may support context, but 6F completion still requires the Phase 6F owner report or an explicit waiver/future row. |
 
 Strict exit gate:
 
 | Item | Criterion |
 | --- | --- |
-| Entry | Prior phases identify the owner scoreboard/SVA for each shared-control item. |
-| Deliverables | Shared credit shadow or single owner, wakeup source matrix, flush/invalidate/reset race checklist, PLRU/vabuf guard rows. |
-| Compile evidence | Compile passes and credit/flush/invalidate/reset directed evidence is recorded. |
-| Pass/fail | Credit behavior is checked by one authoritative model; RTU flush does not imply TLB full clear; invalidate boundary behavior is explicit. |
-| Coverage/SVA/log | Credit zero+return, return+fire, wakeup install/expt, reset, flush races, invalidate+hit, and invalidate+install evidence recorded. |
+| Entry | Prior phases identify the owner scoreboard/SVA for each shared-control item; any rejected evidence is recorded before status changes. |
+| Deliverables | Single credit owner, wakeup source matrix, flush/invalidate/reset race checklist, ABT/stale side-effect matrix, and PLRU/vabuf future/formal guard rows. |
+| Compile evidence | Compile passes after Phase 6F changes and the log is recorded. |
+| Pass/fail | Credit behavior is checked by one authoritative model; RTU flush does not imply TLB full clear; invalidate boundary behavior is explicit; same-entry invalidate+install cleanly proves clear-wins. |
+| Coverage/SVA/log | Credit zero+return, return+fire, load/store request type, wakeup install/expt, reset clear, flush scope/races, invalidate+hit, invalidate+install, ABT late completion, and `vabuf`/PLRU guard evidence are recorded or explicitly deferred. |
 | Waiver | Formal-only `vabuf` and exact PLRU items remain non-closure blockers only with explicit future/formal rows. |
 
 ### Phase 6G: Directed Scenario, Coverage, and Regression Closure
 
-Goal: convert planned/partial rows into reproducible evidence, approved waivers, or future items.
+Goal: convert planned/partial rows into reproducible DUT-quality evidence, approved waivers, or future/formal items.  Phase 6G is the closure controller: it must not make the DUT look verified by counting wrappers, PASS summaries, SVA names, or cover names without proving that the intended scenario triggered and that the intended checker observed the behavior.
+
+Current-state facts to preserve in the closure record:
+
+- `L1DTLB_UVM_Phase6_Progress.md` records Phase 6A-6F as complete for the planned UVM owner/reporting scope, with compile and directed evidence.
+- `mmu_verification/testbench/test/l1dtlb_tests/` already contains L1DTLB directed wrappers, and `l1dtlb_tests_suite.svh` includes the Phase 6A-6F closure wrappers.
+- `mmu_l1dtlb_spec_sb.svh` already emits final-phase reports for `PHASE6A_INVENTORY`, `PHASE6B_TOKEN_TAXONOMY`, `PHASE6C_ENTRY_SHADOW`, `PHASE6D_MB_SHADOW`, `PHASE6D_NO_RESPONSE`, `PHASE6E_REFILL_INSTALL`, `PHASE6E_EXPT_LIFECYCLE`, `PHASE6F_CREDIT_CONTROL`, `PHASE6F_WAKEUP_MATRIX`, `PHASE6F_RACE_CLOSURE`, and `PHASE6F_FORMAL_FUTURE`.
+- At Phase 6G entry no dedicated L1DTLB regression list was found under `mmu_verification/simu/`.  Phase 6G implementation now adds smoke/targeted lists, a manifest replay flow, and a closure scanner.  The manifest scanner is the authoritative closure evidence because list-only regression cannot encode per-row seed, accepted-warning, target-counter, and cover policy.
+- Exact PLRU victim selection and full `vabuf` functional equivalence remain future/formal guard rows unless the spec and observability are expanded.
 
 Candidate landing areas:
 
 - `mmu_verification/testbench/test/l1dtlb_tests/`
 - `mmu_verification/testbench/env/mmu_l1dtlb_vseq_lib.svh`
 - Existing covergroups and SVA coverage
-- Regression list only in an approved later implementation phase
+- Phase 6G replay and closure scanner scripts for deterministic evidence extraction
+- `doc/l1dtlb_uvm_audit/L1DTLB_UVM_Phase6_Progress.md` for evidence, issue, waiver, and final closure rows
+- Dedicated smoke/targeted regression lists and the manifest replay flow added by the approved Phase 6G implementation
 
 Required implementation output:
 
-- Map every unfinished 3.9/3.10/3.11 ID to wrapper, checker, cover, SVA, scoreboard, waiver, or future/formal item.
-- Every directed wrapper must provide scenario metadata and final-phase trigger evidence.
-- Record regression tiers: compile, directed smoke, L1DTLB targeted, negative/formal-only excluded, integration/nightly candidate.
-- Define coverage threshold and log/report fallback rules before claiming closure.
+- Build an ID-to-evidence matrix for every unfinished 3.9/3.10/3.11 row and every Phase 6G row.  Each row must name status, wrapper or regression source, seed, log path, trigger evidence, checker evidence, SVA/cover evidence where applicable, and final disposition.
+- Close the Phase 6G IDs with the following minimum evidence policy:
+
+| ID | Required closure evidence |
+| --- | --- |
+| `L1DTLB_SVA_A067` | Nonzero target SVA assertion/cover evidence, clean log status, and the related scoreboard report or waiver naming why SVA evidence is not available. |
+| `L1DTLB_TS_OBS_SVA_COVER_CLOSURE` | Cover-property, covergroup, and scoreboard-report inventory showing every required cover either hit, waived, or moved to future/formal with owner. |
+| `L1DTLB_RM_SB_PARTITION_001` | Final ownership matrix showing architectural translation compare, local L1DTLB token/entry/MB/expt/credit/race checks, SVA protocol checks, and future/formal boundaries do not overlap ambiguously. |
+| `L1DTLB_RM_SB_PARTITION_002` | Evidence that architectural reference-model behavior remains in `mmu_ref_model.svh`/translation SB while L1DTLB-local microarchitectural state remains in the L1DTLB spec SB or an explicitly named helper. |
+| `L1DTLB_RM_SB_PARTITION_003` | Evidence that final architectural compare does not mask local L1DTLB failures; any translation-SB skip must cite a token/expt/no-response classification, waiver, or future row. |
+| `L1DTLB_SB_TRACEABILITY_CLOSURE` | Complete traceability matrix linking every unfinished ID to accepted evidence, waiver, or future/formal disposition. |
+| `L1DTLB_UVM_WORK_001_REF_SUBMODEL` | Closure note explaining which behavior is modeled architecturally, which is modeled locally, and which spec gaps remain; no RTL-derived assumption may be used as the only oracle. |
+| `L1DTLB_UVM_WORK_004_SPEC_SB` | Final scoreboard diagnostic report showing all Phase 6A-6F final-phase reports are present when their owning scenarios run, with nonzero target counters for rows claimed closed. |
+| `L1DTLB_UVM_WORK_005_DIAG` | Stable diagnostics for failures and closure: cycle, pipe, IID, VA/VPN, seed, scenario ID, expected/actual behavior, and reason/source classification. |
+
+- Every directed wrapper used for closure must provide scenario metadata: test name, scenario ID, related traceability IDs, seed, target counters, expected terminal condition, and final result.  Metadata may be printed directly by the wrapper or propagated through `L1DTLB_SCENARIO_ID`, but the final log must be self-contained enough to debug a failure without rerunning.
+- Scenario gates must check the actual target event, not just test completion.  A `SCENARIO_GATE` line, zero target counter, missing final scoreboard report, unexpected assertion text, `UVM_ERROR`, or `UVM_FATAL` blocks closure until the issue is fixed, waived, or moved to future.
+- Warning-bearing evidence may support analysis only after the warning source is named in the Progress issue/evidence log.  It cannot close a row requiring clean directed evidence unless the row explicitly accepts that warning class.
+- Rejected evidence must remain recorded before any status update.  A later clean seed supersedes but does not erase rejected seeds or partial evidence.
+- Create or approve regression tiers before running closure:
+
+| Tier | Purpose | Required contents |
+| --- | --- | --- |
+| Compile | Prove current build is usable before evidence collection. | `make comp_fast`; record `mmu_verification/output/logs/comp_fast.log`. |
+| Directed smoke | Fast health check for reset, observability, and a basic L1DTLB hit path. | Small fixed subset from `l1dtlb_tests`, `UVM_ERROR=0`, `UVM_FATAL=0`, no unexpected assertion text, and required final reports present. |
+| L1DTLB targeted | Reproduce every Phase 6A-6F closure behavior used by the ID matrix. | Dedicated list, fixed seeds, clean summary, and per-row trigger/checker evidence. |
+| Coverage | Collect SVA/covergroup/report evidence for closure rows. | Coverage-enabled compile/run flow, aggregate VDB path, URG/report path, threshold, and fallback logs. |
+| Negative/future/formal excluded | Keep illegal stimulus, debug-only PLRU, and formal-only `vabuf` rows out of normal pass-rate math. | Explicit list with owner, reason, and replacement evidence or proof plan. |
+| Integration/nightly candidate | Stable subset suitable for broader MMU regression after targeted closure. | Only clean deterministic tests; no unwaived scenario gates or expected warnings. |
+
+- Coverage thresholds must be set before claiming closure.  Default closure policy is 100% hit/waive/future disposition for Phase 6G-owned SVA covers, covergroups, and scoreboard final reports; line/branch/toggle/functional percentages may support confidence but do not replace traceability closure.
+- URG or cover report failure is not automatically a waiver.  If the coverage tool cannot produce a usable report, the fallback must include command, seed/list, log path, missing report path, reason, replacement grep/report evidence, and residual risk.
+- The targeted regression summary must include commands, seeds, log paths, pass/fail count, accepted warnings, rejected evidence, coverage holes, waivers, and future/formal rows.
+- A list regression PASS is not closure unless the manifest closure scanner also passes every claimed row.  The scanner must reject rows with missing final reports, zero target counters, unaccepted warnings, unexpected assertion text, `SCENARIO_GATE`, `UVM_ERROR`, or `UVM_FATAL`.
 
 Strict exit gate:
 
 | Item | Criterion |
 | --- | --- |
-| Entry | Phases 6A-6F are implemented, waived, or moved to future with owner. |
-| Deliverables | ID-to-evidence matrix, regression tiers, coverage checklist, remaining-hole list, waiver list. |
-| Compile/run evidence | Compile, directed smoke, and targeted L1DTLB regression commands, seeds, logs, and results are recorded. |
-| Pass/fail | No unfinished P0/P1 item is marked Complete without trigger and checker evidence or approved waiver. |
-| Coverage/SVA/log | Cover property, covergroup, SVA, and scoreboard final-phase reports are archived or have log fallback evidence. |
-| Waiver | Coverage holes, untriggered scenarios, and formal-only items are waived or moved to a named future phase. |
+| Entry | Phases 6A-6F are implemented, waived, or moved to future/formal with owner; rejected and partial evidence from earlier phases is already recorded. |
+| Deliverables | ID-to-evidence matrix, scoreboard/SVA/coverage inventory, regression tier definitions, closure summary, remaining-hole list, waiver list, future/formal list, and rejected-evidence list. |
+| Compile/run evidence | Compile, directed smoke, targeted L1DTLB regression, and coverage commands, seeds, logs, summaries, and report paths are recorded in the Progress evidence log. |
+| Pass/fail | No unfinished P0/P1 item is marked Complete without nonzero trigger evidence plus checker evidence, or an approved waiver/future/formal row. |
+| Coverage/SVA/log | Cover property, covergroup, SVA, scoreboard final-phase reports, and URG/log fallback evidence are archived or linked; every missing report or zero-hit cover has a disposition. |
+| Regression quality | A clean targeted regression has `UVM_ERROR=0`, `UVM_FATAL=0`, no unexpected assertion failures, no unwaived `SCENARIO_GATE`, and all claimed rows have nonzero target counters. |
+| Waiver | Coverage holes, untriggered scenarios, unstable tests, report-tool limits, PLRU exact victim, and `vabuf` equivalence are waived or moved to named future/formal work with owner, risk, and replacement evidence. |
 
 ## 4. Unfinished ID Coverage by Phase
 

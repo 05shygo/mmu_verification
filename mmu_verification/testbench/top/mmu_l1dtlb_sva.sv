@@ -458,7 +458,7 @@ module mmu_l1dtlb_sva #(
     dutlb_l2tlb_req_vld);
 
   cp_l1dtlb_c015_wfi_install: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    (|mb_entry_wfi) ##[1:16] utlb_refill_vld);
+    (|mb_entry_wfi) ##[0:16] utlb_refill_vld);
 
   cp_l1dtlb_c016_fault_write: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     expt_wr0_vld || expt_wr1_vld);
@@ -712,7 +712,7 @@ module mmu_l1dtlb_mb_entry_sva #(
     (entry_state inside {STATE_IDLE, STATE_PGFLT, STATE_ACFLT, STATE_ABT}) && refill_vld);
 
   cp_l1dtlb_c015_wfi_hold: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
-    (entry_state == STATE_WFI)[*2:$] ##1 refill_gnt);
+    (entry_state == STATE_WFI) && refill_gnt);
 
   cp_l1dtlb_c020_flush_race: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
     rtu_yy_xx_flush && (entry_state != STATE_IDLE));
@@ -775,6 +775,9 @@ module mmu_l1dtlb_scheduler_sva #(
   a_no_req_without_credit_or_return: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
     (credit_cnt == 0 && !l2tlb_credit_ret) |-> !dutlb_arb_req);
 
+  a_no_req_at_zero_credit_even_with_return: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+    credit_cnt == 0 |-> !dutlb_arb_req);
+
   a_credit_decrement_on_req_only: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
     (dutlb_arb_req && !l2tlb_credit_ret) |=> credit_cnt == $past(credit_cnt) - 1'b1);
 
@@ -833,6 +836,9 @@ module mmu_l1dtlb_scheduler_sva #(
 
   cp_l1dtlb_c014_req_and_return: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
     dutlb_arb_req && l2tlb_credit_ret);
+
+  cp_l1dtlb_c014_zero_credit_return: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+    (credit_cnt == 0) && l2tlb_credit_ret && !dutlb_arb_req);
 
   cp_l1dtlb_c014_old_mb_priority: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
     (|mb_entry_ready) && (alloc_gnt0 || alloc_gnt1) && dutlb_arb_req);

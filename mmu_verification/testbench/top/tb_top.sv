@@ -913,6 +913,7 @@ bind mmu_l1dtlb_expt_cam mmu_l1dtlb_expt_cam_sva u_l1dtlb_expt_cam_sva (.*);
 bind mmu_l1dtlb_hit_rd mmu_l1dtlb_hit_rd_sva u_l1dtlb_hit_rd_sva (.*);
 bind mmu_arb      mmu_arb_sva         u_arb_sva   (.*);
 bind mmu_l2tlb    mmu_l2tlb_rrpv_sva  u_l2tlb_sva (.*);
+bind mmu_l2tlb_mb mmu_l2tlb_mb_sva    u_l2tlb_mb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
 bind twu          mmu_twu_sva         u_twu_sva   (.*);
 bind ptw          mmu_ptw_top_sva     u_ptw_top_sva (.*);

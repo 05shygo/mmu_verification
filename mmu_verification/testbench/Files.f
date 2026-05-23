@@ -77,6 +77,7 @@ ${TB_DIR}/top/mmu_sva.sv
 ${TB_DIR}/top/mmu_l1dtlb_sva.sv
 ${TB_DIR}/top/mmu_arb_sva.sv
 ${TB_DIR}/top/mmu_l2tlb_rrpv_sva.sv
+${TB_DIR}/top/mmu_l2tlb_mb_sva.sv
 ${TB_DIR}/top/mmu_plru_sva.sv
 ${TB_DIR}/top/credit_sva.sv
 ${TB_DIR}/top/mmu_twu_sva.sv

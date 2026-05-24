@@ -1,7 +1,7 @@
 # =============================================================================
 # MMU UVM Verification — testbench/Files.f
-# Phase 2: DUT RTL + params package + 7 interfaces + common package
-# Compilation order: dv_utils → relate_rtl → params → RTL → interfaces → common
+# Phase 2: DUT RTL + params package + common package + 7 interfaces
+# Compilation order: dv_utils → relate_rtl → params → common → RTL → interfaces
 # =============================================================================
 
 # --- dv_utils UVM utilities ---
@@ -22,6 +22,11 @@ ${RELATE_RTL_DIR}/rtu/ct_rtu_compare_iid.v
 # Phase 2: Shared parameters package (must compile before RTL & interfaces)
 # ---------------------------------------------------------------------------
 ${MMU_PARAMS_DIR}/mmu_params_pkg.sv
+
+# ---------------------------------------------------------------------------
+# Phase 2: Common utilities package
+# ---------------------------------------------------------------------------
+${TB_DIR}/common/mmu_common_pkg.sv
 
 # ---------------------------------------------------------------------------
 # Phase 2: DUT RTL sources
@@ -71,6 +76,11 @@ ${MMU_RTL_DIR}/ptw.sv
 ${MMU_RTL_DIR}/ct_mmu_top.v
 
 # ---------------------------------------------------------------------------
+# Phase 6G: L2TLB negative injector package/interface (SVA guard dependency)
+# ---------------------------------------------------------------------------
+${TB_DIR}/top/l2tlb_negative_inject_if.sv
+
+# ---------------------------------------------------------------------------
 # Phase 7: SVA (bind to DUT submodules; compile before UVM, after RTL)
 # ---------------------------------------------------------------------------
 ${TB_DIR}/top/mmu_sva.sv
@@ -106,11 +116,6 @@ ${TB_DIR}/misc_agent/misc_if.sv
 ${TB_DIR}/env/mmu_dut_probes_if.sv
 # cv_dv_utils: satisfy VCS UII-L for interfaces only in the shared library file list
 ${TB_DIR}/top/cv_dv_utils_unref_if_instances.sv
-
-# ---------------------------------------------------------------------------
-# Phase 2: Common utilities package
-# ---------------------------------------------------------------------------
-${TB_DIR}/common/mmu_common_pkg.sv
 
 # ---------------------------------------------------------------------------
 # Phase 2: Minimal base test (smoke check)

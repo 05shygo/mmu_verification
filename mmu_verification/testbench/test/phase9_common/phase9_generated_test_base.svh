@@ -143,6 +143,8 @@ class phase9_generated_test_base extends test_base;
       "mmu_huge_page_mix_vseq":       seq = mmu_huge_page_mix_vseq::type_id::create(seq_name);
       "mmu_rrpv_aging_vseq":          seq = mmu_rrpv_aging_vseq::type_id::create(seq_name);
       "mmu_l2tlb_bank_conflict_vseq": seq = mmu_l2tlb_bank_conflict_vseq::type_id::create(seq_name);
+      "mmu_l2tlb_reqq_arb_fine_vseq": seq = mmu_l2tlb_reqq_arb_fine_vseq::type_id::create(seq_name);
+      "mmu_l2tlb_hash_directed_vseq": seq = mmu_l2tlb_hash_directed_vseq::type_id::create(seq_name);
       "mmu_satp_hotswap_vseq":        seq = mmu_satp_hotswap_vseq::type_id::create(seq_name);
       "mmu_stress_all_ports_vseq":    seq = mmu_stress_all_ports_vseq::type_id::create(seq_name);
       "mmu_power_gating_vseq":        seq = mmu_power_gating_vseq::type_id::create(seq_name);
@@ -436,16 +438,50 @@ class phase9_generated_test_base extends test_base;
         cp0_tlbp_seq seq = cp0_tlbp_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
       end
+      "cp0_l2tlb_tlbp_hit_exact_seq": begin
+        cp0_l2tlb_tlbp_hit_exact_seq seq = cp0_l2tlb_tlbp_hit_exact_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbp_miss_exact_seq": begin
+        cp0_l2tlb_tlbp_miss_exact_seq seq = cp0_l2tlb_tlbp_miss_exact_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
       "cp0_tlbr_seq": begin
         cp0_tlbr_seq seq = cp0_tlbr_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbr_read_exact_seq": begin
+        cp0_l2tlb_tlbr_read_exact_seq seq = cp0_l2tlb_tlbr_read_exact_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbr_all_fields_exact_seq": begin
+        cp0_l2tlb_tlbr_all_fields_exact_seq seq = cp0_l2tlb_tlbr_all_fields_exact_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
       end
       "cp0_tlbwi_seq": begin
         cp0_tlbwi_seq seq = cp0_tlbwi_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
       end
+      "cp0_l2tlb_tlbwi_write_exact_seq": begin
+        cp0_l2tlb_tlbwi_write_exact_seq seq = cp0_l2tlb_tlbwi_write_exact_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbwi_overwrite_exact_seq": begin
+        cp0_l2tlb_tlbwi_overwrite_exact_seq seq = cp0_l2tlb_tlbwi_overwrite_exact_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
       "cp0_tlbwr_seq": begin
         cp0_tlbwr_seq seq = cp0_tlbwr_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbwr_visible_exact_seq": begin
+        cp0_l2tlb_tlbwr_visible_exact_seq seq = cp0_l2tlb_tlbwr_visible_exact_seq::type_id::create(seq_name);
+        seq.num_writes = 1;
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbwr_rrpv_visible_exact_seq": begin
+        cp0_l2tlb_tlbwr_visible_exact_seq seq = cp0_l2tlb_tlbwr_visible_exact_seq::type_id::create(seq_name);
+        seq.num_writes = 3;
         seq.start(m_env.m_cp0.m_sequencer);
       end
       "cp0_reg_rw_seq": begin

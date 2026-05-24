@@ -1,7 +1,7 @@
 // =============================================================================
 // MMU UVM Verification — testbench/common/mmu_common_pkg.sv
 // Phase 2: PTE utilities, VA segment helpers, exception type enum
-// All function bodies are TODO — to be filled in Phase 4
+// Shared helpers live here so sequences, scoreboards, and SVA use one model.
 // =============================================================================
 package mmu_common_pkg;
 
@@ -31,6 +31,120 @@ package mmu_common_pkg;
     logic                 so;     // Strongly-ordered
     logic                 deny;   // Sysmap/PMP access denied
   } xlation_rsp_t;
+
+  typedef logic [L2_TLB_WAYS*8-1:0] l2tlb_idx_bus_t;
+  typedef logic [L2_TLB_WAYS*3-1:0] l2tlb_size_bus_t;
+
+  // =========================================================================
+  // L2TLB Hash / Skew Golden Model
+  // Mirrors mmu_arb.sv selector, size prediction, raw index, and skew rules.
+  // This is pure combinational address modeling; replacement/victim state is
+  // intentionally modeled elsewhere.
+  // =========================================================================
+  function automatic logic [7:0] l2tlb_reverse8(input logic [7:0] in);
+    for (int i = 0; i < 8; i++)
+      l2tlb_reverse8[i] = in[7-i];
+  endfunction
+
+  function automatic logic [2:0] l2tlb_size_pred(
+    input logic [1:0] selector,
+    input logic [2:0] way
+  );
+    unique case (selector)
+      2'b00: begin
+        unique case (way)
+          3'd0, 3'd1, 3'd4, 3'd5: l2tlb_size_pred = PGS_4K;
+          3'd2, 3'd6:             l2tlb_size_pred = PGS_2M;
+          default:                 l2tlb_size_pred = PGS_1G;
+        endcase
+      end
+      2'b01: begin
+        unique case (way)
+          3'd2, 3'd3, 3'd6, 3'd7: l2tlb_size_pred = PGS_4K;
+          3'd0, 3'd4:             l2tlb_size_pred = PGS_2M;
+          default:                 l2tlb_size_pred = PGS_1G;
+        endcase
+      end
+      2'b10: begin
+        unique case (way)
+          3'd0, 3'd1, 3'd4, 3'd5: l2tlb_size_pred = PGS_4K;
+          3'd3, 3'd7:             l2tlb_size_pred = PGS_2M;
+          default:                 l2tlb_size_pred = PGS_1G;
+        endcase
+      end
+      2'b11: begin
+        unique case (way)
+          3'd2, 3'd3, 3'd6, 3'd7: l2tlb_size_pred = PGS_4K;
+          3'd1, 3'd5:             l2tlb_size_pred = PGS_2M;
+          default:                 l2tlb_size_pred = PGS_1G;
+        endcase
+      end
+      default: l2tlb_size_pred = PGS_4K;
+    endcase
+  endfunction
+
+  function automatic logic [7:0] l2tlb_raw_index(
+    input vpn_t       vpn,
+    input logic [2:0] way
+  );
+    unique case (l2tlb_size_pred(vpn[19:18], way))
+      PGS_1G:  l2tlb_raw_index = vpn[25:18];
+      PGS_2M:  l2tlb_raw_index = vpn[16:9];
+      default: l2tlb_raw_index = vpn[7:0];
+    endcase
+  endfunction
+
+  function automatic logic [7:0] l2tlb_skew_index(
+    input vpn_t       vpn,
+    input logic [2:0] way
+  );
+    logic [7:0] raw_idx;
+
+    raw_idx = l2tlb_raw_index(vpn, way);
+    unique case (way)
+      3'd0:    l2tlb_skew_index = raw_idx;
+      3'd1:    l2tlb_skew_index = raw_idx ^ vpn[15:8];
+      3'd2:    l2tlb_skew_index = raw_idx ^ vpn[23:16];
+      3'd3:    l2tlb_skew_index = raw_idx ^ {vpn[3:0], vpn[11:8]};
+      3'd4:    l2tlb_skew_index = raw_idx ^ {raw_idx[6:0], raw_idx[7]};
+      3'd5:    l2tlb_skew_index = raw_idx ^ {raw_idx[1:0], raw_idx[7:2]};
+      3'd6:    l2tlb_skew_index = raw_idx ^ l2tlb_reverse8(raw_idx);
+      default: l2tlb_skew_index = raw_idx ^ vpn[26:19];
+    endcase
+  endfunction
+
+  function automatic l2tlb_idx_bus_t l2tlb_skew_index_bus(input vpn_t vpn);
+    l2tlb_skew_index_bus = '0;
+    for (int way = 0; way < L2_TLB_WAYS; way++) begin
+      logic [2:0] way3;
+      way3 = way[2:0];
+      l2tlb_skew_index_bus[way*8 +: 8] = l2tlb_skew_index(vpn, way3);
+    end
+  endfunction
+
+  function automatic l2tlb_size_bus_t l2tlb_size_bus(input vpn_t vpn);
+    l2tlb_size_bus = '0;
+    for (int way = 0; way < L2_TLB_WAYS; way++) begin
+      logic [2:0] way3;
+      way3 = way[2:0];
+      l2tlb_size_bus[way*3 +: 3] = l2tlb_size_pred(vpn[19:18], way3);
+    end
+  endfunction
+
+  function automatic logic [7:0] l2tlb_page_bank_mask(
+    input logic [1:0] selector,
+    input logic [2:0] page_size
+  );
+    l2tlb_page_bank_mask = 8'h00;
+    if ((page_size == PGS_4K) || (page_size == PGS_2M) || (page_size == PGS_1G)) begin
+      for (int way = 0; way < L2_TLB_WAYS; way++) begin
+        logic [2:0] way3;
+        way3 = way[2:0];
+        if (l2tlb_size_pred(selector, way3) == page_size)
+          l2tlb_page_bank_mask[way] = 1'b1;
+      end
+    end
+  endfunction
 
   // =========================================================================
   // PTE Construction Utility

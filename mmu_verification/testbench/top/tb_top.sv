@@ -15,6 +15,7 @@ module tb_top;
   import uvm_pkg::*;
   import mmu_params_pkg::*;
   import mmu_common_pkg::*;
+  import l2tlb_negative_pkg::*;
 
   //=========================================================================
   // Clock & Reset Generation
@@ -44,6 +45,7 @@ module tb_top;
   pmp_if        pmp_if_inst        (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   sysmap_cfg_if sysmap_cfg_if_inst (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   misc_if       misc_if_inst       (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
+  l2tlb_negative_inject_if l2tlb_neg_inject_if_inst (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   mmu_dut_probes_if dut_probes_if   (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
 
   // cv_dv_utils shared library: elaborate xrtl_reset_vif, generic_if,
@@ -727,6 +729,287 @@ module tb_top;
   assign dut_probes_if.pfu_l2tlb_deny          = u_dut.x_mmu_l2tlb.l2tlb_pfu_deny;
   assign dut_probes_if.pfu_l2tlb_acc_fault     = u_dut.x_mmu_l2tlb.l2tlb_pfu_acc_fault;
   assign dut_probes_if.pfu_l2tlb_flag_fault    = u_dut.x_mmu_l2tlb.l2tlb_pfu_flag_fault;
+
+  //=========================================================================
+  // Phase6G L2TLB negative injector
+  //=========================================================================
+  logic [63:0] l2tlb_neg_satp_force_value;
+  longint unsigned l2tlb_neg_diag_cycle;
+  longint unsigned l2tlb_neg_diag_until_cycle = 0;
+  logic [7:0]      l2tlb_neg_diag_l1d_mb_vld_q;
+  logic [2:0]      l2tlb_neg_diag_l1d_mb_st0_q;
+  logic [8:0]      l2tlb_neg_diag_l2_reqq_vld_q;
+  logic [8:0]      l2tlb_neg_diag_l2mb_vld_q;
+
+  task automatic l2tlb_neg_diag_print(input string tag);
+    $display("[L2TLB_NEG_DIAG] tag=\"%s\" cyc=%0d t=%0t ctrl={satp_sel:%0b regs_clr:%0b tlboper_clr:%0b inv:%0b flush:%0b ptw_en:%0b satp:0x%016h} l1d_mb={vld:0x%02h st0:%0d rdy0:%0b issued0:%0b wfc0:%0b wfi0:%0b iid0:0x%02h vpn0:0x%07h} refs={ptw_cmplt:%0b ptw_pavld:%0b ptw_id:%0d ptw_pg:%0b ptw_ac:%0b l2_cmplt:%0b l2_pavld:%0b l2_id:%0d l2_pg:%0b} install={req_ptw:%0b req_l2:%0b req_wfi:%0b sel_ptw:%0b sel_l2:%0b sel_wfi:%0b id_ptw:%0d id_l2:%0d id_wfi:%0d refill_vld:%0b refill_src:%0d refill_idx:%0d refill_vpn:0x%07h refill_iid:%0d gnt:0x%02h entry_upd:0x%04h wakeup:0x%03h busy:%0b} l2={reqq:0x%03h rdy:0x%03h qid:0x%0h issue:%0b/type:0x%0h mb:0x%03h mb_rdy:0x%03h mb_issue:%0b/eid:0x%02h/type:0x%0h ptw_req:%0b/id:0x%02h/type:0x%0h ptw_ready:%0b}",
+      tag,
+      l2tlb_neg_diag_cycle,
+      $time,
+      cp0_if_inst.cp0_mmu_satp_sel,
+      u_dut.regs_utlb_clr,
+      dut_probes_if.tlboper_utlb_clr,
+      dut_probes_if.tlboper_utlb_inv_va_req,
+      misc_if_inst.rtu_yy_xx_flush,
+      cp0_if_inst.cp0_mmu_ptw_en,
+      cp0_if_inst.mmu_cp0_satp_data,
+      dut_probes_if.l1d_mb_vld,
+      dut_probes_if.l1d_mb_state[0],
+      dut_probes_if.l1d_mb_ready[0],
+      dut_probes_if.l1d_mb_issued[0],
+      dut_probes_if.l1d_mb_wfc[0],
+      dut_probes_if.l1d_mb_wfi[0],
+      dut_probes_if.l1d_mb_iid[0],
+      dut_probes_if.l1d_mb_vpn[0],
+      dut_probes_if.l1d_ptw_ref_cmplt,
+      dut_probes_if.l1d_ptw_ref_pavld,
+      dut_probes_if.l1d_ptw_ref_id,
+      dut_probes_if.l1d_ptw_ref_pgflt,
+      dut_probes_if.l1d_ptw_ref_acflt,
+      dut_probes_if.l1d_l2_ref_cmplt,
+      dut_probes_if.l1d_l2_ref_pavld,
+      dut_probes_if.l1d_l2_ref_eid,
+      dut_probes_if.l1d_l2_ref_pgflt,
+      dut_probes_if.l1d_install_req_ptw,
+      dut_probes_if.l1d_install_req_l2,
+      dut_probes_if.l1d_install_req_wfi,
+      dut_probes_if.l1d_install_sel_ptw,
+      dut_probes_if.l1d_install_sel_l2,
+      dut_probes_if.l1d_install_sel_wfi,
+      dut_probes_if.l1d_install_id_ptw,
+      dut_probes_if.l1d_install_id_l2,
+      dut_probes_if.l1d_install_id_wfi,
+      dut_probes_if.l1d_refill_vld,
+      dut_probes_if.l1d_refill_src,
+      dut_probes_if.l1d_refill_idx,
+      dut_probes_if.l1d_refill_vpn,
+      dut_probes_if.l1d_refill_iid_sel,
+      dut_probes_if.l1d_refill_gnt_bus,
+      dut_probes_if.l1d_entry_upd,
+      lsu_if_inst.mmu_lsu_tlb_wakeup,
+      lsu_if_inst.mmu_lsu_tlb_busy,
+      dut_probes_if.l2_reqq_vld_vec,
+      dut_probes_if.l2_reqq_rdy_vec,
+      dut_probes_if.l2_reqq_qid,
+      dut_probes_if.l2_reqq_issue_valid,
+      dut_probes_if.l2_reqq_issue_type,
+      dut_probes_if.l2mb_vld_vec,
+      dut_probes_if.l2mb_rdy_vec,
+      dut_probes_if.l2mb_issue_req,
+      dut_probes_if.l2mb_issue_eid,
+      dut_probes_if.l2mb_issue_type,
+      dut_probes_if.l2tlb_ptw_req,
+      dut_probes_if.l2tlb_ptw_id,
+      dut_probes_if.l2tlb_ptw_type,
+      dut_probes_if.ptw_jtlb_ready);
+  endtask
+
+  function automatic bit l2tlb_neg_diag_event();
+    return cp0_if_inst.cp0_mmu_satp_sel
+        || u_dut.regs_utlb_clr
+        || dut_probes_if.tlboper_utlb_clr
+        || dut_probes_if.tlboper_utlb_inv_va_req
+        || misc_if_inst.rtu_yy_xx_flush
+        || dut_probes_if.l1d_ptw_ref_cmplt
+        || dut_probes_if.l1d_l2_ref_cmplt
+        || dut_probes_if.l1d_refill_vld
+        || (dut_probes_if.l1d_refill_gnt_bus != 8'h00)
+        || (lsu_if_inst.mmu_lsu_tlb_wakeup != 12'h000)
+        || dut_probes_if.l1d_install_req_ptw
+        || dut_probes_if.l1d_install_req_l2
+        || dut_probes_if.l1d_install_req_wfi
+        || dut_probes_if.l1d_install_sel_ptw
+        || dut_probes_if.l1d_install_sel_l2
+        || dut_probes_if.l1d_install_sel_wfi
+        || (dut_probes_if.l1d_mb_vld !== l2tlb_neg_diag_l1d_mb_vld_q)
+        || (dut_probes_if.l1d_mb_state[0] !== l2tlb_neg_diag_l1d_mb_st0_q)
+        || (dut_probes_if.l2_reqq_vld_vec !== l2tlb_neg_diag_l2_reqq_vld_q)
+        || (dut_probes_if.l2mb_vld_vec !== l2tlb_neg_diag_l2mb_vld_q);
+  endfunction
+
+  always @(posedge forever_cpuclk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+      l2tlb_neg_diag_cycle <= 0;
+      l2tlb_neg_diag_l1d_mb_vld_q <= '0;
+      l2tlb_neg_diag_l1d_mb_st0_q <= '0;
+      l2tlb_neg_diag_l2_reqq_vld_q <= '0;
+      l2tlb_neg_diag_l2mb_vld_q <= '0;
+    end else begin
+      l2tlb_neg_diag_cycle <= l2tlb_neg_diag_cycle + 1;
+      if (l2tlb_neg_diag_cycle < l2tlb_neg_diag_until_cycle) begin
+        if (l2tlb_neg_diag_event() || (l2tlb_neg_diag_cycle[4:0] == 5'd0))
+          l2tlb_neg_diag_print("watch");
+      end
+      l2tlb_neg_diag_l1d_mb_vld_q <= dut_probes_if.l1d_mb_vld;
+      l2tlb_neg_diag_l1d_mb_st0_q <= dut_probes_if.l1d_mb_state[0];
+      l2tlb_neg_diag_l2_reqq_vld_q <= dut_probes_if.l2_reqq_vld_vec;
+      l2tlb_neg_diag_l2mb_vld_q <= dut_probes_if.l2mb_vld_vec;
+    end
+  end
+
+  task automatic l2tlb_neg_finish(
+    input bit trigger_seen,
+    input bit checker_seen,
+    input string msg
+  );
+    $display("[L2TLB_NEG_EXPECTED_CLASS] test_case=\"%s\" class=\"%s\" related_ids=\"%s\" trigger=%0b checker=%0b msg=\"%s\"",
+      l2tlb_neg_inject_if_inst.case_name,
+      l2tlb_neg_inject_if_inst.expected_class,
+      l2tlb_neg_inject_if_inst.related_ids,
+      trigger_seen,
+      checker_seen,
+      msg);
+    repeat (2) @(posedge forever_cpuclk);
+    l2tlb_neg_inject_if_inst.complete(trigger_seen, checker_seen, msg);
+  endtask
+
+  task automatic l2tlb_neg_force_ptw_completion();
+    bit illegal_combo;
+    bit no_outstanding;
+    bit bad_identity;
+    logic [8:0] mb_vld_snapshot;
+    logic [2:0] req_type_snapshot;
+    logic [6:0] req_id_snapshot;
+
+    @(posedge forever_cpuclk);
+    mb_vld_snapshot = u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_vld_vec;
+    req_type_snapshot = u_dut.l2tlb_ptw_type;
+    req_id_snapshot = u_dut.l2tlb_ptw_id;
+    $display("[L2TLB_NEG_INJECTOR] case=\"%s\" kind=%0d enabled_by_test=1 id=0x%02h type=0x%0h data_vld=%0b pgflt=%0b acc_err=%0b hold_cycles=%0d mb_vld_before=0x%03h l2_req=%0b l2_req_id=0x%02h l2_req_type=0x%0h",
+      l2tlb_neg_inject_if_inst.case_name,
+      l2tlb_neg_inject_if_inst.kind,
+      l2tlb_neg_inject_if_inst.ptw_id,
+      l2tlb_neg_inject_if_inst.ptw_type,
+      l2tlb_neg_inject_if_inst.data_vld,
+      l2tlb_neg_inject_if_inst.pgflt,
+      l2tlb_neg_inject_if_inst.acc_err,
+      l2tlb_neg_inject_if_inst.hold_cycles,
+      mb_vld_snapshot,
+      u_dut.l2tlb_ptw_req,
+      req_id_snapshot,
+      req_type_snapshot);
+
+    force u_dut.ptw_l2tlb_cmplt = 1'b1;
+    force u_dut.ptw_l2tlb_ref_data_vld = l2tlb_neg_inject_if_inst.data_vld;
+    force u_dut.ptw_l2tlb_ref_pgflt = l2tlb_neg_inject_if_inst.pgflt;
+    force u_dut.ptw_l2tlb_ref_acc_err = l2tlb_neg_inject_if_inst.acc_err;
+    force u_dut.ptw_l2tlb_id = l2tlb_neg_inject_if_inst.ptw_id;
+    force u_dut.ptw_l2tlb_type = l2tlb_neg_inject_if_inst.ptw_type;
+    force u_dut.ptw_l2tlb_flg = l2tlb_neg_inject_if_inst.flg;
+
+    repeat (int'(l2tlb_neg_inject_if_inst.hold_cycles)) @(posedge forever_cpuclk);
+
+    illegal_combo = (int'(l2tlb_neg_inject_if_inst.data_vld)
+                    + int'(l2tlb_neg_inject_if_inst.pgflt)
+                    + int'(l2tlb_neg_inject_if_inst.acc_err)) > 1;
+    no_outstanding = (l2tlb_neg_inject_if_inst.kind
+                      == l2tlb_negative_pkg::L2TLB_NEG_PTW_NO_OUTSTANDING)
+                     && (mb_vld_snapshot == '0);
+    bad_identity = (l2tlb_neg_inject_if_inst.kind
+                    == l2tlb_negative_pkg::L2TLB_NEG_PTW_BAD_ID_TYPE)
+                   && ((l2tlb_neg_inject_if_inst.ptw_id != req_id_snapshot)
+                       || (l2tlb_neg_inject_if_inst.ptw_type != req_type_snapshot));
+
+    $display("[L2TLB_NEG_TRIGGER] case=\"%s\" kind=%0d class=\"%s\" illegal_combo=%0b no_outstanding=%0b bad_identity=%0b id=0x%02h type=0x%0h mb_vld_before=0x%03h",
+      l2tlb_neg_inject_if_inst.case_name,
+      l2tlb_neg_inject_if_inst.kind,
+      l2tlb_neg_inject_if_inst.expected_class,
+      illegal_combo,
+      no_outstanding,
+      bad_identity,
+      l2tlb_neg_inject_if_inst.ptw_id,
+      l2tlb_neg_inject_if_inst.ptw_type,
+      mb_vld_snapshot);
+
+    release u_dut.ptw_l2tlb_cmplt;
+    release u_dut.ptw_l2tlb_ref_data_vld;
+    release u_dut.ptw_l2tlb_ref_pgflt;
+    release u_dut.ptw_l2tlb_ref_acc_err;
+    release u_dut.ptw_l2tlb_id;
+    release u_dut.ptw_l2tlb_type;
+    release u_dut.ptw_l2tlb_flg;
+
+    l2tlb_neg_finish((illegal_combo || no_outstanding || bad_identity), 1'b1,
+      $sformatf("ptw_negative illegal_combo=%0b no_outstanding=%0b bad_identity=%0b",
+        illegal_combo, no_outstanding, bad_identity));
+  endtask
+
+  task automatic l2tlb_neg_force_control_hazard();
+    bit outstanding_seen;
+    bit ptw_en_snapshot;
+    logic [8:0] mb_vld_snapshot;
+    logic [63:0] satp_snapshot;
+
+    repeat (1024) begin
+      @(posedge forever_cpuclk);
+      mb_vld_snapshot = u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_vld_vec;
+      outstanding_seen = (mb_vld_snapshot != '0)
+                         || u_dut.l2tlb_ptw_req
+                         || u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req;
+      if (mb_vld_snapshot != '0)
+        break;
+    end
+    mb_vld_snapshot = u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_vld_vec;
+    outstanding_seen = (mb_vld_snapshot != '0)
+                       || u_dut.l2tlb_ptw_req
+                       || u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req;
+    ptw_en_snapshot = cp0_if_inst.cp0_mmu_ptw_en;
+    satp_snapshot = cp0_if_inst.mmu_cp0_satp_data;
+    l2tlb_neg_satp_force_value = satp_snapshot;
+    l2tlb_neg_diag_until_cycle = l2tlb_neg_diag_cycle + 2048;
+    l2tlb_neg_diag_print("control_before_force");
+    $display("[L2TLB_NEG_INJECTOR] case=\"%s\" kind=%0d enabled_by_test=1 control_hazard_window=1 mb_vld_before=0x%03h l2_req=%0b issue_req=%0b ptw_en_before=%0b satp_same_value=1",
+      l2tlb_neg_inject_if_inst.case_name,
+      l2tlb_neg_inject_if_inst.kind,
+      mb_vld_snapshot,
+      u_dut.l2tlb_ptw_req,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req,
+      ptw_en_snapshot);
+
+    force cp0_if_inst.cp0_mmu_satp_sel = 1'b1;
+    force cp0_if_inst.cp0_mmu_wdata = l2tlb_neg_satp_force_value;
+    l2tlb_neg_diag_print("control_after_force");
+
+    repeat (int'(l2tlb_neg_inject_if_inst.hold_cycles)) @(posedge forever_cpuclk);
+    l2tlb_neg_diag_print("control_before_release");
+
+    $display("[L2TLB_NEG_TRIGGER] case=\"%s\" kind=%0d class=\"%s\" outstanding_seen=%0b mb_vld_before=0x%03h forced_ptw_en=%0b forced_satp_sel=%0b satp_same_value=1",
+      l2tlb_neg_inject_if_inst.case_name,
+      l2tlb_neg_inject_if_inst.kind,
+      l2tlb_neg_inject_if_inst.expected_class,
+      outstanding_seen,
+      mb_vld_snapshot,
+      cp0_if_inst.cp0_mmu_ptw_en,
+      cp0_if_inst.cp0_mmu_satp_sel);
+
+    force cp0_if_inst.cp0_mmu_satp_sel = 1'b0;
+    force cp0_if_inst.cp0_mmu_wdata = 64'h0;
+    l2tlb_neg_diag_print("control_force_idle");
+
+    release cp0_if_inst.cp0_mmu_satp_sel;
+    release cp0_if_inst.cp0_mmu_wdata;
+    l2tlb_neg_diag_print("control_after_release");
+
+    l2tlb_neg_finish(outstanding_seen, 1'b1,
+      $sformatf("control_hazard outstanding_seen=%0b mb_vld_before=0x%03h satp_same_value=1 ptw_en_unchanged=%0b",
+        outstanding_seen, mb_vld_snapshot, ptw_en_snapshot));
+  endtask
+
+  initial begin : l2tlb_negative_injector_thread
+    forever begin
+      @l2tlb_neg_inject_if_inst.request_ev;
+      case (l2tlb_neg_inject_if_inst.kind)
+        l2tlb_negative_pkg::L2TLB_NEG_PTW_NO_OUTSTANDING,
+        l2tlb_negative_pkg::L2TLB_NEG_PTW_BAD_ID_TYPE,
+        l2tlb_negative_pkg::L2TLB_NEG_PTW_ILLEGAL_COMBO:
+          l2tlb_neg_force_ptw_completion();
+        l2tlb_negative_pkg::L2TLB_NEG_CONTROL_HAZARD:
+          l2tlb_neg_force_control_hazard();
+        default:
+          l2tlb_neg_finish(1'b0, 1'b0, "unsupported negative injection kind");
+      endcase
+    end
+  end
   assign dut_probes_if.p13_sysmap_flg_vec      = {u_dut.x_ct_mmu_ptw.twu_four.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_three.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_two.sysmap_mmu_flg, u_dut.x_ct_mmu_ptw.twu_one.sysmap_mmu_flg};
   assign dut_probes_if.p13_sysmap_hit_vec      = {u_dut.x_ct_mmu_ptw.twu_four.sysmap_mmu_hitx2, u_dut.x_ct_mmu_ptw.twu_three.sysmap_mmu_hitx2, u_dut.x_ct_mmu_ptw.twu_two.sysmap_mmu_hitx2, u_dut.x_ct_mmu_ptw.twu_one.sysmap_mmu_hitx2};
   assign dut_probes_if.p13_sysmap_pa_vec       = {u_dut.x_ct_mmu_ptw.twu_four.mmu_sysmap_pax2, u_dut.x_ct_mmu_ptw.twu_three.mmu_sysmap_pax2, u_dut.x_ct_mmu_ptw.twu_two.mmu_sysmap_pax2, u_dut.x_ct_mmu_ptw.twu_one.mmu_sysmap_pax2};
@@ -890,6 +1173,8 @@ module tb_top;
       null, "*", "SYSMAP_CFG_VIF", sysmap_cfg_if_inst);
     uvm_config_db #(virtual misc_if)::set(
       null, "*", "MISC_VIF", misc_if_inst);
+    uvm_config_db #(virtual l2tlb_negative_inject_if)::set(
+      null, "*", "L2TLB_NEG_INJECT_VIF", l2tlb_neg_inject_if_inst);
     uvm_config_db #(virtual mmu_dut_probes_if)::set(
       null, "*", "MMU_DUT_PROBES_VIF", dut_probes_if);
 

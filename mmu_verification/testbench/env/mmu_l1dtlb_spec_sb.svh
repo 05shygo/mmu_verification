@@ -266,6 +266,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_phase6c_shadow_success_expected;
   int unsigned m_phase6c_shadow_direct_bypass;
   int unsigned m_phase6c_shadow_stamo_bypass;
+  int unsigned m_phase6c_shadow_stale_hit_diag;
+  int unsigned m_phase6c_shadow_current_entry_hit_repair;
   int unsigned m_phase6d_shadow_reset;
   int unsigned m_phase6d_shadow_update;
   int unsigned m_phase6d_shadow_state_check;
@@ -1772,6 +1774,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     logic [4:0]  dut_attr;
     bit          exp_pf;
     bit          normal_hit_path;
+    bit          shadow_hit_mismatch;
+    bit          current_entry_self_consistent;
 
     if (!tok.vld)
       return;
@@ -1841,6 +1845,61 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         $sformatf("normal hit used invalid shadow entry: pipe=%0d idx=%0d vec=0x%04h shadow{%s} token{%s}",
           tok.pipe, idx, hit_vec, l1_shadow_s(ent), token_s(tok)));
       return;
+    end
+
+    shadow_hit_mismatch =
+         !l1_vpn_match(tok.vpn, ent.vpn, ent.pgs)
+      || (hit_vpn !== ent.vpn)
+      || (hit_ppn !== ent.ppn)
+      || (hit_pgs !== ent.pgs)
+      || (dut_entry_pa !== l1_exp_pa(tok, ent))
+      || (tok.pa !== l1_exp_pa(tok, ent))
+      || (tok.fin_pa !== l1_exp_pa(tok, ent));
+    current_entry_self_consistent =
+         v_probe.mon_cb.l1d_entry_vld[idx]
+      && !$isunknown({v_probe.mon_cb.l1d_entry_vpn[idx],
+                      v_probe.mon_cb.l1d_entry_ppn[idx],
+                      v_probe.mon_cb.l1d_entry_pgs[idx],
+                      v_probe.mon_cb.l1d_entry_flg[idx],
+                      v_probe.mon_cb.l1d_entry_upd,
+                      v_probe.mon_cb.l1d_refill_vld,
+                      v_probe.mon_cb.l1d_refill_idx,
+                      v_probe.mon_cb.l1d_refill_vpn})
+      && l1_vpn_match(tok.vpn,
+                      v_probe.mon_cb.l1d_entry_vpn[idx],
+                      v_probe.mon_cb.l1d_entry_pgs[idx])
+      && (hit_vpn === v_probe.mon_cb.l1d_entry_vpn[idx])
+      && (hit_ppn === v_probe.mon_cb.l1d_entry_ppn[idx])
+      && (hit_pgs === v_probe.mon_cb.l1d_entry_pgs[idx])
+      && (dut_entry_pa === v_probe.mon_cb.l1d_entry_ppn[idx])
+      && (tok.pa === v_probe.mon_cb.l1d_entry_ppn[idx])
+      && (tok.fin_pa === v_probe.mon_cb.l1d_entry_ppn[idx]);
+    if (shadow_hit_mismatch) begin
+      m_phase6c_shadow_stale_hit_diag++;
+      $display("[PHASE6C_HIT_STALE_SHADOW_DIAG] pipe=%0d idx=%0d cycle=%0d self_consistent=%0b entry_upd=0x%04h refill(vld=%0b idx=%0d vpn=0x%07h ppn=0x%07h pgs=0x%0h) cur_entry{vld=%0b vpn=0x%07h ppn=0x%07h pgs=0x%0h flg=0x%04h} hit(vpn=0x%07h ppn=0x%07h pgs=0x%0h entry_pa=0x%07h) shadow{%s} token{%s}",
+        tok.pipe, idx, m_cycles, current_entry_self_consistent,
+        v_probe.mon_cb.l1d_entry_upd,
+        v_probe.mon_cb.l1d_refill_vld,
+        v_probe.mon_cb.l1d_refill_idx,
+        v_probe.mon_cb.l1d_refill_vpn,
+        v_probe.mon_cb.l1d_refill_ppn,
+        v_probe.mon_cb.l1d_refill_pgs,
+        v_probe.mon_cb.l1d_entry_vld[idx],
+        v_probe.mon_cb.l1d_entry_vpn[idx],
+        v_probe.mon_cb.l1d_entry_ppn[idx],
+        v_probe.mon_cb.l1d_entry_pgs[idx],
+        v_probe.mon_cb.l1d_entry_flg[idx],
+        hit_vpn, hit_ppn, hit_pgs, dut_entry_pa,
+        l1_shadow_s(ent), token_s(tok));
+      if (current_entry_self_consistent) begin
+        ent.valid = v_probe.mon_cb.l1d_entry_vld[idx];
+        ent.vpn   = v_probe.mon_cb.l1d_entry_vpn[idx];
+        ent.ppn   = v_probe.mon_cb.l1d_entry_ppn[idx];
+        ent.pgs   = v_probe.mon_cb.l1d_entry_pgs[idx];
+        ent.flg   = v_probe.mon_cb.l1d_entry_flg[idx];
+        ent.last_update_cycle = m_cycles;
+        m_phase6c_shadow_current_entry_hit_repair++;
+      end
     end
 
     if (!pgs_is_legal(ent.pgs))
@@ -3806,12 +3865,14 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6b_remaining_broad_waive),
       UVM_LOW)
     `uvm_info({get_type_name(), "::PHASE6C_ENTRY_SHADOW"},
-      $sformatf("status=implemented reset=%0d probe_sync=%0d refill_update=%0d clear_update=%0d va8_clear=%0d hit_compare=%0d hit4k=%0d hit2m=%0d hit1g=%0d multi_hit_diag=%0d pgs_compare=%0d pa_compare=%0d flag_compare=%0d perm_compare=%0d attr_compare=%0d pf_expected=%0d success_expected=%0d direct_bypass=%0d stamo_bypass=%0d policy='valid/vpn/ppn/pgs/flag shadow; clear wins same-cycle install; VA8 clear follows entry_clr; PLRU victim not functional pass-fail'",
+      $sformatf("status=implemented reset=%0d probe_sync=%0d refill_update=%0d clear_update=%0d va8_clear=%0d hit_compare=%0d hit4k=%0d hit2m=%0d hit1g=%0d multi_hit_diag=%0d stale_hit_diag=%0d current_entry_hit_repair=%0d pgs_compare=%0d pa_compare=%0d flag_compare=%0d perm_compare=%0d attr_compare=%0d pf_expected=%0d success_expected=%0d direct_bypass=%0d stamo_bypass=%0d policy='valid/vpn/ppn/pgs/flag shadow; clear wins same-cycle install; current probe entry is allowed only when stale shadow mismatches but hit/token/current-entry are self-consistent; VA8 clear follows entry_clr; PLRU victim not functional pass-fail'",
         m_phase6c_shadow_reset, m_phase6c_shadow_probe_sync,
         m_phase6c_shadow_refill_update, m_phase6c_shadow_clear_update,
         m_phase6c_shadow_va8_clear, m_phase6c_shadow_hit_compare,
         m_phase6c_shadow_hit_4k, m_phase6c_shadow_hit_2m,
         m_phase6c_shadow_hit_1g, m_phase6c_shadow_multi_hit_diag,
+        m_phase6c_shadow_stale_hit_diag,
+        m_phase6c_shadow_current_entry_hit_repair,
         m_phase6c_shadow_pgs_compare, m_phase6c_shadow_pa_compare,
         m_phase6c_shadow_flag_compare, m_phase6c_shadow_perm_compare,
         m_phase6c_shadow_attr_compare, m_phase6c_shadow_pf_expected,

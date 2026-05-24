@@ -3,6 +3,7 @@
 // checks (bind mmu_l2tlb).
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_l2tlb_rrpv_sva (
     input logic forever_cpuclk,
@@ -102,20 +103,20 @@ module mmu_l2tlb_rrpv_sva (
                 && !l2tlb_tlboper_cmplt && !l2tlb_arb_pfu_miss_mb_full));
 
   // L2TLB_SVA_018: source request and arb/final payload are known on valid beats.
-  a_i_req_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_i_req_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     i_req_valid |-> !$isunknown(i_req_vpn));
 
-  a_d_req_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_d_req_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     d_req_valid |-> (!$isunknown(d_req_vpn) && !$isunknown(d_req_eid)
                   && !$isunknown(d_req_is_load)));
 
-  a_queue_arb_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_queue_arb_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     queue_arb_req |-> (!$isunknown(queue_arb_vpn) && !$isunknown(queue_arb_eid)
                     && !$isunknown(queue_arb_trans_id)
                     && !$isunknown(queue_arb_acc_type)
                     && is_reqq_type(queue_arb_acc_type)));
 
-  a_arb_l2tlb_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_arb_l2tlb_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_l2tlb_req |-> (!$isunknown(arb_l2tlb_vpn)
                     && !$isunknown(arb_l2tlb_trans_id)
                     && !$isunknown(arb_l2tlb_eid)
@@ -123,14 +124,14 @@ module mmu_l2tlb_rrpv_sva (
                     && !$isunknown(arb_l2tlb_cmp_with_va)
                     && is_valid_type(arb_l2tlb_acc_type)));
 
-  a_final_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_final_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     final_vld |-> (!$isunknown(final_vpn) && !$isunknown(final_eid)
                 && !$isunknown(final_queue_id) && !$isunknown(final_acc_type)
                 && is_valid_type(final_acc_type)));
 
   // Write paths, including PTW refill and TLB operation writes, must present
   // known tag/data when the L2TLB request is active.
-  a_write_bus_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_write_bus_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (arb_l2tlb_req && arb_l2tlb_write)
       |-> (!$isunknown(arb_l2tlb_tag_din) && !$isunknown(arb_l2tlb_data_din)));
 
@@ -147,7 +148,7 @@ module mmu_l2tlb_rrpv_sva (
       |=> !raw_vld);
 
   // L2TLB_SVA_011: PTW request payload must remain stable while ready is low.
-  a_l2tlb_ptw_req_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2tlb_ptw_req_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_ptw_req |-> (!$isunknown(l2tlb_ptw_id) && !$isunknown(l2tlb_ptw_type)
                     && !$isunknown(l2tlb_ptw_vpn) && is_valid_type(l2tlb_ptw_type)));
 
@@ -157,15 +158,15 @@ module mmu_l2tlb_rrpv_sva (
         && $stable(l2tlb_ptw_type) && $stable(l2tlb_ptw_vpn)));
 
   // L2TLB_SVA_012/018: PTW completion result class is legal and known.
-  a_ptw_completion_matches_result_or: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_completion_matches_result_or: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_l2tlb_ref_cmplt == (ptw_l2tlb_ref_data_vld
                          || ptw_l2tlb_ref_pgflt
                          || ptw_l2tlb_ref_acc_err));
 
-  a_ptw_completion_result_onehot: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_completion_result_onehot: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0({ptw_l2tlb_ref_data_vld, ptw_l2tlb_ref_pgflt, ptw_l2tlb_ref_acc_err}));
 
-  a_ptw_completion_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_completion_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_l2tlb_ref_cmplt |-> (!$isunknown(ptw_l2tlb_ref_type)
                           && !$isunknown(ptw_l2tlb_ref_id)
                           && is_valid_type(ptw_l2tlb_ref_type)));

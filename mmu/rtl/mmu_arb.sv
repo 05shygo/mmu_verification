@@ -385,64 +385,64 @@ module mmu_arb#(
             2'b00: begin
 		case(ptw_arb_pgs)
 		    3'b001: begin 
-			mask_bank_sel = 00110011;
+			mask_bank_sel = 8'b00110011;
 		    end
 		    3'b010:begin
-			mask_bank_sel = 01000100;
+			mask_bank_sel = 8'b01000100;
 		    end
 		    3'b100:begin
-			mask_bank_sel = 10001000;
+			mask_bank_sel = 8'b10001000;
 		    end
 		    default: begin
-			mask_bank_sel =00000000 ;
+			mask_bank_sel = 8'b00000000 ;
 		    end
 		endcase
             end
             2'b01: begin
 		case(ptw_arb_pgs)
 		    3'b001: begin 
-			mask_bank_sel = 11001100;
+			mask_bank_sel = 8'b11001100;
 		    end
 		    3'b010:begin
-			mask_bank_sel = 00010001;
+			mask_bank_sel = 8'b00010001;
 		    end
 		    3'b100:begin
-			mask_bank_sel = 00100010;
+			mask_bank_sel = 8'b00100010;
 		    end
 		    default: begin
-			mask_bank_sel = 00000000;
+			mask_bank_sel = 8'b00000000;
 		    end
 		endcase
             end
             2'b10: begin
 		case(ptw_arb_pgs)
 		    3'b001: begin 
-			mask_bank_sel = 00110011;
+			mask_bank_sel = 8'b00110011;
 		    end
 		    3'b010:begin
-			mask_bank_sel = 10001000;
+			mask_bank_sel = 8'b10001000;
 		    end
 		    3'b100:begin
-			mask_bank_sel = 01000100;
+			mask_bank_sel = 8'b01000100;
 		    end
 		    default: begin
-			mask_bank_sel = 00000000;
+			mask_bank_sel = 8'b00000000;
 		    end
 		endcase
             end
             2'b11: begin
 		case(ptw_arb_pgs)
 		    3'b001: begin 
-			mask_bank_sel = 11001100;
+			mask_bank_sel = 8'b11001100;
 		    end
 		    3'b010:begin
-			mask_bank_sel = 00100010;
+			mask_bank_sel = 8'b00100010;
 		    end
 		    3'b100:begin
-			mask_bank_sel = 00010001;
+			mask_bank_sel = 8'b00010001;
 		    end
 		    default: begin
-			mask_bank_sel = 00000000;
+			mask_bank_sel = 8'b00000000;
 		    end
 		endcase
             end

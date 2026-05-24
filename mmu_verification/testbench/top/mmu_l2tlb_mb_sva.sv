@@ -2,6 +2,7 @@
 // L2TLB miss-buffer SVA (bind mmu_l2tlb_mb).
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_l2tlb_mb_sva #(
     parameter int DTLB_DEPTH     = 8,
@@ -59,7 +60,7 @@ module mmu_l2tlb_mb_sva #(
     !cpurst_b |-> (entry_vld_vec == '0 && entry_rdy_vec == '0
                 && entry_dealloc_vec == '0 && !issue_req));
 
-  a_req_payload_known: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_req_payload_known: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     req_valid |-> (!$isunknown(req_vpn) && !$isunknown(req_l1eid)
                 && !$isunknown(req_acc_type) && !$isunknown(req_is_dtlb)
                 && is_reqq_or_pfu_type(req_acc_type)));
@@ -93,7 +94,7 @@ module mmu_l2tlb_mb_sva #(
   a_bypass_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
     $onehot0(bypass_grant_vec));
 
-  a_issue_payload_known: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_issue_payload_known: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     issue_req |-> (!$isunknown(issue_eid) && !$isunknown(issue_is_dtlb)
                 && !$isunknown(issue_vpn) && !$isunknown(issue_type)
                 && id_in_range(issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH])));
@@ -112,10 +113,10 @@ module mmu_l2tlb_mb_sva #(
       |=> (issue_req && $stable(issue_eid) && $stable(issue_vpn)
         && $stable(issue_type) && $stable(issue_is_dtlb)));
 
-  a_feedback_id_known_and_in_range: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_feedback_id_known_and_in_range: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     fb_valid |-> (id_in_range(fb_trans_id) && !$isunknown(fb_hit)));
 
-  a_feedback_id_outstanding: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_feedback_id_outstanding: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (fb_valid && id_in_range(fb_trans_id)) |-> entry_vld_vec[fb_trans_id]);
 
   a_feedback_deallocates_matching_entry: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)

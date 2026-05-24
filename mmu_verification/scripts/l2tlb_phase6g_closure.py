@@ -45,6 +45,7 @@ COMPILE_BAD_PATTERNS = [
 ]
 
 ID_PATTERN = re.compile(r"^(L2TLB_(?:TP|SVA)_\d{3}|L2TLB-(?:P6|WAIVE)-[A-Z0-9-]+)$")
+NEGATIVE_REPORTS = {"L2TLB_NEG_INJECTOR", "L2TLB_NEG_TRIGGER", "L2TLB_NEG_EXPECTED_CLASS"}
 
 
 class ManifestRow:
@@ -245,12 +246,24 @@ def check_bad_patterns(lines: List[str]) -> List[str]:
     return hits
 
 
+def check_negative_contract(row: ManifestRow, result: RowResult) -> None:
+    if row.status != "negative":
+        return
+    if "L2TLB_NEG_TRIGGER" not in row.required_reports:
+        result.fail("negative row must require L2TLB_NEG_TRIGGER")
+    if "L2TLB_NEG_EXPECTED_CLASS" not in row.required_reports:
+        result.fail("negative row must require L2TLB_NEG_EXPECTED_CLASS")
+    if "L2TLB_PHASE6E_WAIVER" in row.required_reports:
+        result.fail("negative injector closure must not rely on waiver token")
+
+
 def check_row(row: ManifestRow, log_dir: Path) -> RowResult:
     log_path = log_dir / f"{row.test}_{row.seed}.log"
     result = RowResult(row=row, log_path=log_path)
     if not log_path.is_file():
         result.fail(f"missing log: {log_path}")
         return result
+    check_negative_contract(row, result)
 
     lines = log_path.read_text(encoding="utf-8", errors="ignore").splitlines()
     counts = extract_uvm_counts(lines)

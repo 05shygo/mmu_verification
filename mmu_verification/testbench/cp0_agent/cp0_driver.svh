@@ -9,6 +9,8 @@ class cp0_driver extends uvm_driver #(cp0_txn);
 
   `uvm_component_utils(cp0_driver)
 
+  localparam int unsigned CP0_MCIR_CMPLT_TIMEOUT_CYCLES = 8192;
+
   virtual cp0_if vif;
 
   function new(string name, uvm_component parent);
@@ -119,11 +121,30 @@ class cp0_driver extends uvm_driver #(cp0_txn);
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_wreg    <= 1'b0;
     if (tr.reg_num == 2'd3) begin  // MCIR — RTL generates cmplt
-      @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
+      bit done;
+      done = 1'b0;
+      fork
+        begin
+          @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
+          done = 1'b1;
+        end
+        begin
+          repeat (CP0_MCIR_CMPLT_TIMEOUT_CYCLES) @(vif.driver_cb);
+        end
+      join_any
+      disable fork;
+      if (!done) begin
+        `uvm_error("CP0_MCIR_CMPLT_TIMEOUT",
+          $sformatf("MCIR write completion not seen within %0d cycles: wdata=0x%016h data=0x%016h tlb_done=%0b mmu_en=%0b no_op=%0b",
+            CP0_MCIR_CMPLT_TIMEOUT_CYCLES, tr.wdata,
+            vif.driver_cb.mmu_cp0_data, vif.driver_cb.mmu_cp0_tlb_done,
+            vif.driver_cb.mmu_xx_mmu_en, vif.driver_cb.mmu_yy_xx_no_op))
+      end
+      tr.cmplt = done;
     end else begin                 // MIR/MEL/MEH — one settle cycle only
       @(vif.driver_cb);
+      tr.cmplt = 1'b1;
     end
-    tr.cmplt = 1'b1;
     tr.rdata = vif.driver_cb.mmu_cp0_data;
   endtask
 

@@ -414,6 +414,31 @@ class test_l2tlb_p6e_reqq_arb_payload_owner extends l2tlb_phase6e_test_base;
   endfunction
 endclass : test_l2tlb_p6e_reqq_arb_payload_owner
 
+class test_l2tlb_p6e_reqq_arb_fine_overlap extends l2tlb_phase6e_test_base;
+  `uvm_component_utils(test_l2tlb_p6e_reqq_arb_fine_overlap)
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  virtual function void setup_plan();
+    super.setup_plan();
+    p9_tc_id                   = "L2TLB-P6E-REQQ-ARB-FINE";
+    p9_seq_desc                = "mmu_l2tlb_reqq_arb_fine_vseq";
+    p9_checker                 = "credit_sb,mmu_arb_sva,credit_sva,phase6c_l2_shadow";
+    phase6e_scenario_id        = "L2TLB_SCN_ARB_FINE_OVERLAP_017";
+    phase6e_audit_ids          = "L2TLB_TP_004,L2TLB_TP_005,L2TLB_TP_006,L2TLB_TP_007,L2TLB_TP_008,L2TLB_TP_009,L2TLB_TP_010,L2TLB_TP_011,L2TLB_TP_019,L2TLB_TP_020,L2TLB_TP_021,L2TLB_TP_022,L2TLB_TP_023,L2TLB_TP_024,L2TLB_TP_051,L2TLB_TP_052,L2TLB_TP_053,L2TLB_TP_054,L2TLB_TP_055,L2TLB_SVA_003,L2TLB_SVA_004,L2TLB_SVA_005,L2TLB_SVA_006,L2TLB_SVA_019,L2TLB_SVA_020,L2TLB-P6-ISSUE-017";
+    phase6e_trigger_gate       = "IFU/DTLB load/store/PFU/TLBOP/PTW overlap with arbiter block windows";
+    phase6e_checker_gate       = "L2TLB_REQQ_FINE/L2TLB_ARB_FINE counters plus payload no-cross SVA and Phase6C shadow clean";
+    phase6e_expected_log_token = "L2TLB_ARB_FINE,L2TLB_REQQ_FINE";
+    phase6e_run_tier           = "l2tlb_directed_p0";
+    num_txn                    = 96;
+    timeout_ns                 = 12_000_000;
+    m_post_drain               = 1500ns;
+    m_vseq_names.push_back("mmu_l2tlb_reqq_arb_fine_vseq");
+  endfunction
+endclass : test_l2tlb_p6e_reqq_arb_fine_overlap
+
 class test_l2tlb_p6e_ptw_disabled_fault_accerr extends l2tlb_p6e_ptw_source_harness_base;
   `uvm_component_utils(test_l2tlb_p6e_ptw_disabled_fault_accerr)
 
@@ -511,33 +536,245 @@ class test_l2tlb_p6e_negative_ptw_completion_control extends l2tlb_phase6e_test_
   virtual function void setup_plan();
     super.setup_plan();
     p9_tc_id                    = "L2TLB-P6E-NEG-PTW-CTRL";
-    p9_seq_desc                 = "negative classification for obsolete OOO/bad completion/control hazard";
-    p9_checker                  = "negative_metadata_gate,phase6d_followup";
+    p9_seq_desc                 = "negative injector suite: bad PTW completion and control hazard";
+    p9_checker                  = "l2tlb_negative_injector,expected_negative_classification";
     phase6e_scenario_id         = "L2TLB_SCN_PTW_NEG_PROTOCOL_027";
     phase6e_audit_ids           = "L2TLB_TP_027,L2TLB_TP_048,L2TLB_TP_056,L2TLB_TP_058,L2TLB_SVA_012,L2TLB_SVA_013,L2TLB_SVA_017,L2TLB_SVA_018";
     phase6e_kind                = "negative";
-    phase6e_trigger_gate        = "isolated negative protocol/control hazard gate";
-    phase6e_checker_gate        = "expected assertion/error/waiver classification";
-    phase6e_expected_log_token  = "L2TLB_PHASE6E_WAIVER";
-    phase6e_waiver_policy       = "bad PTW completion/control hazard injection requires a legal negative harness; OOO legacy wrapper is obsolete";
+    phase6e_trigger_gate        = "L2TLB_NEG_TRIGGER for bad completion/control hazard";
+    phase6e_checker_gate        = "L2TLB_NEG_EXPECTED_CLASS classification, no normal functional compare closure";
+    phase6e_expected_log_token  = "L2TLB_NEG_TRIGGER,L2TLB_NEG_EXPECTED_CLASS";
+    phase6e_waiver_policy       = "no waiver; negative stimulus isolated in l2tlb_negative list";
     phase6e_run_tier            = "l2tlb_negative";
     phase6e_is_negative         = 1'b1;
-    phase6e_require_trigger_gate = 1'b0;
+    phase6e_require_trigger_gate = 1'b1;
     phase6e_require_checker_gate = 1'b1;
-    phase6e_is_future_or_waiver  = 1'b1;
+    phase6e_is_future_or_waiver  = 1'b0;
     num_txn                     = 16;
     timeout_ns                  = 4_000_000;
     m_enable_sv39_4k_bringup    = 1'b0;
     m_run_misc_init             = 1'b1;
-    m_cp0_seq_names.push_back("cp0_satp_switch_seq");
-    m_vseq_names.push_back("mmu_satp_hotswap_vseq");
   endfunction
 
-  protected virtual task phase6e_post_stimulus();
-    phase6e_note_waiver("No approved L2TLB bad-completion/control-hazard injector is present in Phase6E; negative case remains isolated from normal directed closure.");
-    phase6e_note_checker("negative classification emitted; no normal functional TP closed by this wrapper");
+  protected task run_control_hazard_negative_with_traffic();
+    if ((m_env != null) && (m_env.m_ptw_mem != null)
+        && (m_env.m_ptw_mem.m_responder != null)) begin
+      m_env.m_ptw_mem.m_responder.clear_directed_controls();
+      m_env.m_ptw_mem.m_responder.set_delay_range(64, 64);
+    end
+
+    fork
+      begin
+        l2tlb_p6e_directed_lsu_one_seq seq;
+        seq = l2tlb_p6e_directed_lsu_one_seq::type_id::create(
+          "l2tlb_p6e_neg_ctrl_lsu_miss");
+        seq.req_kind = LSU_PIPE0;
+        seq.req_va = va_t'(m_va_base) + va_t'(17 << 12);
+        seq.req_id = 7'd45;
+        seq.req_store = 1'b0;
+        seq.req_idle = 0;
+        seq.start(m_env.m_lsu.m_sequencer);
+      end
+      begin
+        repeat (2) @(m_env.m_lsu.m_driver.vif.driver_cb);
+        phase6e_inject_control_hazard_negative(
+          "control_hazard_satp_write",
+          "control_hazard_outstanding_required");
+        if ((m_env != null) && (m_env.m_ptw_mem != null)
+            && (m_env.m_ptw_mem.m_responder != null)) begin
+          m_env.m_ptw_mem.m_responder.clear_directed_controls();
+          m_env.m_ptw_mem.m_responder.set_delay_range(1, 4);
+        end
+      end
+    join
+
+    if ((m_env != null) && (m_env.m_ptw_mem != null)
+        && (m_env.m_ptw_mem.m_responder != null)) begin
+      m_env.m_ptw_mem.m_responder.clear_directed_controls();
+      m_env.m_ptw_mem.m_responder.set_delay_range(1, 4);
+    end
+  endtask
+
+  virtual task run_test_body();
+    setup_plan();
+    phase6e_emit_meta();
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    do_sv39_4k_bringup();
+    phase6e_pre_stimulus();
+
+    phase6e_inject_ptw_negative(
+      L2TLB_NEG_PTW_NO_OUTSTANDING,
+      "ptw_no_outstanding",
+      "bad_completion_no_outstanding",
+      7'h7f,
+      3'b010,
+      1'b0,
+      1'b1,
+      1'b0);
+
+    phase6e_inject_ptw_negative(
+      L2TLB_NEG_PTW_BAD_ID_TYPE,
+      "ptw_bad_id_type",
+      "bad_completion_id_type_mismatch",
+      7'h7e,
+      3'b111,
+      1'b0,
+      1'b0,
+      1'b1);
+
+    phase6e_inject_ptw_negative(
+      L2TLB_NEG_PTW_ILLEGAL_COMBO,
+      "ptw_illegal_result_combo",
+      "illegal_completion_result_combo",
+      7'h7d,
+      3'b011,
+      1'b1,
+      1'b1,
+      1'b0,
+      14'h0001);
+
+    run_control_hazard_negative_with_traffic();
+
+    #(m_post_drain);
+    phase6e_check_gates();
   endtask
 endclass : test_l2tlb_p6e_negative_ptw_completion_control
+
+class test_l2tlb_p6e_neg_ptw_no_outstanding extends test_l2tlb_p6e_negative_ptw_completion_control;
+  `uvm_component_utils(test_l2tlb_p6e_neg_ptw_no_outstanding)
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  virtual function void setup_plan();
+    super.setup_plan();
+    p9_tc_id = "L2TLB-P6E-NEG-PTW-NO-OUT";
+    phase6e_scenario_id = "L2TLB_SCN_PTW_NEG_NO_OUTSTANDING_027";
+    phase6e_audit_ids = "L2TLB_TP_027,L2TLB_TP_048,L2TLB_SVA_012,L2TLB_SVA_013";
+    phase6e_trigger_gate = "L2TLB_NEG_TRIGGER no_outstanding=1";
+    phase6e_checker_gate = "L2TLB_NEG_EXPECTED_CLASS bad_completion_no_outstanding";
+  endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+    phase6e_emit_meta();
+    phase6e_pre_stimulus();
+    phase6e_inject_ptw_negative(
+      L2TLB_NEG_PTW_NO_OUTSTANDING,
+      "ptw_no_outstanding",
+      "bad_completion_no_outstanding",
+      7'h7f,
+      3'b010,
+      1'b0,
+      1'b1,
+      1'b0);
+    #(m_post_drain);
+    phase6e_check_gates();
+  endtask
+endclass : test_l2tlb_p6e_neg_ptw_no_outstanding
+
+class test_l2tlb_p6e_neg_ptw_bad_id_type extends test_l2tlb_p6e_negative_ptw_completion_control;
+  `uvm_component_utils(test_l2tlb_p6e_neg_ptw_bad_id_type)
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  virtual function void setup_plan();
+    super.setup_plan();
+    p9_tc_id = "L2TLB-P6E-NEG-PTW-BAD-ID";
+    phase6e_scenario_id = "L2TLB_SCN_PTW_NEG_BAD_ID_TYPE_027";
+    phase6e_audit_ids = "L2TLB_TP_027,L2TLB_TP_048,L2TLB_TP_056,L2TLB_SVA_013,L2TLB_SVA_018";
+    phase6e_trigger_gate = "L2TLB_NEG_TRIGGER bad_identity=1";
+    phase6e_checker_gate = "L2TLB_NEG_EXPECTED_CLASS bad_completion_id_type_mismatch";
+  endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+    phase6e_emit_meta();
+    phase6e_pre_stimulus();
+    phase6e_inject_ptw_negative(
+      L2TLB_NEG_PTW_BAD_ID_TYPE,
+      "ptw_bad_id_type",
+      "bad_completion_id_type_mismatch",
+      7'h7e,
+      3'b111,
+      1'b0,
+      1'b0,
+      1'b1);
+    #(m_post_drain);
+    phase6e_check_gates();
+  endtask
+endclass : test_l2tlb_p6e_neg_ptw_bad_id_type
+
+class test_l2tlb_p6e_neg_ptw_illegal_combo extends test_l2tlb_p6e_negative_ptw_completion_control;
+  `uvm_component_utils(test_l2tlb_p6e_neg_ptw_illegal_combo)
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  virtual function void setup_plan();
+    super.setup_plan();
+    p9_tc_id = "L2TLB-P6E-NEG-PTW-COMBO";
+    phase6e_scenario_id = "L2TLB_SCN_PTW_NEG_ILLEGAL_COMBO_027";
+    phase6e_audit_ids = "L2TLB_TP_027,L2TLB_TP_048,L2TLB_SVA_012,L2TLB_SVA_018";
+    phase6e_trigger_gate = "L2TLB_NEG_TRIGGER illegal_combo=1";
+    phase6e_checker_gate = "L2TLB_NEG_EXPECTED_CLASS illegal_completion_result_combo";
+  endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+    phase6e_emit_meta();
+    phase6e_pre_stimulus();
+    phase6e_inject_ptw_negative(
+      L2TLB_NEG_PTW_ILLEGAL_COMBO,
+      "ptw_illegal_result_combo",
+      "illegal_completion_result_combo",
+      7'h7d,
+      3'b011,
+      1'b1,
+      1'b1,
+      1'b0,
+      14'h0001);
+    #(m_post_drain);
+    phase6e_check_gates();
+  endtask
+endclass : test_l2tlb_p6e_neg_ptw_illegal_combo
+
+class test_l2tlb_p6e_neg_control_hazard extends test_l2tlb_p6e_negative_ptw_completion_control;
+  `uvm_component_utils(test_l2tlb_p6e_neg_control_hazard)
+
+  function new(string name, uvm_component parent);
+    super.new(name, parent);
+  endfunction
+
+  virtual function void setup_plan();
+    super.setup_plan();
+    p9_tc_id = "L2TLB-P6E-NEG-CTRL";
+    phase6e_scenario_id = "L2TLB_SCN_CONTROL_HAZARD_NEG_058";
+    phase6e_audit_ids = "L2TLB_TP_058,L2TLB_SVA_017";
+    phase6e_trigger_gate = "L2TLB_NEG_TRIGGER outstanding_seen=1";
+    phase6e_checker_gate = "L2TLB_NEG_EXPECTED_CLASS control_hazard_outstanding_required";
+    timeout_ns = 8_000_000;
+  endfunction
+
+  virtual task run_test_body();
+    setup_plan();
+    phase6e_emit_meta();
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+    do_sv39_4k_bringup();
+    phase6e_pre_stimulus();
+
+    run_control_hazard_negative_with_traffic();
+
+    #(m_post_drain);
+    phase6e_check_gates();
+  endtask
+endclass : test_l2tlb_p6e_neg_control_hazard
 
 class test_l2tlb_p6e_timeout_fairness_release extends l2tlb_phase6e_test_base;
   `uvm_component_utils(test_l2tlb_p6e_timeout_fairness_release)

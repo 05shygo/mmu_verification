@@ -11,6 +11,22 @@
 // ---------------------------------------------------------------------------
 // Helper sequences (names distinct from test file local classes)
 // ---------------------------------------------------------------------------
+function automatic bit [63:0] mmu_vseq_va64(input va_t va);
+  return {{(64-VA_WIDTH){va[VA_WIDTH-1]}}, va};
+endfunction
+
+function automatic bit [27:0] mmu_vseq_va2(input va_t va);
+  bit [63:0] va64;
+  va64 = mmu_vseq_va64(va);
+  return va64[39:12];
+endfunction
+
+function automatic bit [27:0] mmu_vseq_vabuf(input va_t va);
+  bit [63:0] va64;
+  va64 = mmu_vseq_va64(va);
+  return va64[38:11];
+endfunction
+
 class mmu_vseq_ifu_rr_seq extends ifu_base_seq;
   `uvm_object_utils(mmu_vseq_ifu_rr_seq)
   va_t m_va_table[];
@@ -53,6 +69,9 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
     lsu_txn tr;
     for (int i = 0; i < int'(num_txn); i++) begin
       automatic int idx = (m_table_size > 0) ? (i % m_table_size) : 0;
+      automatic bit [63:0] va64 = mmu_vseq_va64(m_va_table[idx]);
+      automatic bit [27:0] va2_local = mmu_vseq_va2(m_va_table[idx]);
+      automatic bit [27:0] vabuf_local = mmu_vseq_vabuf(m_va_table[idx]);
       // Phase12 PTW/DTLB pressure tests model a small set of in-flight LSU slots.
       // Leaving iid fully random creates non-architectural alias/noise on the
       // busy/wakeup + expt_CAM ownership path. Keep pipe0/pipe1 on stable,
@@ -64,24 +83,24 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
       if (m_zero_idle) begin
         assert(tr.randomize() with {
           kind == m_kind;
-          va == {25'b0, m_va_table[idx]};
-          va2 == 28'(({25'b0, m_va_table[idx]}) >> 12);
+          va == va64;
+          va2 == va2_local;
           id == slot_id;
           abort == 1'b0;
           st_inst == m_st_inst;
           idle_cycles == 0;
-          vabuf == 28'(({25'b0, m_va_table[idx]}) >> 11);
+          vabuf == vabuf_local;
         }) else `uvm_fatal(get_full_name(), "randomize failed")
       end else begin
         assert(tr.randomize() with {
           kind == m_kind;
-          va == {25'b0, m_va_table[idx]};
-          va2 == 28'(({25'b0, m_va_table[idx]}) >> 12);
+          va == va64;
+          va2 == va2_local;
           id == slot_id;
           abort == 1'b0;
           st_inst == m_st_inst;
           idle_cycles inside {[0:3]};
-          vabuf == 28'(({25'b0, m_va_table[idx]}) >> 11);
+          vabuf == vabuf_local;
         }) else `uvm_fatal(get_full_name(), "randomize failed")
       end
       `uvm_send(tr)
@@ -125,12 +144,16 @@ class mmu_vseq_lsu_one_ld_seq extends lsu_base_seq;
   function new(string name = "mmu_vseq_lsu_one_ld_seq"); super.new(name); num_txn = 1; endfunction
   virtual task body();
     lsu_txn tr;
+    bit [63:0] va64;
+    bit [27:0] vabuf_local;
     `uvm_create(tr)
     tr.c_kind_default.constraint_mode(0);
+    va64 = mmu_vseq_va64(m_va);
+    vabuf_local = mmu_vseq_vabuf(m_va);
     assert(tr.randomize() with {
       kind == LSU_PIPE0;
-      va == {25'b0, m_va};
-      vabuf == 28'(({25'b0, m_va}) >> 11);
+      va == va64;
+      vabuf == vabuf_local;
       abort == 1'b0;
       st_inst == 1'b0;
       idle_cycles inside {[0:2]};
@@ -152,23 +175,181 @@ class mmu_vseq_lsu_interleave3_seq extends lsu_base_seq;
       int           ph   = (i % 3);
       lsu_kind_e    knd  = (ph == 0) ? LSU_PIPE0 : (ph == 1) ? LSU_PIPE1 : LSU_PIPE2;
       bit [6:0]     slot_id;
+      bit [63:0]    va64;
       bit [27:0]    va2_local;
+      bit [27:0]    vabuf_local;
       slot_id = i % 12;
       `uvm_create(tr)
       tr.c_kind_default.constraint_mode(0);
-      va2_local = 28'(({25'b0, m_va_table[idx]}) >> 12);
+      va64 = mmu_vseq_va64(m_va_table[idx]);
+      va2_local = mmu_vseq_va2(m_va_table[idx]);
+      vabuf_local = mmu_vseq_vabuf(m_va_table[idx]);
       assert(tr.randomize() with {
         kind    == knd;
-        va      == {25'b0, m_va_table[idx]};
+        va      == va64;
         id      == slot_id;
         va2     == va2_local;
-        vabuf   == 28'(({25'b0, m_va_table[idx]}) >> 11);
+        vabuf   == vabuf_local;
         abort   == 1'b0;
         st_inst == (knd == LSU_PIPE1);
         idle_cycles inside {[0:1]};
       }) else `uvm_fatal(get_full_name(), "randomize failed")
       `uvm_send(tr)
     end
+  endtask
+endclass
+
+class mmu_vseq_l2tlb_fine_lsu_mix_seq extends lsu_base_seq;
+  `uvm_object_utils(mmu_vseq_l2tlb_fine_lsu_mix_seq)
+
+  va_t m_va_table[];
+  int  m_table_size;
+  bit  m_enable_busy_inv;
+  int unsigned m_inv_period;
+  int unsigned m_inv_limit;
+
+  function new(string name = "mmu_vseq_l2tlb_fine_lsu_mix_seq");
+    super.new(name);
+    m_enable_busy_inv = 1'b0;
+    m_inv_period = 8;
+    m_inv_limit = 4;
+  endfunction
+
+  protected task send_pipe_req(
+    input lsu_kind_e kind_sel,
+    input va_t       va,
+    input bit        is_store,
+    input bit [6:0]  req_id
+  );
+    lsu_txn tr;
+    bit [63:0] va64;
+    bit [27:0] va2_local;
+    bit [27:0] vabuf_local;
+
+    va64        = mmu_vseq_va64(va);
+    va2_local   = mmu_vseq_va2(va);
+    vabuf_local = mmu_vseq_vabuf(va);
+    `uvm_create(tr)
+    tr.c_kind_default.constraint_mode(0);
+    assert(tr.randomize() with {
+      kind        == kind_sel;
+      va          == va64;
+      va2         == va2_local;
+      vabuf       == vabuf_local;
+      id          == req_id;
+      abort       == 1'b0;
+      st_inst     == is_store;
+      idle_cycles == 0;
+    }) else `uvm_fatal(get_full_name(), "send_pipe_req randomize failed")
+    `uvm_send(tr)
+  endtask
+
+  protected task send_busy_inv(
+    input va_t              va,
+    input lsu_inv_kind_e    inv_kind_sel
+  );
+    lsu_txn tr;
+    bit [27:0] va2_local;
+
+    va2_local = mmu_vseq_va2(va);
+    `uvm_create(tr)
+    tr.c_kind_default.constraint_mode(0);
+    assert(tr.randomize() with {
+      kind        == LSU_INV;
+      inv_kind    == inv_kind_sel;
+      inv_va      == va2_local[26:0];
+      inv_asid    == 16'h0000;
+      idle_cycles == 0;
+    }) else `uvm_fatal(get_full_name(), "send_busy_inv randomize failed")
+    tr.inv_allow_busy = 1'b1;
+    `uvm_send(tr)
+  endtask
+
+  virtual task body();
+    int unsigned nburst;
+
+    nburst = (num_txn < 32) ? 32 : num_txn;
+    for (int unsigned i = 0; i < nburst; i++) begin
+      int unsigned idx0;
+      int unsigned idx1;
+      int unsigned idx2;
+      int unsigned idx3;
+      bit [6:0] load_id;
+      bit [6:0] store_id;
+      lsu_inv_kind_e inv_kind_sel;
+
+      idx0 = (m_table_size > 0) ? ((i * 4 + 0) % m_table_size) : 0;
+      idx1 = (m_table_size > 0) ? ((i * 4 + 1) % m_table_size) : 0;
+      idx2 = (m_table_size > 0) ? ((i * 4 + 2) % m_table_size) : 0;
+      idx3 = (m_table_size > 0) ? ((i * 4 + 3) % m_table_size) : 0;
+      load_id  = i % 12;
+      store_id = (i + 6) % 12;
+      inv_kind_sel = (i[0]) ? INV_ASID_ALL : INV_VA_ASID;
+
+      send_pipe_req(LSU_PIPE2, m_va_table[idx0], 1'b0, i % 12);
+      send_pipe_req(LSU_PIPE0, m_va_table[idx1], 1'b0, load_id);
+      send_pipe_req(LSU_PIPE1, m_va_table[idx2], 1'b1, store_id);
+      if (m_enable_busy_inv && (i < m_inv_limit)
+          && ((m_inv_period == 0) || ((i % m_inv_period) == 0)))
+        send_busy_inv(m_va_table[idx3], inv_kind_sel);
+    end
+  endtask
+endclass
+
+class mmu_vseq_l2tlb_cp0_tlbp_burst_seq extends cp0_base_seq;
+  `uvm_object_utils(mmu_vseq_l2tlb_cp0_tlbp_burst_seq)
+
+  int unsigned m_num_ops;
+  int unsigned m_start_delay_cycles;
+  int unsigned m_between_ops_cycles;
+
+  function new(string name = "mmu_vseq_l2tlb_cp0_tlbp_burst_seq");
+    super.new(name);
+    m_num_ops = 16;
+    m_start_delay_cycles = 0;
+    m_between_ops_cycles = 0;
+  endfunction
+
+  protected task write_cp0_reg(bit [1:0] reg_num, bit [63:0] wdata);
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op      = CP0_WRITE_REG;
+    tr.reg_num = reg_num;
+    tr.wdata   = wdata;
+    `uvm_send(tr)
+  endtask
+
+  protected task set_cskyee(bit enable);
+    cp0_txn tr;
+    `uvm_create(tr)
+    tr.op     = CP0_SET_CSKYEE;
+    tr.cskyee = enable;
+    `uvm_send(tr)
+  endtask
+
+  virtual task body();
+    if (m_start_delay_cycles > 0)
+      repeat (m_start_delay_cycles) #1ns;
+    $display("[L2TLB_CP0_TLBP_BURST] event=start t=%0t ops=%0d delay_1ns_steps=%0d between_1ns_steps=%0d",
+             $time, m_num_ops, m_start_delay_cycles, m_between_ops_cycles);
+    set_cskyee(1'b1);
+    $display("[L2TLB_CP0_TLBP_BURST] event=cskyee_on t=%0t", $time);
+    for (int unsigned i = 0; i < m_num_ops; i++) begin
+      bit [26:0] vpn;
+      bit [63:0] meh;
+
+      vpn = 27'h0c0000 + i[26:0];
+      meh = {18'b0, vpn, 3'b001, 16'h0000};
+      $display("[L2TLB_CP0_TLBP_BURST] event=op_begin t=%0t op=%0d vpn=0x%07h meh=0x%016h",
+               $time, i, vpn, meh);
+      write_cp0_reg(2'd2, meh);
+      $display("[L2TLB_CP0_TLBP_BURST] event=mcir_issue t=%0t op=%0d", $time, i);
+      write_cp0_reg(2'd3, 64'h0000_0000_8000_0000);
+      $display("[L2TLB_CP0_TLBP_BURST] event=op_done t=%0t op=%0d", $time, i);
+      if (m_between_ops_cycles > 0)
+        repeat (m_between_ops_cycles) #1ns;
+    end
+    $display("[L2TLB_CP0_TLBP_BURST] event=done t=%0t ops=%0d", $time, m_num_ops);
   endtask
 endclass
 
@@ -545,6 +726,215 @@ class mmu_l2tlb_bank_conflict_vseq extends mmu_base_vseq;
       one.start(p_sequencer.lsu_sqr);
     end
     #150000ns;
+  endtask
+endclass
+
+// ---------------------------------------------------------------------------
+// 8a.1) L2TLB ReqQ/arbiter fine-grain overlap stimulus
+// ---------------------------------------------------------------------------
+class mmu_l2tlb_reqq_arb_fine_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_l2tlb_reqq_arb_fine_vseq)
+
+  function new(string name = "mmu_l2tlb_reqq_arb_fine_vseq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    mmu_env env = get_env();
+    mmu_vseq_ifu_rr_seq ifq;
+    mmu_vseq_l2tlb_fine_lsu_mix_seq lsu_mix;
+    mmu_vseq_l2tlb_cp0_tlbp_burst_seq cp0_tlbp;
+    int unsigned nmap;
+    int unsigned n_ifu;
+    int unsigned n_lsu;
+    va_t va_tbl[$];
+
+    nmap = 256;
+    vseq_bringup_sv39_4k(env, 28'h0, 16'h0, nmap, 39'h0_C000_0000, 28'hC000);
+    if ((env.m_ptw_mem != null) && (env.m_ptw_mem.m_responder != null)) begin
+      env.m_ptw_mem.m_responder.clear_directed_controls();
+      env.m_ptw_mem.m_responder.set_delay_range(64, 160);
+    end
+
+    for (int unsigned i = 0; i < nmap; i++)
+      va_tbl.push_back(va_t'(39'h0_C000_0000) + va_t'(i << 12));
+
+    n_ifu = (num_txn < 64) ? 64 : num_txn;
+    n_lsu = (num_txn < 64) ? 64 : num_txn;
+    fork
+      begin
+        ifq = mmu_vseq_ifu_rr_seq::type_id::create("fine_ifq");
+        ifq.m_va_table = new[nmap];
+        ifq.m_table_size = nmap;
+        ifq.m_zero_idle = 1'b1;
+        foreach (va_tbl[j]) ifq.m_va_table[j] = va_tbl[j];
+        ifq.num_txn = n_ifu;
+        ifq.start(p_sequencer.ifu_sqr);
+      end
+      begin
+        lsu_mix = mmu_vseq_l2tlb_fine_lsu_mix_seq::type_id::create("fine_lsu_mix");
+        lsu_mix.m_va_table = new[nmap];
+        lsu_mix.m_table_size = nmap;
+        foreach (va_tbl[j]) lsu_mix.m_va_table[j] = va_tbl[j];
+        lsu_mix.num_txn = n_lsu;
+        lsu_mix.m_enable_busy_inv = 1'b0;
+        lsu_mix.start(p_sequencer.lsu_sqr);
+      end
+      begin
+        cp0_tlbp = mmu_vseq_l2tlb_cp0_tlbp_burst_seq::type_id::create("fine_cp0_tlbp_burst");
+        cp0_tlbp.m_num_ops = 64;
+        cp0_tlbp.m_start_delay_cycles = 36581;
+        cp0_tlbp.m_between_ops_cycles = 0;
+        cp0_tlbp.start(p_sequencer.cp0_sqr);
+      end
+    join
+
+    #80000ns;
+    if ((env.m_ptw_mem != null) && (env.m_ptw_mem.m_responder != null))
+      env.m_ptw_mem.m_responder.set_delay_range(1, 8);
+
+    fork
+      begin
+        ifq = mmu_vseq_ifu_rr_seq::type_id::create("fine_tlbop_ifq");
+        ifq.m_va_table = new[nmap];
+        ifq.m_table_size = nmap;
+        ifq.m_zero_idle = 1'b1;
+        foreach (va_tbl[j]) ifq.m_va_table[j] = va_tbl[j];
+        ifq.num_txn = 16;
+        ifq.start(p_sequencer.ifu_sqr);
+      end
+      begin
+        lsu_mix = mmu_vseq_l2tlb_fine_lsu_mix_seq::type_id::create("fine_tlbop_lsu_mix");
+        lsu_mix.m_va_table = new[nmap];
+        lsu_mix.m_table_size = nmap;
+        foreach (va_tbl[j]) lsu_mix.m_va_table[j] = va_tbl[j];
+        lsu_mix.num_txn = 16;
+        lsu_mix.m_enable_busy_inv = 1'b1;
+        lsu_mix.m_inv_period = 4;
+        lsu_mix.m_inv_limit = 4;
+        lsu_mix.start(p_sequencer.lsu_sqr);
+      end
+    join
+
+    #120000ns;
+    if ((env.m_ptw_mem != null) && (env.m_ptw_mem.m_responder != null))
+      env.m_ptw_mem.m_responder.set_delay_range(1, 8);
+  endtask
+endclass
+
+// ---------------------------------------------------------------------------
+// 8b) L2TLB exact hash directed stimulus
+// ---------------------------------------------------------------------------
+class mmu_l2tlb_hash_directed_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_l2tlb_hash_directed_vseq)
+
+  function new(string name = "mmu_l2tlb_hash_directed_vseq");
+    super.new(name);
+  endfunction
+
+  protected function va_t make_hash_va(
+    input logic [1:0] selector,
+    input logic [7:0] vpn7_0,
+    input logic [7:0] vpn15_8,
+    input logic [1:0] vpn17_16,
+    input logic [6:0] vpn26_20
+  );
+    vpn_t vpn;
+    vpn = '0;
+    vpn[26:20] = vpn26_20;
+    vpn[19:18] = selector;
+    vpn[17:16] = vpn17_16;
+    vpn[15:8] = vpn15_8;
+    vpn[7:0] = vpn7_0;
+    return va_t'({vpn, 12'h000});
+  endfunction
+
+  protected task add_hash_page(
+    input mmu_env env,
+    input va_t    va,
+    input ppn_t   ppn
+  );
+    vpn_t vpn;
+    vpn = vpn_t'(va >> 12);
+    env.m_pt_mem.m_builder.map_4k(
+      .va(va),
+      .pa(pa_t'({ppn, 12'h000})),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1)
+    );
+    `uvm_info(get_type_name(),
+      $sformatf("[L2TLB_HASH_DIRECTED] map va=0x%010h vpn=0x%07h selector=0x%0h ppn=0x%07h idx_bus=0x%016h size_bus=0x%06h bank4k=0x%02h",
+        va, vpn, vpn[19:18], ppn,
+        l2tlb_skew_index_bus(vpn),
+        l2tlb_size_bus(vpn),
+        l2tlb_page_bank_mask(vpn[19:18], PGS_4K)),
+      UVM_NONE)
+  endtask
+
+  virtual task body();
+    mmu_env env = get_env();
+    mmu_vseq_ifu_rr_seq ifq;
+    mmu_vseq_lsu_rr_seq ld;
+    va_t va_tbl[8];
+
+    cp0_tlb_allinv_seq     cp0_inv;
+    pmp_flg_normal_seq     pmp;
+    sysmap_region_setup_seq smap;
+    cp0_reg_rw_seq         cpr;
+    tlb_inv_all_seq        sf;
+
+    cp0_inv = cp0_tlb_allinv_seq::type_id::create("hash_cp0_inv");
+    cp0_inv.start(p_sequencer.cp0_sqr);
+    pmp = pmp_flg_normal_seq::type_id::create("hash_pmp");
+    pmp.start(p_sequencer.pmp_sqr);
+    smap = sysmap_region_setup_seq::type_id::create("hash_smap");
+    smap.start(p_sequencer.sysmap_sqr);
+    cpr = cp0_reg_rw_seq::type_id::create("hash_cpr");
+    if (!cpr.randomize() with {
+          satp_val  == {4'h8, 16'h0, 44'h0};
+          priv_mode == 2'b01;
+          ptw_en    == 1'b1;
+          icg_en    == 1'b1;
+        })
+      `uvm_fatal(get_type_name(), "hash cp0_reg_rw failed")
+    cpr.start(p_sequencer.cp0_sqr);
+    sf = tlb_inv_all_seq::type_id::create("hash_sf");
+    sf.num_txn = 1;
+    sf.start(p_sequencer.lsu_sqr);
+    #200ns;
+
+    env.m_pt_mem.m_builder.set_root(28'h0, 16'h0);
+    va_tbl[0] = make_hash_va(2'b00, 8'h13, 8'h24, 2'h1, 7'h02);
+    va_tbl[1] = make_hash_va(2'b00, 8'h8d, 8'h5a, 2'h3, 7'h15);
+    va_tbl[2] = make_hash_va(2'b01, 8'h42, 8'h66, 2'h0, 7'h24);
+    va_tbl[3] = make_hash_va(2'b01, 8'he1, 8'h18, 2'h2, 7'h31);
+    va_tbl[4] = make_hash_va(2'b10, 8'h57, 8'hc3, 2'h2, 7'h08);
+    va_tbl[5] = make_hash_va(2'b10, 8'hb4, 8'h29, 2'h1, 7'h3c);
+    va_tbl[6] = make_hash_va(2'b11, 8'h0f, 8'h91, 2'h3, 7'h12);
+    va_tbl[7] = make_hash_va(2'b11, 8'hc8, 8'h3e, 2'h1, 7'h28);
+
+    foreach (va_tbl[i])
+      add_hash_page(env, va_tbl[i], ppn_t'(28'h12000 + i));
+    #500ns;
+
+    ld = mmu_vseq_lsu_rr_seq::type_id::create("hash_ld");
+    ld.m_va_table = new[8];
+    ld.m_table_size = 8;
+    ld.m_kind = LSU_PIPE0;
+    ld.m_st_inst = 1'b0;
+    ld.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) ld.m_va_table[i] = va_tbl[i];
+    ld.num_txn = (num_txn < 32) ? 32 : num_txn;
+    ld.start(p_sequencer.lsu_sqr);
+
+    ifq = mmu_vseq_ifu_rr_seq::type_id::create("hash_ifq");
+    ifq.m_va_table = new[8];
+    ifq.m_table_size = 8;
+    ifq.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) ifq.m_va_table[i] = va_tbl[i];
+    ifq.num_txn = 16;
+    ifq.start(p_sequencer.ifu_sqr);
+
+    #80000ns;
   endtask
 endclass
 

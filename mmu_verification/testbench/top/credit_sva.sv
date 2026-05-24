@@ -5,6 +5,7 @@
 //     “同一周期仅一类 L1 TLB 可分配”。
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
 
 module credit_sva #(
     parameter int DTLB_DEPTH = 8,
@@ -56,6 +57,95 @@ module credit_sva #(
     id_in_range = !$isunknown(id) && (id < TOTAL_DEPTH[ID_W-1:0]);
   endfunction
 
+  function automatic int unsigned count_bits(input logic [TOTAL_DEPTH-1:0] bits);
+    count_bits = 0;
+    for (int i = 0; i < TOTAL_DEPTH; i++)
+      count_bits += bits[i];
+  endfunction
+
+  longint unsigned reqq_i_req_seen;
+  longint unsigned reqq_d_load_req_seen;
+  longint unsigned reqq_d_store_req_seen;
+  longint unsigned reqq_i_alloc_seen;
+  longint unsigned reqq_d_load_alloc_seen;
+  longint unsigned reqq_d_store_alloc_seen;
+  longint unsigned reqq_i_issue_seen;
+  longint unsigned reqq_d_load_issue_seen;
+  longint unsigned reqq_d_store_issue_seen;
+  longint unsigned reqq_i_bypass_seen;
+  longint unsigned reqq_d_bypass_seen;
+  longint unsigned reqq_i_entry_grant_seen;
+  longint unsigned reqq_d_entry_grant_seen;
+  longint unsigned reqq_fb_hit_seen;
+  longint unsigned reqq_fb_miss_alloc_seen;
+  longint unsigned reqq_fb_miss_retry_seen;
+  longint unsigned reqq_i_credit_return_seen;
+  longint unsigned reqq_d_credit_return_seen;
+  int unsigned     reqq_max_occ_seen;
+
+  always_ff @(posedge reqq_clk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+      reqq_i_req_seen           <= 0;
+      reqq_d_load_req_seen      <= 0;
+      reqq_d_store_req_seen     <= 0;
+      reqq_i_alloc_seen         <= 0;
+      reqq_d_load_alloc_seen    <= 0;
+      reqq_d_store_alloc_seen   <= 0;
+      reqq_i_issue_seen         <= 0;
+      reqq_d_load_issue_seen    <= 0;
+      reqq_d_store_issue_seen   <= 0;
+      reqq_i_bypass_seen        <= 0;
+      reqq_d_bypass_seen        <= 0;
+      reqq_i_entry_grant_seen   <= 0;
+      reqq_d_entry_grant_seen   <= 0;
+      reqq_fb_hit_seen          <= 0;
+      reqq_fb_miss_alloc_seen   <= 0;
+      reqq_fb_miss_retry_seen   <= 0;
+      reqq_i_credit_return_seen <= 0;
+      reqq_d_credit_return_seen <= 0;
+      reqq_max_occ_seen         <= 0;
+    end else begin
+      if (i_req_valid)
+        reqq_i_req_seen <= reqq_i_req_seen + 1;
+      if (d_req_valid && (d_req_type == 3'b010))
+        reqq_d_load_req_seen <= reqq_d_load_req_seen + 1;
+      if (d_req_valid && (d_req_type == 3'b110))
+        reqq_d_store_req_seen <= reqq_d_store_req_seen + 1;
+      if (alloc_en_vec[0])
+        reqq_i_alloc_seen <= reqq_i_alloc_seen + 1;
+      if ((|alloc_en_vec[TOTAL_DEPTH-1:1]) && (d_req_type == 3'b010))
+        reqq_d_load_alloc_seen <= reqq_d_load_alloc_seen + 1;
+      if ((|alloc_en_vec[TOTAL_DEPTH-1:1]) && (d_req_type == 3'b110))
+        reqq_d_store_alloc_seen <= reqq_d_store_alloc_seen + 1;
+      if (issue_valid && issue_grant && (issue_queue_id == '0))
+        reqq_i_issue_seen <= reqq_i_issue_seen + 1;
+      if (issue_valid && issue_grant && (issue_queue_id != '0) && (issue_type == 3'b010))
+        reqq_d_load_issue_seen <= reqq_d_load_issue_seen + 1;
+      if (issue_valid && issue_grant && (issue_queue_id != '0) && (issue_type == 3'b110))
+        reqq_d_store_issue_seen <= reqq_d_store_issue_seen + 1;
+      if (issue_valid && issue_grant && bypass_grant_vec[0])
+        reqq_i_bypass_seen <= reqq_i_bypass_seen + 1;
+      if (issue_valid && issue_grant && (|bypass_grant_vec[TOTAL_DEPTH-1:1]))
+        reqq_d_bypass_seen <= reqq_d_bypass_seen + 1;
+      if (issue_valid && issue_grant && entry_grant_vec[0])
+        reqq_i_entry_grant_seen <= reqq_i_entry_grant_seen + 1;
+      if (issue_valid && issue_grant && (|entry_grant_vec[TOTAL_DEPTH-1:1]))
+        reqq_d_entry_grant_seen <= reqq_d_entry_grant_seen + 1;
+      if (fb_valid && fb_hit)
+        reqq_fb_hit_seen <= reqq_fb_hit_seen + 1;
+      if (fb_valid && fb_miss_alloc)
+        reqq_fb_miss_alloc_seen <= reqq_fb_miss_alloc_seen + 1;
+      if (fb_valid && fb_miss_retry)
+        reqq_fb_miss_retry_seen <= reqq_fb_miss_retry_seen + 1;
+      if (i_credit_return)
+        reqq_i_credit_return_seen <= reqq_i_credit_return_seen + 1;
+      if (d_credit_return)
+        reqq_d_credit_return_seen <= reqq_d_credit_return_seen + 1;
+      if (count_bits(entry_vld_vec) > reqq_max_occ_seen)
+        reqq_max_occ_seen <= count_bits(entry_vld_vec);
+    end
+  end
+
   // L2TLB_SVA_003: ITLB request valid is a one-cycle pulse in this
   // environment. DTLB requests are credit-backed per-cycle allocations, so
   // timeout/fairness stress may legally issue back-to-back DTLB misses.
@@ -71,14 +161,14 @@ module credit_sva #(
         || (d_req_eid != $past(d_req_eid))
         || (d_req_type != $past(d_req_type))));
 
-  a_i_req_payload_known: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_i_req_payload_known: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     i_req_valid |-> !$isunknown(i_req_vpn));
 
-  a_d_req_payload_known: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_d_req_payload_known: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     d_req_valid |-> (!$isunknown(d_req_vpn) && !$isunknown(d_req_eid)
                   && !$isunknown(d_req_type) && is_dtlb_type(d_req_type)));
 
-  a_issue_fields_known: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_issue_fields_known: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     issue_valid
       |-> (! $isunknown(issue_queue_id) && ! $isunknown(issue_eid)
         && ! $isunknown(issue_type) && ! $isunknown(issue_vpn)));
@@ -137,13 +227,13 @@ module credit_sva #(
   a_bypass_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
     $onehot0(bypass_grant_vec));
 
-  a_feedback_id_known_and_in_range: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_feedback_id_known_and_in_range: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     fb_valid |-> id_in_range(fb_trans_id));
 
-  a_feedback_id_outstanding: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_feedback_id_outstanding: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (fb_valid && id_in_range(fb_trans_id)) |-> entry_vld_vec[fb_trans_id]);
 
-  a_feedback_result_legal_combo: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_feedback_result_legal_combo: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     fb_valid |-> $onehot0({fb_hit, fb_miss_alloc, fb_miss_retry}));
 
   a_retry_keeps_entry_for_replay: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
@@ -164,5 +254,16 @@ module credit_sva #(
 
   c_reqq_retry_feedback: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
     fb_valid && fb_miss_retry);
+
+  final begin
+    $display("[L2TLB_REQQ_FINE] i_req=%0d d_load_req=%0d d_store_req=%0d i_alloc=%0d d_load_alloc=%0d d_store_alloc=%0d i_issue=%0d d_load_issue=%0d d_store_issue=%0d i_bypass=%0d d_bypass=%0d i_entry_grant=%0d d_entry_grant=%0d fb_hit=%0d fb_miss_alloc=%0d fb_miss_retry=%0d i_credit_return=%0d d_credit_return=%0d max_occ=%0d",
+      reqq_i_req_seen, reqq_d_load_req_seen, reqq_d_store_req_seen,
+      reqq_i_alloc_seen, reqq_d_load_alloc_seen, reqq_d_store_alloc_seen,
+      reqq_i_issue_seen, reqq_d_load_issue_seen, reqq_d_store_issue_seen,
+      reqq_i_bypass_seen, reqq_d_bypass_seen, reqq_i_entry_grant_seen,
+      reqq_d_entry_grant_seen, reqq_fb_hit_seen, reqq_fb_miss_alloc_seen,
+      reqq_fb_miss_retry_seen, reqq_i_credit_return_seen,
+      reqq_d_credit_return_seen, reqq_max_occ_seen);
+  end
 
 endmodule

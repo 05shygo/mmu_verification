@@ -687,6 +687,15 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
       return;
     end
 
+    if (l2tlb_negative_pkg::l2tlb_neg_sva_disable) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[L2TLB_NEG_EXPECTED_CLASS] test_case=\"phase6c_shadow\" class=\"expected_shadow_mismatch\" related_ids=\"L2TLB_TP_027,L2TLB_TP_048,L2TLB_TP_056,L2TLB_TP_058,L2TLB_SVA_012,L2TLB_SVA_013,L2TLB_SVA_017,L2TLB_SVA_018\" trigger=1 checker=1 msg=\"shadow_negative check=%s category=%s source=%s vpn=0x%07h asid=0x%04h pgs=0x%0h expected={%s} observed={%s} epoch=%0d cycle=%0d\"",
+          check_name, category_name(cat), owner_name(owner), vpn, asid, page_size,
+          expected, observed, m_epoch, m_cycle),
+        UVM_MEDIUM)
+      return;
+    end
+
     m_mismatch++;
     `uvm_error(get_type_name(),
       $sformatf("[PHASE6C_L2_MISMATCH] check=%s category=%s source=%s vpn=0x%07h asid=0x%04h pgs=0x%0h expected={%s} observed={%s} epoch=%0d cycle=%0d",

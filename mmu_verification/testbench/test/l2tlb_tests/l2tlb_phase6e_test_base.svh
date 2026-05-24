@@ -23,6 +23,8 @@ class l2tlb_phase6e_test_base extends phase9_generated_test_base;
   string phase6f_class;
   string phase6f_future_exact_items;
 
+  virtual l2tlb_negative_inject_if phase6e_neg_vif;
+
   bit phase6e_require_trigger_gate;
   bit phase6e_require_checker_gate;
   bit phase6e_is_negative;
@@ -49,6 +51,12 @@ class l2tlb_phase6e_test_base extends phase9_generated_test_base;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+  endfunction
+
+  virtual function void build_phase(uvm_phase phase);
+    super.build_phase(phase);
+    void'(uvm_config_db#(virtual l2tlb_negative_inject_if)::get(
+      this, "", "L2TLB_NEG_INJECT_VIF", phase6e_neg_vif));
   endfunction
 
   virtual function void setup_plan();
@@ -243,6 +251,76 @@ class l2tlb_phase6e_test_base extends phase9_generated_test_base;
       get_type_name(), phase6e_scenario_id, phase6e_waiver_count,
       phase6e_audit_ids, reason, phase6e_waiver_policy);
   endfunction
+
+  protected virtual task phase6e_inject_ptw_negative(
+    input l2tlb_neg_kind_e kind,
+    input string case_name,
+    input string expected_class,
+    input bit [6:0] id,
+    input bit [2:0] typ,
+    input bit data_vld,
+    input bit pgflt,
+    input bit acc_err,
+    input bit [13:0] flg = 14'h0000
+  );
+    if (phase6e_neg_vif == null)
+      `uvm_fatal(get_type_name(), "L2TLB_NEG_INJECT_VIF unavailable")
+
+    phase6e_neg_vif.inject_ptw_completion(
+      kind,
+      case_name,
+      phase6e_audit_ids,
+      expected_class,
+      id,
+      typ,
+      data_vld,
+      pgflt,
+      acc_err,
+      flg,
+      1);
+
+    if (!phase6e_neg_vif.trigger_seen)
+      `uvm_error(get_type_name(),
+        $sformatf("L2TLB negative trigger missing for %s: %s",
+          case_name, phase6e_neg_vif.observed_msg))
+    if (!phase6e_neg_vif.checker_seen)
+      `uvm_error(get_type_name(),
+        $sformatf("L2TLB negative checker missing for %s: %s",
+          case_name, phase6e_neg_vif.observed_msg))
+
+    phase6e_note_trigger($sformatf("negative_injector case=%s class=%s msg=%s",
+      case_name, expected_class, phase6e_neg_vif.observed_msg));
+    phase6e_note_checker($sformatf("expected negative classification case=%s class=%s",
+      case_name, expected_class));
+  endtask
+
+  protected virtual task phase6e_inject_control_hazard_negative(
+    input string case_name,
+    input string expected_class
+  );
+    if (phase6e_neg_vif == null)
+      `uvm_fatal(get_type_name(), "L2TLB_NEG_INJECT_VIF unavailable")
+
+    phase6e_neg_vif.inject_control_hazard(
+      case_name,
+      phase6e_audit_ids,
+      expected_class,
+      1);
+
+    if (!phase6e_neg_vif.trigger_seen)
+      `uvm_error(get_type_name(),
+        $sformatf("L2TLB control-hazard trigger missing for %s: %s",
+          case_name, phase6e_neg_vif.observed_msg))
+    if (!phase6e_neg_vif.checker_seen)
+      `uvm_error(get_type_name(),
+        $sformatf("L2TLB control-hazard checker missing for %s: %s",
+          case_name, phase6e_neg_vif.observed_msg))
+
+    phase6e_note_trigger($sformatf("negative_injector case=%s class=%s msg=%s",
+      case_name, expected_class, phase6e_neg_vif.observed_msg));
+    phase6e_note_checker($sformatf("expected negative classification case=%s class=%s",
+      case_name, expected_class));
+  endtask
 
   protected virtual task phase6e_pre_stimulus();
     $display("[L2TLB_PHASE6E_PLAN] test=%s scenario_id=%s plan_items=%0d sv39_bringup=%0b",

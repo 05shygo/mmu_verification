@@ -1,6 +1,7 @@
 # Phase 6E L2TLB directed P0/P1 list.
 test_l2tlb_p6e_reset_active_lookup_ptw_tlbop_pfu
 test_l2tlb_p6e_reqq_arb_payload_owner
+test_l2tlb_p6e_reqq_arb_fine_overlap
 test_l2tlb_p6e_ptw_disabled_fault_accerr
 test_l2tlb_p6e_pfu_direct_hit_miss_fault_mask
 test_l2tlb_p6e_tlbop_inv_abort_lifecycle

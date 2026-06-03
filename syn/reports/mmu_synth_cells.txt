@@ -1,0 +1,1730 @@
+69. Printing statistics.
+
+=== $paramod$06c6f5f9e3e415757b4eeeb01eeddc8bdbe2b1cb\ct_spsram_wrapper ===
+
+   Number of wires:                  8
+   Number of wire bits:            138
+   Number of public wires:           8
+   Number of public wire bits:     138
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  2
+     $paramod$9cf00525998e97993780e484eafa17b01201d9cb\mmu_fpga_ram      1
+     NOR2xp33_ASAP7_75t_R            1
+
+=== $paramod$077a217e2f3340e63151c456f787a6fa23b94c31\ptw_mbuf ===
+
+   Number of wires:               1615
+   Number of wire bits:           3975
+   Number of public wires:          86
+   Number of public wire bits:    2439
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               1968
+     $_DFFE_PN0P_                   86
+     $_DFFE_PN1P_                    2
+     $_DFFE_PP_                      8
+     $_DFF_PN0_                     14
+     $paramod$4162707a2ea40e66010faf5ca4b9917de6ca2428\mbuf_entry      9
+     A2O1A1Ixp33_ASAP7_75t_R        80
+     AND2x2_ASAP7_75t_R              3
+     AND3x1_ASAP7_75t_R              1
+     AND4x1_ASAP7_75t_R              3
+     AO21x1_ASAP7_75t_R             40
+     AO222x2_ASAP7_75t_R           117
+     AO22x1_ASAP7_75t_R              6
+     AOI211xp5_ASAP7_75t_R          48
+     AOI21xp33_ASAP7_75t_R         129
+     AOI221xp5_ASAP7_75t_R         172
+     AOI222xp33_ASAP7_75t_R        115
+     AOI22xp33_ASAP7_75t_R          14
+     AOI31xp33_ASAP7_75t_R           2
+     INVx1_ASAP7_75t_R             178
+     NAND2xp33_ASAP7_75t_R         245
+     NAND3xp33_ASAP7_75t_R         125
+     NAND4xp25_ASAP7_75t_R          92
+     NAND5xp2_ASAP7_75t_R          368
+     NOR2xp33_ASAP7_75t_R            8
+     NOR3xp33_ASAP7_75t_R           16
+     NOR4xp25_ASAP7_75t_R            7
+     NOR5xp2_ASAP7_75t_R             6
+     O2A1O1Ixp33_ASAP7_75t_R         1
+     OA21x2_ASAP7_75t_R              2
+     OAI21xp33_ASAP7_75t_R          59
+     OAI31xp33_ASAP7_75t_R           1
+     OAI33xp33_ASAP7_75t_R           4
+     OR3x1_ASAP7_75t_R               3
+     OR5x1_ASAP7_75t_R               3
+     gated_clk_cell                  1
+
+=== $paramod$077a217e2f3340e63151c456f787a6fa23b94c31\twu ===
+
+   Number of wires:               1030
+   Number of wire bits:           3515
+   Number of public wires:         162
+   Number of public wire bits:    2268
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               2040
+     $_DFFE_PN0P_                  697
+     $_DFF_PN0_                      6
+     A2O1A1Ixp33_ASAP7_75t_R        65
+     A2O1A1O1Ixp25_ASAP7_75t_R       7
+     AND2x2_ASAP7_75t_R             25
+     AND3x1_ASAP7_75t_R              7
+     AND4x1_ASAP7_75t_R              6
+     AO21x1_ASAP7_75t_R             16
+     AO221x1_ASAP7_75t_R             9
+     AO222x2_ASAP7_75t_R           102
+     AO22x1_ASAP7_75t_R             50
+     AO32x1_ASAP7_75t_R             10
+     AOI211xp5_ASAP7_75t_R          57
+     AOI21xp33_ASAP7_75t_R          32
+     AOI221xp5_ASAP7_75t_R           1
+     AOI22xp33_ASAP7_75t_R          27
+     AOI311xp33_ASAP7_75t_R          5
+     AOI31xp33_ASAP7_75t_R          53
+     AOI32xp33_ASAP7_75t_R          10
+     INVx1_ASAP7_75t_R             241
+     MAJIxp5_ASAP7_75t_R             3
+     NAND2xp33_ASAP7_75t_R         183
+     NAND3xp33_ASAP7_75t_R          13
+     NAND4xp25_ASAP7_75t_R           6
+     NOR2xp33_ASAP7_75t_R           67
+     NOR3xp33_ASAP7_75t_R           30
+     NOR4xp25_ASAP7_75t_R            8
+     NOR5xp2_ASAP7_75t_R             1
+     O2A1O1Ixp33_ASAP7_75t_R        26
+     OA211x2_ASAP7_75t_R             3
+     OA21x2_ASAP7_75t_R              8
+     OA222x2_ASAP7_75t_R             5
+     OAI211xp5_ASAP7_75t_R          71
+     OAI21xp33_ASAP7_75t_R         145
+     OAI221xp5_ASAP7_75t_R           2
+     OAI22xp33_ASAP7_75t_R           4
+     OAI311xp33_ASAP7_75t_R          1
+     OAI31xp33_ASAP7_75t_R           4
+     OAI32xp33_ASAP7_75t_R           2
+     OR2x2_ASAP7_75t_R               5
+     OR3x1_ASAP7_75t_R              12
+     OR4x1_ASAP7_75t_R               5
+     OR5x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R            3
+     XOR2xp5_ASAP7_75t_R             5
+     gated_clk_cell                  1
+
+=== $paramod$0b0326e5f1df5b0eec61f0f1a77f4b2340b2ddd3\mmu_l2tlb_mb ===
+
+   Number of wires:                375
+   Number of wire bits:           1107
+   Number of public wires:         101
+   Number of public wire bits:     833
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                350
+     $paramod$bd545695cadf9859f8807a059f8b3ce842477dc2\mmu_l2tlb_mb_entry      9
+     A2O1A1Ixp33_ASAP7_75t_R         1
+     AND2x2_ASAP7_75t_R             11
+     AND3x1_ASAP7_75t_R              8
+     AND4x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R              2
+     AO221x1_ASAP7_75t_R            16
+     AO222x2_ASAP7_75t_R            19
+     AO22x1_ASAP7_75t_R              1
+     AO32x1_ASAP7_75t_R              2
+     AOI211xp5_ASAP7_75t_R           2
+     AOI21xp33_ASAP7_75t_R           1
+     AOI221xp5_ASAP7_75t_R          35
+     AOI222xp33_ASAP7_75t_R         16
+     AOI22xp33_ASAP7_75t_R          16
+     INVx1_ASAP7_75t_R              44
+     NAND2xp33_ASAP7_75t_R          66
+     NAND3xp33_ASAP7_75t_R           6
+     NAND4xp25_ASAP7_75t_R          11
+     NAND5xp2_ASAP7_75t_R            3
+     NOR2xp33_ASAP7_75t_R           12
+     NOR3xp33_ASAP7_75t_R           17
+     NOR4xp25_ASAP7_75t_R            8
+     OAI211xp5_ASAP7_75t_R          26
+     OAI21xp33_ASAP7_75t_R           8
+     OAI221xp5_ASAP7_75t_R           2
+     OR2x2_ASAP7_75t_R               2
+     OR3x1_ASAP7_75t_R               4
+     OR5x1_ASAP7_75t_R               1
+
+=== $paramod$214041ffe4bc257c1171aed31e743d2ade711e88\ct_spsram_wrapper ===
+
+   Number of wires:                  8
+   Number of wire bits:             21
+   Number of public wires:           8
+   Number of public wire bits:      21
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  2
+     $paramod$e135ad6d52c69f3d421819e3ea131b1b79c8e9b8\mmu_fpga_ram      1
+     NOR2xp33_ASAP7_75t_R            1
+
+=== $paramod$278b7951f28d3193809591c0ccf2a6c39fcd775b\mmu_l1dtlb_scheduler ===
+
+   Number of wires:               2171
+   Number of wire bits:           2580
+   Number of public wires:          27
+   Number of public wire bits:     432
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               2194
+     $_DFFE_PN0P_                    4
+     $_DFFE_PN1P_                    1
+     A2O1A1Ixp33_ASAP7_75t_R        64
+     A2O1A1O1Ixp25_ASAP7_75t_R       2
+     AND2x2_ASAP7_75t_R              4
+     AND3x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R             20
+     AO32x1_ASAP7_75t_R              2
+     AOI211xp5_ASAP7_75t_R         212
+     AOI21xp33_ASAP7_75t_R         203
+     AOI221xp5_ASAP7_75t_R          10
+     AOI22xp33_ASAP7_75t_R          41
+     AOI311xp33_ASAP7_75t_R          1
+     AOI31xp33_ASAP7_75t_R         155
+     AOI32xp33_ASAP7_75t_R           4
+     INVx1_ASAP7_75t_R              22
+     MAJIxp5_ASAP7_75t_R             2
+     MAJx2_ASAP7_75t_R               1
+     NAND2xp33_ASAP7_75t_R          97
+     NAND3xp33_ASAP7_75t_R           9
+     NAND4xp25_ASAP7_75t_R          59
+     NOR2xp33_ASAP7_75t_R          198
+     NOR3xp33_ASAP7_75t_R           56
+     NOR4xp25_ASAP7_75t_R          154
+     NOR5xp2_ASAP7_75t_R             2
+     O2A1O1Ixp33_ASAP7_75t_R       188
+     OA211x2_ASAP7_75t_R             5
+     OA21x2_ASAP7_75t_R             25
+     OA22x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R         167
+     OAI21xp33_ASAP7_75t_R         226
+     OAI221xp5_ASAP7_75t_R          11
+     OAI222xp33_ASAP7_75t_R          1
+     OAI22xp33_ASAP7_75t_R         141
+     OAI311xp33_ASAP7_75t_R          1
+     OAI31xp33_ASAP7_75t_R          73
+     OAI32xp33_ASAP7_75t_R           5
+     OR2x2_ASAP7_75t_R               7
+     OR3x1_ASAP7_75t_R               7
+     OR4x1_ASAP7_75t_R               1
+     OR5x1_ASAP7_75t_R               2
+     XNOR2xp5_ASAP7_75t_R            5
+     XOR2xp5_ASAP7_75t_R             4
+
+=== $paramod$2b2a537cb06794a6f1bf647caaeb1ebbce449b7e\mmu_l2tlb_rrpv_wbuf ===
+
+   Number of wires:               6035
+   Number of wire bits:           7897
+   Number of public wires:          31
+   Number of public wire bits:    1130
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               7148
+     $_ALDFFE_PNP_                 528
+     $_ALDFF_PN_                   176
+     $_DFFE_PN0P_                   26
+     $_DFF_PN0_                     64
+     A2O1A1Ixp33_ASAP7_75t_R        20
+     A2O1A1O1Ixp25_ASAP7_75t_R      11
+     AND2x2_ASAP7_75t_R             50
+     AND3x1_ASAP7_75t_R            346
+     AND4x1_ASAP7_75t_R            135
+     AND5x1_ASAP7_75t_R             73
+     AO21x1_ASAP7_75t_R             22
+     AO221x1_ASAP7_75t_R             9
+     AO222x2_ASAP7_75t_R            14
+     AO22x1_ASAP7_75t_R              4
+     AO32x1_ASAP7_75t_R             66
+     AOI211xp5_ASAP7_75t_R          52
+     AOI21xp33_ASAP7_75t_R          90
+     AOI221xp5_ASAP7_75t_R         192
+     AOI222xp33_ASAP7_75t_R        213
+     AOI22xp33_ASAP7_75t_R         692
+     AOI311xp33_ASAP7_75t_R          3
+     AOI31xp33_ASAP7_75t_R          18
+     AOI32xp33_ASAP7_75t_R          23
+     AOI33xp33_ASAP7_75t_R           1
+     INVx1_ASAP7_75t_R             262
+     MAJIxp5_ASAP7_75t_R             1
+     MAJx2_ASAP7_75t_R               1
+     NAND2xp33_ASAP7_75t_R         468
+     NAND3xp33_ASAP7_75t_R         161
+     NAND4xp25_ASAP7_75t_R         412
+     NAND5xp2_ASAP7_75t_R          219
+     NOR2xp33_ASAP7_75t_R          372
+     NOR3xp33_ASAP7_75t_R          240
+     NOR4xp25_ASAP7_75t_R          335
+     NOR5xp2_ASAP7_75t_R            82
+     O2A1O1Ixp33_ASAP7_75t_R        94
+     OA211x2_ASAP7_75t_R            39
+     OA21x2_ASAP7_75t_R            111
+     OA222x2_ASAP7_75t_R             1
+     OA31x2_ASAP7_75t_R              1
+     OA33x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R          86
+     OAI21xp33_ASAP7_75t_R         482
+     OAI221xp5_ASAP7_75t_R          85
+     OAI222xp33_ASAP7_75t_R          4
+     OAI22xp33_ASAP7_75t_R          78
+     OAI311xp33_ASAP7_75t_R         25
+     OAI31xp33_ASAP7_75t_R         147
+     OAI32xp33_ASAP7_75t_R          10
+     OR2x2_ASAP7_75t_R             149
+     OR3x1_ASAP7_75t_R             121
+     OR4x1_ASAP7_75t_R             214
+     OR5x1_ASAP7_75t_R              18
+     XNOR2xp5_ASAP7_75t_R           78
+     XOR2xp5_ASAP7_75t_R            23
+
+=== $paramod$3c1cc4a1ba2c60eeaac14f2a3ce4b465928150b0\mmu_l2tlb ===
+
+   Number of wires:               2070
+   Number of wire bits:           6579
+   Number of public wires:         268
+   Number of public wire bits:    4777
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               3231
+     $_DFFE_PN0P_                 1044
+     $_DFF_PN0_                      4
+     $paramod$0b0326e5f1df5b0eec61f0f1a77f4b2340b2ddd3\mmu_l2tlb_mb      1
+     $paramod$2b2a537cb06794a6f1bf647caaeb1ebbce449b7e\mmu_l2tlb_rrpv_wbuf      1
+     $paramod$50cb93d1ee31134b4ee1faab67e812cba1913794\ct_mmu_l2tlb_tag_array      1
+     $paramod$568a23bd67ce69399c0016c342772f4d8d27b191\mmu_l2tlb_replacement_policy      1
+     $paramod$a27066b0d01b90d00c1e1939d896c183ba911266\ct_mmu_l2tlb_rrpv_array      1
+     $paramod$af9c22a23c36c5322cc504ffb7019b872f05c1c9\ct_mmu_l2tlb_data_array      1
+     $paramod$e59f323b62502dc52e9d29af7a6596370ba82696\mmu_l2tlb_reqq      1
+     A2O1A1Ixp33_ASAP7_75t_R         9
+     A2O1A1O1Ixp25_ASAP7_75t_R       1
+     AND2x2_ASAP7_75t_R             29
+     AND3x1_ASAP7_75t_R             45
+     AND4x1_ASAP7_75t_R             21
+     AND5x1_ASAP7_75t_R              4
+     AO211x2_ASAP7_75t_R             1
+     AO21x1_ASAP7_75t_R             64
+     AO222x2_ASAP7_75t_R             8
+     AO22x1_ASAP7_75t_R             23
+     AOI211xp5_ASAP7_75t_R          19
+     AOI21xp33_ASAP7_75t_R          72
+     AOI221xp5_ASAP7_75t_R          73
+     AOI222xp33_ASAP7_75t_R        127
+     AOI22xp33_ASAP7_75t_R         217
+     AOI311xp33_ASAP7_75t_R          1
+     AOI31xp33_ASAP7_75t_R           4
+     AOI321xp33_ASAP7_75t_R          6
+     AOI32xp33_ASAP7_75t_R           6
+     HB1xp67_ASAP7_75t_R             1
+     INVx1_ASAP7_75t_R             297
+     NAND2xp33_ASAP7_75t_R         291
+     NAND3xp33_ASAP7_75t_R         110
+     NAND4xp25_ASAP7_75t_R          41
+     NAND5xp2_ASAP7_75t_R           19
+     NOR2xp33_ASAP7_75t_R           66
+     NOR3xp33_ASAP7_75t_R           36
+     NOR4xp25_ASAP7_75t_R           31
+     NOR5xp2_ASAP7_75t_R            11
+     O2A1O1Ixp33_ASAP7_75t_R         3
+     OA211x2_ASAP7_75t_R             3
+     OA21x2_ASAP7_75t_R              5
+     OA31x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R          16
+     OAI21xp33_ASAP7_75t_R         125
+     OAI221xp5_ASAP7_75t_R          53
+     OAI222xp33_ASAP7_75t_R          1
+     OAI22xp33_ASAP7_75t_R          49
+     OAI31xp33_ASAP7_75t_R           8
+     OAI32xp33_ASAP7_75t_R           6
+     OR2x2_ASAP7_75t_R              22
+     OR3x1_ASAP7_75t_R              12
+     OR4x1_ASAP7_75t_R              17
+     OR5x1_ASAP7_75t_R               3
+     XNOR2xp5_ASAP7_75t_R          109
+     XOR2xp5_ASAP7_75t_R           109
+     gated_clk_cell                  1
+
+=== $paramod$4162707a2ea40e66010faf5ca4b9917de6ca2428\mbuf_entry ===
+
+   Number of wires:                219
+   Number of wire bits:            674
+   Number of public wires:          49
+   Number of public wire bits:     504
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                397
+     $_DFFE_PN0P_                  156
+     $_DFF_PN0_                      4
+     A2O1A1Ixp33_ASAP7_75t_R         3
+     AND3x1_ASAP7_75t_R              2
+     AOI211xp5_ASAP7_75t_R           1
+     AOI21xp33_ASAP7_75t_R           3
+     AOI221xp5_ASAP7_75t_R           1
+     AOI311xp33_ASAP7_75t_R          1
+     INVx1_ASAP7_75t_R              69
+     NAND2xp33_ASAP7_75t_R          66
+     NAND3xp33_ASAP7_75t_R           2
+     NOR2xp33_ASAP7_75t_R           11
+     NOR3xp33_ASAP7_75t_R            3
+     NOR4xp25_ASAP7_75t_R            5
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           1
+     OAI21xp33_ASAP7_75t_R          66
+     OR4x1_ASAP7_75t_R               1
+     gated_clk_cell                  1
+
+=== $paramod$4e216720d6d415d3ef3f93a87ada1754cf47225a\mmu_l1dtlb_mb_entry ===
+
+   Number of wires:                 90
+   Number of wire bits:            344
+   Number of public wires:          47
+   Number of public wire bits:     301
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                136
+     $_DFFE_PN0P_                   80
+     $_DFF_PN0_                      6
+     A2O1A1Ixp33_ASAP7_75t_R         1
+     AO21x1_ASAP7_75t_R              1
+     AOI21xp33_ASAP7_75t_R           2
+     AOI221xp5_ASAP7_75t_R           2
+     INVx1_ASAP7_75t_R              10
+     NAND2xp33_ASAP7_75t_R           3
+     NAND3xp33_ASAP7_75t_R           5
+     NAND4xp25_ASAP7_75t_R           2
+     NOR2xp33_ASAP7_75t_R            5
+     NOR3xp33_ASAP7_75t_R            4
+     NOR5xp2_ASAP7_75t_R             2
+     O2A1O1Ixp33_ASAP7_75t_R         1
+     OAI211xp5_ASAP7_75t_R           3
+     OAI22xp33_ASAP7_75t_R           2
+     OAI31xp33_ASAP7_75t_R           1
+     OAI32xp33_ASAP7_75t_R           1
+     OR3x1_ASAP7_75t_R               1
+     OR4x1_ASAP7_75t_R               4
+
+=== $paramod$4ea0b502cba813ded6d821d97f7656fcae15829b\mmu_l1dtlb_hit_rd ===
+
+   Number of wires:               1042
+   Number of wire bits:           2169
+   Number of public wires:          77
+   Number of public wire bits:    1204
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               1101
+     $_DFFE_PN0P_                   17
+     $_DFFE_PP_                     28
+     $_DFF_PN0_                      1
+     A2O1A1Ixp33_ASAP7_75t_R        65
+     A2O1A1O1Ixp25_ASAP7_75t_R      18
+     AND2x2_ASAP7_75t_R              4
+     AND3x1_ASAP7_75t_R             85
+     AND4x1_ASAP7_75t_R              2
+     AND5x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R            111
+     AO32x1_ASAP7_75t_R             59
+     AOI211xp5_ASAP7_75t_R          17
+     AOI21xp33_ASAP7_75t_R         174
+     AOI221xp5_ASAP7_75t_R           5
+     AOI22xp33_ASAP7_75t_R           2
+     AOI31xp33_ASAP7_75t_R          11
+     INVx1_ASAP7_75t_R              59
+     NAND2xp33_ASAP7_75t_R          81
+     NAND3xp33_ASAP7_75t_R          39
+     NAND4xp25_ASAP7_75t_R           2
+     NAND5xp2_ASAP7_75t_R            3
+     NOR2xp33_ASAP7_75t_R           19
+     NOR3xp33_ASAP7_75t_R            4
+     NOR4xp25_ASAP7_75t_R            6
+     NOR5xp2_ASAP7_75t_R             6
+     O2A1O1Ixp33_ASAP7_75t_R         9
+     OA211x2_ASAP7_75t_R             2
+     OA21x2_ASAP7_75t_R              5
+     OAI211xp5_ASAP7_75t_R          38
+     OAI21xp33_ASAP7_75t_R         119
+     OAI221xp5_ASAP7_75t_R          65
+     OAI22xp33_ASAP7_75t_R           1
+     OAI32xp33_ASAP7_75t_R          30
+     OR2x2_ASAP7_75t_R               2
+     OR4x1_ASAP7_75t_R               4
+     OR5x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R            1
+     XOR2xp5_ASAP7_75t_R             3
+     ct_rtu_compare_iid              1
+     gated_clk_cell                  1
+
+=== $paramod$50cb93d1ee31134b4ee1faab67e812cba1913794\ct_mmu_l2tlb_tag_array ===
+
+   Number of wires:                 44
+   Number of wire bits:            983
+   Number of public wires:          42
+   Number of public wire bits:     981
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 28
+     $paramod$bd478104c511b954dc43b6c6ff7916cd37d555e7\ct_spsram_wrapper      8
+     INVx1_ASAP7_75t_R              16
+     NAND2xp33_ASAP7_75t_R           1
+     NOR4xp25_ASAP7_75t_R            2
+     gated_clk_cell                  1
+
+=== $paramod$568a23bd67ce69399c0016c342772f4d8d27b191\mmu_l2tlb_replacement_policy ===
+
+   Number of wires:                172
+   Number of wire bits:            439
+   Number of public wires:          20
+   Number of public wire bits:     287
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                241
+     $_DFFE_PN0P_                   32
+     AND2x2_ASAP7_75t_R              2
+     AND4x1_ASAP7_75t_R              4
+     AND5x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R              5
+     AOI211xp5_ASAP7_75t_R           2
+     AOI21xp33_ASAP7_75t_R          33
+     AOI221xp5_ASAP7_75t_R           9
+     AOI31xp33_ASAP7_75t_R           1
+     AOI321xp33_ASAP7_75t_R          1
+     INVx1_ASAP7_75t_R              38
+     NAND2xp33_ASAP7_75t_R          36
+     NAND3xp33_ASAP7_75t_R           5
+     NAND4xp25_ASAP7_75t_R           8
+     NOR2xp33_ASAP7_75t_R           15
+     NOR3xp33_ASAP7_75t_R            9
+     NOR4xp25_ASAP7_75t_R            5
+     NOR5xp2_ASAP7_75t_R             5
+     O2A1O1Ixp33_ASAP7_75t_R         1
+     OA211x2_ASAP7_75t_R             1
+     OA21x2_ASAP7_75t_R              1
+     OAI21xp33_ASAP7_75t_R           7
+     OAI22xp33_ASAP7_75t_R           4
+     OAI31xp33_ASAP7_75t_R           1
+     OAI32xp33_ASAP7_75t_R           3
+     OAI33xp33_ASAP7_75t_R           6
+     OR2x2_ASAP7_75t_R               2
+     OR3x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R            3
+
+=== $paramod$69d23aa7787dc0a233b019fc4c0e2cec0912cf5a\PDE_cache ===
+
+   Number of wires:               1285
+   Number of wire bits:           2579
+   Number of public wires:          65
+   Number of public wire bits:    1359
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               1374
+     $_DFFE_PN0P_                   47
+     $_DFF_PN0_                      2
+     $paramod$9b05cadf9cf85ef44ba5b102a3b0da9d101a68d7\L1PDE_cache     16
+     $paramod$f2346501d2edc7bfce23b680f8318f33e12e2960\L2PDE_cache     16
+     $paramod\pplru\PDE_ENTRY_NUM=s32'00000000000000000000000000010000      2
+     A2O1A1Ixp33_ASAP7_75t_R        83
+     A2O1A1O1Ixp25_ASAP7_75t_R      53
+     AND2x2_ASAP7_75t_R             54
+     AND3x1_ASAP7_75t_R             58
+     AND4x1_ASAP7_75t_R              1
+     AND5x1_ASAP7_75t_R              2
+     AO21x1_ASAP7_75t_R            109
+     AO32x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R          55
+     AOI21xp33_ASAP7_75t_R         215
+     AOI221xp5_ASAP7_75t_R          29
+     AOI22xp33_ASAP7_75t_R           1
+     AOI31xp33_ASAP7_75t_R          30
+     INVx1_ASAP7_75t_R              68
+     NAND2xp33_ASAP7_75t_R          93
+     NAND3xp33_ASAP7_75t_R          56
+     NAND4xp25_ASAP7_75t_R           4
+     NAND5xp2_ASAP7_75t_R            2
+     NOR2xp33_ASAP7_75t_R           11
+     NOR4xp25_ASAP7_75t_R            6
+     NOR5xp2_ASAP7_75t_R             3
+     O2A1O1Ixp33_ASAP7_75t_R        32
+     OA211x2_ASAP7_75t_R             1
+     OA21x2_ASAP7_75t_R              3
+     OAI211xp5_ASAP7_75t_R           4
+     OAI21xp33_ASAP7_75t_R         199
+     OAI221xp5_ASAP7_75t_R         107
+     OAI31xp33_ASAP7_75t_R           1
+     OAI321xp33_ASAP7_75t_R          1
+     OAI32xp33_ASAP7_75t_R           1
+     OR3x1_ASAP7_75t_R               2
+     OR4x1_ASAP7_75t_R               5
+     gated_clk_cell                  1
+
+=== $paramod$73bc3e66ac76929e0c450c391c0be60270c0ecd3\one_to_four_xbar ===
+
+   Number of wires:                 33
+   Number of wire bits:            165
+   Number of public wires:          19
+   Number of public wire bits:     151
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 19
+     NAND2xp33_ASAP7_75t_R           1
+     NAND3xp33_ASAP7_75t_R           4
+     NAND4xp25_ASAP7_75t_R           1
+     NAND5xp2_ASAP7_75t_R            1
+     NOR3xp33_ASAP7_75t_R            4
+     XNOR2xp5_ASAP7_75t_R            4
+     XOR2xp5_ASAP7_75t_R             4
+
+=== $paramod$8ed5b6183b8e483f243a8871b965543ba8316c57\mmu_l1dtlb_allocator ===
+
+   Number of wires:                 81
+   Number of wire bits:            163
+   Number of public wires:          17
+   Number of public wire bits:      99
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 81
+     A2O1A1Ixp33_ASAP7_75t_R         1
+     AND3x1_ASAP7_75t_R              2
+     AND4x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R              4
+     AOI21xp33_ASAP7_75t_R           4
+     AOI31xp33_ASAP7_75t_R           1
+     AOI321xp33_ASAP7_75t_R          2
+     INVx1_ASAP7_75t_R              13
+     NAND2xp33_ASAP7_75t_R           7
+     NAND3xp33_ASAP7_75t_R           9
+     NAND4xp25_ASAP7_75t_R           1
+     NOR2xp33_ASAP7_75t_R            8
+     NOR3xp33_ASAP7_75t_R            8
+     NOR4xp25_ASAP7_75t_R            1
+     O2A1O1Ixp33_ASAP7_75t_R         2
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           1
+     OAI21xp33_ASAP7_75t_R           1
+     OAI22xp33_ASAP7_75t_R           8
+     OAI31xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R               1
+     OR3x1_ASAP7_75t_R               3
+     ct_rtu_compare_iid              1
+
+=== $paramod$9b05cadf9cf85ef44ba5b102a3b0da9d101a68d7\L1PDE_cache ===
+
+   Number of wires:                 68
+   Number of wire bits:            191
+   Number of public wires:          25
+   Number of public wire bits:     148
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 89
+     $_DFFE_PN0P_                   41
+     $_DFF_PN0_                      1
+     A2O1A1Ixp33_ASAP7_75t_R         1
+     AND2x2_ASAP7_75t_R              1
+     AND3x1_ASAP7_75t_R              1
+     AOI221xp5_ASAP7_75t_R           1
+     AOI22xp33_ASAP7_75t_R           3
+     AOI32xp33_ASAP7_75t_R           1
+     INVx1_ASAP7_75t_R              13
+     MAJx2_ASAP7_75t_R               1
+     NAND2xp33_ASAP7_75t_R           1
+     NAND4xp25_ASAP7_75t_R           2
+     NOR2xp33_ASAP7_75t_R            2
+     NOR5xp2_ASAP7_75t_R             2
+     OA22x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           1
+     OAI221xp5_ASAP7_75t_R           2
+     OAI222xp33_ASAP7_75t_R          1
+     OAI311xp33_ASAP7_75t_R          1
+     OAI31xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R            3
+     XOR2xp5_ASAP7_75t_R             6
+     gated_clk_cell                  1
+
+=== $paramod$9ba41790bf0da81405d4832ef05a289c44fd89b4\mmu_l2tlb_reqq_entry ===
+
+   Number of wires:                 38
+   Number of wire bits:            158
+   Number of public wires:          30
+   Number of public wire bits:     150
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 47
+     $_DFFE_PN0P_                   33
+     $_DFF_PN0_                      2
+     AND3x1_ASAP7_75t_R              1
+     AOI22xp33_ASAP7_75t_R           1
+     INVx1_ASAP7_75t_R               3
+     NAND2xp33_ASAP7_75t_R           1
+     NOR2xp33_ASAP7_75t_R            2
+     OA21x2_ASAP7_75t_R              1
+     OAI31xp33_ASAP7_75t_R           1
+     OR3x1_ASAP7_75t_R               1
+     gated_clk_cell                  1
+
+=== $paramod$9cf00525998e97993780e484eafa17b01201d9cb\mmu_fpga_ram ===
+
+   Number of wires:                  5
+   Number of wire bits:             94
+   Number of public wires:           5
+   Number of public wire bits:      94
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  1
+     $mem_v2                         1
+
+=== $paramod$9f31fb6fe50e45337124accc5a6f7c7a90ab483a\mmu_l1dtlb_expt_cam ===
+
+   Number of wires:               2125
+   Number of wire bits:           2958
+   Number of public wires:          51
+   Number of public wire bits:     596
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               2385
+     $_DFFE_PN0N_                  288
+     $_DFF_PN0_                      8
+     A2O1A1Ixp33_ASAP7_75t_R         3
+     A2O1A1O1Ixp25_ASAP7_75t_R     243
+     AND2x2_ASAP7_75t_R              9
+     AND3x1_ASAP7_75t_R              3
+     AND4x1_ASAP7_75t_R              1
+     AO211x2_ASAP7_75t_R             1
+     AO221x1_ASAP7_75t_R             1
+     AOI211xp5_ASAP7_75t_R           1
+     AOI21xp33_ASAP7_75t_R           4
+     AOI221xp5_ASAP7_75t_R          79
+     AOI222xp33_ASAP7_75t_R          1
+     AOI22xp33_ASAP7_75t_R          58
+     AOI31xp33_ASAP7_75t_R           3
+     AOI321xp33_ASAP7_75t_R          2
+     AOI32xp33_ASAP7_75t_R           2
+     INVx1_ASAP7_75t_R             330
+     NAND2xp33_ASAP7_75t_R          31
+     NAND3xp33_ASAP7_75t_R          21
+     NAND4xp25_ASAP7_75t_R          38
+     NAND5xp2_ASAP7_75t_R            3
+     NOR2xp33_ASAP7_75t_R          643
+     NOR3xp33_ASAP7_75t_R           44
+     NOR4xp25_ASAP7_75t_R           48
+     NOR5xp2_ASAP7_75t_R            10
+     O2A1O1Ixp33_ASAP7_75t_R        51
+     OAI211xp5_ASAP7_75t_R          21
+     OAI21xp33_ASAP7_75t_R          19
+     OAI221xp5_ASAP7_75t_R          61
+     OAI22xp33_ASAP7_75t_R         228
+     OAI311xp33_ASAP7_75t_R          1
+     OR2x2_ASAP7_75t_R               2
+     OR3x1_ASAP7_75t_R               4
+     OR4x1_ASAP7_75t_R               4
+     OR5x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R           53
+     XOR2xp5_ASAP7_75t_R            65
+
+=== $paramod$a27066b0d01b90d00c1e1939d896c183ba911266\ct_mmu_l2tlb_rrpv_array ===
+
+   Number of wires:                 52
+   Number of wire bits:            263
+   Number of public wires:          50
+   Number of public wire bits:     261
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 28
+     $paramod$214041ffe4bc257c1171aed31e743d2ade711e88\ct_spsram_wrapper      8
+     INVx1_ASAP7_75t_R              16
+     NAND2xp33_ASAP7_75t_R           1
+     NOR4xp25_ASAP7_75t_R            2
+     gated_clk_cell                  1
+
+=== $paramod$af9c22a23c36c5322cc504ffb7019b872f05c1c9\ct_mmu_l2tlb_data_array ===
+
+   Number of wires:                 44
+   Number of wire bits:            881
+   Number of public wires:          42
+   Number of public wire bits:     879
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 28
+     $paramod$06c6f5f9e3e415757b4eeeb01eeddc8bdbe2b1cb\ct_spsram_wrapper      8
+     INVx1_ASAP7_75t_R              16
+     NAND2xp33_ASAP7_75t_R           1
+     NOR4xp25_ASAP7_75t_R            2
+     gated_clk_cell                  1
+
+=== $paramod$b4715ba0c2d2da849c7a077976e04c50ff385c8e\mmu_l1dtlb_install ===
+
+   Number of wires:               4455
+   Number of wire bits:           5403
+   Number of public wires:          45
+   Number of public wire bits:     993
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               4511
+     A2O1A1Ixp33_ASAP7_75t_R       246
+     A2O1A1O1Ixp25_ASAP7_75t_R      28
+     AND2x2_ASAP7_75t_R            107
+     AND3x1_ASAP7_75t_R             37
+     AND4x1_ASAP7_75t_R             10
+     AO21x1_ASAP7_75t_R             97
+     AO221x1_ASAP7_75t_R            25
+     AO22x1_ASAP7_75t_R              4
+     AO32x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R         132
+     AOI21xp33_ASAP7_75t_R         658
+     AOI221xp5_ASAP7_75t_R          25
+     AOI22xp33_ASAP7_75t_R          67
+     AOI311xp33_ASAP7_75t_R          9
+     AOI31xp33_ASAP7_75t_R         126
+     AOI321xp33_ASAP7_75t_R          2
+     AOI32xp33_ASAP7_75t_R           3
+     HB1xp67_ASAP7_75t_R             1
+     INVx1_ASAP7_75t_R             265
+     NAND2xp33_ASAP7_75t_R         412
+     NAND3xp33_ASAP7_75t_R         116
+     NAND4xp25_ASAP7_75t_R         115
+     NAND5xp2_ASAP7_75t_R            2
+     NOR2xp33_ASAP7_75t_R          332
+     NOR3xp33_ASAP7_75t_R          318
+     NOR4xp25_ASAP7_75t_R           17
+     NOR5xp2_ASAP7_75t_R             2
+     O2A1O1Ixp33_ASAP7_75t_R       189
+     OA211x2_ASAP7_75t_R            34
+     OA21x2_ASAP7_75t_R             16
+     OAI211xp5_ASAP7_75t_R         227
+     OAI21xp33_ASAP7_75t_R         752
+     OAI221xp5_ASAP7_75t_R          27
+     OAI22xp33_ASAP7_75t_R          10
+     OAI311xp33_ASAP7_75t_R         10
+     OAI31xp33_ASAP7_75t_R          30
+     OAI32xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R              41
+     OR3x1_ASAP7_75t_R              10
+     OR4x1_ASAP7_75t_R               6
+     OR5x1_ASAP7_75t_R               1
+
+=== $paramod$bad096f228fa21ffc0831290ff731d4a5ea830e8\mmu_fpga_ram ===
+
+   Number of wires:                  5
+   Number of wire bits:            106
+   Number of public wires:           5
+   Number of public wire bits:     106
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  1
+     $mem_v2                         1
+
+=== $paramod$bd478104c511b954dc43b6c6ff7916cd37d555e7\ct_spsram_wrapper ===
+
+   Number of wires:                  8
+   Number of wire bits:            156
+   Number of public wires:           8
+   Number of public wire bits:     156
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  2
+     $paramod$bad096f228fa21ffc0831290ff731d4a5ea830e8\mmu_fpga_ram      1
+     NOR2xp33_ASAP7_75t_R            1
+
+=== $paramod$bd545695cadf9859f8807a059f8b3ce842477dc2\mmu_l2tlb_mb_entry ===
+
+   Number of wires:                 37
+   Number of wire bits:            136
+   Number of public wires:          30
+   Number of public wire bits:     129
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 50
+     $_DFFE_PN0P_                   37
+     $_DFF_PN0_                      2
+     AND3x1_ASAP7_75t_R              1
+     AOI22xp33_ASAP7_75t_R           1
+     INVx1_ASAP7_75t_R               3
+     NOR2xp33_ASAP7_75t_R            2
+     OAI32xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R               1
+     OR3x1_ASAP7_75t_R               1
+     gated_clk_cell                  1
+
+=== $paramod$e135ad6d52c69f3d421819e3ea131b1b79c8e9b8\mmu_fpga_ram ===
+
+   Number of wires:                  5
+   Number of wire bits:             16
+   Number of public wires:           5
+   Number of public wire bits:      16
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  1
+     $mem_v2                         1
+
+=== $paramod$e59f323b62502dc52e9d29af7a6596370ba82696\mmu_l2tlb_reqq ===
+
+   Number of wires:                398
+   Number of wire bits:           1236
+   Number of public wires:          95
+   Number of public wire bits:     933
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                377
+     $paramod$9ba41790bf0da81405d4832ef05a289c44fd89b4\mmu_l2tlb_reqq_entry      9
+     A2O1A1Ixp33_ASAP7_75t_R        17
+     AND2x2_ASAP7_75t_R             23
+     AND3x1_ASAP7_75t_R              8
+     AND4x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R              1
+     AO222x2_ASAP7_75t_R            25
+     AOI221xp5_ASAP7_75t_R           6
+     AOI222xp33_ASAP7_75t_R         29
+     AOI22xp33_ASAP7_75t_R          11
+     AOI32xp33_ASAP7_75t_R          31
+     AOI33xp33_ASAP7_75t_R           1
+     INVx1_ASAP7_75t_R              13
+     NAND2xp33_ASAP7_75t_R          48
+     NAND3xp33_ASAP7_75t_R          35
+     NAND4xp25_ASAP7_75t_R          26
+     NAND5xp2_ASAP7_75t_R            5
+     NOR2xp33_ASAP7_75t_R           21
+     NOR3xp33_ASAP7_75t_R           16
+     NOR4xp25_ASAP7_75t_R            7
+     NOR5xp2_ASAP7_75t_R             4
+     O2A1O1Ixp33_ASAP7_75t_R         1
+     OAI211xp5_ASAP7_75t_R           3
+     OAI21xp33_ASAP7_75t_R           5
+     OAI22xp33_ASAP7_75t_R           1
+     OAI31xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R              20
+     OR3x1_ASAP7_75t_R               8
+     OR5x1_ASAP7_75t_R               1
+
+=== $paramod$f2346501d2edc7bfce23b680f8318f33e12e2960\L2PDE_cache ===
+
+   Number of wires:                117
+   Number of wire bits:            282
+   Number of public wires:          30
+   Number of public wire bits:     195
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                147
+     $_DFFE_PN0P_                   54
+     $_DFF_PN0_                      1
+     AND4x1_ASAP7_75t_R              2
+     AOI211xp5_ASAP7_75t_R           2
+     AOI21xp33_ASAP7_75t_R           1
+     AOI221xp5_ASAP7_75t_R          10
+     AOI22xp33_ASAP7_75t_R           2
+     AOI32xp33_ASAP7_75t_R           1
+     AOI33xp33_ASAP7_75t_R           1
+     INVx1_ASAP7_75t_R              27
+     NAND2xp33_ASAP7_75t_R           3
+     NAND3xp33_ASAP7_75t_R           2
+     NAND4xp25_ASAP7_75t_R           5
+     NOR2xp33_ASAP7_75t_R            4
+     NOR4xp25_ASAP7_75t_R            4
+     OA222x2_ASAP7_75t_R             1
+     OAI211xp5_ASAP7_75t_R           3
+     OAI221xp5_ASAP7_75t_R           1
+     OAI22xp33_ASAP7_75t_R           9
+     OR2x2_ASAP7_75t_R               1
+     OR3x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R            2
+     XOR2xp5_ASAP7_75t_R             9
+     gated_clk_cell                  1
+
+=== $paramod\mmu_arb\TRANS_ID_WIDTH=s32'00000000000000000000000000000100 ===
+
+   Number of wires:                345
+   Number of wire bits:           1248
+   Number of public wires:          92
+   Number of public wire bits:     995
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                714
+     $_DFFE_PN0P_                  234
+     $_DFF_PN0_                      5
+     A2O1A1Ixp33_ASAP7_75t_R        19
+     AND2x2_ASAP7_75t_R             11
+     AND3x1_ASAP7_75t_R              6
+     AND4x1_ASAP7_75t_R              5
+     AO21x1_ASAP7_75t_R              3
+     AO222x2_ASAP7_75t_R             5
+     AO22x1_ASAP7_75t_R             42
+     AO32x1_ASAP7_75t_R             48
+     AOI211xp5_ASAP7_75t_R           6
+     AOI21xp33_ASAP7_75t_R          10
+     AOI221xp5_ASAP7_75t_R          24
+     AOI222xp33_ASAP7_75t_R         20
+     AOI22xp33_ASAP7_75t_R          16
+     INVx1_ASAP7_75t_R              34
+     NAND2xp33_ASAP7_75t_R          55
+     NAND3xp33_ASAP7_75t_R          24
+     NAND4xp25_ASAP7_75t_R           3
+     NOR2xp33_ASAP7_75t_R           20
+     NOR3xp33_ASAP7_75t_R            5
+     NOR4xp25_ASAP7_75t_R            3
+     OA211x2_ASAP7_75t_R             1
+     OA21x2_ASAP7_75t_R              2
+     OAI211xp5_ASAP7_75t_R           1
+     OAI21xp33_ASAP7_75t_R          65
+     OAI22xp33_ASAP7_75t_R           4
+     OR2x2_ASAP7_75t_R               3
+     OR3x1_ASAP7_75t_R               3
+     OR5x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R           12
+     XOR2xp5_ASAP7_75t_R            23
+     gated_clk_cell                  1
+
+=== $paramod\pplru\PDE_ENTRY_NUM=s32'00000000000000000000000000010000 ===
+
+   Number of wires:                203
+   Number of wire bits:            336
+   Number of public wires:          22
+   Number of public wire bits:     155
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                245
+     $_DFFE_PN0P_                   19
+     $_DFF_PN0_                      4
+     A2O1A1Ixp33_ASAP7_75t_R         4
+     A2O1A1O1Ixp25_ASAP7_75t_R       1
+     AND2x2_ASAP7_75t_R              2
+     AND3x1_ASAP7_75t_R              4
+     AND4x1_ASAP7_75t_R              1
+     AND5x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R              4
+     AOI211xp5_ASAP7_75t_R           3
+     AOI21xp33_ASAP7_75t_R          14
+     AOI22xp33_ASAP7_75t_R           2
+     AOI31xp33_ASAP7_75t_R           2
+     INVx1_ASAP7_75t_R              25
+     MAJIxp5_ASAP7_75t_R             2
+     NAND2xp33_ASAP7_75t_R          24
+     NAND3xp33_ASAP7_75t_R          15
+     NAND4xp25_ASAP7_75t_R           3
+     NAND5xp2_ASAP7_75t_R            2
+     NOR2xp33_ASAP7_75t_R           26
+     NOR3xp33_ASAP7_75t_R            5
+     NOR4xp25_ASAP7_75t_R            3
+     NOR5xp2_ASAP7_75t_R             2
+     O2A1O1Ixp33_ASAP7_75t_R         6
+     OA211x2_ASAP7_75t_R             3
+     OA21x2_ASAP7_75t_R              2
+     OA22x2_ASAP7_75t_R              4
+     OAI211xp5_ASAP7_75t_R           2
+     OAI21xp33_ASAP7_75t_R          16
+     OAI221xp5_ASAP7_75t_R           2
+     OAI22xp33_ASAP7_75t_R           3
+     OAI31xp33_ASAP7_75t_R          12
+     OAI32xp33_ASAP7_75t_R           3
+     OR2x2_ASAP7_75t_R               3
+     OR3x1_ASAP7_75t_R               7
+     OR4x1_ASAP7_75t_R               9
+     OR5x1_ASAP7_75t_R               2
+     XNOR2xp5_ASAP7_75t_R            2
+     gated_clk_cell                  1
+
+=== $paramod\ptw\ID_WIDTH=s32'00000000000000000000000000000111 ===
+
+   Number of wires:                507
+   Number of wire bits:           2745
+   Number of public wires:         181
+   Number of public wire bits:    2419
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                466
+     $_DFF_PN0_                      2
+     $paramod$077a217e2f3340e63151c456f787a6fa23b94c31\ptw_mbuf      1
+     $paramod$077a217e2f3340e63151c456f787a6fa23b94c31\twu      4
+     $paramod$69d23aa7787dc0a233b019fc4c0e2cec0912cf5a\PDE_cache      1
+     $paramod$73bc3e66ac76929e0c450c391c0be60270c0ecd3\one_to_four_xbar      1
+     A2O1A1O1Ixp25_ASAP7_75t_R       1
+     AND2x2_ASAP7_75t_R              3
+     AND3x1_ASAP7_75t_R              5
+     AND4x1_ASAP7_75t_R              3
+     AND5x1_ASAP7_75t_R              3
+     AO21x1_ASAP7_75t_R              5
+     AO222x2_ASAP7_75t_R             6
+     AO22x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R           1
+     AOI21xp33_ASAP7_75t_R           6
+     AOI221xp5_ASAP7_75t_R          17
+     AOI222xp33_ASAP7_75t_R          6
+     AOI22xp33_ASAP7_75t_R         212
+     HB1xp67_ASAP7_75t_R             1
+     INVx1_ASAP7_75t_R              22
+     NAND2xp33_ASAP7_75t_R         114
+     NAND3xp33_ASAP7_75t_R          16
+     NAND4xp25_ASAP7_75t_R           6
+     NOR2xp33_ASAP7_75t_R            7
+     NOR3xp33_ASAP7_75t_R            8
+     NOR4xp25_ASAP7_75t_R            5
+     NOR5xp2_ASAP7_75t_R             3
+     O2A1O1Ixp33_ASAP7_75t_R         1
+     OAI21xp33_ASAP7_75t_R           1
+     OR3x1_ASAP7_75t_R               1
+     OR4x1_ASAP7_75t_R               2
+     gated_clk_cell                  1
+
+=== ct_mmu_dplru ===
+
+   Number of wires:                441
+   Number of wire bits:            567
+   Number of public wires:          57
+   Number of public wire bits:     183
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                426
+     $_DFFE_PN0P_                   27
+     $mem_v2                         1
+     A2O1A1Ixp33_ASAP7_75t_R        13
+     A2O1A1O1Ixp25_ASAP7_75t_R       1
+     AND2x2_ASAP7_75t_R              7
+     AND3x1_ASAP7_75t_R              2
+     AND4x1_ASAP7_75t_R              2
+     AND5x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R              4
+     AO221x1_ASAP7_75t_R             1
+     AO22x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R          19
+     AOI21xp33_ASAP7_75t_R           9
+     AOI22xp33_ASAP7_75t_R           5
+     AOI311xp33_ASAP7_75t_R          2
+     AOI31xp33_ASAP7_75t_R           2
+     AOI32xp33_ASAP7_75t_R           1
+     AOI33xp33_ASAP7_75t_R           1
+     ICGx1_ASAP7_75t_R               1
+     INVx1_ASAP7_75t_R              57
+     NAND2xp33_ASAP7_75t_R          38
+     NAND3xp33_ASAP7_75t_R          27
+     NAND4xp25_ASAP7_75t_R           9
+     NAND5xp2_ASAP7_75t_R            8
+     NOR2xp33_ASAP7_75t_R           26
+     NOR3xp33_ASAP7_75t_R           25
+     NOR4xp25_ASAP7_75t_R           15
+     NOR5xp2_ASAP7_75t_R             6
+     O2A1O1Ixp33_ASAP7_75t_R         9
+     OA211x2_ASAP7_75t_R             3
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R          14
+     OAI21xp33_ASAP7_75t_R          13
+     OAI22xp33_ASAP7_75t_R           5
+     OAI311xp33_ASAP7_75t_R          8
+     OAI31xp33_ASAP7_75t_R           8
+     OAI32xp33_ASAP7_75t_R           3
+     OR2x2_ASAP7_75t_R               8
+     OR3x1_ASAP7_75t_R               5
+     OR4x1_ASAP7_75t_R              14
+     OR5x1_ASAP7_75t_R               2
+     XNOR2xp5_ASAP7_75t_R           15
+     XOR2xp5_ASAP7_75t_R             7
+
+=== ct_mmu_iplru ===
+
+   Number of wires:                504
+   Number of wire bits:            679
+   Number of public wires:          83
+   Number of public wire bits:     258
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                475
+     $_DFFE_PN0P_                   41
+     $mem_v2                         1
+     A2O1A1Ixp33_ASAP7_75t_R        14
+     A2O1A1O1Ixp25_ASAP7_75t_R       2
+     AND2x2_ASAP7_75t_R              4
+     AND3x1_ASAP7_75t_R              7
+     AND4x1_ASAP7_75t_R              6
+     AND5x1_ASAP7_75t_R              6
+     AO21x1_ASAP7_75t_R              8
+     AO32x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R           9
+     AOI21xp33_ASAP7_75t_R          14
+     AOI221xp5_ASAP7_75t_R           1
+     AOI22xp33_ASAP7_75t_R           1
+     AOI311xp33_ASAP7_75t_R          2
+     AOI31xp33_ASAP7_75t_R           4
+     AOI32xp33_ASAP7_75t_R           4
+     AOI33xp33_ASAP7_75t_R           1
+     ICGx1_ASAP7_75t_R               1
+     INVx1_ASAP7_75t_R              54
+     NAND2xp33_ASAP7_75t_R          58
+     NAND3xp33_ASAP7_75t_R          30
+     NAND4xp25_ASAP7_75t_R          18
+     NAND5xp2_ASAP7_75t_R            8
+     NOR2xp33_ASAP7_75t_R           41
+     NOR3xp33_ASAP7_75t_R           15
+     NOR4xp25_ASAP7_75t_R           13
+     O2A1O1Ixp33_ASAP7_75t_R         1
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           5
+     OAI21xp33_ASAP7_75t_R          45
+     OAI221xp5_ASAP7_75t_R           1
+     OAI22xp33_ASAP7_75t_R          18
+     OAI311xp33_ASAP7_75t_R          2
+     OAI31xp33_ASAP7_75t_R          10
+     OAI32xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R               6
+     OR3x1_ASAP7_75t_R               4
+     OR4x1_ASAP7_75t_R              10
+     XNOR2xp5_ASAP7_75t_R            4
+     XOR2xp5_ASAP7_75t_R             3
+
+=== ct_mmu_iutlb_entry ===
+
+   Number of wires:                254
+   Number of wire bits:            620
+   Number of public wires:          33
+   Number of public wire bits:     331
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                365
+     $_DFFE_PN0P_                   72
+     $_DFF_PN0_                      1
+     A2O1A1Ixp33_ASAP7_75t_R         1
+     AO21x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R           1
+     AOI21xp33_ASAP7_75t_R           1
+     AOI221xp5_ASAP7_75t_R           6
+     AOI222xp33_ASAP7_75t_R          2
+     AOI31xp33_ASAP7_75t_R           1
+     ICGx1_ASAP7_75t_R               1
+     INVx1_ASAP7_75t_R              96
+     NAND2xp33_ASAP7_75t_R          72
+     NAND3xp33_ASAP7_75t_R           1
+     NAND4xp25_ASAP7_75t_R           1
+     NOR2xp33_ASAP7_75t_R            2
+     NOR3xp33_ASAP7_75t_R            2
+     NOR4xp25_ASAP7_75t_R            2
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           1
+     OAI21xp33_ASAP7_75t_R          74
+     OAI221xp5_ASAP7_75t_R           4
+     OAI22xp33_ASAP7_75t_R           6
+     OR2x2_ASAP7_75t_R               1
+     OR5x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R            6
+     XOR2xp5_ASAP7_75t_R             8
+
+=== ct_mmu_iutlb_fst_entry ===
+
+   Number of wires:                255
+   Number of wire bits:            647
+   Number of public wires:          34
+   Number of public wire bits:     358
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                365
+     $_DFFE_PN0P_                   72
+     $_DFF_PN0_                      1
+     A2O1A1Ixp33_ASAP7_75t_R         1
+     AO21x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R           1
+     AOI21xp33_ASAP7_75t_R           1
+     AOI221xp5_ASAP7_75t_R           6
+     AOI222xp33_ASAP7_75t_R          2
+     AOI31xp33_ASAP7_75t_R           1
+     ICGx1_ASAP7_75t_R               1
+     INVx1_ASAP7_75t_R              96
+     NAND2xp33_ASAP7_75t_R          72
+     NAND3xp33_ASAP7_75t_R           1
+     NAND4xp25_ASAP7_75t_R           1
+     NOR2xp33_ASAP7_75t_R            2
+     NOR3xp33_ASAP7_75t_R            2
+     NOR4xp25_ASAP7_75t_R            2
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           1
+     OAI21xp33_ASAP7_75t_R          74
+     OAI221xp5_ASAP7_75t_R           4
+     OAI22xp33_ASAP7_75t_R           6
+     OR2x2_ASAP7_75t_R               1
+     OR5x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R            6
+     XOR2xp5_ASAP7_75t_R             8
+
+=== ct_mmu_regs ===
+
+   Number of wires:                422
+   Number of wire bits:           1438
+   Number of public wires:          91
+   Number of public wire bits:    1025
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                641
+     $_DFFE_PN0P_                  164
+     $_DFF_PN0_                      7
+     A2O1A1Ixp33_ASAP7_75t_R        24
+     AND2x2_ASAP7_75t_R              6
+     AND3x1_ASAP7_75t_R             24
+     AND4x1_ASAP7_75t_R              1
+     AO21x1_ASAP7_75t_R              2
+     AO221x1_ASAP7_75t_R            14
+     AO22x1_ASAP7_75t_R             16
+     AO32x1_ASAP7_75t_R              1
+     AOI21xp33_ASAP7_75t_R           6
+     AOI22xp33_ASAP7_75t_R           8
+     AOI31xp33_ASAP7_75t_R           4
+     AOI321xp33_ASAP7_75t_R          3
+     ICGx1_ASAP7_75t_R               1
+     INVx1_ASAP7_75t_R              86
+     NAND2xp33_ASAP7_75t_R          54
+     NAND3xp33_ASAP7_75t_R          44
+     NAND4xp25_ASAP7_75t_R          83
+     NOR2xp33_ASAP7_75t_R            4
+     NOR3xp33_ASAP7_75t_R            2
+     NOR4xp25_ASAP7_75t_R            1
+     OAI21xp33_ASAP7_75t_R          75
+     OAI31xp33_ASAP7_75t_R           6
+     OAI32xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R               2
+     OR3x1_ASAP7_75t_R               1
+     OR5x1_ASAP7_75t_R               1
+
+=== ct_mmu_sysmap ===
+
+   Number of wires:                 63
+   Number of wire bits:            108
+   Number of public wires:          36
+   Number of public wire bits:      81
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 47
+     AND2x2_ASAP7_75t_R              3
+     AND3x1_ASAP7_75t_R              1
+     AND4x1_ASAP7_75t_R              2
+     AND5x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R           1
+     AOI311xp33_ASAP7_75t_R          1
+     AOI33xp33_ASAP7_75t_R           1
+     INVx1_ASAP7_75t_R               4
+     NAND2xp33_ASAP7_75t_R           1
+     NAND3xp33_ASAP7_75t_R           4
+     NAND5xp2_ASAP7_75t_R            4
+     NOR2xp33_ASAP7_75t_R            4
+     NOR3xp33_ASAP7_75t_R            2
+     NOR4xp25_ASAP7_75t_R            3
+     NOR5xp2_ASAP7_75t_R             2
+     O2A1O1Ixp33_ASAP7_75t_R         2
+     OAI21xp33_ASAP7_75t_R           1
+     OR4x1_ASAP7_75t_R               1
+     XOR2xp5_ASAP7_75t_R             1
+     ct_mmu_sysmap_hit               8
+
+=== ct_mmu_sysmap_hit ===
+
+   Number of wires:                  5
+   Number of wire bits:              5
+   Number of public wires:           5
+   Number of public wire bits:       5
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  2
+     AND2x2_ASAP7_75t_R              1
+     INVx1_ASAP7_75t_R               1
+
+=== ct_mmu_tlboper ===
+
+   Number of wires:                353
+   Number of wire bits:            901
+   Number of public wires:          98
+   Number of public wire bits:     636
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                497
+     $_DFFE_PN0P_                   11
+     $_DFF_PN0_                     19
+     A2O1A1Ixp33_ASAP7_75t_R         6
+     AND2x2_ASAP7_75t_R             91
+     AND3x1_ASAP7_75t_R              2
+     AND4x1_ASAP7_75t_R              2
+     AND5x1_ASAP7_75t_R              3
+     AO21x1_ASAP7_75t_R              2
+     AO221x1_ASAP7_75t_R             1
+     AO22x1_ASAP7_75t_R              1
+     AO32x1_ASAP7_75t_R              2
+     AOI211xp5_ASAP7_75t_R           1
+     AOI21xp33_ASAP7_75t_R           5
+     AOI22xp33_ASAP7_75t_R           1
+     AOI31xp33_ASAP7_75t_R           1
+     AOI32xp33_ASAP7_75t_R           1
+     ICGx1_ASAP7_75t_R               1
+     INVx1_ASAP7_75t_R              88
+     NAND2xp33_ASAP7_75t_R          85
+     NAND3xp33_ASAP7_75t_R           7
+     NAND4xp25_ASAP7_75t_R           3
+     NOR2xp33_ASAP7_75t_R           33
+     NOR3xp33_ASAP7_75t_R           12
+     NOR4xp25_ASAP7_75t_R            6
+     NOR5xp2_ASAP7_75t_R             2
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           3
+     OAI21xp33_ASAP7_75t_R          77
+     OAI221xp5_ASAP7_75t_R          10
+     OAI22xp33_ASAP7_75t_R           2
+     OAI311xp33_ASAP7_75t_R          2
+     OAI31xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R               4
+     OR3x1_ASAP7_75t_R               2
+     OR4x1_ASAP7_75t_R               5
+     XNOR2xp5_ASAP7_75t_R            4
+
+=== ct_mmu_top ===
+
+   Number of wires:                337
+   Number of wire bits:           3203
+   Number of public wires:         335
+   Number of public wire bits:    3201
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 27
+     $paramod$3c1cc4a1ba2c60eeaac14f2a3ce4b465928150b0\mmu_l2tlb      1
+     $paramod\mmu_arb\TRANS_ID_WIDTH=s32'00000000000000000000000000000100      1
+     $paramod\ptw\ID_WIDTH=s32'00000000000000000000000000000111      1
+     ICGx1_ASAP7_75t_R               1
+     INVx1_ASAP7_75t_R               1
+     OR4x1_ASAP7_75t_R               1
+     OR5x1_ASAP7_75t_R               1
+     ct_mmu_regs                     1
+     ct_mmu_sysmap                  16
+     ct_mmu_tlboper                  1
+     mmu_l1dtlb                      1
+     mmu_l1itlb                      1
+
+=== ct_rtu_compare_iid ===
+
+   Number of wires:                 25
+   Number of wire bits:             37
+   Number of public wires:           3
+   Number of public wire bits:      15
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                 23
+     AND2x2_ASAP7_75t_R              2
+     AOI221xp5_ASAP7_75t_R           1
+     AOI22xp33_ASAP7_75t_R           4
+     INVx1_ASAP7_75t_R               6
+     O2A1O1Ixp33_ASAP7_75t_R         1
+     OA22x2_ASAP7_75t_R              1
+     OAI21xp33_ASAP7_75t_R           2
+     OAI22xp33_ASAP7_75t_R           4
+     OAI32xp33_ASAP7_75t_R           1
+     XOR2xp5_ASAP7_75t_R             1
+
+=== gated_clk_cell ===
+
+   Number of wires:                  8
+   Number of wire bits:              8
+   Number of public wires:           8
+   Number of public wire bits:       8
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:                  0
+
+=== mmu_l1dtlb ===
+
+   Number of wires:               9215
+   Number of wire bits:          14203
+   Number of public wires:         318
+   Number of public wire bits:    5306
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:              10988
+     $_DFFE_PN0P_                 1134
+     $_DFF_PN0_                     91
+     $paramod$278b7951f28d3193809591c0ccf2a6c39fcd775b\mmu_l1dtlb_scheduler      1
+     $paramod$4e216720d6d415d3ef3f93a87ada1754cf47225a\mmu_l1dtlb_mb_entry      8
+     $paramod$4ea0b502cba813ded6d821d97f7656fcae15829b\mmu_l1dtlb_hit_rd      2
+     $paramod$8ed5b6183b8e483f243a8871b965543ba8316c57\mmu_l1dtlb_allocator      1
+     $paramod$9f31fb6fe50e45337124accc5a6f7c7a90ab483a\mmu_l1dtlb_expt_cam      1
+     $paramod$b4715ba0c2d2da849c7a077976e04c50ff385c8e\mmu_l1dtlb_install      1
+     A2O1A1Ixp33_ASAP7_75t_R       200
+     A2O1A1O1Ixp25_ASAP7_75t_R      17
+     AND2x2_ASAP7_75t_R             10
+     AND3x1_ASAP7_75t_R             12
+     AND4x1_ASAP7_75t_R             23
+     AND5x1_ASAP7_75t_R              9
+     AO21x1_ASAP7_75t_R            154
+     AO221x1_ASAP7_75t_R             1
+     AO222x2_ASAP7_75t_R             1
+     AO22x1_ASAP7_75t_R            281
+     AO32x1_ASAP7_75t_R              1
+     AOI211xp5_ASAP7_75t_R         606
+     AOI21xp33_ASAP7_75t_R         946
+     AOI221xp5_ASAP7_75t_R         376
+     AOI222xp33_ASAP7_75t_R          9
+     AOI22xp33_ASAP7_75t_R         295
+     AOI311xp33_ASAP7_75t_R         12
+     AOI31xp33_ASAP7_75t_R          42
+     AOI32xp33_ASAP7_75t_R           7
+     ICGx1_ASAP7_75t_R              21
+     INVx1_ASAP7_75t_R             796
+     NAND2xp33_ASAP7_75t_R        1186
+     NAND3xp33_ASAP7_75t_R         216
+     NAND4xp25_ASAP7_75t_R          85
+     NAND5xp2_ASAP7_75t_R           84
+     NOR2xp33_ASAP7_75t_R          760
+     NOR3xp33_ASAP7_75t_R          151
+     NOR4xp25_ASAP7_75t_R          113
+     NOR5xp2_ASAP7_75t_R            81
+     O2A1O1Ixp33_ASAP7_75t_R       218
+     OA211x2_ASAP7_75t_R            26
+     OA21x2_ASAP7_75t_R             16
+     OA22x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R         157
+     OAI21xp33_ASAP7_75t_R        1002
+     OAI221xp5_ASAP7_75t_R         399
+     OAI222xp33_ASAP7_75t_R         11
+     OAI22xp33_ASAP7_75t_R         272
+     OAI311xp33_ASAP7_75t_R         13
+     OAI31xp33_ASAP7_75t_R          34
+     OAI32xp33_ASAP7_75t_R           4
+     OR2x2_ASAP7_75t_R              47
+     OR3x1_ASAP7_75t_R              36
+     OR4x1_ASAP7_75t_R              37
+     OR5x1_ASAP7_75t_R              13
+     XNOR2xp5_ASAP7_75t_R          471
+     XOR2xp5_ASAP7_75t_R           495
+     ct_mmu_dplru                    1
+     ct_rtu_compare_iid              1
+
+=== mmu_l1itlb ===
+
+   Number of wires:               1440
+   Number of wire bits:           3810
+   Number of public wires:         366
+   Number of public wire bits:    2736
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:               1516
+     $_DFFE_PN0P_                   35
+     $_DFFE_PN1P_                    1
+     $_DFFE_PP_                     28
+     $_DFF_PN0_                      6
+     $_DFF_PN1_                      1
+     A2O1A1Ixp33_ASAP7_75t_R        10
+     AND2x2_ASAP7_75t_R             39
+     AND3x1_ASAP7_75t_R              6
+     AND4x1_ASAP7_75t_R             56
+     AND5x1_ASAP7_75t_R              9
+     AO21x1_ASAP7_75t_R             10
+     AO222x2_ASAP7_75t_R            32
+     AO22x1_ASAP7_75t_R             72
+     AO32x1_ASAP7_75t_R             31
+     AOI211xp5_ASAP7_75t_R           5
+     AOI21xp33_ASAP7_75t_R           9
+     AOI221xp5_ASAP7_75t_R          70
+     AOI222xp33_ASAP7_75t_R        139
+     AOI22xp33_ASAP7_75t_R         498
+     AOI31xp33_ASAP7_75t_R           5
+     AOI32xp33_ASAP7_75t_R           1
+     AOI33xp33_ASAP7_75t_R           8
+     ICGx1_ASAP7_75t_R               3
+     INVx1_ASAP7_75t_R              45
+     NAND2xp33_ASAP7_75t_R         138
+     NAND3xp33_ASAP7_75t_R          26
+     NAND4xp25_ASAP7_75t_R          53
+     NAND5xp2_ASAP7_75t_R           14
+     NOR2xp33_ASAP7_75t_R           47
+     NOR3xp33_ASAP7_75t_R            5
+     NOR4xp25_ASAP7_75t_R            8
+     NOR5xp2_ASAP7_75t_R             8
+     OA21x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R           3
+     OAI21xp33_ASAP7_75t_R           2
+     OAI221xp5_ASAP7_75t_R           1
+     OAI22xp33_ASAP7_75t_R           1
+     OAI31xp33_ASAP7_75t_R           1
+     OR2x2_ASAP7_75t_R               4
+     OR3x1_ASAP7_75t_R              12
+     OR4x1_ASAP7_75t_R               9
+     OR5x1_ASAP7_75t_R               1
+     XNOR2xp5_ASAP7_75t_R           30
+     ct_mmu_iplru                    1
+     ct_mmu_iutlb_entry             28
+     ct_mmu_iutlb_fst_entry          4
+
+=== design hierarchy ===
+
+   ct_mmu_top                        1
+     $paramod$3c1cc4a1ba2c60eeaac14f2a3ce4b465928150b0\mmu_l2tlb      1
+       $paramod$0b0326e5f1df5b0eec61f0f1a77f4b2340b2ddd3\mmu_l2tlb_mb      1
+         $paramod$bd545695cadf9859f8807a059f8b3ce842477dc2\mmu_l2tlb_mb_entry      9
+           gated_clk_cell            1
+       $paramod$2b2a537cb06794a6f1bf647caaeb1ebbce449b7e\mmu_l2tlb_rrpv_wbuf      1
+       $paramod$50cb93d1ee31134b4ee1faab67e812cba1913794\ct_mmu_l2tlb_tag_array      1
+         $paramod$bd478104c511b954dc43b6c6ff7916cd37d555e7\ct_spsram_wrapper      8
+           $paramod$bad096f228fa21ffc0831290ff731d4a5ea830e8\mmu_fpga_ram      1
+         gated_clk_cell              1
+       $paramod$568a23bd67ce69399c0016c342772f4d8d27b191\mmu_l2tlb_replacement_policy      1
+       $paramod$a27066b0d01b90d00c1e1939d896c183ba911266\ct_mmu_l2tlb_rrpv_array      1
+         $paramod$214041ffe4bc257c1171aed31e743d2ade711e88\ct_spsram_wrapper      8
+           $paramod$e135ad6d52c69f3d421819e3ea131b1b79c8e9b8\mmu_fpga_ram      1
+         gated_clk_cell              1
+       $paramod$af9c22a23c36c5322cc504ffb7019b872f05c1c9\ct_mmu_l2tlb_data_array      1
+         $paramod$06c6f5f9e3e415757b4eeeb01eeddc8bdbe2b1cb\ct_spsram_wrapper      8
+           $paramod$9cf00525998e97993780e484eafa17b01201d9cb\mmu_fpga_ram      1
+         gated_clk_cell              1
+       $paramod$e59f323b62502dc52e9d29af7a6596370ba82696\mmu_l2tlb_reqq      1
+         $paramod$9ba41790bf0da81405d4832ef05a289c44fd89b4\mmu_l2tlb_reqq_entry      9
+           gated_clk_cell            1
+       gated_clk_cell                1
+     $paramod\mmu_arb\TRANS_ID_WIDTH=s32'00000000000000000000000000000100      1
+       gated_clk_cell                1
+     $paramod\ptw\ID_WIDTH=s32'00000000000000000000000000000111      1
+       $paramod$077a217e2f3340e63151c456f787a6fa23b94c31\ptw_mbuf      1
+         $paramod$4162707a2ea40e66010faf5ca4b9917de6ca2428\mbuf_entry      9
+           gated_clk_cell            1
+         gated_clk_cell              1
+       $paramod$077a217e2f3340e63151c456f787a6fa23b94c31\twu      4
+         gated_clk_cell              1
+       $paramod$69d23aa7787dc0a233b019fc4c0e2cec0912cf5a\PDE_cache      1
+         $paramod$9b05cadf9cf85ef44ba5b102a3b0da9d101a68d7\L1PDE_cache     16
+           gated_clk_cell            1
+         $paramod$f2346501d2edc7bfce23b680f8318f33e12e2960\L2PDE_cache     16
+           gated_clk_cell            1
+         $paramod\pplru\PDE_ENTRY_NUM=s32'00000000000000000000000000010000      2
+           gated_clk_cell            1
+         gated_clk_cell              1
+       $paramod$73bc3e66ac76929e0c450c391c0be60270c0ecd3\one_to_four_xbar      1
+       gated_clk_cell                1
+     ct_mmu_regs                     1
+     ct_mmu_sysmap                  16
+       ct_mmu_sysmap_hit             8
+     ct_mmu_tlboper                  1
+     mmu_l1dtlb                      1
+       $paramod$278b7951f28d3193809591c0ccf2a6c39fcd775b\mmu_l1dtlb_scheduler      1
+       $paramod$4e216720d6d415d3ef3f93a87ada1754cf47225a\mmu_l1dtlb_mb_entry      8
+       $paramod$4ea0b502cba813ded6d821d97f7656fcae15829b\mmu_l1dtlb_hit_rd      2
+         ct_rtu_compare_iid          1
+         gated_clk_cell              1
+       $paramod$8ed5b6183b8e483f243a8871b965543ba8316c57\mmu_l1dtlb_allocator      1
+         ct_rtu_compare_iid          1
+       $paramod$9f31fb6fe50e45337124accc5a6f7c7a90ab483a\mmu_l1dtlb_expt_cam      1
+       $paramod$b4715ba0c2d2da849c7a077976e04c50ff385c8e\mmu_l1dtlb_install      1
+       ct_mmu_dplru                  1
+       ct_rtu_compare_iid            1
+     mmu_l1itlb                      1
+       ct_mmu_iplru                  1
+       ct_mmu_iutlb_entry           28
+       ct_mmu_iutlb_fst_entry        4
+
+   Number of wires:              58247
+   Number of wire bits:         131416
+   Number of public wires:        8863
+   Number of public wire bits:   77186
+   Number of memories:               0
+   Number of memory bits:            0
+   Number of processes:              0
+   Number of cells:              72326
+     $_ALDFFE_PNP_                 528
+     $_ALDFF_PN_                   176
+     $_DFFE_PN0N_                  288
+     $_DFFE_PN0P_                12243
+     $_DFFE_PN1P_                    4
+     $_DFFE_PP_                     92
+     $_DFF_PN0_                    440
+     $_DFF_PN1_                      1
+     $mem_v2                        26
+     A2O1A1Ixp33_ASAP7_75t_R      1291
+     A2O1A1O1Ixp25_ASAP7_75t_R     425
+     AND2x2_ASAP7_75t_R            775
+     AND3x1_ASAP7_75t_R            847
+     AND4x1_ASAP7_75t_R            370
+     AND5x1_ASAP7_75t_R            131
+     AO211x2_ASAP7_75t_R             2
+     AO21x1_ASAP7_75t_R            886
+     AO221x1_ASAP7_75t_R           104
+     AO222x2_ASAP7_75t_R           635
+     AO22x1_ASAP7_75t_R            652
+     AO32x1_ASAP7_75t_R            314
+     AOI211xp5_ASAP7_75t_R        1527
+     AOI21xp33_ASAP7_75t_R        3009
+     AOI221xp5_ASAP7_75t_R        1529
+     AOI222xp33_ASAP7_75t_R        739
+     AOI22xp33_ASAP7_75t_R        2383
+     AOI311xp33_ASAP7_75t_R         75
+     AOI31xp33_ASAP7_75t_R         668
+     AOI321xp33_ASAP7_75t_R         16
+     AOI32xp33_ASAP7_75t_R         155
+     AOI33xp33_ASAP7_75t_R          44
+     HB1xp67_ASAP7_75t_R             3
+     ICGx1_ASAP7_75t_R              61
+     INVx1_ASAP7_75t_R            8576
+     MAJIxp5_ASAP7_75t_R            19
+     MAJx2_ASAP7_75t_R              18
+     NAND2xp33_ASAP7_75t_R        7479
+     NAND3xp33_ASAP7_75t_R        1393
+     NAND4xp25_ASAP7_75t_R        1262
+     NAND5xp2_ASAP7_75t_R          810
+     NOR2xp33_ASAP7_75t_R         3405
+     NOR3xp33_ASAP7_75t_R         1280
+     NOR4xp25_ASAP7_75t_R         1060
+     NOR5xp2_ASAP7_75t_R           325
+     O2A1O1Ixp33_ASAP7_75t_R       969
+     OA211x2_ASAP7_75t_R           135
+     OA21x2_ASAP7_75t_R            282
+     OA222x2_ASAP7_75t_R            37
+     OA22x2_ASAP7_75t_R             30
+     OA31x2_ASAP7_75t_R              2
+     OA33x2_ASAP7_75t_R              1
+     OAI211xp5_ASAP7_75t_R        1227
+     OAI21xp33_ASAP7_75t_R        6999
+     OAI221xp5_ASAP7_75t_R        1075
+     OAI222xp33_ASAP7_75t_R         33
+     OAI22xp33_ASAP7_75t_R        1213
+     OAI311xp33_ASAP7_75t_R         82
+     OAI31xp33_ASAP7_75t_R         396
+     OAI321xp33_ASAP7_75t_R          1
+     OAI32xp33_ASAP7_75t_R         130
+     OAI33xp33_ASAP7_75t_R          10
+     OR2x2_ASAP7_75t_R             423
+     OR3x1_ASAP7_75t_R             343
+     OR4x1_ASAP7_75t_R             428
+     OR5x1_ASAP7_75t_R              91
+     XNOR2xp5_ASAP7_75t_R         1078
+     XOR2xp5_ASAP7_75t_R          1275
+

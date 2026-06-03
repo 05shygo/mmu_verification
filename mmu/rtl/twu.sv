@@ -1083,6 +1083,8 @@ always_comb begin
 			ptw_nxt_st[2:0] = TWU_1G_CRS1;
 		else if(csr_req & csr_grant[0])
 			ptw_nxt_st[2:0] = TWU_2M_CRS1;
+		else
+				ptw_nxt_st[2:0] = TWU_IDLE;
 		end
 		TWU_1G_CRS1:begin
 			ptw_nxt_st[2:0] = TWU_1G_CRS2;
@@ -1213,6 +1215,8 @@ always_comb begin
 			ptw_nxt_st[2:0] = TWU_1G_CRS;
 		else if(csr_req & csr_grant[0])
 			ptw_nxt_st[2:0] = TWU_2M_CRS;
+		else
+				ptw_nxt_st[2:0] = TWU_IDLE;
 		end
 		TWU_1G_CRS:begin
 		if(twu_csr_cross)

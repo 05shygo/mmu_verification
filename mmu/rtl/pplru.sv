@@ -124,9 +124,9 @@ always_comb begin
     int node;
 
     plru_bits_next[PDE_PLRU_NODE_NUM-1:0] = plru_bits[PDE_PLRU_NODE_NUM-1:0];
+    node = 0;
 
     if(plru_write_updt) begin
-        node = 0;
 
         for(int level = 0; level < PDE_INDEX_WIDTH; level = level + 1) begin
             plru_bits_next[node] = !refill_num_index[PDE_INDEX_WIDTH-1-level];

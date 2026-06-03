@@ -1,0 +1,175 @@
+#=============================================================================
+# Yosys Synthesis Script: ct_mmu_top -> ASAP7 RVT TT
+# Target: Yosys 0.20, ASAP7 PDK rev28 (asap7sc7p5t_28), NLDM liberty flow
+#=============================================================================
+
+#-------------------------------------------------------------------------
+# Step 0: Global settings
+#-------------------------------------------------------------------------
+setundef -zero
+
+#-------------------------------------------------------------------------
+# Step 1: Read RTL files with SystemVerilog mode and defines
+#-------------------------------------------------------------------------
+# Define macros for ASIC synthesis
+verilog_defines -D PA_WIDTH=40 -D MMU_EXPT_TRACE_ONCE_EN
+
+# Read sysmap.h to define SYSMAP_BASE_ADDR* and SYSMAP_FLG* macros
+read_verilog -sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/sysmap.h
+
+# ---- Core MMU RTL ----
+# All files must use -sv even with .v extension (they use 'logic' keyword)
+read_verilog -sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_entry.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_huge_entry.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_entry.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_fst_entry.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_data_array.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_rrpv_array.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_tag_array.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap_hit.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv \
+    syn/scripts/syn_mbuf_entry.sv \
+    syn/scripts/syn_mmu_arb.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_allocator.sv \
+    syn/scripts/syn_mmu_l1dtlb_expt_cam.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv \
+    syn/scripts/syn_mmu_l1dtlb_install.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv \
+    syn/scripts/syn_mmu_l1dtlb_scheduler.sv \
+    syn/scripts/syn_mmu_l1dtlb.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb.sv \
+    syn/scripts/syn_mmu_l2tlb_replacement_policy.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq_entry.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq.sv \
+    syn/scripts/syn_mmu_l2tlb_rrpv_wbuf.sv \
+    syn/scripts/syn_mmu_l2tlb.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/one_to_four_xbar.sv \
+    syn/scripts/syn_PDE_cache.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv \
+    syn/scripts/syn_ptw_mbuf.sv \
+    syn/scripts/syn_ptw.sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv
+
+# ---- External dependencies ----
+read_verilog -sv \
+    /tmp/relate_rtl/clk/gated_clk_cell.v \
+    /tmp/relate_rtl/rtu/ct_rtu_compare_iid.v
+
+# ---- SRAM wrappers + FPGA RAM ----
+read_verilog -sv \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spsram_256x196.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spsram_256x84.v \
+    /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spram_wrapper.sv \
+    syn/scripts/syn_mmu_fpga_ram.sv
+
+# ---- Behavioral SRAM replacements (for missing ct_f_spsram_*) ----
+read_verilog -sv syn/scripts/ct_f_spsram_behav.v
+
+# ---- Top-level module (read last) ----
+read_verilog -sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_top.v
+
+#-------------------------------------------------------------------------
+# Step 2: Techmap gated_clk_cell -> ASAP7 ICG
+#-------------------------------------------------------------------------
+# Blackbox declaration for the ASAP7 ICG cell
+# (actual implementation comes from the liberty file during abc mapping)
+read_verilog -sv syn/scripts/asap7_icg_blackbox.v
+
+# Apply techmap to replace all gated_clk_cell instances with ASAP7 ICG primitives
+techmap -map syn/scripts/asap7_icg_map.v
+
+#-------------------------------------------------------------------------
+# Step 3: Elaborate the design hierarchy
+#-------------------------------------------------------------------------
+hierarchy -check -top ct_mmu_top
+
+#-------------------------------------------------------------------------
+# Step 4: Technology-independent synthesis passes
+#-------------------------------------------------------------------------
+# Convert processes (always blocks, initial blocks) to RTL netlist
+proc
+
+# Check for unused/undriven signals
+check
+
+# Convert memories to basic cells (keep as block RAM; do not map to FFs yet)
+memory -nomap
+
+# Basic optimization
+opt -full
+
+# Clean up dead logic
+opt_clean
+
+# FSM extraction and re-encoding
+fsm
+
+# Final optimization before tech mapping
+opt
+
+#-------------------------------------------------------------------------
+# Step 5: Load liberty files for technology mapping
+#-------------------------------------------------------------------------
+# Load all 5 RVT TT NLDM liberty files into Yosys's internal cell database.
+# abc will use the internal database without needing an explicit -liberty flag.
+read_liberty -lib \
+    /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib \
+    /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib \
+    /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib \
+    /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM/asap7sc7p5t_AO_RVT_TT_nldm_211120.lib \
+    /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM/asap7sc7p5t_OA_RVT_TT_nldm_211120.lib
+
+#-------------------------------------------------------------------------
+# Step 6: Technology mapping with abc
+#-------------------------------------------------------------------------
+# -D 1000 = target 1000 ps (1 GHz). Relax to 5000 (200 MHz) for first pass.
+# Techmap generic cells -> ABC primitives before abc
+techmap
+
+# abc technology mapping with merged liberty file
+# -D 5000 = target 5000 ps (200 MHz), conservative first pass
+abc -liberty syn/scripts/asap7_rvt_tt_merged.lib -D 5000
+
+#-------------------------------------------------------------------------
+# Step 7: Post-mapping optimization
+#-------------------------------------------------------------------------
+opt_clean
+opt -full
+
+# Map flip-flops to specific SEQ cells if needed
+# dfflegalize  # disabled: async set/reset cells not supported by dfflegalize with ASAP7 SEQ
+
+#-------------------------------------------------------------------------
+# Step 8: Generate reports
+#-------------------------------------------------------------------------
+tee -o syn/reports/mmu_synth_stat.txt stat
+tee -o syn/reports/mmu_synth_cells.txt stat -width
+tee -o syn/reports/mmu_synth_ports.txt select -list ct_mmu_top/*
+
+#-------------------------------------------------------------------------
+# Step 9: Write outputs
+#-------------------------------------------------------------------------
+# Gate-level netlist (structural Verilog with ASAP7 standard cells)
+write_verilog -noattr -noexpr -norename \
+    syn/results/ct_mmu_top_netlist.v
+
+# JSON for inspection
+write_json syn/results/ct_mmu_top.json
+
+#-------------------------------------------------------------------------
+# Step 10: Summary
+#-------------------------------------------------------------------------
+echo on
+select -count ct_mmu_top/*
+echo off
+
+design -save ct_mmu_top_asap7

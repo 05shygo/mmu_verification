@@ -1,0 +1,245 @@
+//!********************************************************************
+//!  OpenRiscv2030
+//!
+//!    L1DTLB Install and Wakeup Logic (3-Way Arbitration)
+//!    Handles collision between PTW, JTLB, and WFI entries
+//!********************************************************************
+
+module mmu_l1dtlb_install #(
+    parameter MB_DEPTH   = 8,
+    parameter VPN_WIDTH  = 27,
+    parameter PPN_WIDTH  = 28,
+    parameter FLG_WIDTH  = 14,
+    parameter IID_WIDTH  = 7
+)(
+    // Clock and Reset
+    input  logic                     cpurst_b,
+    input  logic                     install_clk,
+    
+    // Miss Buffer Entry Status
+    input  logic [MB_DEPTH-1:0]                mb_entry_vld,
+    input  logic [(MB_DEPTH-1-(0)+1)*(2-(0)+1)-1:0] mb_entry_state,
+    input  logic [(MB_DEPTH-1-(0)+1)*(VPN_WIDTH-1-(0)+1)-1:0] mb_entry_vpn,
+    input  logic [(MB_DEPTH-1-(0)+1)*(IID_WIDTH-1-(0)+1)-1:0] mb_entry_iid,
+    input  logic [(MB_DEPTH-1-(0)+1)*(2-(0)+1)-1:0] mb_entry_pgs,
+    //input  logic [MB_DEPTH-1:0]                mb_entry_port_id,
+    
+    // WFI Data
+    input  logic [(MB_DEPTH-1-(0)+1)*(PPN_WIDTH-1-(0)+1)-1:0] mb_entry_ppn,
+    input  logic [(MB_DEPTH-1-(0)+1)*(FLG_WIDTH-1-(0)+1)-1:0] mb_entry_flg,
+    input  logic [MB_DEPTH-1:0]                mb_entry_wfi,
+    
+    // Grant Output
+    output logic [MB_DEPTH-1:0]                mb_refill_gnt_bus,
+    
+    // JTLB Refill Interface (Fresh L2)
+    input  logic                     jtlb_dutlb_ref_pavld,
+    input  logic                     jtlb_dutlb_ref_cmplt,
+    input  logic [2:0]               jtlb_dutlb_ref_id,
+    input  logic [VPN_WIDTH-1:0]     jtlb_utlb_ref_vpn,
+    input  logic [PPN_WIDTH-1:0]     jtlb_utlb_ref_ppn,
+    input  logic [FLG_WIDTH-1:0]     jtlb_utlb_ref_flg,
+    input  logic                     jtlb_dutlb_pgflt,
+    input  logic [2:0]		     l2tlb_l1dtlb_ref_pgs,
+    //input  logic                     jtlb_dutlb_acc_err,
+
+    // PTW Refill Interface (Fresh PTW)
+    input  logic                     ptw_l1dtlb_ref_pavld,
+    input  logic                     ptw_l1dtlb_ref_cmplt,
+    input  logic [2:0]               ptw_l1dtlb_ref_id,
+    input  logic [26:0]              ptw_l1tlb_ref_vpn, // 27 bits matches VPN_WIDTH
+    input  logic [27:0]              ptw_l1tlb_ref_ppn, // 28 bits matches PPN_WIDTH
+    input  logic                     ptw_l1tlb_acc_err,
+    input  logic                     ptw_l1tlb_pgflt,
+    input  logic [13:0]              ptw_l1tlb_ref_flg, // 14 bits matches FLG_WIDTH
+    input  logic [2:0]		     ptw_l1dtlb_ref_pgs,
+
+    // TLB Entry Array Update Interface
+    output logic                     utlb_refill_vld,
+    output logic [3:0]               utlb_refill_idx,
+    output logic [VPN_WIDTH-1:0]     utlb_refill_vpn,
+    output logic [PPN_WIDTH-1:0]     utlb_refill_ppn,
+    output logic [FLG_WIDTH-1:0]     utlb_refill_flg,
+    output logic [2:0]		     utlb_refill_pgs,
+    
+    // PLRU & Wakeup
+    input  logic [15:0]              plru_bank0_refill_way,
+    input  logic [15:0]              plru_bank1_refill_way,
+    output logic                     plru_refill_updt,
+    output logic [15:0]              plru_refill_way,
+    
+    // Wakeup to LSIQ
+    output logic [11:0]              mmu_lsu_tlb_wakeup
+);
+
+localparam EID_WIDTH = $clog2(MB_DEPTH);
+localparam STATE_ABT = 3'b101;
+
+//!************************************************
+//! 1. Identify Fresh Requests (PTW & JTLB)
+//!************************************************
+logic       req_ptw_vld;
+logic       req_jtlb_vld;
+logic       req_ptw_expt;
+logic       req_jtlb_expt;
+logic       req_ptw_aborted;
+logic       req_jtlb_aborted;
+logic [EID_WIDTH-1:0] id_ptw;
+logic [EID_WIDTH-1:0] id_jtlb;
+
+assign id_ptw  = ptw_l1dtlb_ref_id;
+assign id_jtlb = jtlb_dutlb_ref_id;
+
+assign req_ptw_expt  = ptw_l1tlb_pgflt || ptw_l1tlb_acc_err;
+assign req_jtlb_expt = jtlb_dutlb_pgflt; //|| jtlb_dutlb_acc_err;
+
+assign req_ptw_aborted  = (mb_entry_state[(id_ptw)*(2-(0)+1)+0 +: (2-(0)+1)] == STATE_ABT);
+assign req_jtlb_aborted = (mb_entry_state[(id_jtlb)*(2-(0)+1)+0 +: (2-(0)+1)] == STATE_ABT);
+
+// Validity Check: Complete + Valid MB + Not Exception + Not Aborted
+assign req_ptw_vld = ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt && 
+                     mb_entry_vld[id_ptw] && !req_ptw_expt && !req_ptw_aborted;
+
+assign req_jtlb_vld = jtlb_dutlb_ref_pavld && jtlb_dutlb_ref_cmplt && 
+                      mb_entry_vld[id_jtlb] && !req_jtlb_expt && !req_jtlb_aborted;
+
+//!************************************************
+//! 2. Identify WFI Request
+//!************************************************
+logic       req_wfi_vld;
+logic [EID_WIDTH-1:0] id_wfi;
+
+// Priority Encoder for WFI (Find First Set)
+always_comb begin
+    req_wfi_vld = 1'b0;
+    id_wfi      = '0;
+    for (int i = 0; i < MB_DEPTH; i++) begin
+        if (mb_entry_wfi[i] && !req_wfi_vld) begin
+            req_wfi_vld = 1'b1;
+            id_wfi      = i[EID_WIDTH-1:0];
+        end
+    end
+end
+
+//!************************************************
+//! 3. Arbitration (Priority: WFI > PTW > JTLB/L2TLB)
+//!************************************************
+logic sel_ptw;
+logic sel_jtlb;
+logic sel_wfi;
+
+// Strict Priority Logic
+assign sel_wfi  = req_wfi_vld;
+assign sel_ptw  = req_ptw_vld  && !req_wfi_vld;
+assign sel_jtlb = req_jtlb_vld && !req_wfi_vld && !req_ptw_vld;
+
+assign utlb_refill_vld = sel_ptw || sel_jtlb || sel_wfi;
+
+//!************************************************
+//! 4. Data Routing (MUX)
+//!************************************************
+always_comb begin
+    if (sel_wfi) begin
+        utlb_refill_vpn = mb_entry_vpn[(id_wfi)*(VPN_WIDTH-1-(0)+1)+0 +: (VPN_WIDTH-1-(0)+1)];
+        utlb_refill_ppn = mb_entry_ppn[(id_wfi)*(PPN_WIDTH-1-(0)+1)+0 +: (PPN_WIDTH-1-(0)+1)];
+        utlb_refill_flg = mb_entry_flg[(id_wfi)*(FLG_WIDTH-1-(0)+1)+0 +: (FLG_WIDTH-1-(0)+1)];
+	utlb_refill_pgs = mb_entry_pgs[(id_wfi)*(2-(0)+1)+0 +: (2-(0)+1)];
+    end else if (sel_ptw) begin
+        utlb_refill_vpn = ptw_l1tlb_ref_vpn;
+        utlb_refill_ppn = ptw_l1tlb_ref_ppn;
+        utlb_refill_flg = ptw_l1tlb_ref_flg;
+	utlb_refill_pgs = ptw_l1dtlb_ref_pgs;
+    end else if (sel_jtlb) begin
+        utlb_refill_vpn = jtlb_utlb_ref_vpn;
+        utlb_refill_ppn = jtlb_utlb_ref_ppn;
+        utlb_refill_flg = jtlb_utlb_ref_flg;
+	utlb_refill_pgs = l2tlb_l1dtlb_ref_pgs;
+    end else begin
+        utlb_refill_vpn = '0;
+        utlb_refill_ppn = '0;
+        utlb_refill_flg = '0;
+	utlb_refill_pgs = '0;
+    end
+end
+
+//!************************************************
+//! 5. Grant Generation (To MB)
+//!************************************************
+always_comb begin
+    mb_refill_gnt_bus = '0;
+    
+    if (sel_ptw) begin
+        mb_refill_gnt_bus[id_ptw] = 1'b1;
+    end
+    
+    if (sel_jtlb) begin
+        mb_refill_gnt_bus[id_jtlb] = 1'b1;
+    end
+    
+    if (sel_wfi) begin
+        mb_refill_gnt_bus[id_wfi] = 1'b1;
+    end
+    
+    // Collision behavior:
+    // If a higher priority install wins, lower priority fresh refills do not
+    // get a grant and their MB entries wait in WFI state.
+    // The MB Entry logic (state machine) sees (Refill Valid && !Grant) -> goes to WFI state.
+end
+
+//!************************************************
+//! 6. PLRU Replacement (Round Robin/PLRU)
+//!************************************************
+logic [3:0] replace_idx;
+logic [3:0] plru_selected_way;
+
+always_comb begin
+    plru_selected_way = 4'b0;
+    for (int i = 0; i < 16; i++) begin
+        if (plru_bank0_refill_way[i] && (plru_selected_way == 4'b0)) begin
+            plru_selected_way = i[3:0];
+        end
+    end
+end
+
+assign replace_idx      = plru_selected_way;
+assign utlb_refill_idx  = replace_idx;
+assign plru_refill_updt = utlb_refill_vld;
+assign plru_refill_way  = (16'b1 << replace_idx);
+
+//!************************************************
+//! 7. Wakeup Logic
+//!************************************************
+// We need to generate a wakeup pulse for the LSU IID when a translation completes.
+// Wakeup occurs when:
+// 1. Refill data is installed into L1DTLB (fresh PTW/JTLB winner or WFI winner)
+// 2. LSU request hits an exception entry (generated in expt CAM)
+
+logic	     wakeup_event;
+assign wakeup_event = sel_ptw || sel_jtlb || sel_wfi;
+assign mmu_lsu_tlb_wakeup = {12{wakeup_event}};
+
+
+
+//always_comb begin
+//    wakeup_vec_next = '0;
+//    
+//    // --- 1. Fresh PTW ---
+//    // If it wins OR if it faulted (but wasn't aborted)
+//    if ((sel_ptw) || (ptw_l1dtlb_ref_cmplt && req_ptw_expt && !req_ptw_aborted)) begin
+//        wakeup_vec_next[mb_entry_iid[(id_ptw)*(IID_WIDTH-1-(0)+1)+0 +: (IID_WIDTH-1-(0)+1)] % 12] = 1'b1;
+//    end
+//    
+//    // --- 2. Fresh JTLB ---
+//    // If it wins OR if it faulted (but wasn't aborted)
+//    if ((sel_jtlb) || (jtlb_dutlb_ref_cmplt && req_jtlb_expt && !req_jtlb_aborted)) begin
+//        wakeup_vec_next[mb_entry_iid[(id_jtlb)*(IID_WIDTH-1-(0)+1)+0 +: (IID_WIDTH-1-(0)+1)] % 12] = 1'b1;
+//    end
+//    
+//    // --- 3. WFI ---
+//    // Only if it wins (WFI entries don't carry exceptions, exceptions are handled immediately upon arrival)
+//    if (sel_wfi) begin
+//        wakeup_vec_next[mb_entry_iid[(id_wfi)*(IID_WIDTH-1-(0)+1)+0 +: (IID_WIDTH-1-(0)+1)] % 12] = 1'b1;
+//    end
+//end
+
+endmodule

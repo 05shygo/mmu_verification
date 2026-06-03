@@ -669,6 +669,7 @@ always_comb begin
 	mbuf_twu_idx[3:0] = 4'b0;
 	mbuf_twu_lvl[PTE_LEVEL-1:0] = {PTE_LEVEL{1'b0}};
     mbuf_twu_data[DATA_WIDTH-1:0] = {DATA_WIDTH{1'b0}};
+    mbuf_twu_pmpflg[7:0] = 8'b0;
     for (int i = 0; i < MBUF_ENTRY_NUM; i++) begin
         if(write_back_grant[i])begin
 			mbuf_twu_vpn[VPN_WIDTH-1:0] = mbuf_entry_vpn[i];

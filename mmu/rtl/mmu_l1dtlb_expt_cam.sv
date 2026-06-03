@@ -124,7 +124,7 @@ module mmu_l1dtlb_expt_cam #(
   end
 
   always_comb begin
-    expt_wakeup = {12{consume0_eff || consume1_eff}};
+    expt_wakeup = expt_wr0_vld | expt_wr1_vld;//{12{consume0_eff || consume1_eff}};
   end
 
   assign same_wr_eid = expt_wr0_vld && expt_wr1_vld

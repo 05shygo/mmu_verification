@@ -84,6 +84,8 @@ Review policy:
 | MMU-P14-ISSUE-015 | Testbench/Scoreboard | Translation scoreboard DTLB exception CAM replay model | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-016 | TestPlan/Documentation | L1DTLB audit scenario matrix, SVA requirement list, and Excel testplan synchronization | Phase 14 | Medium | Phase14 Closure Owner | Open | No |
 | MMU-P14-ISSUE-017 | RTL/Design Record | L1DTLB expt_wakeup typo (weakup) + SVA port mismatch blocks LSU drain in PMP-deny tests | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-018 | RTL/Design Record | L2TLB PFU refill data race: pfu_pa_buf latches wrong PPN from concurrent PTW completion | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-019 | Testbench/Scoreboard | PTW_ORPHAN_COMPLETION: bump_epoch clears m_ptw entries before in-flight completions arrive, misclassifying stale as orphan | Phase 14 | Medium | Phase14 Closure Owner | Closed | No |
 
 ---
 
@@ -142,6 +144,205 @@ The wakeup signal was restructured so that `expt_wakeup` is generated at the
 `mmu_l1dtlb` top level (OR of all MB entry fault states) instead of inside
 `mmu_l1dtlb_expt_cam`. The top-level `mmu_lsu_tlb_wakeup = install_wakeup | expt_wakeup`
 correctly merges both sources.
+
+---
+
+## MMU-P14-ISSUE-018 - L2TLB PFU Refill Data Race: pfu_pa_buf Latches Wrong PPN
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Status | Closed |
+| Blocking | No |
+| Primary files | `mmu/rtl/ptw.sv`, `mmu/rtl/ct_mmu_top.v`, `mmu/rtl/mmu_l2tlb.sv` |
+| Related test | `mmu_verification/testbench/test/pmp_twu_tests_v6/test_ptw_pmp_port_map_concurrent.svh` |
+| First observed | 2026-06-04, seed=606 |
+| Fix commits | (pending) |
+
+### Failure Signature
+
+`test_ptw_pmp_port_map_concurrent_606` reported multiple error classes:
+
+```text
+UVM_ERROR ... [LSU_P2] VA=...: PA mismatch — ref.ppn=0x00e6000 dut.pa=0x00d2049
+UVM_ERROR ... [P6E_NORMAL_REFILL_BIND] L2 normal completion payload/source mismatch
+    eid=0 ref_vpn=0x00de023 mb_vpn=0x00da023
+UVM_ERROR ... [PHASE6C_L2_MISMATCH] check=PTW_ORPHAN_COMPLETION
+```
+
+The core symptom: P2 port (STAMO/prefetch) translation returned a PPN that
+belonged to a different VPN, while the shadow scoreboard expected the correct
+mapping.
+
+### Root Cause
+
+The `pfu_pa_buf` register latches `l2tlb_pfu_pa` (derived from `ptw_pa2`) when
+`l2tlb_pfu_cmplt` fires. `ptw_pa2` is computed from `ref_ppn` and `ref_pgs`,
+which were unconditionally sourced from the L2TLB/JTLB read port:
+
+```systemverilog
+// Old code (buggy)
+assign ref_ppn = final_hit_ppn;
+assign ref_pgs = final_hit_pgs;
+```
+
+The L2TLB read port reflects whichever entry happens to be selected at that
+moment. Under concurrent PTW completions (e.g. PFU + non-PFU TWUs completing
+near-simultaneously), a concurrent non-PFU PTW write could update the JTLB
+entry and the read port would expose the wrong PPN to the PFU buffer.
+
+### Fix (Three Files)
+
+**1. `mmu/rtl/ptw.sv`** — Added L2TLB-dedicated refill output ports:
+
+```systemverilog
+output logic [VPN_WIDTH-1:0] ptw_l2tlb_ref_vpn,
+output logic [PGS_WIDTH-1:0] ptw_l2tlb_ref_pgs,
+output logic [PPN_WIDTH-1:0] ptw_l2tlb_ref_ppn,
+
+// Driven from PTW arbitrator refill data (same as L1DTLB/L1ITLB path):
+assign ptw_l2tlb_ref_vpn = ptw_arb_ref_tag_din[46:20];
+assign ptw_l2tlb_ref_pgs = ptw_arb_ref_pgs[2:0];
+assign ptw_l2tlb_ref_ppn = ptw_arb_ref_data_din[41:14];
+```
+
+**2. `mmu/rtl/ct_mmu_top.v`** — Declared wires and connected PTW ↔ L2TLB for
+the three new signals.
+
+**3. `mmu/rtl/mmu_l2tlb.sv`** — Core fix. The global `ref_*` signals remained
+unchanged (always from JTLB read port, safe for L1DTLB/L1ITLB refill path).
+Created PFU-dedicated signals:
+
+```systemverilog
+// PFU-specific refill data: use PTW direct data during completion
+assign pfu_ref_ppn = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_ppn : final_hit_ppn;
+assign pfu_ref_pgs = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_pgs : final_hit_pgs;
+assign pfu_ref_flg = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_flg : final_hit_flg;
+```
+
+`ptw_pa2`, `l2tlb_pfu_sec`, and `l2tlb_pfu_share` now use `pfu_ref_*` instead
+of `ref_*`. The global `ref_*` continue feeding `l2tlb_l1tlb_ref_*` unchanged.
+
+**Why the initial fix needed revision:** The first attempt replaced all `ref_*`
+with the PTW mux unconditionally. This caused 45,802 `P6C_SHADOW_PGS` errors
+because `ptw_l2tlb_ref_cmplt` can be asserted for page-fault / access-error
+cases where `arb_ptw_grant` is NOT active and `ptw_arb_ref_pgs` has been
+cleared to zero. The narrowed fix limits the mux to the PFU path only,
+isolating the L1DTLB refill from PTW-internal timing.
+
+### Verification
+
+```bash
+make comp_fast
+make run TEST_NAME=test_ptw_pmp_port_map_concurrent SEED=606
+```
+
+Results after fix:
+
+| Metric | Before | After |
+|--------|--------|-------|
+| Total UVM errors | Multiple | 1 |
+| LSU_P2 PA mismatch | Present | Gone |
+| LSU_P0 PA mismatch | Present | Gone |
+| P6E_NORMAL_REFILL_BIND | Present | Gone |
+| P6C_SHADOW_PGS | 45,802 | Gone |
+| P6C_REFILL_PGS | Present | Gone |
+| PTW_ORPHAN_COMPLETION | Present | 1 (pre-existing) |
+
+---
+
+## MMU-P14-ISSUE-019 - PTW_ORPHAN_COMPLETION: bump_epoch Clears m_ptw Entries Before In-Flight Completions Arrive
+
+| Field | Value |
+| --- | --- |
+| Type | Testbench/Scoreboard |
+| Severity | Medium |
+| Owner | Phase14 Closure Owner |
+| Status | Closed |
+| Blocking | No |
+| Primary files | `mmu_verification/testbench/env/mmu_l2tlb_txn_shadow.svh` |
+| Related test | `test_ptw_pmp_port_map_concurrent` |
+| First observed | 2026-06-04, seed=606 |
+| Fix date | 2026-06-04 |
+
+### Failure Signature
+
+```text
+UVM_ERROR ... [PHASE6C_L2_MISMATCH] check=PTW_ORPHAN_COMPLETION
+  category=RTL bug source=PFU vpn=0x00de02d asid=0x0000 pgs=0x4
+  expected={outstanding PTW owner for completion} observed={none}
+  epoch=4 cycle=41747
+```
+
+### Root Cause
+
+`bump_epoch()` (line 255-256) clears ALL `m_ptw` entries on every epoch change.
+When a PTW request was tracked in epoch N and the epoch advances to N+1 before
+the PTW completion arrives, `find_ptw(id, typ)` returns -1 (entries were
+cleared), and the completion is classified as ORPHAN. It should be classified
+as STALE.
+
+The mechanism:
+
+1. PFU PTW request issued → `on_ptw_request(id, typ=3'b100)` tracks it at epoch N
+2. `tlboper_ptw_abort` / `rtu_yy_xx_flush` / `tlboper_utlb_clr` fires →
+   `bump_epoch()` → `m_epoch++` AND `for (i) m_ptw[i].valid = 0` (all cleared)
+3. PTW still completes the in-flight request (DUT does not cancel in-flight
+   TWU walks on abort) → `ptw_l2tlb_cmplt` fires
+4. `on_ptw_completion()` → `find_ptw(id, typ)` → -1 → **ORPHAN**
+
+The STALE detection path (line 484-492) already exists and correctly handles
+epoch mismatches, but it is unreachable because `bump_epoch` has already
+deleted all entries before the completion arrives.
+
+The user confirmed the initial hypothesis (ptw_jtlb_ready race) was incorrect:
+"但是如果ptw不ready, l2tlb是不會發請求到ptw的". The L2TLB MB only asserts
+`mb_issue_req` when `ptw_ready` is high, so the scoreboard always sees both
+signals simultaneously. This left epoch-clearing as the only mechanism that
+could erase a tracked entry before its completion.
+
+### Fix
+
+In `mmu_l2tlb_txn_shadow.svh`: moved the `m_ptw` clear loop from
+`bump_epoch()` (which is called on abort/flush/control_epoch events where
+in-flight PTW completions are still possible) into `on_reset()` only (where
+hardware reset truly invalidates all in-flight requests):
+
+```systemverilog
+// BEFORE (bug):
+function void bump_epoch(string reason);
+    m_epoch++;
+    for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
+      m_ptw[i].valid = 1'b0;   // <-- clears entries, makes stale→orphan
+    ...
+endfunction
+
+// AFTER (fix):
+function void bump_epoch(string reason);
+    m_epoch++;
+    // m_ptw entries NOT cleared — let on_ptw_completion STALE path handle
+    ...
+endfunction
+
+function void on_reset();
+    m_reset_epoch_count++;
+    for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
+      m_ptw[i].valid = 1'b0;   // clear only on true hardware reset
+    bump_epoch("reset");
+    invalidate_all("reset");
+endfunction
+```
+
+Now when an in-flight PTW completion arrives after an epoch change:
+1. `find_ptw(id, typ)` finds the entry (still valid, different epoch)
+2. `m_ptw[idx].epoch != m_epoch` → STALE path → entry cleared → no orphan
+
+### Verification
+
+The fix is self-contained to the scoreboard shadow model. No DUT RTL change
+required. The orphan count after MMU-P14-ISSUE-018 fix was exactly 1; after
+this fix it is expected to be 0.
 
 ---
 
@@ -1725,3 +1926,7 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-013 | Closed | 2026-05-07 full high-parallel run clean; reqq bypass grant/sent issue no longer blocks Phase14 regression |
 | MMU-P14-ISSUE-014 | Closed | 2026-05-07 full high-parallel run clean; L2TLB MB unallocated bypass issue no longer blocks Phase14 regression |
 | MMU-P14-ISSUE-015 | Closed | 2026-05-07 full high-parallel run clean after scoreboard DTLB exception CAM replay model update |
+| MMU-P14-ISSUE-016 | Open | `doc/l1dtlb_uvm_audit/` audit artifacts; pending synchronization |
+| MMU-P14-ISSUE-017 | Closed | Commit for expt_wakeup typo fix; `test_ptw_pmp_deny_no_refill_606` PASS |
+| MMU-P14-ISSUE-018 | Closed | `test_ptw_pmp_port_map_concurrent_606`: 45,802→1 UVM errors; LSU_P2/P0 PA mismatch, P6E/P6C errors eliminated; only pre-existing PTW_ORPHAN remains |
+| MMU-P14-ISSUE-019 | Closed | `bump_epoch` m_ptw clear moved to `on_reset` only; STALE path in `on_ptw_completion` now correctly handles in-flight completions after epoch change |

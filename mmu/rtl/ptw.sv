@@ -168,7 +168,10 @@ module ptw #(
     output logic [TYPE_WIDTH-1:0]  ptw_l2tlb_type,
     output logic [ID_WIDTH-1:0]    ptw_l2tlb_id,
     output logic [FLG_WIDTH-1:0]   ptw_l2tlb_flg,
-        
+    output logic [VPN_WIDTH-1:0]   ptw_l2tlb_ref_vpn,
+    output logic [PGS_WIDTH-1:0]   ptw_l2tlb_ref_pgs,
+    output logic [PPN_WIDTH-1:0]   ptw_l2tlb_ref_ppn,
+
     output logic                   ptw_jtlb_ready,
     input  logic                   tlboper_ptw_abort,
 //output logic            ptw_top_imiss,
@@ -1155,6 +1158,10 @@ assign ptw_l1itlb_ref_flg = ptw_arb_ref_data_din[FLG_WIDTH-1:0];
 assign ptw_l1itlb_ref_acc_err = ptw_l2tlb_ref_acc_err & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011);
 assign ptw_l1itlb_pgflt  = ptw_l2tlb_ref_pgflt & (ptw_l2tlb_type[TYPE_WIDTH-1:0] == 3'b011);
 
+// to l2tlb
+assign ptw_l2tlb_ref_vpn = ptw_arb_ref_tag_din[46:20];
+assign ptw_l2tlb_ref_pgs = ptw_arb_ref_pgs[2:0];
+assign ptw_l2tlb_ref_ppn = ptw_arb_ref_data_din[41:14];
 
 assign ptw_arb_vpn[VPN_WIDTH-1:0] = ptw_arb_ref_tag_din[46:20];
 

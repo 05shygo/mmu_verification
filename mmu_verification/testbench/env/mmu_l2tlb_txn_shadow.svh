@@ -252,8 +252,6 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
 
   function void bump_epoch(string reason);
     m_epoch++;
-    for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
-      m_ptw[i].valid = 1'b0;
     `uvm_info(get_type_name(),
       $sformatf("[PHASE6C_L2_EPOCH] reason=%s epoch=%0d cycle=%0d",
         reason, m_epoch, m_cycle),
@@ -262,6 +260,8 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
 
   function void on_reset();
     m_reset_epoch_count++;
+    for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
+      m_ptw[i].valid = 1'b0;
     bump_epoch("reset");
     invalidate_all("reset");
   endfunction

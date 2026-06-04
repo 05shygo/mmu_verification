@@ -38,8 +38,8 @@ module mmu_l1dtlb_expt_cam #(
   output logic                 expt_match1,
   output logic                 expt_pgflt1,
   output logic                 expt_acflt1,
-  output logic [CAM_DEPTH-1:0] expt_hit_vec,
-  output logic [11:0]          expt_wakeup
+  output logic [CAM_DEPTH-1:0] expt_hit_vec
+  //output logic [11:0]          expt_wakeup
 );
 
   typedef struct packed {
@@ -123,9 +123,9 @@ module mmu_l1dtlb_expt_cam #(
     end
   end
 
-  always_comb begin
-    expt_wakeup = {12{expt_wr0_vld | expt_wr1_vld}};//{12{consume0_eff || consume1_eff}};
-  end
+  //always_comb begin
+  //  expt_wakeup = {12{expt_wr0_vld | expt_wr1_vld}};//{12{consume0_eff || consume1_eff}};
+  //end
 
   assign same_wr_eid = expt_wr0_vld && expt_wr1_vld
                     && (expt_wr0_eid == expt_wr1_eid);

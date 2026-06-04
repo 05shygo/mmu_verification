@@ -83,6 +83,65 @@ Review policy:
 | MMU-P14-ISSUE-014 | RTL/Design Record | L2TLB miss buffer bypass could issue unallocated PTW request | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-015 | Testbench/Scoreboard | Translation scoreboard DTLB exception CAM replay model | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-016 | TestPlan/Documentation | L1DTLB audit scenario matrix, SVA requirement list, and Excel testplan synchronization | Phase 14 | Medium | Phase14 Closure Owner | Open | No |
+| MMU-P14-ISSUE-017 | RTL/Design Record | L1DTLB expt_wakeup typo (weakup) + SVA port mismatch blocks LSU drain in PMP-deny tests | Phase 14 | High | Phase14 Closure Owner | Closed | No |
+
+---
+
+## MMU-P14-ISSUE-017 - L1DTLB expt_wakeup Typo + SVA Port Mismatch
+
+| Field | Value |
+| --- | --- |
+| Type | RTL/Design Record |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Closed |
+| Blocking | No after fix; Yes before fix for PMP-deny tests |
+| First observed | 2026-06-04 |
+| Primary files | `mmu/rtl/mmu_l1dtlb.sv`, `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| Fix commits | `ccdbbed`, `2ef507d` (wakeup logic restructure); manual fix: typo + SVA cleanup |
+| Evidence | `test_ptw_pmp_deny_no_refill SEED=606` |
+
+### Failure Signature
+
+`test_ptw_pmp_deny_no_refill SEED=606` failed during end-of-test drain:
+
+```text
+UVM_ERROR [lsu_driver] LSU stimulus did not drain before test_end_quiesce
+pending=29 busy={p1:1} tlb_busy=1 wakeup=0xxxx
+```
+
+After initial "fix weakup" commits, re-run showed `wakeup=0xxxx` (unknown) instead of
+`wakeup=0x000`, indicating the signal path was broken.
+
+### Root Cause
+
+Three issues existed simultaneously:
+
+1. **Typo in `mmu_l1dtlb.sv:1352`**: `expt_weakup` instead of `expt_wakeup`.
+   The declared signal `expt_wakeup` (line 290) was never driven, leaving it `x`.
+
+2. **Bit-width mismatch**: `expt_wakeup` is `[11:0]` (12-bit, expecting all-0 or
+   all-1). The assignment `|mb_entry_fault` produces a 1-bit value, which
+   zero-extends to `12'h001` instead of `12'hfff`.
+
+3. **SVA port mismatch**: The `expt_wakeup` signal was moved out of
+   `mmu_l1dtlb_expt_cam` into `mmu_l1dtlb`, but `mmu_l1dtlb_expt_cam_sva` still
+   declared `input logic [11:0] expt_wakeup` and used `.*` wildcard bind.
+   This caused a compilation error after the logic restructure.
+
+### Fix
+
+| File | Change |
+| --- | --- |
+| `mmu_l1dtlb.sv:1352` | `expt_weakup` → `expt_wakeup`; `\|mb_entry_fault` → `{12{\|mb_entry_fault}}` |
+| `mmu_l1dtlb_sva.sv` | Removed `expt_wakeup` port and 3 assertions (`a_expt_wakeup_shape`, `a_expt_wakeup_on_consume`, `a_flush_blocks_consume_next`) from `mmu_l1dtlb_expt_cam_sva` |
+
+### Background
+
+The wakeup signal was restructured so that `expt_wakeup` is generated at the
+`mmu_l1dtlb` top level (OR of all MB entry fault states) instead of inside
+`mmu_l1dtlb_expt_cam`. The top-level `mmu_lsu_tlb_wakeup = install_wakeup | expt_wakeup`
+correctly merges both sources.
 
 ---
 

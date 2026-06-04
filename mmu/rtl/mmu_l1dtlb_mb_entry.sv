@@ -61,6 +61,7 @@ module mmu_l1dtlb_mb_entry #(
     output logic                     entry_issued,
     output logic                     entry_ready,
     output logic                     entry_wfc,
+    output logic                     entry_fault_state,
     output logic                     entry_wfi          // Requesting Install
 );
 
@@ -321,6 +322,8 @@ assign entry_ready   = (state_r == STATE_WFG) && !abort_this_cyc && !fault_hold_
 
 // Wait for complete (Top logic uses this to track busy status)
 assign entry_wfc     = (state_r == STATE_WFC) || (state_r == STATE_ABT);
+
+assign entry_fault_state = (state_r == STATE_PGFLT) | (state_r == STATE_ACFLT);
 
 // Requesting Install (Collision handling)
 assign entry_wfi     = (state_r == STATE_WFI);

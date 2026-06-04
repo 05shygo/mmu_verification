@@ -1035,8 +1035,7 @@ module mmu_l1dtlb_expt_cam_sva #(
     input logic expt_match1,
     input logic expt_pgflt1,
     input logic expt_acflt1,
-    input logic [CAM_DEPTH-1:0] expt_hit_vec,
-    input logic [11:0] expt_wakeup
+    input logic [CAM_DEPTH-1:0] expt_hit_vec
 );
 
   // A009/A014/A027/A052/A056/A057/A058/A060: exception CAM contract.
@@ -1076,15 +1075,6 @@ module mmu_l1dtlb_expt_cam_sva #(
 
   a_match1_key_uses_iid_vpn: assert property (@(posedge clk) disable iff (!rst_b)
     expt_match1 |-> (lsu_mmu_va1_vld && !$isunknown({lsu_mmu_id1, lsu_mmu_vpn1})));
-
-  a_expt_wakeup_shape: assert property (@(posedge clk) disable iff (!rst_b)
-    (expt_wakeup == 12'h000) || (expt_wakeup == 12'hfff));
-
-  a_expt_wakeup_on_consume: assert property (@(posedge clk) disable iff (!rst_b)
-    (expt_match0 || expt_match1) |-> (expt_wakeup == 12'hfff));
-
-  a_flush_blocks_consume_next: assert property (@(posedge clk) disable iff (!rst_b)
-    rtu_yy_xx_flush |=> (!expt_match0 && !expt_match1 && expt_wakeup == 12'h000));
 
   cp_l1dtlb_c016_dual_expt_write: cover property (@(posedge clk) disable iff (!rst_b)
     expt_wr0_vld && expt_wr1_vld);

@@ -241,6 +241,7 @@ logic [MB_DEPTH-1:0][PGS_WIDTH-1:0]    mb_entry_pgs;
 logic [MB_DEPTH-1:0]                   mb_entry_issued;
 logic [MB_DEPTH-1:0]                   mb_entry_ready;
 logic [MB_DEPTH-1:0]                   mb_entry_wfc;
+logic [MB_DEPTH-1:0]                   mb_entry_fault;
 
 logic [MB_DEPTH-1:0]                   mb_alloc_we;
 logic [MB_DEPTH-1:0]                   mb_issue_sel;
@@ -443,8 +444,8 @@ mmu_l1dtlb_expt_cam #(
     .expt_match1            (expt_match1),
     .expt_pgflt1            (expt_pgflt1),
     .expt_acflt1            (expt_acflt1),
-    .expt_hit_vec           (expt_hit_vec),
-    .expt_wakeup            (expt_wakeup)
+    .expt_hit_vec           (expt_hit_vec)
+    //.expt_wakeup            (expt_wakeup)
 );
 
 //!************************************************
@@ -1103,6 +1104,7 @@ generate
             .entry_issued  (mb_entry_issued[i]),
             .entry_ready   (mb_entry_ready[i]),
             .entry_wfc     (mb_entry_wfc[i]),
+            .entry_fault_state (mb_entry_fault[i]),
             .entry_wfi     (mb_entry_wfi[i])
         );
     end
@@ -1346,6 +1348,8 @@ mmu_l1dtlb_install #(
 
 assign mmu_lsu_tlb_wakeup = install_wakeup | expt_wakeup;
 assign mmu_lsu_tlb_busy = |mb_entry_vld;
+
+assign expt_wakeup = {12{|mb_entry_fault}};
 
 //!************************************************
 //! Status Outputs

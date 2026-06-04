@@ -327,6 +327,9 @@ module ct_mmu_top(
     logic [2:0]  ptw_l2tlb_type;
     logic [PTW_ID_WIDTH-1:0]  ptw_l2tlb_id;
     logic [13:0] ptw_l2tlb_flg;
+    logic [26:0] ptw_l2tlb_ref_vpn;
+    logic [2:0]  ptw_l2tlb_ref_pgs;
+    logic [27:0] ptw_l2tlb_ref_ppn;
     logic        ptw_jtlb_ready;
 
     // PTW <-> Arbiter
@@ -701,6 +704,9 @@ module ct_mmu_top(
         .ptw_l2tlb_ref_pgflt        (ptw_l2tlb_ref_pgflt),
         .ptw_l2tlb_ref_id           (ptw_l2tlb_id),
         .ptw_l2tlb_ref_flg          (ptw_l2tlb_flg),
+        .ptw_l2tlb_ref_vpn          (ptw_l2tlb_ref_vpn),
+        .ptw_l2tlb_ref_pgs          (ptw_l2tlb_ref_pgs),
+        .ptw_l2tlb_ref_ppn          (ptw_l2tlb_ref_ppn),
         .ptw_ready                  (ptw_jtlb_ready),
         
         .l2tlb_ptw_id               (l2tlb_ptw_id),
@@ -988,6 +994,9 @@ module ct_mmu_top(
         .ptw_l2tlb_type             (ptw_l2tlb_type),
         .ptw_l2tlb_id               (ptw_l2tlb_id),
         .ptw_l2tlb_flg              (ptw_l2tlb_flg),
+        .ptw_l2tlb_ref_vpn          (ptw_l2tlb_ref_vpn),
+        .ptw_l2tlb_ref_pgs          (ptw_l2tlb_ref_pgs),
+        .ptw_l2tlb_ref_ppn          (ptw_l2tlb_ref_ppn),
         .ptw_jtlb_ready             (ptw_jtlb_ready),
         
         .tlboper_ptw_abort          (tlboper_ptw_abort),

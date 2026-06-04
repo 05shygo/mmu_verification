@@ -124,8 +124,9 @@ module mmu_l2tlb#(
     input  logic                    ptw_l2tlb_ref_data_vld,
     input  logic [13 :0]            ptw_l2tlb_ref_flg,
     input  logic                    ptw_l2tlb_ref_pgflt,
-    //input  logic [2  :0]            ptw_l2tlb_ref_pgs,
-    //input  logic [27 :0]            ptw_l2tlb_ref_ppn,
+    input  logic [26 :0]            ptw_l2tlb_ref_vpn,
+    input  logic [2  :0]            ptw_l2tlb_ref_pgs,
+    input  logic [27 :0]            ptw_l2tlb_ref_ppn,
     input  logic [L1EID_WIDTH+L2EID_WIDTH-1:0] ptw_l2tlb_ref_id,
 
     // PTW Ready (Needed for Miss Buffer)
@@ -431,6 +432,10 @@ module mmu_l2tlb#(
     logic [PGS_WIDTH-1:0]       ref_pgs;
     logic [PPN_WIDTH-1:0]       ref_ppn;
     logic [FLG_WIDTH-1:0]       ref_flg;
+
+    logic [PPN_WIDTH-1:0]       pfu_ref_ppn;
+    logic [PGS_WIDTH-1:0]       pfu_ref_pgs;
+    logic [FLG_WIDTH-1:0]       pfu_ref_flg;
 
     // 4. Privilege Mode Decode
     logic [1:0]                 cp0_priv_mode;
@@ -1237,25 +1242,17 @@ module mmu_l2tlb#(
     assign mmu_lsu_share2 = pfu_share_buf;
     
     //vpn & ppn & flag
-    
     assign ref_vpn[VPN_WIDTH-1:0] = final_vpn[VPN_WIDTH-1:0];
-
     assign ref_pgs[PGS_WIDTH-1:0] = final_hit_pgs[PGS_WIDTH-1:0];
-
     assign ref_ppn[PPN_WIDTH-1:0] = final_hit_ppn[PPN_WIDTH-1:0];
-
     assign ref_flg[FLG_WIDTH-1:0] = final_hit_flg[FLG_WIDTH-1:0];
 
-
-
-    //assign ref_vpn[VPN_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_arb_vpn[VPN_WIDTH-1:0]
-    //                                          : final_vpn[VPN_WIDTH-1:0];
-    //assign ref_pgs[PGS_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_pgs[PGS_WIDTH-1:0]
-    //                                          : l2tlb_cur_pgs[PGS_WIDTH-1:0];
-    //assign ref_ppn[PPN_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_ppn[PPN_WIDTH-1:0]
-    //                                          : final_hit_ppn[PPN_WIDTH-1:0];
-    //assign ref_flg[FLG_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_flg[FLG_WIDTH-1:0]
-    //                                               : final_hit_flg[FLG_WIDTH-1:0];
+    assign pfu_ref_ppn[PPN_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_ppn[PPN_WIDTH-1:0]
+                                                           : final_hit_ppn[PPN_WIDTH-1:0];
+    assign pfu_ref_pgs[PGS_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_pgs[PGS_WIDTH-1:0]
+                                                           : final_hit_pgs[PGS_WIDTH-1:0];
+    assign pfu_ref_flg[FLG_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_flg[FLG_WIDTH-1:0]
+                                                           : final_hit_flg[FLG_WIDTH-1:0];
     
     assign l2tlb_l1tlb_ref_vpn[VPN_WIDTH-1:0] = ref_vpn[VPN_WIDTH-1:0]; 
     assign l2tlb_l1tlb_ref_pgs[PGS_WIDTH-1:0] = ref_pgs[PGS_WIDTH-1:0]; 
@@ -1432,15 +1429,15 @@ assign l2tlb_pfu_acc_fault = final_vld && (final_tlb_hit_mult
 
 // &Force("bus", "sysmap_mmu_flg4", 4, 0); @994
 assign pa_offset[VPN_WIDTH-1:0]   = lsu_mmu_va2[VPN_WIDTH-1:0];
-assign ptw_pa2[PPN_WIDTH-1:0]     = 
-     {PPN_WIDTH{ref_pgs[2]}} & {ref_ppn[PPN_WIDTH-1:VPN_PERLEL*2], pa_offset[VPN_PERLEL*2-1:0]}
-   | {PPN_WIDTH{ref_pgs[1]}} & {ref_ppn[PPN_WIDTH-1:VPN_PERLEL*1], pa_offset[VPN_PERLEL*1-1:0]}
-   | {PPN_WIDTH{ref_pgs[0]}} &  ref_ppn[PPN_WIDTH-1:0];
+assign ptw_pa2[PPN_WIDTH-1:0]     =
+     {PPN_WIDTH{pfu_ref_pgs[2]}} & {pfu_ref_ppn[PPN_WIDTH-1:VPN_PERLEL*2], pa_offset[VPN_PERLEL*2-1:0]}
+   | {PPN_WIDTH{pfu_ref_pgs[1]}} & {pfu_ref_ppn[PPN_WIDTH-1:VPN_PERLEL*1], pa_offset[VPN_PERLEL*1-1:0]}
+   | {PPN_WIDTH{pfu_ref_pgs[0]}} &  pfu_ref_ppn[PPN_WIDTH-1:0];
 
 assign l2tlb_pfu_pa[PPN_WIDTH-1:0] = l1dtlb_xx_mmu_off ? lsu_mmu_va2[PPN_WIDTH-1:0] 
                                                       : ptw_pa2[PPN_WIDTH-1:0];
-assign l2tlb_pfu_sec               = (l1dtlb_xx_mmu_off || !cp0_mmu_maee) ? sysmap_mmu_flg4[0] : ref_flg[9];
-assign l2tlb_pfu_share             = (l1dtlb_xx_mmu_off || !cp0_mmu_maee) ? sysmap_mmu_flg4[1] : ref_flg[10];
+assign l2tlb_pfu_sec               = (l1dtlb_xx_mmu_off || !cp0_mmu_maee) ? sysmap_mmu_flg4[0] : pfu_ref_flg[9];
+assign l2tlb_pfu_share             = (l1dtlb_xx_mmu_off || !cp0_mmu_maee) ? sysmap_mmu_flg4[1] : pfu_ref_flg[10];
 
 // synopsys translate_off
 logic mmu_itlb_dbg_en;

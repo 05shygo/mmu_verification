@@ -254,6 +254,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
 
   function void bump_epoch(string reason, input bit clear_ptw = 1'b1);
     m_epoch++;
+
     if (clear_ptw) begin
       m_ptw_abort_epoch++;
       for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
@@ -267,6 +268,8 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
 
   function void on_reset();
     m_reset_epoch_count++;
+    for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
+      m_ptw[i].valid = 1'b0;
     bump_epoch("reset");
     invalidate_all("reset");
   endfunction

@@ -289,6 +289,20 @@ always_ff @(posedge ptw_clk or negedge cpurst_b)begin
 		abort_flop <= 1'b0;
 end
 
+	// synopsys translate_off
+	logic mmu_abort_dbg_en;
+	initial mmu_abort_dbg_en = $test$plusargs("MMU_ABORT_DBG");
+
+	always_ff @(posedge ptw_clk or negedge cpurst_b) begin
+	  if (!cpurst_b) begin
+	  end else if (mmu_abort_dbg_en && ($past(abort_flop) !== abort_flop || tlboper_ptw_abort)) begin
+	    $display("[MMU_ABORT_DBG][PTW] t=%0t abort_flop=%0b->%0b mbuf_on_vld=%0b tlbop_abort=%0b lsu_data=%0b lsu_bus_err=%0b ptw_ready=%0b",
+	             $time, $past(abort_flop), abort_flop, mbuf_entry_on_vld, tlboper_ptw_abort,
+	             lsu_mmu_data_vld, lsu_mmu_bus_error, ptw_jtlb_ready);
+	  end
+	end
+	// synopsys translate_on
+
 
 
 PDE_cache #(

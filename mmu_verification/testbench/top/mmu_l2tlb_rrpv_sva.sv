@@ -153,9 +153,9 @@ module mmu_l2tlb_rrpv_sva (
                     && !$isunknown(l2tlb_ptw_vpn) && is_valid_type(l2tlb_ptw_type)));
 
   a_l2tlb_ptw_req_stable_under_backpressure: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    (l2tlb_ptw_req && !ptw_ready)
-      |=> (l2tlb_ptw_req && $stable(l2tlb_ptw_id)
-        && $stable(l2tlb_ptw_type) && $stable(l2tlb_ptw_vpn)));
+      (l2tlb_ptw_req && !ptw_ready)
+        |=> (l2tlb_ptw_req && $stable(l2tlb_ptw_id)
+          && $stable(l2tlb_ptw_type) && $stable(l2tlb_ptw_vpn)));
 
   // L2TLB_SVA_012/018: PTW completion result class is legal and known.
   a_ptw_completion_matches_result_or: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
@@ -214,7 +214,7 @@ module mmu_l2tlb_rrpv_sva (
     && l2tlb_miss && !cp0_mmu_ptw_en && l2tlb_reqq_fb_vld);
 
   c_ptw_ready_backpressure: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    l2tlb_ptw_req && !ptw_ready ##1 l2tlb_ptw_req && ptw_ready);
+      l2tlb_ptw_req && !ptw_ready ##1 l2tlb_ptw_req && ptw_ready);
 
   c_ptw_fault_completion: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     ptw_l2tlb_ref_cmplt && (ptw_l2tlb_ref_pgflt || ptw_l2tlb_ref_acc_err));

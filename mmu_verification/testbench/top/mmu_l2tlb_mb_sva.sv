@@ -109,9 +109,9 @@ module mmu_l2tlb_mb_sva #(
         && issue_type == entry_out_type[issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH]]));
 
   a_ptw_ready_backpressure_payload_stable: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
-    (issue_req && !ptw_ready)
-      |=> (issue_req && $stable(issue_eid) && $stable(issue_vpn)
-        && $stable(issue_type) && $stable(issue_is_dtlb)));
+      (issue_req && !ptw_ready)
+        |=> (issue_req && $stable(issue_eid) && $stable(issue_vpn)
+          && $stable(issue_type) && $stable(issue_is_dtlb)));
 
   a_feedback_id_known_and_in_range: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     fb_valid |-> (id_in_range(fb_trans_id) && !$isunknown(fb_hit)));
@@ -137,7 +137,7 @@ module mmu_l2tlb_mb_sva #(
     req_valid && req_is_dtlb && req_alloc_valid);
 
   c_mb_ptw_backpressure: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
-    issue_req && !ptw_ready ##1 issue_req && ptw_ready);
+      issue_req && !ptw_ready ##1 issue_req && ptw_ready);
 
   c_mb_abort_outstanding: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
     tlboper_ptw_abort && (entry_vld_vec != '0));

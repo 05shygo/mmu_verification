@@ -661,12 +661,9 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         INV_ASID_ALL: vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b1;
         INV_VA_ASID:  vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b1;
       endcase
-      @(vif.driver_cb);
-      vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
-      // Wait for DUT to acknowledge invalidation completion (with timeout)
+      // Keep INV signals asserted until mmu_lsu_tlb_inv_done is received,
+      // matching the LSU RTL behaviour in ct_lsu_snoop_ctcq.v where
+      // ctcq_ctc_req stays high until mmu_lsu_tlb_inv_done clears it.
       fork
         begin : wait_inv_done
           @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
@@ -684,6 +681,10 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         end
       join_any
       disable fork;
+      vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b0;
+      vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
+      vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
+      vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
       m_inv_busy = 1'b0;
     end
   endtask

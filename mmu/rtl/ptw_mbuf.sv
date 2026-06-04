@@ -353,7 +353,7 @@ always@(posedge mbuf_clk or negedge cpurst_b)
 begin
   if (!cpurst_b)
     tlboper_ptw_abort_reg <= 1'b0;
-  else if(tlboper_ptw_abort & (!mmu_lsu_data_req_fst_time) & (!lsu_mmu_data_vld))
+  else if(tlboper_ptw_abort & (!mmu_lsu_data_req_fst_time) & (!lsu_mmu_data_vld) & mbuf_entry_on_vld)
     tlboper_ptw_abort_reg <= 1'b1;
   else if(lsu_mmu_data_vld)
     tlboper_ptw_abort_reg <= 1'b0;

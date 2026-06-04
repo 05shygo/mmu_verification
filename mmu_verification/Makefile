@@ -285,6 +285,24 @@ REGRESS_V3_MIN_PASS_RATE  ?= 1.0
 REGRESS_V3_SUMMARY        ?= $(REGRESS_DIR)/$(REGRESS_V3_NAME)/summary.txt
 
 #===============================================================================
+# PTW RTL code coverage entry
+#===============================================================================
+PTW_COV_RUNNER                   ?= $(PROJECT_DIR)/scripts/run_ptw_code_coverage.py
+PTW_COV_PROFILE                  ?= default
+PTW_COV_ROOT                     ?= $(OUTPUT_DIR)/ptw_cov
+PTW_COV_HIER_CFG                 ?= $(PROJECT_DIR)/scripts/ptw_cov_hier.cfg
+PTW_COV_PROFILE_FILE             ?= $(PROJECT_DIR)/scripts/ptw_code_coverage_profiles.json
+PTW_COV_FUNCTIONAL_GATE_RULES    ?= $(PROJECT_DIR)/scripts/ptw_functional_gate_rules.json
+PTW_COV_JOBS                     ?= 1
+PTW_COV_FORCE_REBUILD            ?= 1
+PTW_COV_TIMEOUT                  ?= $(TIMEOUT)
+PTW_COV_VERBOSITY                ?= $(VERBOSITY)
+PTW_COV_UVM_ERR_ONLY             ?= 0
+PTW_COV_FUNCTIONAL_GATE_MODE     ?= run
+PTW_COV_FUNCTIONAL_GATE_EVIDENCE ?=
+PTW_COV_EXTRA_ARGS               ?=
+
+#===============================================================================
 # Phase 11 - v3.0 gap-driven regression
 #===============================================================================
 PHASE11_R19_PROOF         ?=
@@ -745,7 +763,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         phase7 phase7_cov print-phase7 \
         print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
         phase8_check_errfatal phase8_scan_errfatal phase8_quick \
-        regress regress_smoke regress_nightly print-regress \
+        regress regress_smoke regress_nightly print-regress ptw_code_cov print-ptw-code-cov \
         print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
         regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
         phase14_make_parallel_shards regress_v4_full_parallel phase14_show_parallel_failures phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
@@ -776,6 +794,40 @@ print-regress:
 	@echo "REGRESS_V3_SEEDS       = $(REGRESS_V3_SEEDS)"
 	@echo "REGRESS_V3_SUMMARY     = $(REGRESS_V3_SUMMARY)"
 	@echo "REGRESS_V3_MIN_PASS_RATE = $(REGRESS_V3_MIN_PASS_RATE)"
+
+print-ptw-code-cov:
+	@echo "PTW_COV_RUNNER                   = $(PTW_COV_RUNNER)"
+	@echo "PTW_COV_PROFILE                  = $(PTW_COV_PROFILE)"
+	@echo "PTW_COV_ROOT                     = $(PTW_COV_ROOT)"
+	@echo "PTW_COV_HIER_CFG                 = $(PTW_COV_HIER_CFG)"
+	@echo "PTW_COV_PROFILE_FILE             = $(PTW_COV_PROFILE_FILE)"
+	@echo "PTW_COV_FUNCTIONAL_GATE_RULES    = $(PTW_COV_FUNCTIONAL_GATE_RULES)"
+	@echo "PTW_COV_JOBS                     = $(PTW_COV_JOBS)"
+	@echo "PTW_COV_FORCE_REBUILD            = $(PTW_COV_FORCE_REBUILD)"
+	@echo "PTW_COV_TIMEOUT                  = $(PTW_COV_TIMEOUT)"
+	@echo "PTW_COV_VERBOSITY                = $(PTW_COV_VERBOSITY)"
+	@echo "PTW_COV_UVM_ERR_ONLY             = $(PTW_COV_UVM_ERR_ONLY)"
+	@echo "PTW_COV_FUNCTIONAL_GATE_MODE     = $(PTW_COV_FUNCTIONAL_GATE_MODE)"
+	@echo "PTW_COV_FUNCTIONAL_GATE_EVIDENCE = $(PTW_COV_FUNCTIONAL_GATE_EVIDENCE)"
+	@echo "PTW_COV_EXTRA_ARGS               = $(PTW_COV_EXTRA_ARGS)"
+	@echo "NOTE: PTW_COV_EXTRA_ARGS is for debug jobs only and must not be used for signoff jobs."
+
+ptw_code_cov:
+	@test -f "$(PTW_COV_RUNNER)" || (echo "ERROR: PTW code coverage runner missing: $(PTW_COV_RUNNER)"; exit 2)
+	$(PYTHON) "$(PTW_COV_RUNNER)" \
+		--profile "$(PTW_COV_PROFILE)" \
+		--profile-file "$(PTW_COV_PROFILE_FILE)" \
+		--functional-gate-rules "$(PTW_COV_FUNCTIONAL_GATE_RULES)" \
+		--cov-root "$(PTW_COV_ROOT)" \
+		--hier-cfg "$(PTW_COV_HIER_CFG)" \
+		--jobs "$(PTW_COV_JOBS)" \
+		--timeout "$(PTW_COV_TIMEOUT)" \
+		--verbosity "$(PTW_COV_VERBOSITY)" \
+		--uvm-err-only "$(PTW_COV_UVM_ERR_ONLY)" \
+		--functional-gate-mode "$(PTW_COV_FUNCTIONAL_GATE_MODE)" \
+		$(if $(PTW_COV_FUNCTIONAL_GATE_EVIDENCE),--functional-gate-evidence "$(PTW_COV_FUNCTIONAL_GATE_EVIDENCE)") \
+		$(if $(filter 1,$(PTW_COV_FORCE_REBUILD)),--force-rebuild) \
+		$(PTW_COV_EXTRA_ARGS)
 
 regress: setup
 	@test -f "$(REGRESS_SCRIPT)" || (echo "ERROR: regression wrapper missing: $(REGRESS_SCRIPT)"; exit 2)
@@ -1648,6 +1700,16 @@ help:
 	@echo "  Override: REGRESS_SEEDS='1 2 3' REGRESS_MIN_PASS_RATE=0.5"
 	@echo "  List format: one test per line; optional per-line PLUS_ARGS after the test name;"
 	@echo "               optional xfail marker: xfail or xfail=<reason>"
+	@echo ""
+	@echo "PTW RTL code coverage:"
+	@echo "  make ptw_code_cov                                    # default PTW code coverage profile"
+	@echo "  make ptw_code_cov PTW_COV_PROFILE=quick              # flow smoke profile"
+	@echo "  make ptw_code_cov PTW_COV_PROFILE=signoff            # final signoff profile"
+	@echo "  make ptw_code_cov PTW_COV_EXTRA_ARGS='--dry-run --functional-gate-mode skip'  # debug only"
+	@echo "  make print-ptw-code-cov                              # show PTW_COV_* defaults"
+	@echo "  CI rule: signoff accepts only PTW_CODE_COVERAGE_RESULT status=PASS."
+	@echo "  CI rule: quick/default/full CONDITIONAL_PASS is monitor/debug only, not final signoff."
+	@echo "  PTW_COV_EXTRA_ARGS is debug-only and must not be used for signoff jobs."
 	@echo ""
 	@echo "Phase 11 (MMU_UVM_TaskDivision.md §11):"
 	@echo "  make print-phase11                                    # show Phase11 file/seed defaults"

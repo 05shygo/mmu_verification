@@ -37,6 +37,8 @@ count_error_hits() {
   awk '
     /^UVM_ERROR[[:space:]]*:/ { next }
     /^UVM_FATAL[[:space:]]*:/ { next }
+    # Skip SVA coverage statistics lines: "<path>", N: <hierarchy>, N attempts, N match
+    /^".*", [0-9]+: .*, [0-9]+ attempts, [0-9]+ match/ { next }
     /UVM_ERROR / || /UVM_FATAL / || /Error-/ || /Error:/ || /Fatal:/ || /ASSERT/ || /SVA/ || /TEST FAILED/ || /FAILED:/ || /CovErrorException/ || /unexpected termination/ || /signal: Aborted/ || /During dumping of toggle coverage data/ || /error while loading shared libraries/ || /cannot open shared object file/ {
       count++;
     }
@@ -52,6 +54,7 @@ print_error_hits() {
   awk -v limit="$limit" '
     /^UVM_ERROR[[:space:]]*:/ { next }
     /^UVM_FATAL[[:space:]]*:/ { next }
+    /^".*", [0-9]+: .*, [0-9]+ attempts, [0-9]+ match/ { next }
     /UVM_ERROR / || /UVM_FATAL / || /Error-/ || /Error:/ || /Fatal:/ || /ASSERT/ || /SVA/ || /TEST FAILED/ || /FAILED:/ || /CovErrorException/ || /unexpected termination/ || /signal: Aborted/ || /During dumping of toggle coverage data/ || /error while loading shared libraries/ || /cannot open shared object file/ {
       printf("    %d:%s\n", NR, $0);
       shown++;

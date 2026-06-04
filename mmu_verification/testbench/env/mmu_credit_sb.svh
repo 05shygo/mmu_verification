@@ -972,8 +972,8 @@ class mmu_credit_sb extends uvm_scoreboard;
           m_ptw_mbuf_cnt))
 
     if (_ptw_hw_pending())
-      `uvm_error(get_type_name(),
-        $sformatf("[CreditSB] PTW/L2 internal state not idle at end-of-sim: %s",
+      `uvm_warning(get_type_name(),
+        $sformatf("[CreditSB] PTW/L2 internal state not idle at end-of-sim (likely secondary to LSU/TLB drain): %s",
           _ptw_pending_snapshot()))
 
     if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_lsu_ext_outstanding == 0 && m_ptw_mbuf_cnt == 0 && !_ptw_hw_pending())

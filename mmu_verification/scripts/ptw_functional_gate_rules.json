@@ -1,0 +1,255 @@
+{
+  "schema_version": 1,
+  "scope": "ptw_source_functional_gate_for_ptw_code_coverage",
+  "path_base": "mmu_verification_project_dir",
+  "gate_script": "scripts/ptw_stage8_signoff_gate.py",
+  "default_mode": "run",
+  "allowed_modes": {
+    "run": {
+      "description": "Regenerate PTW source-side run_check logs, then execute the source signoff gate.",
+      "functional_gate_status": "PASS_OR_FAIL",
+      "signoff_pass_allowed": true,
+      "requires_evidence": false,
+      "requires_fresh_run_check": true
+    },
+    "reuse": {
+      "description": "Reuse an existing passing PTW source-side gate evidence package.",
+      "functional_gate_status": "REUSED_OR_FAIL",
+      "signoff_pass_allowed": true,
+      "requires_evidence": true,
+      "requires_fresh_run_check": false
+    },
+    "skip": {
+      "description": "Skip the PTW source-side gate for debug or intermediate coverage only.",
+      "functional_gate_status": "SKIPPED",
+      "signoff_pass_allowed": false,
+      "requires_evidence": false,
+      "requires_fresh_run_check": false
+    }
+  },
+  "runner_cli_contract": {
+    "functional_gate_mode_arg": "--functional-gate-mode",
+    "functional_gate_mode_values": [
+      "run",
+      "reuse",
+      "skip"
+    ],
+    "functional_gate_evidence_arg": "--functional-gate-evidence",
+    "skip_alias": "--skip-functional-gate",
+    "skip_alias_equivalent_mode": "skip"
+  },
+  "log_separation": {
+    "functional_regress_mode": "run_check",
+    "functional_log_pattern": "${test_name}_${seed}.log",
+    "coverage_regress_mode": "run_cov",
+    "coverage_log_pattern": "${cov_tag}_cov.log",
+    "forbidden_functional_gate_log_suffixes": [
+      "_cov.log"
+    ],
+    "rule": "ptw_stage8_signoff_gate.py must only consume run_check logs and must reject coverage logs."
+  },
+  "run_mode": {
+    "canonical_log_dir": "output/ptw_functional_gate/logs",
+    "regress_jobs": "1",
+    "uvm_err_only": "0",
+    "uvm_config_db_trace": "0",
+    "regressions": [
+      {
+        "role": "p0_smoke",
+        "list": "simu/ptw_p0_smoke_list",
+        "seeds": [
+          "606"
+        ],
+        "regress_name": "ptw_src_p0_smoke"
+      },
+      {
+        "role": "p0_full",
+        "list": "simu/ptw_p0_list",
+        "seeds": [
+          "606"
+        ],
+        "regress_name": "ptw_src_p0"
+      },
+      {
+        "role": "p1_directed",
+        "list": "simu/ptw_p1_list",
+        "seeds": [
+          "606"
+        ],
+        "regress_name": "ptw_src_p1"
+      },
+      {
+        "role": "pde_pmpflg",
+        "list": "simu/ptw_pde_pmpflg_list",
+        "seeds": [
+          "606",
+          "707"
+        ],
+        "regress_name": "ptw_src_pde_pmpflg"
+      },
+      {
+        "role": "p2_illegal",
+        "list": "simu/ptw_p2_illegal_list",
+        "seeds": [
+          "707"
+        ],
+        "regress_name": "ptw_src_p2_illegal"
+      },
+      {
+        "role": "random_stress",
+        "list": "simu/ptw_random_list",
+        "seeds": [
+          "707"
+        ],
+        "regress_name": "ptw_src_random"
+      },
+      {
+        "role": "consumer_only",
+        "list": "simu/ptw_consumer_evidence_list",
+        "seeds": [
+          "707"
+        ],
+        "regress_name": "ptw_src_consumer"
+      }
+    ],
+    "make_regress_template": [
+      "make",
+      "regress",
+      "LIST=${list}",
+      "REGRESS_MODE=run_check",
+      "REGRESS_NAME=${regress_name}",
+      "REGRESS_SEEDS=${seeds}",
+      "REGRESS_JOBS=1",
+      "LOG_DIR=output/ptw_functional_gate/logs",
+      "UVM_ERR_ONLY=0",
+      "UVM_CONFIG_DB_TRACE=0"
+    ],
+    "gate_command": [
+      "python3",
+      "scripts/ptw_stage8_signoff_gate.py",
+      "--p0-smoke-list",
+      "simu/ptw_p0_smoke_list",
+      "--p0-list",
+      "simu/ptw_p0_list",
+      "--p1-list",
+      "simu/ptw_p1_list",
+      "--pde-pmpflg-list",
+      "simu/ptw_pde_pmpflg_list",
+      "--p2-list",
+      "simu/ptw_p2_illegal_list",
+      "--random-list",
+      "simu/ptw_random_list",
+      "--consumer-list",
+      "simu/ptw_consumer_evidence_list",
+      "--log-dir",
+      "output/ptw_functional_gate/logs",
+      "--p0-seed",
+      "606",
+      "--p1-seed",
+      "606",
+      "--stage7-seed",
+      "707",
+      "--pde-pmpflg-seed",
+      "606 707",
+      "--consumer-seed",
+      "707",
+      "--csv",
+      "simu/ptw_source_closure_matrix.csv",
+      "--report",
+      "../doc/ptw_uvm_review/ptw_source_signoff_report.md",
+      "--legacy",
+      "../doc/ptw_uvm_review/ptw_legacy_test_action_list.md"
+    ],
+    "expected_gate_stdout_prefix": "PTW_STAGE10_SIGNOFF_GATE status="
+  },
+  "reuse_mode": {
+    "required_status": "PASS",
+    "required_evidence_fields": [
+      "status",
+      "mode",
+      "generated_at",
+      "git_commit",
+      "gate_command",
+      "gate_script",
+      "log_dirs",
+      "closure_csv",
+      "closure_report",
+      "regressions"
+    ],
+    "required_status_values": [
+      "PASS",
+      "REUSED"
+    ],
+    "reject_if_any_log_matches": [
+      "*_cov.log"
+    ],
+    "audit_rule": "Reuse evidence must be traceable to run_check logs and a passing ptw_stage8_signoff_gate.py invocation."
+  },
+  "skip_mode": {
+    "summary_status_limit": {
+      "quick": [
+        "FAIL",
+        "CONDITIONAL_PASS"
+      ],
+      "default": [
+        "FAIL",
+        "CONDITIONAL_PASS"
+      ],
+      "full": [
+        "FAIL",
+        "CONDITIONAL_PASS"
+      ],
+      "signoff": [
+        "FAIL",
+        "CONDITIONAL_PASS"
+      ]
+    },
+    "required_reason": "functional_gate_skipped",
+    "stdout_must_include": "functional_gate=SKIPPED"
+  },
+  "manifest_functional_gate_schema": {
+    "field_name": "functional_gate",
+    "required_fields": [
+      "status",
+      "mode",
+      "generated_at",
+      "git_commit",
+      "gate_script",
+      "gate_command",
+      "log_dirs",
+      "log_pattern",
+      "closure_csv",
+      "closure_report",
+      "regressions",
+      "evidence_source"
+    ],
+    "status_values": [
+      "PASS",
+      "FAIL",
+      "SKIPPED",
+      "REUSED"
+    ],
+    "regression_fields": [
+      "role",
+      "list",
+      "seeds",
+      "regress_name",
+      "regress_mode",
+      "log_dir",
+      "summary"
+    ],
+    "coverage_run_separation_field": "coverage_runs",
+    "rule": "functional_gate.regressions and coverage_runs must be separate manifest arrays."
+  },
+  "summary_json_contract": {
+    "functional_gate_field": "functional_gate",
+    "status_values": [
+      "PASS",
+      "FAIL",
+      "SKIPPED",
+      "REUSED"
+    ],
+    "signoff_profile_pass_rule": "For profile=signoff, functional_gate.status must be PASS or REUSED with complete evidence before top-level status may be PASS.",
+    "non_signoff_rule": "quick/default/full results are non-final and must not emit final PASS solely because code coverage thresholds pass."
+  }
+}

@@ -1,0 +1,82 @@
+{
+  "schema_version": 1,
+  "scope": "ptw_core",
+  "hier_cfg": "scripts/ptw_cov_hier.cfg",
+  "cov_root": "output/ptw_cov",
+  "dedup_policy": "error_on_duplicate_test_seed",
+  "profiles": {
+    "quick": {
+      "purpose": "Fast coverage-flow sanity only; not a signoff profile.",
+      "allow_final_pass": false,
+      "runs": [
+        {
+          "name": "quick_ptw_source_smoke",
+          "list": "simu/ptw_p0_smoke_list",
+          "seeds": ["606"],
+          "regress_name": "ptw_cov_quick_source_smoke",
+          "purpose": "Minimal PTW source-side smoke for compile/run_cov/URG/parser sanity."
+        },
+        {
+          "name": "quick_ptw_lsu_protocol",
+          "list": "simu/mmu_ptw_lsu_protocol_list",
+          "seeds": ["94101"],
+          "regress_name": "ptw_cov_quick_lsu_protocol",
+          "purpose": "Minimal PTW MBUF/LSU protocol stimulus."
+        }
+      ]
+    },
+    "default": {
+      "purpose": "Default day-to-day PTW code coverage measurement.",
+      "allow_final_pass": false,
+      "runs": [
+        {
+          "name": "default_ptw_code_coverage",
+          "list": "simu/ptw_code_coverage_list",
+          "seeds": ["606", "707"],
+          "regress_name": "ptw_cov_default",
+          "purpose": "Balanced PTW source, PDE pmpflg, PTW-LSU, Phase12/13, and consumer stimulus."
+        }
+      ]
+    },
+    "full": {
+      "purpose": "Expanded PTW coverage measurement after default profile holes.",
+      "allow_final_pass": false,
+      "runs": [
+        {
+          "name": "full_ptw_code_coverage",
+          "list": "simu/ptw_code_coverage_list",
+          "seeds": ["606", "707", "808", "909"],
+          "regress_name": "ptw_cov_full_directed",
+          "purpose": "Multi-seed default PTW coverage list."
+        },
+        {
+          "name": "full_mmu_v4_coverage",
+          "list": "simu/mmu_v4_full_regression_list",
+          "seeds": ["97101", "97102", "97103"],
+          "regress_name": "ptw_cov_full_mmu_v4",
+          "purpose": "Expanded system-level stimulus for PTW holes."
+        }
+      ]
+    },
+    "signoff": {
+      "purpose": "Signoff-level PTW code coverage measurement.",
+      "allow_final_pass": true,
+      "runs": [
+        {
+          "name": "signoff_ptw_code_coverage",
+          "list": "simu/ptw_code_coverage_list",
+          "seeds": ["606", "707", "808", "909"],
+          "regress_name": "ptw_cov_signoff_directed",
+          "purpose": "Signoff directed PTW coverage list."
+        },
+        {
+          "name": "signoff_mmu_v4_coverage",
+          "list": "simu/mmu_v4_full_regression_list",
+          "seeds": ["97101", "97102", "97103", "97104", "97105"],
+          "regress_name": "ptw_cov_signoff_mmu_v4",
+          "purpose": "Signoff system-level stimulus for PTW holes."
+        }
+      ]
+    }
+  }
+}

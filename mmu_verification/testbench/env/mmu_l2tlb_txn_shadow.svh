@@ -89,6 +89,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
   inv_event_t m_inv_history[L2_INV_HISTORY_DEPTH];
 
   longint unsigned m_epoch;
+  longint unsigned m_ptw_abort_epoch;
   longint unsigned m_cycle;
   longint unsigned m_reset_epoch_count;
   longint unsigned m_abort_epoch_count;
@@ -136,6 +137,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
       m_inv_history[i].valid = 1'b0;
 
     m_epoch = 0;
+    m_ptw_abort_epoch = 0;
     m_cycle = 0;
     m_reset_epoch_count = 0;
     m_abort_epoch_count = 0;
@@ -250,13 +252,16 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     return -1;
   endfunction
 
-  function void bump_epoch(string reason);
+  function void bump_epoch(string reason, input bit clear_ptw = 1'b1);
     m_epoch++;
-    for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
-      m_ptw[i].valid = 1'b0;
+    if (clear_ptw) begin
+      m_ptw_abort_epoch++;
+      for (int i = 0; i < L2_PTW_SHADOW_DEPTH; i++)
+        m_ptw[i].valid = 1'b0;
+    end
     `uvm_info(get_type_name(),
-      $sformatf("[PHASE6C_L2_EPOCH] reason=%s epoch=%0d cycle=%0d",
-        reason, m_epoch, m_cycle),
+      $sformatf("[PHASE6C_L2_EPOCH] reason=%s epoch=%0d ptw_abort_epoch=%0d clear_ptw=%0b cycle=%0d",
+        reason, m_epoch, m_ptw_abort_epoch, clear_ptw, m_cycle),
       UVM_MEDIUM)
   endfunction
 
@@ -273,7 +278,8 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
 
   function void on_control_epoch(string reason = "control_epoch");
     m_control_epoch_count++;
-    bump_epoch(reason);
+    // RTL does NOT abort in-flight PTW on tlboper_utlb_clr; keep PTW entries alive
+    bump_epoch(reason, .clear_ptw(1'b0));
     invalidate_all(reason);
   endfunction
 
@@ -403,7 +409,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     m_ptw[idx].mprv = mprv;
     m_ptw[idx].mpp = mpp;
     m_ptw[idx].owner = owner_from_type(typ);
-    m_ptw[idx].epoch = m_epoch;
+    m_ptw[idx].epoch = m_ptw_abort_epoch;
     m_ptw[idx].req_cycle = m_cycle;
     m_ptw[idx].req_time = $time;
 
@@ -481,11 +487,11 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
       return;
     end
 
-    if (m_ptw[idx].epoch != m_epoch) begin
+    if (m_ptw[idx].epoch != m_ptw_abort_epoch) begin
       m_ptw_stale_seen++;
       `uvm_info(get_type_name(),
-        $sformatf("[PHASE6C_L2_STALE_PTW] id=0x%02h type=0x%0h owner=%s req_epoch=%0d cur_epoch=%0d vpn=0x%07h class=%s",
-          id, typ, owner_name(m_ptw[idx].owner), m_ptw[idx].epoch, m_epoch,
+        $sformatf("[PHASE6C_L2_STALE_PTW] id=0x%02h type=0x%0h owner=%s req_ptw_abort_epoch=%0d cur_ptw_abort_epoch=%0d vpn=0x%07h class=%s",
+          id, typ, owner_name(m_ptw[idx].owner), m_ptw[idx].epoch, m_ptw_abort_epoch,
           m_ptw[idx].vpn, (data_vld ? "DATA" : (pgflt ? "PGFLT" : "ACCERR"))),
         UVM_MEDIUM)
       m_ptw[idx].valid = 1'b0;

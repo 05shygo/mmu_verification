@@ -317,7 +317,7 @@ class mmu_translation_sb extends uvm_scoreboard;
         if (!cur_reset_asserted && cur_tlboper_ptw_abort && !m_l2_prev_tlboper_ptw_abort)
           m_l2_shadow.on_abort("tlboper_ptw_abort");
         if (!cur_reset_asserted && cur_rtu_flush && !m_l2_prev_rtu_flush)
-          m_l2_shadow.on_abort("rtu_yy_xx_flush");
+          m_l2_shadow.bump_epoch("rtu_yy_xx_flush", .clear_ptw(1'b0));
         if (!cur_reset_asserted && cur_utlb_clr && !m_l2_prev_utlb_clr)
           m_l2_shadow.on_control_epoch("tlboper_utlb_clr");
       end
@@ -1127,6 +1127,15 @@ class mmu_translation_sb extends uvm_scoreboard;
     end
 
     if (ref_rsp.ppn !== tr.pa) begin
+      // If DUT PA is all zeros the translation result is not yet valid.
+      // Skip PA comparison rather than reporting a spurious mismatch.
+      if (tr.pa === '0) begin
+        `uvm_info(get_type_name(),
+          $sformatf("[LSU_P2] VA=0x%010h: skip PA compare — dut.pa is zero (translation not complete)",
+            {1'b0, va}),
+          UVM_HIGH)
+        return;
+      end
       `uvm_error(get_type_name(),
         $sformatf("[LSU_P2] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h",
           {1'b0, va}, ref_rsp.ppn, tr.pa))

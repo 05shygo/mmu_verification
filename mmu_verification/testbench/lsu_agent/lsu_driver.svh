@@ -389,7 +389,10 @@ class lsu_driver extends uvm_driver #(lsu_txn);
               if (!_pipe0_t0_terminal()
                   && ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)
                       || _has_wakeup_edge(prev_wakeup, cur_wakeup)
-                      || (retry_wait_cycles >= m_retry_probe_cycles))) begin
+                      || (retry_wait_cycles >= m_retry_probe_cycles)
+                      || ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)
+                          && (vif.driver_cb.mmu_lsu_tlb_wakeup !== 12'b0)
+                          && (retry_wait_cycles >= 64)))) begin
                 retry_gate  = 1'b1;
                 prev_wakeup = cur_wakeup;
                 break;
@@ -484,10 +487,20 @@ class lsu_driver extends uvm_driver #(lsu_txn);
               @(vif.driver_cb);
               retry_wait_cycles++;
               cur_wakeup = vif.driver_cb.mmu_lsu_tlb_wakeup;
+              // Retry when:
+              //   (a) TLB becomes idle (normal case), OR
+              //   (b) wakeup signals a pending exception/refill response, OR
+              //   (c) probe timeout elapses, OR
+              //   (d) TLB is busy with a stuck fault-state MB entry that
+              //       requires the LSU to re-send the request so the
+              //       exception CAM can match and deliver the fault.
               if (!_pipe1_t0_terminal()
                   && ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b0)
                       || _has_wakeup_edge(prev_wakeup, cur_wakeup)
-                      || (retry_wait_cycles >= m_retry_probe_cycles))) begin
+                      || (retry_wait_cycles >= m_retry_probe_cycles)
+                      || ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)
+                          && (vif.driver_cb.mmu_lsu_tlb_wakeup !== 12'b0)
+                          && (retry_wait_cycles >= 64)))) begin
                 retry_gate  = 1'b1;
                 prev_wakeup = cur_wakeup;
                 break;

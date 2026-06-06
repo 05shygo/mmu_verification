@@ -1247,11 +1247,11 @@ module mmu_l2tlb#(
     assign ref_ppn[PPN_WIDTH-1:0] = final_hit_ppn[PPN_WIDTH-1:0];
     assign ref_flg[FLG_WIDTH-1:0] = final_hit_flg[FLG_WIDTH-1:0];
 
-    assign pfu_ref_ppn[PPN_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_ppn[PPN_WIDTH-1:0]
+    assign pfu_ref_ppn[PPN_WIDTH-1:0] = (ptw_l2tlb_ref_cmplt && ptw_l2tlb_pmiss) ? ptw_l2tlb_ref_ppn[PPN_WIDTH-1:0]
                                                            : final_hit_ppn[PPN_WIDTH-1:0];
-    assign pfu_ref_pgs[PGS_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_pgs[PGS_WIDTH-1:0]
+    assign pfu_ref_pgs[PGS_WIDTH-1:0] = (ptw_l2tlb_ref_cmplt && ptw_l2tlb_pmiss) ? ptw_l2tlb_ref_pgs[PGS_WIDTH-1:0]
                                                            : final_hit_pgs[PGS_WIDTH-1:0];
-    assign pfu_ref_flg[FLG_WIDTH-1:0] = ptw_l2tlb_ref_cmplt ? ptw_l2tlb_ref_flg[FLG_WIDTH-1:0]
+    assign pfu_ref_flg[FLG_WIDTH-1:0] = (ptw_l2tlb_ref_cmplt && ptw_l2tlb_pmiss) ? ptw_l2tlb_ref_flg[FLG_WIDTH-1:0]
                                                            : final_hit_flg[FLG_WIDTH-1:0];
     
     assign l2tlb_l1tlb_ref_vpn[VPN_WIDTH-1:0] = ref_vpn[VPN_WIDTH-1:0]; 

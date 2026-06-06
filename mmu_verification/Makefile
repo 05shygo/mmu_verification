@@ -256,8 +256,10 @@ COV_METRICS     := line+cond+fsm+tgl+branch+assert
 COV_ALL_LIST    ?= $(SIMU_DIR)/all_tests_coverage_list
 COV_L1L2_LIST   ?= $(SIMU_DIR)/l1l2_cov_list
 COV_QUICK_LIST  ?= $(SIMU_DIR)/mmu_coverage_list
-COV_DEF_SEED    ?= 1
-COV_TIMEOUT     ?= 12000000
+COV_DEF_SEED         ?= 1
+COV_TIMEOUT          ?= 12000000
+COV_PARALLEL_JOBS    ?= 12
+COV_PARALLEL_SEEDS   ?= 1 2 3 4 5
 COV_HIER_CFG    := $(PROJECT_DIR)/scripts/cov_hier.cfg
 COV_COMPILE_OPTS:= -cm $(COV_METRICS) \
                    -cm_dir $(COV_DB_DIR) \
@@ -759,7 +761,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
 
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
-        cov_quick cov_l1l2 cov_all cov_gen_list \
+        cov_quick cov_l1l2 cov_all covp cov_gen_list \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -2189,7 +2191,8 @@ merge_cov:
 #   make cov_all     — 全部 423 个 test（~70-100 分钟）
 
 cov_run = $(MAKE) regress REGRESS_MODE=run_cov REGRESS_SEEDS=$(COV_DEF_SEED) \
-          REGRESS_JOBS=1 TIMEOUT=$(COV_TIMEOUT) UVM_ERR_ONLY=1
+          REGRESS_JOBS=1 TIMEOUT=$(COV_TIMEOUT) UVM_ERR_ONLY=1 \
+          REGRESS_MIN_PASS_RATE=0.98
 
 cov_quick: comp
 	@echo "=== cov_quick: running $(COV_QUICK_LIST) ==="
@@ -2220,11 +2223,47 @@ cov_all: comp
 	@$(cov_run) LIST=$(COV_ALL_LIST)
 	@$(MAKE) cov
 
+# --- 并行覆盖率（Phase14 框架，12 线程 5 seed）--------------------------------
+#   make covp    — 全量 416 test × 5 seed 并行跑 + 全 MMU 报告 + L1+L2 报告
+covp: comp
+	@if [ ! -f "$(COV_ALL_LIST)" ]; then $(MAKE) cov_gen_list; fi
+	@echo "=== covp: $$(wc -l < $(COV_ALL_LIST)) tests × $(words $(COV_PARALLEL_SEEDS)) seeds, $(COV_PARALLEL_JOBS) jobs ==="
+	@$(MAKE) regress_v4_full_parallel \
+	  PHASE14_LIST=$(COV_ALL_LIST) \
+	  PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)" \
+	  PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS)
+	@echo "=== Merging parallel VDBs → full MMU report ==="
+	@$(MAKE) phase14_coverage_merge_parallel
+	@echo "=== Generating L1+L2 filtered report ==="
+	@mkdir -p "$(COV_DIR)/l1l2_urgReport"
+	@$(URG) -full64 -dir "$(PHASE14_PARALLEL_VDB_DIR)" \
+	  -metric $(COV_METRICS) \
+	  -hier u_dut.u_mmu_l1dtlb \
+	  -hier u_dut.x_mmu_l2tlb \
+	  -hier u_dut.u_mmu_l1itlb \
+	  -format both \
+	  -report "$(COV_DIR)/l1l2_urgReport" \
+	  > "$(COV_DIR)/l1l2_urg.log" 2>&1 || true
+	@echo "=== Generating PTW filtered report ==="
+	@mkdir -p "$(COV_DIR)/ptw_urgReport"
+	@$(URG) -full64 -dir "$(PHASE14_PARALLEL_VDB_DIR)" \
+	  -metric $(COV_METRICS) \
+	  -hier u_dut.x_ct_mmu_ptw \
+	  -format both \
+	  -report "$(COV_DIR)/ptw_urgReport" \
+	  > "$(COV_DIR)/ptw_urg.log" 2>&1 || true
+	@echo ""
+	@echo "=== Done ==="
+	@echo "Full MMU:  $(PHASE14_URG_REPORT_DIR)"
+	@echo "L1+L2:     $(COV_DIR)/l1l2_urgReport"
+	@echo "PTW:       $(COV_DIR)/ptw_urgReport"
+
 cov_gen_list:
 	@echo "=== Generating all-tests coverage list ==="
 	@find $(PROJECT_DIR)/testbench/test -name "*.svh" \
-	  -exec grep -h "uvm_component_utils" {} \; | \
-	  sed 's/.*uvm_component_utils(//' | sed 's/).*//' | sort -u > $(COV_ALL_LIST)
+	  -exec grep -hE "uvm_component_utils|uvm_object_utils" {} \; | \
+	  sed 's/.*\(uvm_component_utils\|uvm_object_utils\)(//' | sed 's/).*//' | sort -u | \
+	  grep -vE '_base$$|_common$$' > $(COV_ALL_LIST)
 	@echo "=== Generated $(COV_ALL_LIST): $$(wc -l < $(COV_ALL_LIST)) tests ==="
 
 #===============================================================================

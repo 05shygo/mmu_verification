@@ -474,6 +474,15 @@ module tb_top;
   assign dut_probes_if.l2_reqq_qid      = u_dut.x_mmu_l2tlb.x_l2tlb_reqq.issue_queue_id;
   assign dut_probes_if.l2_reqq_issue_valid = u_dut.x_mmu_l2tlb.queue_arb_req;
   assign dut_probes_if.l2_reqq_issue_type = u_dut.x_mmu_l2tlb.queue_arb_acc_type;
+  // PFU request/response pairing probes for pipe2 VA→PA correlation.
+  // l2_pfu_req_vld: PFU request enters L2TLB pipeline (final_vld && acc_type==PFU).
+  assign dut_probes_if.l2_pfu_req_vld = u_dut.x_mmu_l2tlb.final_vld
+                                     && (u_dut.x_mmu_l2tlb.final_acc_type == 3'b100);
+  assign dut_probes_if.l2_pfu_req_vpn = u_dut.x_mmu_l2tlb.final_vpn;
+  // l2_pfu_rsp_vld: PFU response valid (pfu_ok_st || pfu_deny_st).
+  assign dut_probes_if.l2_pfu_rsp_vld = u_dut.x_mmu_l2tlb.pfu_ok_st
+                                     || u_dut.x_mmu_l2tlb.pfu_deny_st;
+  assign dut_probes_if.l2_pfu_rsp_pa  = u_dut.x_mmu_l2tlb.pfu_pa_buf;
   assign dut_probes_if.l2mb_vld_vec      = u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_vld_vec;
   assign dut_probes_if.l2mb_rdy_vec      = u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_rdy_vec;
   assign dut_probes_if.l2mb_issue_req    = u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req;

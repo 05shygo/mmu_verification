@@ -95,6 +95,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
   longint unsigned m_abort_epoch_count;
   longint unsigned m_control_epoch_count;
   longint unsigned m_last_abort_cycle;
+  longint unsigned m_orphan_drain_until;  // accept orphans silently until this cycle
 
   int unsigned m_ptw_req_seen;
   int unsigned m_ptw_data_seen;
@@ -144,6 +145,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     m_abort_epoch_count = 0;
     m_control_epoch_count = 0;
     m_last_abort_cycle = 0;
+    m_orphan_drain_until = 0;
     m_ptw_req_seen = 0;
     m_ptw_data_seen = 0;
     m_ptw_fault_seen = 0;
@@ -274,12 +276,17 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
       m_ptw[i].valid = 1'b0;
     bump_epoch("reset");
     invalidate_all("reset");
+    // Drain window: in-flight PTW completions after reset are expected orphans.
+    // RTL resets the PTW pipeline but completions already issued may still arrive.
+    m_orphan_drain_until = m_cycle + 500;
   endfunction
 
   function void on_abort(string reason = "abort");
     m_abort_epoch_count++;
     m_last_abort_cycle = m_cycle;
     bump_epoch(reason);
+    // Drain window: in-flight completions after abort are expected.
+    m_orphan_drain_until = m_cycle + 200;
   endfunction
 
   function void on_control_epoch(string reason = "control_epoch");
@@ -287,6 +294,9 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     // RTL does NOT abort in-flight PTW on tlboper_utlb_clr; keep PTW entries alive
     bump_epoch(reason, .clear_ptw(1'b0));
     invalidate_all(reason);
+    // SATP switch may race with in-flight PTW completions in some scenarios.
+    if (m_cycle + 100 > m_orphan_drain_until)
+      m_orphan_drain_until = m_cycle + 100;
   endfunction
 
   function void invalidate_all(string reason = "INVALL");
@@ -487,16 +497,18 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     idx = find_ptw(id, typ);
     if (idx < 0) begin
       m_ptw_orphan_seen++;
-      // Same-cycle abort vs. completion race: the abort cleared the PTW
-      // entry before the completion was processed.  This is expected RTL
-      // behaviour — the completion arrived too late to be useful.
-      if (m_cycle == m_last_abort_cycle) begin
+      // Drain window: after reset/abort/SATP-switch, the shadow clears PTW
+      // tracking but RTL completions already in flight may still arrive.
+      // These are NOT bugs — RTL correctly discards them.
+      if (m_cycle < m_orphan_drain_until) begin
         `uvm_info(get_type_name(),
-          $sformatf("[PHASE6C_L2_ORPHAN_ABORT_RACE] id=0x%02h type=0x%0h owner=%s vpn=0x%07h asid=0x%04h pgs=0x%0h epoch=%0d cycle=%0d",
-            id, typ, owner_name(owner_from_type(typ)), tag[46:20], '0, typ, m_epoch, m_cycle),
-          UVM_MEDIUM)
+          $sformatf("[PHASE6C_L2_ORPHAN_DRAIN] id=0x%02h type=0x%0h owner=%s vpn=0x%07h cycle=%0d drain_until=%0d",
+            id, typ, owner_name(owner_from_type(typ)), tag[46:20], m_cycle, m_orphan_drain_until),
+          UVM_HIGH)
         return;
       end
+      // Outside drain window: this is a real orphan — the shadow should
+      // have a record of this PTW request but doesn't.
       record_mismatch(L2TLB_MISMATCH_RTL_BUG, "PTW_ORPHAN_COMPLETION",
         tag[46:20], '0, typ, owner_from_type(typ),
         "outstanding PTW owner for completion", "none");

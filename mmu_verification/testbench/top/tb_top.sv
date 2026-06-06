@@ -1027,6 +1027,7 @@ module tb_top;
   assign dut_probes_if.tlboper_utlb_clr  = u_dut.tlboper_utlb_clr;
   assign dut_probes_if.tlboper_utlb_inv_va_req = u_dut.tlboper_utlb_inv_va_req;
   assign dut_probes_if.tlboper_utlb_inv_va = lsu_if_inst.lsu_mmu_tlb_va;
+  assign dut_probes_if.biu_mmu_smp_disable  = misc_if_inst.biu_mmu_smp_disable;
   assign ifu_if_inst.dbg_iutlb_acc_flt   = u_dut.x_mmu_l1itlb.iutlb_acc_flt;
   assign ifu_if_inst.dbg_iutlb_pmp_deny  = u_dut.x_mmu_l1itlb.pmp_flg_vld
                                          && !u_dut.x_mmu_l1itlb.pmp_mmu_flg2[2]

@@ -323,6 +323,7 @@ interface mmu_dut_probes_if (
   wire         tlboper_utlb_clr;
   wire         tlboper_utlb_inv_va_req;
   wire [26:0]  tlboper_utlb_inv_va;
+  wire         biu_mmu_smp_disable;
 
   // Monitor clocking
   clocking mon_cb @(posedge clk_i);
@@ -412,6 +413,7 @@ interface mmu_dut_probes_if (
     input p13_csr_refill_req_vec, p13_csr_refill_pgs_vec, p13_csr_refill_data_vec;
     input tlbiva_cur_st, rtu_yy_xx_flush, tlboper_utlb_clr, tlboper_utlb_inv_va_req;
     input tlboper_utlb_inv_va;
+    input biu_mmu_smp_disable;
   endclocking
 
 endinterface : mmu_dut_probes_if

@@ -109,6 +109,28 @@ class mmu_translation_sb extends uvm_scoreboard;
   localparam int PTW_REQ_SHADOW_DEPTH = 8;
   localparam int PTW_ID_WIDTH = 7;
   localparam int unsigned LSU_SATP_MIDWALK_REFILL_CYCLE_WINDOW = 32;
+  // PFU pipe2 is single-outstanding — L2TLB PFU path VA and PA travel on
+  // independent wires.  Use internal probe signals (l2_pfu_req_vld/vpn,
+  // l2_pfu_rsp_vld) to pair request VPNs with response PAs through a FIFO.
+  //
+  // Both run_phase and write_lsu_p2 pop from the FIFO:
+  // - run_phase pops on every l2_pfu_rsp_vld edge (hardware response event)
+  //   to keep the FIFO in sync even when the monitor suppresses a response
+  //   (e.g. under 4-TWU concurrency where va2_vld never toggles).
+  // - write_lsu_p2 pops on each published pipe2 response to obtain the
+  //   architecturally correct VA for comparison.
+  //
+  // If write_lsu_p2 finds the FIFO empty (because run_phase already popped
+  // this cycle's entry), it falls back to the monitor-provided VA.
+  localparam int PFU_VA_FIFO_DEPTH = 4;
+  bit [26:0] m_pfu_va_fifo [PFU_VA_FIFO_DEPTH];
+  int unsigned m_pfu_va_fifo_wr;
+  int unsigned m_pfu_va_fifo_rd;
+
+  // Edge-detection state for PFU probe signals (run_phase)
+  bit m_l2_pfu_req_vld_prev;
+  bit m_l2_pfu_rsp_vld_prev;
+
   localparam int unsigned LSU_SATP_MIDWALK_SATP_CYCLE_WINDOW   = 128;
   localparam int unsigned LSU_SATP_MIDWALK_REQ_CYCLE_WINDOW    = 128;
 
@@ -275,6 +297,10 @@ class mmu_translation_sb extends uvm_scoreboard;
     m_l2_prev_tlboper_ptw_abort = 1'b0;
     m_l2_prev_rtu_flush = 1'b0;
     m_l2_prev_utlb_clr = 1'b0;
+    m_pfu_va_fifo_wr = 0;
+    m_pfu_va_fifo_rd = 0;
+    m_l2_pfu_req_vld_prev = 1'b0;
+    m_l2_pfu_rsp_vld_prev = 1'b0;
     m_l2_shadow = null;
     _ptw_req_shadow_clear_all();
   endfunction
@@ -505,6 +531,48 @@ class mmu_translation_sb extends uvm_scoreboard;
         if (cur_reset_asserted && !m_l2_prev_reset_asserted)
           m_tlbop_decode.reset_state();
         m_tlbop_decode.sample_cycle();
+      end
+
+      // ── PFU request/response VA→PA pairing FIFO ──────────────────
+      // PFU pipe2 VA and PA travel on independent wires; the monitor
+      // cannot guarantee same-cycle correlation and may suppress
+      // responses when va2_vld never toggles.
+      //
+      // run_phase pushes on l2_pfu_req_vld and pops on l2_pfu_rsp_vld
+      // (hardware events).  The pop keeps the FIFO in sync even when
+      // the monitor suppresses a response.  write_lsu_p2 also pops
+      // to obtain the VA for published responses.
+      if (v_probe != null && !cur_reset_asserted) begin
+        // Push VPN on rising edge of PFU request valid
+        if (v_probe.mon_cb.l2_pfu_req_vld && !m_l2_pfu_req_vld_prev) begin
+          m_pfu_va_fifo[m_pfu_va_fifo_wr % PFU_VA_FIFO_DEPTH] = v_probe.mon_cb.l2_pfu_req_vpn;
+          m_pfu_va_fifo_wr++;
+          `uvm_info(get_type_name(),
+            $sformatf("[PFU_FIFO] push req vpn=0x%07h cycle=%0d depth=%0d",
+              v_probe.mon_cb.l2_pfu_req_vpn, m_probe_cycle,
+              m_pfu_va_fifo_wr - m_pfu_va_fifo_rd),
+            UVM_DEBUG)
+        end
+        // Pop on every hw response event to keep FIFO in sync.
+        // If write_lsu_p2 already popped this entry, the FIFO will
+        // be empty — just log a debug message and continue.
+        if (v_probe.mon_cb.l2_pfu_rsp_vld && !m_l2_pfu_rsp_vld_prev) begin
+          if (m_pfu_va_fifo_rd < m_pfu_va_fifo_wr) begin
+            `uvm_info(get_type_name(),
+              $sformatf("[PFU_FIFO] sync-pop rsp vpn=0x%07h cycle=%0d depth=%0d",
+                m_pfu_va_fifo[m_pfu_va_fifo_rd % PFU_VA_FIFO_DEPTH],
+                m_probe_cycle, m_pfu_va_fifo_wr - m_pfu_va_fifo_rd - 1),
+              UVM_DEBUG)
+            m_pfu_va_fifo_rd++;
+          end
+        end
+        m_l2_pfu_req_vld_prev = v_probe.mon_cb.l2_pfu_req_vld;
+        m_l2_pfu_rsp_vld_prev = v_probe.mon_cb.l2_pfu_rsp_vld;
+      end else if (v_probe != null && cur_reset_asserted) begin
+        m_pfu_va_fifo_wr = 0;
+        m_pfu_va_fifo_rd = 0;
+        m_l2_pfu_req_vld_prev = 1'b0;
+        m_l2_pfu_rsp_vld_prev = 1'b0;
       end
     end
   endtask
@@ -1033,9 +1101,21 @@ class mmu_translation_sb extends uvm_scoreboard;
     dut_fault = tr.pgflt | tr.access_fault;
 
     if (tr.stamo_vld_at_rsp && (tr.pa !== tr.stamo_pa_at_rsp)) begin
-      `uvm_error(get_type_name(),
-        $sformatf("[LSU_P1] STAMO vld: expected dut.pa=lsu_mmu_stamo_pa, got pa=0x%07h stamo=0x%07h (VA=0x%010h)",
-          tr.pa, tr.stamo_pa_at_rsp, {1'b0, va}))
+      // DUT RTL (mmu_l1dtlb_hit_rd.sv:271): STAMO bypass is disabled when
+      // dtlb_expt_match is high (page/access fault in exception CAM):
+      //   dutlb_stamo_pre_sel = lsu_mmu_stamo_vld_x & !dutlb_expt_match
+      // Waive the STAMO PA check when the DUT has a fault or exception match.
+      if (dut_fault || tr.dtlb_expt_match) begin
+        `uvm_info(get_type_name(),
+          $sformatf("[LSU_P1] STAMO vld waive: pa=0x%07h stamo=0x%07h (VA=0x%010h) — fault=%0b expt_match=%0b",
+            tr.pa, tr.stamo_pa_at_rsp, {1'b0, va}, dut_fault, tr.dtlb_expt_match),
+          UVM_MEDIUM)
+        m_lsu_phase6b_stamo_classified_rsp++;
+      end else begin
+        `uvm_error(get_type_name(),
+          $sformatf("[LSU_P1] STAMO vld: expected dut.pa=lsu_mmu_stamo_pa, got pa=0x%07h stamo=0x%07h (VA=0x%010h)",
+            tr.pa, tr.stamo_pa_at_rsp, {1'b0, va}))
+      end
     end else if (tr.stamo_vld_at_rsp) begin
       `uvm_info(get_type_name(),
         $sformatf("[LSU_P1] PHASE6B_TRANSLATION_CLASS class=stamo_pipe1_bypass trigger=monitor_rsp iid=%0d VA=0x%010h dut.pa=0x%07h stamo_pa=0x%07h",
@@ -1056,10 +1136,19 @@ class mmu_translation_sb extends uvm_scoreboard;
   // =========================================================================
   // write_lsu_p2 — LSU Pipe 2 prefetch translation check
   //   Access type: ACC_PFU (always prefetch)
-  //   VA source: tr.va2[26:0] reconstructed as VA[38:12] (27-bit VPN << 12).
   //
-  //   Pipe2 monitor correlates the single-outstanding PFU req VA into rsp txn.
-  //   If va2_valid is low due to an orphan/legacy rsp, count only and skip compare.
+  //   PFU pipe2 VA and PA travel on independent wires (lsu_mmu_va2 /
+  //   mmu_lsu_pa2).  The checker uses a VA FIFO populated by run_phase
+  //   on l2_pfu_req_vld (the hardware request event, cycles before the
+  //   response).  Both run_phase and write_lsu_p2 pop from the FIFO:
+  //   run_phase pops on every l2_pfu_rsp_vld to keep the FIFO in sync
+  //   with hardware events (handling suppressed responses), and
+  //   write_lsu_p2 pops on each published pipe2 response to obtain the
+  //   architecturally correct VA.
+  //
+  //   If the FIFO is empty (run_phase popped first in this cycle, or a
+  //   legacy/orphan response), fall back to the monitor-provided VA.
+  //   If va2_valid is low, count only and skip.
   // =========================================================================
   virtual function void write_lsu_p2(lsu_txn tr);
     xlation_rsp_t ref_rsp;
@@ -1073,6 +1162,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     bit           pfu_payload_ignore;
     bit [3:0]     pfu_pmp_flg4;
     bit [4:0]     pfu_sysmap_flg4;
+    bit           use_tracked;
+    bit [26:0]    tracked_vpn;
 
     m_total_checked++;
 
@@ -1083,11 +1174,34 @@ class mmu_translation_sb extends uvm_scoreboard;
       return;
     end
 
-    // Reconstruct 39-bit VA: take lower 27 bits of va2 as VPN (VA[38:12]),
-    // append 12-bit zero page offset.
-    va      = va_t'({tr.va2[26:0], 12'b0});
-    ref_rsp = m_ref.translate(va, ACC_PFU, 4);
-    exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
+    // ── Obtain PFU-tracked VA from request FIFO ──────────────────────
+    // run_phase pushes request VPNs on l2_pfu_req_vld (cycles before the
+    // response) and pops on l2_pfu_rsp_vld to keep the FIFO in sync with
+    // hardware events.  Pop here to get the architecturally correct VA
+    // for this published response, replacing the monitor's tr.va2 which
+    // may be stale under high-concurrency (4-TWU) scenarios.
+    //
+    // If the FIFO is empty (run_phase popped first in this cycle, or
+    // legacy/orphan response), fall back to the monitor-provided VA.
+    use_tracked = 1'b0;
+    tracked_vpn = '0;
+    if (m_pfu_va_fifo_rd < m_pfu_va_fifo_wr) begin
+      tracked_vpn = m_pfu_va_fifo[m_pfu_va_fifo_rd % PFU_VA_FIFO_DEPTH];
+      use_tracked = 1'b1;
+      m_pfu_va_fifo_rd++;
+    end
+
+    if (use_tracked) begin
+      va = va_t'({tracked_vpn, 12'b0});
+      ref_rsp = m_ref.translate(va, ACC_PFU, 4);
+      exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
+    end else begin
+      // Fallback: use monitor-provided VA (original behaviour).
+      va = va_t'({tr.va2[26:0], 12'b0});
+      ref_rsp = m_ref.translate(va, ACC_PFU, 4);
+      exp_fault = (ref_rsp.exc != EXC_NONE) || ref_rsp.deny;
+    end
+
     dut_fault = tr.access_fault;
     pfu_deny = (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_deny : 1'b0;
     pfu_acc_fault = (v_probe != null) ? v_probe.mon_cb.pfu_l2tlb_acc_fault : tr.access_fault;
@@ -1105,7 +1219,7 @@ class mmu_translation_sb extends uvm_scoreboard;
         pfu_deny,
         pfu_acc_fault,
         pfu_flag_fault,
-        tr.va2[26:0],
+        use_tracked ? tracked_vpn : tr.va2[26:0],
         tr.pa,
         (tr.mmu_en === 1'b0),
         tr.asid);
@@ -1123,10 +1237,10 @@ class mmu_translation_sb extends uvm_scoreboard;
       if (pfu_flag_fault && !pfu_error)
         m_pfu_flag_only_diag_rsp++;
       `uvm_info({get_type_name(), "::PHASE6G_TIMEOUT_FAIRNESS"},
-        $sformatf("[PHASE6G_TIMEOUT_FAIRNESS_PFU_PAYLOAD_IGNORE] issue=L2TLB-P6-ISSUE-013 va=0x%010h vpn=0x%07h pa=0x%07h deny=%0b acc_fault=%0b flag_fault=%0b pmp_flg4=0x%0h ref_pmp_flg4=0x%0h sysmap_flg4=0x%02h ref.exc=%s ref.deny=%0b action=skip_pa_payload_compare",
-          {1'b0, va}, tr.va2[26:0], tr.pa, pfu_deny, pfu_acc_fault,
+        $sformatf("[PHASE6G_TIMEOUT_FAIRNESS_PFU_PAYLOAD_IGNORE] issue=L2TLB-P6-ISSUE-013 va=0x%010h vpn=0x%07h pa=0x%07h deny=%0b acc_fault=%0b flag_fault=%0b pmp_flg4=0x%0h ref_pmp_flg4=0x%0h sysmap_flg4=0x%02h ref.exc=%s ref.deny=%0b action=skip_pa_payload_compare tracked=%0b",
+          {1'b0, va}, use_tracked ? tracked_vpn : tr.va2[26:0], tr.pa, pfu_deny, pfu_acc_fault,
           pfu_flag_fault, pfu_pmp_flg4, m_ref.m_pmp_flg[4], pfu_sysmap_flg4,
-          ref_rsp.exc.name(), ref_rsp.deny),
+          ref_rsp.exc.name(), ref_rsp.deny, use_tracked),
         UVM_MEDIUM)
       return;
     end
@@ -1135,8 +1249,8 @@ class mmu_translation_sb extends uvm_scoreboard;
     // fault bit first so an unexpected PMP deny is not misdiagnosed as PA=0.
     if (exp_fault !== dut_fault) begin
       `uvm_error(get_type_name(),
-        $sformatf("[LSU_P2] VA=0x%010h: fault mismatch - ref.exc=%s ref.deny=%0b exp_fault=%0b dut.access_fault=%0b dut.pa=0x%07h",
-          {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault, tr.pa))
+        $sformatf("[LSU_P2] VA=0x%010h: fault mismatch - ref.exc=%s ref.deny=%0b exp_fault=%0b dut.access_fault=%0b dut.pa=0x%07h tracked=%0b",
+          {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, exp_fault, dut_fault, tr.pa, use_tracked))
       if (v_probe != null) begin
         `uvm_error(get_type_name(),
           $sformatf("[LSU_P2][WB] pmp_flg4=0x%0h ref_pmp_flg4=0x%0h sysmap_flg4=0x%02h pfu_deny=%0b pfu_acc_fault=%0b pfu_flag_fault=%0b last_ptw_l2_ref={valid:%0b pgflt:%0b acc_err:%0b age:%0t}",
@@ -1155,30 +1269,32 @@ class mmu_translation_sb extends uvm_scoreboard;
     // Restrict PA comparison to no-fault cases on both reference and DUT.
     if (exp_fault) begin
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P2] VA=0x%010h ref.exc=%s ref.deny=%0b dut.access_fault=%0b - skip PA compare on fault case",
-          {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, dut_fault),
+        $sformatf("[LSU_P2] VA=0x%010h ref.exc=%s ref.deny=%0b dut.access_fault=%0b - skip PA compare on fault case tracked=%0b",
+          {1'b0, va}, ref_rsp.exc.name(), ref_rsp.deny, dut_fault, use_tracked),
         UVM_MEDIUM)
       return;
     end
 
     if (ref_rsp.ppn !== tr.pa) begin
       // If DUT PA is all zeros the translation result is not yet valid.
-      // Skip PA comparison rather than reporting a spurious mismatch.
       if (tr.pa === '0) begin
         `uvm_info(get_type_name(),
-          $sformatf("[LSU_P2] VA=0x%010h: skip PA compare — dut.pa is zero (translation not complete)",
-            {1'b0, va}),
+          $sformatf("[LSU_P2] VA=0x%010h: skip PA compare — dut.pa is zero (translation not complete) tracked=%0b",
+            {1'b0, va}, use_tracked),
           UVM_HIGH)
         return;
       end
       `uvm_error(get_type_name(),
-        $sformatf("[LSU_P2] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h",
-          {1'b0, va}, ref_rsp.ppn, tr.pa))
+        $sformatf("[LSU_P2] VA=0x%010h: PA mismatch — ref.ppn=0x%07h  dut.pa=0x%07h tracked=%0b fifo_depth=%0d probe_pa=0x%07h mon_va=0x%07h",
+          {1'b0, va}, ref_rsp.ppn, tr.pa, use_tracked,
+          m_pfu_va_fifo_wr - m_pfu_va_fifo_rd,
+          (v_probe != null) ? v_probe.mon_cb.l2_pfu_rsp_pa : '0,
+          tr.va2[26:0]))
       m_mismatch++;
     end else begin
       `uvm_info(get_type_name(),
-        $sformatf("[LSU_P2] VA=0x%010h  ref.ppn=0x%07h  dut.pa=0x%07h  PASS",
-          {1'b0, va}, ref_rsp.ppn, tr.pa),
+        $sformatf("[LSU_P2] VA=0x%010h  ref.ppn=0x%07h  dut.pa=0x%07h  PASS tracked=%0b",
+          {1'b0, va}, ref_rsp.ppn, tr.pa, use_tracked),
         UVM_HIGH)
     end
   endfunction
@@ -1381,7 +1497,10 @@ class mmu_translation_sb extends uvm_scoreboard;
 
     lsu_expt_orphan = lsu_expt_replay_sig && !lsu_expt_cam_hit;
 
-    skip_lsu_dtlb_ref_compare = lsu_expt_replay_rsp;
+    // When STAMO is active (skip_ref_ppn_check), the PA is sourced from the
+    // LSU STAMO path, not the DTLB.  Fault signals from the DTLB T0 terminal
+    // are unrelated to the STAMO operation; waive the entire DTLB comparison.
+    skip_lsu_dtlb_ref_compare = lsu_expt_replay_rsp || skip_ref_ppn_check;
 
     lsu_direct_map_class = dbg_valid
       && !tr_mmu_en

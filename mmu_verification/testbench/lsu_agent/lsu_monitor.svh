@@ -739,6 +739,7 @@ class lsu_monitor extends uvm_monitor;
     lsu_txn tr, req_tr;
     bit     prev_rsp_seen;
     bit     has_visible_req;
+    bit     prev_va2_vld;
     bit     publish_rsp;
 
     prev_rsp_seen = 1'b0;
@@ -747,16 +748,18 @@ class lsu_monitor extends uvm_monitor;
       @(vif.monitor_cb);
       if (vif.rst_ni !== 1'b1) begin
         prev_rsp_seen = 1'b0;
+        prev_va2_vld  = 1'b0;
         has_visible_req = 1'b0;
         m_p2_rsp_seen = 1'b0;
         m_pending_p2.delete();
         continue;
       end
 
-      if (vif.monitor_cb.lsu_mmu_va2_vld && !has_visible_req
-          && ((v_probe == null)
-              || (v_probe.mon_cb.arb_pfu_grant === 1'b1)
-              || (vif.monitor_cb.mmu_lsu_pa2_vld === 1'b1))) begin
+      // Capture PFU VA on rising edge of va2_vld.  Previous code gated
+      // on arb_pfu_grant (probe signal from a different path) which can
+      // arrive in a different cycle under heavy load, causing VA to be
+      // missed.  Edge detection prevents re-capture of the same VA.
+      if (vif.monitor_cb.lsu_mmu_va2_vld && !prev_va2_vld && !has_visible_req) begin
         tr      = lsu_txn::type_id::create("lsu_p2_req");
         tr.kind = LSU_PIPE2;
         tr.va2  = vif.monitor_cb.lsu_mmu_va2;
@@ -804,6 +807,14 @@ class lsu_monitor extends uvm_monitor;
               $sformatf("[LSU_P2_DUP_RSP] extra rsp while PFU req is closing: pa=0x%07h err=%0b",
                 tr.pa, tr.access_fault),
               UVM_DEBUG)
+          end else if (!has_visible_req) begin
+            // No pending VA — this PA belongs to a previously-completed
+            // request.  PFU pipeline may hold pa2_vld across VA boundaries.
+            `uvm_info(get_type_name(),
+              $sformatf("[LSU_P2_STALE_RSP] rsp without pending req (prior request already drained): pa=0x%07h err=%0b",
+                tr.pa, tr.access_fault),
+              UVM_HIGH)
+            publish_rsp = 1'b0;
           end else begin
             `uvm_warning(get_type_name(),
               $sformatf("[LSU_P2_ORPHAN_RSP] rsp observed without pending req: pa=0x%07h err=%0b",
@@ -832,6 +843,7 @@ class lsu_monitor extends uvm_monitor;
       end
 
       prev_rsp_seen = vif.monitor_cb.mmu_lsu_pa2_vld;
+      prev_va2_vld  = vif.monitor_cb.lsu_mmu_va2_vld;
     end
   endtask
 

@@ -29,6 +29,7 @@ module mmu_tlbop_lifecycle_sva (
     // INV FSM states (for l2_cmplt assertion context)
     input logic [2:0] tlbiasid_cur_st,
     input logic       tlbiall_cur_st,
+    input logic [3:0] tlbiva_cur_st,
 
     // PTW abort (for TP_044)
     input logic       tlboper_ptw_abort
@@ -43,8 +44,15 @@ module mmu_tlbop_lifecycle_sva (
   assign tlbwi_active = (tlbwi_cur_st != IDLE);
   assign tlbwr_active = (tlbwr_cur_st != IDLE);
 
+  // INV FSM activity
+  logic tlbiasid_active, tlbiall_active, tlbiva_active;
+  assign tlbiasid_active = (tlbiasid_cur_st != 3'b000);
+  assign tlbiall_active  = (tlbiall_cur_st != 1'b0);
+  assign tlbiva_active   = (tlbiva_cur_st != 4'b0000);
+
   logic any_active;
-  assign any_active = tlbp_active || tlbr_active || tlbwi_active || tlbwr_active;
+  assign any_active = tlbp_active || tlbr_active || tlbwi_active || tlbwr_active
+                   || tlbiasid_active || tlbiall_active || tlbiva_active;
 
   // ── G2: Arb request implies an FSM is active ───────────────────────────
   a_arb_req_implies_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
@@ -146,14 +154,12 @@ module mmu_tlbop_lifecycle_sva (
     (any_active && tlboper_ptw_abort) |-> !tlboper_regs_cmplt);
 
   // ── G2: L2TLB completion only when an FSM is active ────────────────────
+  // l2tlb_tlboper_cmplt = final_vld && (final_acc_type == 3'b001) is a pure
+  // combinational pipeline signal.  It can fire 1 cycle after the FSM returns
+  // to IDLE, or during post-reset pipeline drain.  Accept it if any FSM was
+  // active in the current OR previous cycle.
   a_l2_cmplt_during_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    jtlb_tlboper_cmplt |-> (tlbp_active || tlbr_active || tlbwi_active
-                         || tlbwr_active || (tlbiasid_active || tlbiall_active)));
-
-  // INV FSM activity
-  logic tlbiasid_active, tlbiall_active;
-  assign tlbiasid_active = (tlbiasid_cur_st != 3'b000);
-  assign tlbiall_active  = (tlbiall_cur_st != 1'b0);
+    jtlb_tlboper_cmplt |-> any_active || $past(any_active));
 
   // ── G2: regs_cmplt only when an FSM is active (or just finished) ──────
   // regs_cmplt is pulsed when the operation is done

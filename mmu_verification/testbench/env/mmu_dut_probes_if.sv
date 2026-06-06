@@ -204,6 +204,18 @@ interface mmu_dut_probes_if (
   wire         l2_reqq_issue_valid;
   wire [2:0]   l2_reqq_issue_type;
 
+  // mmu_l2tlb — PFU request/response pairing signals
+  //   l2_pfu_req_vld: asserted when a PFU request enters the L2TLB pipeline
+  //                   (final_vld && final_acc_type==3'b100)
+  //   l2_pfu_req_vpn: VPN of the PFU request when l2_pfu_req_vld is high
+  //   l2_pfu_rsp_vld: asserted when the PFU response is valid
+  //                   (pfu_ok_st || pfu_deny_st)
+  //   l2_pfu_rsp_pa:  PA result for the PFU response
+  wire         l2_pfu_req_vld;
+  wire [26:0]  l2_pfu_req_vpn;
+  wire         l2_pfu_rsp_vld;
+  wire [27:0]  l2_pfu_rsp_pa;
+
   // mmu_l2tlb / x_l2tlb_mb
   wire [8:0]   l2mb_vld_vec;
   wire [8:0]   l2mb_rdy_vec;
@@ -450,6 +462,7 @@ interface mmu_dut_probes_if (
     input l2_victim_way, l2_rrpv_updata;
     input l2_wbuf_push_req, l2_wbuf_pop_grant, l2_wbuf_empty;
     input l2_reqq_vld_vec, l2_reqq_rdy_vec, l2_reqq_qid, l2_reqq_issue_valid, l2_reqq_issue_type;
+    input l2_pfu_req_vld, l2_pfu_req_vpn, l2_pfu_rsp_vld, l2_pfu_rsp_pa;
     input l2mb_vld_vec, l2mb_rdy_vec, l2mb_issue_req, l2mb_issue_eid, l2mb_issue_type, l2mb_alloc_valid;
     input l2mb_entry_vpn, l2mb_entry_l1eid, l2mb_entry_type, l2mb_entry_queue_id, l2mb_entry_sent;
     input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any;

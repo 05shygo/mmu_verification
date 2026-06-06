@@ -25,6 +25,7 @@ module PDE_cache #(
     input  logic                  forever_cpuclk,
     input  logic                  cpurst_b,
     input  logic                  cp0_mmu_icg_en,
+	input  logic				  ptw_jtlb_ready,
     input  logic                  pad_yy_icg_scan_en,
 	input  logic                  cp0_mmu_mprv,
 	input  logic [1:0]            cp0_yy_priv_mode,
@@ -147,7 +148,7 @@ always_ff@(posedge pde_cache_clk or negedge cpurst_b) begin
 		ptw_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
 		ptw_type[TYPE_WIDTH-1:0] <= {TYPE_WIDTH{1'b0}};
 		ptw_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};		
-	end else if(l2tlb_ptw_req)begin
+	end else if(l2tlb_ptw_req & ptw_jtlb_ready)begin
 		ptw_vpn[VPN_WIDTH-1:0] <= l2tlb_ptw_vpn[VPN_WIDTH-1:0];
 		ptw_type[TYPE_WIDTH-1:0] <= l2tlb_ptw_type[TYPE_WIDTH-1:0];
 		ptw_id[ID_WIDTH-1:0] <= l2tlb_ptw_id[ID_WIDTH-1:0];
@@ -163,7 +164,7 @@ always_ff@(posedge pde_cache_clk or negedge cpurst_b) begin
 		ptw_req <= 1'b0;
 	else if(tlboper_ptw_abort)	
 		ptw_req <= 1'b0;
-	else if(l2tlb_ptw_req)
+	else if(l2tlb_ptw_req & ptw_jtlb_ready)
 		ptw_req <= 1'b1;
 	else if(!xbar_pde_ready)
 		ptw_req <= ptw_req;

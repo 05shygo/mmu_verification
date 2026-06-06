@@ -1897,13 +1897,98 @@ Merged Phase14 parallel summary: output/regression/phase14_v4_full/summary.txt
 
 ---
 
+## MMU-P14-ISSUE-020 — L2TLB PFU buffer 在 PTW walk 场景下锁存旧 PA
+
+| Field | Value |
+| --- | --- |
+| ID | MMU-P14-ISSUE-020 |
+| Module | L2TLB (RTL) |
+| File | `mmu/rtl/mmu_l2tlb.sv` |
+| Lines | 1402–1407 (`l2tlb_pfu_cmplt`), 1511–1513 (`pfu_pa_buf`), 1238 (`mmu_lsu_pa2_vld`) |
+| Status | Open |
+| Blocking | Yes（阻塞 `test_ptw_pmp_wait_no_lsu` 通过；影响 PFU pipe2 PA 正确性） |
+| Discovered | 2026-06-05, PTW code coverage signoff regression |
+| Discovered by | UVM scoreboard PA mismatch: `ref.ppn=0x0096000` vs `dut.pa=0x0092047` |
+| Classification | RTL — 时序竞态 (timing race) |
+
+### 问题描述
+
+PFU (Prefetch Unit) 的 PA buffer `pfu_pa_buf` 在 PTW walk（L2TLB miss）场景下锁存了**上一次翻译的旧 PPN**，而非当前 PFU 请求翻译完成后的新 PPN。
+
+### 根因
+
+`l2tlb_pfu_cmplt` 信号有三个触发条件 (`mmu_l2tlb.sv:1402–1407`)：
+
+```systemverilog
+assign l2tlb_pfu_cmplt =
+    (final_vld && final_tlb_hit && final_acc_type == PFU)  // 条件1: L2TLB hit
+    || (ptw_l2tlb_ref_cmplt && ptw_l2tlb_pmiss)             // 条件2: PTW walk 完成
+    || (lsu_mmu_va2_vld && l1dtlb_xx_mmu_off);              // 条件3: 新 VA 请求到达
+```
+
+`pfu_pa_buf` 在 PFU IDLE 态且 `l2tlb_pfu_cmplt=1` 时加载 (`mmu_l2tlb.sv:1511–1513`)：
+
+```systemverilog
+else if(pfu_idle_st && l2tlb_pfu_cmplt)
+    pfu_pa_buf <= l2tlb_pfu_pa;   // 加载 l2tlb_pfu_pa
+```
+
+**PTW walk 场景下的错误时序：**
+
+| Cycle | PFU 状态 | `l2tlb_pfu_cmplt` | `l2tlb_pfu_pa` 值 | `pfu_pa_buf` |
+|-------|---------|-------------------|-------------------|-------------|
+| N | IDLE | =1 (条件3: va2_vld 到达) | 旧值（上一次翻译的 PPN） | **<= 锁存旧值** |
+| N+1 | CHK | =1 (条件2: PTW walk 完成) | 新值（本次翻译的 PPN） | **旧值（pfu_idle_st=0，不更新）** |
+| N+2 | OK | 0 | 新值 | **旧值** |
+
+Cycle N+2 时 `pa2_vld=1` (`mmu_l2tlb.sv:1238`)，`mmu_lsu_pa2 = pfu_pa_buf` 输出的是旧值。
+
+### 触发条件
+
+仅在 **L2TLB miss 需要 PTW walk** 时触发。L2TLB hit 路径（条件1）不受影响，因为 `final_vld` 在同一周期提供正确的 `pfu_ref_ppn`。
+
+### 复现测试
+
+```
+test_ptw_pmp_wait_no_lsu  SEED=606
+```
+
+错误日志：
+```
+[LSU_P2] VA=0x00f6000000: PA mismatch — ref.ppn=0x0096000  dut.pa=0x0092047
+```
+
+`dut.pa=0x0092047` 恰好是前一个 PTW 翻译（VA=0x00f2047000）的 PPN。
+
+### 建议修复方向
+
+**方案 A（最小改动）**：将 `l2tlb_pfu_cmplt` 拆分为两个信号，`pfu_pa_buf` 的加载只用条件1和条件2：
+
+```systemverilog
+assign l2tlb_pfu_pa_load = (final_vld && final_tlb_hit && final_acc_type == PFU)
+                         || (ptw_l2tlb_ref_cmplt && ptw_l2tlb_pmiss);
+
+else if(pfu_idle_st && l2tlb_pfu_pa_load)   // 仅翻译完成时加载
+    pfu_pa_buf <= l2tlb_pfu_pa;
+```
+
+**方案 B**：将 `pfu_pa_buf` 的加载推迟到 PFU_OK/PFU_DENY 状态（`pa2_vld` 有效时），而非 IDLE 态提前加载。
+
+### 影响范围
+
+- 所有通过 PFU pipe2 且需 PTW walk 的场景（L2TLB miss + PTW 翻译）
+- L2TLB hit 的 PFU 请求不受影响
+- 非 PFU 路径（pipe0/pipe1 LSU load/store）不受影响
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-016
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-016, MMU-P14-ISSUE-020
 ```
 
 Before final signoff, update this table:
@@ -1930,3 +2015,4 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-017 | Closed | Commit for expt_wakeup typo fix; `test_ptw_pmp_deny_no_refill_606` PASS |
 | MMU-P14-ISSUE-018 | Closed | `test_ptw_pmp_port_map_concurrent_606`: 45,802→1 UVM errors; LSU_P2/P0 PA mismatch, P6E/P6C errors eliminated; only pre-existing PTW_ORPHAN remains |
 | MMU-P14-ISSUE-019 | Closed | `bump_epoch` m_ptw clear moved to `on_reset` only; STALE path in `on_ptw_completion` now correctly handles in-flight completions after epoch change |
+| MMU-P14-ISSUE-020 | Open | `mmu/rtl/mmu_l2tlb.sv:1402`: `l2tlb_pfu_cmplt` condition-3 races PFU buffer load before PTW walk completes; `pfu_pa_buf` latches stale PPN from previous translation |

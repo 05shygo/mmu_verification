@@ -326,6 +326,7 @@ PDE_cache #(
 .cpurst_b							(cpurst_b			),
 .cp0_mmu_icg_en                     (cp0_mmu_icg_en     ),
 .pad_yy_icg_scan_en                 (pad_yy_icg_scan_en ),
+.ptw_jtlb_ready                     (ptw_jtlb_ready     ),
 .cp0_yy_priv_mode					(cp0_yy_priv_mode	),
 .cp0_mmu_mprv						(cp0_mmu_mprv		),
 .cp0_mmu_mpp						(cp0_mmu_mpp		),

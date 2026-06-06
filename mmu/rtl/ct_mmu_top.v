@@ -39,6 +39,7 @@ module ct_mmu_top(
     output logic   [63:0] mmu_cp0_data,                
     output logic   [63:0] mmu_cp0_satp_data,           
     output logic          mmu_cp0_tlb_done,            
+    output logic          mmu_cp0_lsu_oper_flop,
 
     input logic           hpcp_mmu_cnt_en,              
     output logic          mmu_hpcp_dutlb_miss,          
@@ -1309,4 +1310,6 @@ module ct_mmu_top(
     };
 
     // &ModuleEnd; @200
+    assign mmu_cp0_lsu_oper_flop = tlboper_top_lsu_oper;
+
 endmodule

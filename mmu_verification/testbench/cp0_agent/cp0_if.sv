@@ -44,6 +44,7 @@ interface cp0_if (
   logic [63:0] mmu_cp0_data;        // CSR read data
   logic [63:0] mmu_cp0_satp_data;   // SATP read-back
   logic        mmu_cp0_tlb_done;    // TLBOper FSM completion (Group 13)
+  logic        mmu_cp0_lsu_oper_flop; // LSU TLB operation in-flight flag
 
   // =========================================================================
   // Global Broadcast (Group 13)
@@ -63,7 +64,7 @@ interface cp0_if (
     output cp0_mmu_tlb_all_inv;
     output cp0_yy_priv_mode;
     input  mmu_cp0_cmplt, mmu_cp0_data, mmu_cp0_satp_data, mmu_cp0_tlb_done;
-    input  mmu_xx_mmu_en, mmu_yy_xx_no_op;
+    input  mmu_xx_mmu_en, mmu_yy_xx_no_op, mmu_cp0_lsu_oper_flop;
   endclocking
 
   // =========================================================================
@@ -78,7 +79,7 @@ interface cp0_if (
     input cp0_mmu_tlb_all_inv;
     input cp0_yy_priv_mode;
     input mmu_cp0_cmplt, mmu_cp0_data, mmu_cp0_satp_data, mmu_cp0_tlb_done;
-    input mmu_xx_mmu_en, mmu_yy_xx_no_op;
+    input mmu_xx_mmu_en, mmu_yy_xx_no_op, mmu_cp0_lsu_oper_flop;
   endclocking
 
 endinterface : cp0_if

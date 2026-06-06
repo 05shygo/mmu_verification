@@ -87,6 +87,7 @@ module tb_top;
     .mmu_cp0_data             (cp0_if_inst.mmu_cp0_data),
     .mmu_cp0_satp_data        (cp0_if_inst.mmu_cp0_satp_data),
     .mmu_cp0_tlb_done         (cp0_if_inst.mmu_cp0_tlb_done),
+    .mmu_cp0_lsu_oper_flop    (cp0_if_inst.mmu_cp0_lsu_oper_flop),
     .mmu_xx_mmu_en            (cp0_if_inst.mmu_xx_mmu_en),
     .mmu_yy_xx_no_op          (cp0_if_inst.mmu_yy_xx_no_op),
 

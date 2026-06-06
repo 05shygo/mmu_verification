@@ -120,95 +120,82 @@ class cp0_driver extends uvm_driver #(cp0_txn);
     vif.driver_cb.cp0_mmu_wdata   <= tr.wdata;
     @(vif.driver_cb);
     vif.driver_cb.cp0_mmu_wreg    <= 1'b0;
-    if (tr.reg_num == 2'd3) begin  // MCIR — RTL generates cmplt
-      bit done;
-      done = 1'b0;
-      fork
-        begin
-          @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
-          done = 1'b1;
-        end
-        begin
-          repeat (CP0_MCIR_CMPLT_TIMEOUT_CYCLES) @(vif.driver_cb);
-        end
-      join_any
-      disable fork;
-      if (!done) begin
-        // If a previous LSU-initiated TLB operation holds tlb_lsu_oper_flop=1
-        // the CP0 MCIR completion is blocked (tlboper_regs_cmplt gated).  Retry
-        // the write once after draining the LSU path.
-        `uvm_warning("CP0_MCIR_CMPLT_TIMEOUT",
-          $sformatf("MCIR write completion timed out, retrying after drain: wdata=0x%016h tlb_done=%0b mmu_en=%0b no_op=%0b",
-            tr.wdata, vif.driver_cb.mmu_cp0_tlb_done,
-            vif.driver_cb.mmu_xx_mmu_en, vif.driver_cb.mmu_yy_xx_no_op))
-        // Re-pulse the write — the LSU path may have cleared by now.
-        @(vif.driver_cb);
-        vif.driver_cb.cp0_mmu_wreg    <= 1'b1;
-        vif.driver_cb.cp0_mmu_reg_num <= tr.reg_num;
-        vif.driver_cb.cp0_mmu_wdata   <= tr.wdata;
-        @(vif.driver_cb);
-        vif.driver_cb.cp0_mmu_wreg    <= 1'b0;
-        fork
-          begin
-            @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
-            done = 1'b1;
-          end
-          begin
-            repeat (CP0_MCIR_CMPLT_TIMEOUT_CYCLES) @(vif.driver_cb);
-          end
-        join_any
-        disable fork;
-        if (!done) begin
-          // Last resort: issue a no-op MCIR write (bits[31:26]=0) which
-          // completes immediately via mcir_no_op and clears any stuck
-          // tlb_lsu_oper_flop.  Then re-issue the real write.
-          `uvm_warning("CP0_MCIR_CMPLT_TIMEOUT",
-            $sformatf("MCIR write still blocked after retry — injecting no-op to clear path: wdata=0x%016h",
-              tr.wdata))
-          @(vif.driver_cb);
-          vif.driver_cb.cp0_mmu_wreg    <= 1'b1;
-          vif.driver_cb.cp0_mmu_reg_num <= 2'd3;
-          vif.driver_cb.cp0_mmu_wdata   <= 64'h0;  // no-op: bits[31:26]=0
-          @(vif.driver_cb);
-          vif.driver_cb.cp0_mmu_wreg    <= 1'b0;
-          // The no-op write should complete immediately.
-          fork
-            begin
-              @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
-            end
-            begin
-              repeat (1024) @(vif.driver_cb);
-            end
-          join_any
-          disable fork;
-          // Retry the real write one final time.
-          @(vif.driver_cb);
-          vif.driver_cb.cp0_mmu_wreg    <= 1'b1;
-          vif.driver_cb.cp0_mmu_reg_num <= tr.reg_num;
-          vif.driver_cb.cp0_mmu_wdata   <= tr.wdata;
-          @(vif.driver_cb);
-          vif.driver_cb.cp0_mmu_wreg    <= 1'b0;
-          fork
-            begin
-              @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
-              done = 1'b1;
-            end
-            begin
-              repeat (CP0_MCIR_CMPLT_TIMEOUT_CYCLES) @(vif.driver_cb);
-            end
-          join_any
-          disable fork;
-          tr.cmplt = done;
-          if (!done) begin
-            `uvm_error("CP0_MCIR_CMPLT_TIMEOUT",
-              $sformatf("MCIR write completion not seen after no-op injection: wdata=0x%016h data=0x%016h tlb_done=%0b mmu_en=%0b no_op=%0b",
-                tr.wdata, vif.driver_cb.mmu_cp0_data, vif.driver_cb.mmu_cp0_tlb_done,
-                vif.driver_cb.mmu_xx_mmu_en, vif.driver_cb.mmu_yy_xx_no_op))
-            return;
-          end
-        end
-      end
-      tr.cmplt = done;
+	    if (tr.reg_num == 2'd3) begin  // MCIR — RTL generates cmplt
+	      bit done;
+	      bit lsu_blocked;
+
+	      // Advance one cycle so the clocking block reflects post-write state.
+	      @(vif.driver_cb);
+	      lsu_blocked = vif.driver_cb.mmu_cp0_lsu_oper_flop;
+
+	      done = 1'b0;
+	      if (!lsu_blocked) begin
+	        // Fast path: no LSU TLB operation in flight — cmplt should
+	        // arrive quickly via tlboper_regs_cmplt.
+	        fork
+	          begin
+	            @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
+	            done = 1'b1;
+	          end
+	          begin
+	            repeat (CP0_MCIR_CMPLT_TIMEOUT_CYCLES) @(vif.driver_cb);
+	          end
+	        join_any
+	        disable fork;
+	      end
+
+	      if (!done) begin
+	        // Either LSU TLB operation is in flight (lsu_blocked==1) or
+	        // the standard wait timed out (contention appeared mid-wait).
+	        // Use no-op polling: the real operation bits persist in the
+	        // regs module, and the tlboper FSMs keep retrying.  We detect
+	        // completion when mmu_cp0_data drops to zero (mcir bits cleared
+	        // by tlboper_regs_cmplt).
+	        `uvm_info("CP0_MCIR_CONTENTION",
+	          $sformatf("MCIR write deferred by LSU TLB operation, using no-op polling: wdata=0x%016h lsu_oper_flop=%0b",
+	            tr.wdata, vif.driver_cb.mmu_cp0_lsu_oper_flop), UVM_MEDIUM)
+	        begin
+	          int unsigned retry_cnt;
+	          int unsigned poll_cnt;
+	          done = 1'b0;
+	          for (retry_cnt = 0; !done && retry_cnt < 512; retry_cnt++) begin
+	            // Issue a no-op — completes immediately via mcir_no_op.
+	            @(vif.driver_cb);
+	            vif.driver_cb.cp0_mmu_wreg    <= 1'b1;
+	            vif.driver_cb.cp0_mmu_reg_num <= 2'd3;
+	            vif.driver_cb.cp0_mmu_wdata   <= 64'h0;
+	            @(vif.driver_cb);
+	            vif.driver_cb.cp0_mmu_wreg    <= 1'b0;
+	            // Wait for no-op cmplt (mcir_no_op path).
+	            fork
+	              begin
+	                @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
+	              end
+	              begin
+	                repeat (1024) @(vif.driver_cb);
+	              end
+	            join_any
+	            disable fork;
+	            // Poll: real cmplt clears the mcir bits → data drops to 0.
+	            for (poll_cnt = 0; poll_cnt < 1024; poll_cnt++) begin
+	              @(vif.driver_cb);
+	              if (vif.driver_cb.mmu_cp0_data == 64'h0) begin
+	                done = 1'b1;
+	                break;
+	              end
+	            end
+	          end
+	        end
+	        if (!done) begin
+	          `uvm_error("CP0_MCIR_CMPLT_TIMEOUT",
+	            $sformatf("MCIR write completion not detected after no-op polling: wdata=0x%016h data=0x%016h tlb_done=%0b mmu_en=%0b no_op=%0b lsu_oper_flop=%0b",
+	              tr.wdata, vif.driver_cb.mmu_cp0_data, vif.driver_cb.mmu_cp0_tlb_done,
+	              vif.driver_cb.mmu_xx_mmu_en, vif.driver_cb.mmu_yy_xx_no_op,
+	              vif.driver_cb.mmu_cp0_lsu_oper_flop))
+	          return;
+	        end
+	      end
+	      tr.cmplt = done;
     end else begin                 // MIR/MEL/MEH — one settle cycle only
       @(vif.driver_cb);
       tr.cmplt = 1'b1;

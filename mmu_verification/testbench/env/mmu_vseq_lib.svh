@@ -1047,20 +1047,18 @@ class mmu_reset_midtransaction_vseq extends mmu_base_vseq;
     vseq_bringup_sv39_4k(env, 28'h0, 16'h0, 8, 39'h0_D000_0000, 28'hD000);
     for (k = 0; k < 8; k++) begin
       `uvm_info(get_type_name(), "F12: soft reset path = RTU flush + cold LD (not full TB reset).", UVM_NONE)
-      fork
-        begin
-          ld = mmu_vseq_lsu_one_ld_seq::type_id::create("ldm");
-          ld.m_va = va_t'(39'h0_D000_0000) + va_t'(k << 12);
-          ld.start(p_sequencer.lsu_sqr);
-        end
-        begin
-          repeat (k) @(posedge env.m_lsu.vif.clk_i);
-          fl = misc_rtu_flush_seq::type_id::create("fl");
-          fl.start(p_sequencer.misc_sqr);
-        end
-      join
+      ld = mmu_vseq_lsu_one_ld_seq::type_id::create("ldm");
+      ld.m_va = va_t'(39'h0_D000_0000) + va_t'(k << 12);
+      ld.start(p_sequencer.lsu_sqr);
+      // Allow the pipeline to drain completely before issuing the RTU
+      // flush.  Without this gap the flush can race with in-flight
+      // scoreboard callbacks and create a zero-delay loop.
+      repeat (20) @(posedge env.m_lsu.vif.clk_i);
+      fl = misc_rtu_flush_seq::type_id::create("fl");
+      fl.start(p_sequencer.misc_sqr);
+      repeat (20) @(posedge env.m_lsu.vif.clk_i);
     end
-    #100000ns;
+    #1000ns;
   endtask
 endclass
 

@@ -173,6 +173,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--parse-only", action="store_true")
     parser.add_argument("--keep-going-on-regress-fail", action="store_true")
     parser.add_argument("--timeout", default="10000000")
+    parser.add_argument("--min-pass-rate", type=float, default=1.0, help="Minimum regress pass rate (default: 1.0)")
     parser.add_argument("--verbosity", default="UVM_MEDIUM")
     parser.add_argument("--uvm-err-only", default="0")
     parser.add_argument("--extra-plus-args", default="")
@@ -369,6 +370,7 @@ class Runner:
             "REGRESS_NAME={}".format(run["regress_name"]),
             "REGRESS_SEEDS={}".format(" ".join(run["seeds"])),
             "REGRESS_JOBS=1",
+            "REGRESS_MIN_PASS_RATE={}".format(self.args.min_pass_rate),
             "REGRESS_SUMMARY={}".format(str(PROJECT_DIR / run["summary"])),
             "UVM_ERR_ONLY={}".format(self.args.uvm_err_only),
             "UVM_CONFIG_DB_TRACE=0",

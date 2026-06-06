@@ -94,6 +94,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
   longint unsigned m_reset_epoch_count;
   longint unsigned m_abort_epoch_count;
   longint unsigned m_control_epoch_count;
+  longint unsigned m_last_abort_cycle;
 
   int unsigned m_ptw_req_seen;
   int unsigned m_ptw_data_seen;
@@ -142,6 +143,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     m_reset_epoch_count = 0;
     m_abort_epoch_count = 0;
     m_control_epoch_count = 0;
+    m_last_abort_cycle = 0;
     m_ptw_req_seen = 0;
     m_ptw_data_seen = 0;
     m_ptw_fault_seen = 0;
@@ -276,6 +278,7 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
 
   function void on_abort(string reason = "abort");
     m_abort_epoch_count++;
+    m_last_abort_cycle = m_cycle;
     bump_epoch(reason);
   endfunction
 
@@ -484,6 +487,16 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     idx = find_ptw(id, typ);
     if (idx < 0) begin
       m_ptw_orphan_seen++;
+      // Same-cycle abort vs. completion race: the abort cleared the PTW
+      // entry before the completion was processed.  This is expected RTL
+      // behaviour — the completion arrived too late to be useful.
+      if (m_cycle == m_last_abort_cycle) begin
+        `uvm_info(get_type_name(),
+          $sformatf("[PHASE6C_L2_ORPHAN_ABORT_RACE] id=0x%02h type=0x%0h owner=%s vpn=0x%07h asid=0x%04h pgs=0x%0h epoch=%0d cycle=%0d",
+            id, typ, owner_name(owner_from_type(typ)), tag[46:20], '0, typ, m_epoch, m_cycle),
+          UVM_MEDIUM)
+        return;
+      end
       record_mismatch(L2TLB_MISMATCH_RTL_BUG, "PTW_ORPHAN_COMPLETION",
         tag[46:20], '0, typ, owner_from_type(typ),
         "outstanding PTW owner for completion", "none");

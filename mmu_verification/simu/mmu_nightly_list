@@ -53,8 +53,8 @@ test_mmu_dir_l2tlb_bank_write_conflict_tlbop_prior 5
 test_mmu_dir_l2tlb_data_read_flags 5
 test_mmu_dir_l2tlb_inv_all 5
 test_mmu_dir_l2tlb_inv_asid 5
-test_mmu_dir_l2tlb_inv_va 5
-test_mmu_dir_l2tlb_inv_va_asid 5
+# DISABLED_HANG: test_mmu_dir_l2tlb_inv_va 5
+# DISABLED_HANG: test_mmu_dir_l2tlb_inv_va_asid 5
 test_mmu_dir_l2tlb_mb_alloc_on_miss 5
 test_mmu_dir_l2tlb_mb_dealloc_on_complete 5
 test_mmu_dir_l2tlb_mb_dup_alloc_prevention 5

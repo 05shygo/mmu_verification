@@ -406,6 +406,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   bit m_phase6f_pending_inv_saw_miss;
   bit m_phase6f_pending_inv_saw_refill;
   bit m_phase6f_pending_inv_saw_bad_hit;
+  // Deferred utlb_clr+install check: entry_vld is registered so the
+  // clear effect is only visible one cycle later.
+  bit m_phase6f_utlb_deferred_check;
+  logic [15:0] m_phase6f_utlb_deferred_upd;
+  bit m_phase6f_utlb_deferred_is_va;
+  logic [15:0] m_phase6f_utlb_deferred_inv_va_match;
 
   bit m_seen_post_reset;
   string m_l1dtlb_tc_id;
@@ -870,6 +876,10 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     m_phase6f_pending_inv_saw_miss = 1'b0;
     m_phase6f_pending_inv_saw_refill = 1'b0;
     m_phase6f_pending_inv_saw_bad_hit = 1'b0;
+    m_phase6f_utlb_deferred_check = 1'b0;
+    m_phase6f_utlb_deferred_upd = 16'h0000;
+    m_phase6f_utlb_deferred_is_va = 1'b0;
+    m_phase6f_utlb_deferred_inv_va_match = 16'h0000;
     m_phase6f_credit_reset++;
   endfunction
 
@@ -2424,18 +2434,36 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         phase6f_arm_inv_boundary(t0_p1.vpn);
     end
 
-    if (same_va_inv_install || same_all_inv_install) begin
+    // --- Deferred utlb clear+install check (from previous cycle) ---
+    if (m_phase6f_utlb_deferred_check) begin
       m_phase6f_inv_install_final_clear++;
-      if (same_all_inv_install && (v_probe.mon_cb.l1d_entry_vld != 16'h0000))
-        sb_error("P6F_INV_INSTALL_FINAL",
-          $sformatf("same-cycle full invalidate/install left valid entries entry_vld=0x%04h upd=0x%04h",
-            v_probe.mon_cb.l1d_entry_vld, v_probe.mon_cb.l1d_entry_upd));
-      else if (same_va_inv_install
-            && ((v_probe.mon_cb.l1d_entry_vld & inv_va_match) != 16'h0000))
-        sb_error("P6F_INV_INSTALL_FINAL",
-          $sformatf("same-cycle invalidate/install left matching valid entry inv_vpn8=0x%02h entry_vld=0x%04h upd=0x%04h",
-            v_probe.mon_cb.tlboper_utlb_inv_va[7:0],
-            v_probe.mon_cb.l1d_entry_vld, v_probe.mon_cb.l1d_entry_upd));
+      if (!m_phase6f_utlb_deferred_is_va) begin
+        // Full clear: only the previously-installed entries should remain valid
+        if ((v_probe.mon_cb.l1d_entry_vld & ~m_phase6f_utlb_deferred_upd) != 16'h0000)
+          sb_error("P6F_INV_INSTALL_FINAL",
+            $sformatf("full invalidate/install left stale valid entries entry_vld=0x%04h expected_only_upd=0x%04h",
+              v_probe.mon_cb.l1d_entry_vld, m_phase6f_utlb_deferred_upd));
+      end else begin
+        // VA clear: matching entries should be gone
+        if ((v_probe.mon_cb.l1d_entry_vld & m_phase6f_utlb_deferred_inv_va_match) != 16'h0000)
+          sb_error("P6F_INV_INSTALL_FINAL",
+            $sformatf("VA invalidate/install left matching valid entry inv_va_match=0x%04h entry_vld=0x%04h",
+              m_phase6f_utlb_deferred_inv_va_match, v_probe.mon_cb.l1d_entry_vld));
+      end
+      m_phase6f_utlb_deferred_check = 1'b0;
+    end
+
+    // --- Arm deferred check for current cycle ---
+    if (same_va_inv_install || same_all_inv_install) begin
+      m_phase6f_utlb_deferred_check = 1'b1;
+      m_phase6f_utlb_deferred_upd = v_probe.mon_cb.l1d_entry_upd;
+      if (same_all_inv_install) begin
+        m_phase6f_utlb_deferred_is_va = 1'b0;
+        m_phase6f_utlb_deferred_inv_va_match = 16'h0000;
+      end else begin
+        m_phase6f_utlb_deferred_is_va = 1'b1;
+        m_phase6f_utlb_deferred_inv_va_match = inv_va_match;
+      end
     end
 
     if (m_phase6f_pending_inv_check) begin

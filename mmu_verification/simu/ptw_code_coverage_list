@@ -65,7 +65,6 @@ test_ptw_pmp_deny_stop
 test_ptw_pmp_pa_1g
 test_ptw_pmp_pa_2m
 test_ptw_pmp_pa_4k
-test_ptw_pmp_wait_no_lsu
 test_ptw_pmp_pa_zero
 test_ptw_pmp_deny_accflt
 test_ptw_pmp_deny_no_refill
@@ -91,3 +90,4 @@ test_mmu_l1dtlb_dtlb_refill_stale_id_001
 test_mmu_l1dtlb_dtlb_sysmap_001
 test_mmu_l1itlb_itlb_pgflt_001
 test_mmu_dir_l2tlb_bank_write_conflict_ptw_prior
+test_ptw_pmp_wait_no_lsu

@@ -372,17 +372,10 @@ module mmu_arb_sva (
         arb_prefetch_mask_release_seen <= arb_prefetch_mask_release_seen + 1;
       if (arb_l2tlb_req) begin
         l2tlb_hash_check_count <= l2tlb_hash_check_count + 64'd1;
-        $display("[L2TLB_HASH_CHECK] count=%0d src={ptw:%0b ptw_wr:%0b tlbop:%0b reqq:%0b pfu:%0b} vpn=0x%07h sel_vpn=0x%07h selector=0x%0h pgs=0x%0h idx_dut=0x%016h idx_int=0x%016h idx_exp=0x%016h raw_int={%02h,%02h,%02h,%02h,%02h,%02h,%02h,%02h} size_dut=0x%06h size_int=0x%06h size_exp=0x%06h bank_dut=0x%02h bank_int=0x%02h bank_exp=0x%02h tlbop_idx_not_va=%0b",
-          l2tlb_hash_check_count,
-          arb_ptw_grant, arb_ptw_write_grant, arb_tlboper_grant,
-          arb_reqq_grant, arb_pfu_grant, arb_l2tlb_vpn,
-          sel_vpn, selector, ptw_arb_pgs, l2tlb_idx_dut_comb,
-          l2tlb_idx_int_comb, l2tlb_idx_exp_comb,
-          raw_idx[7], raw_idx[6], raw_idx[5], raw_idx[4],
-          raw_idx[3], raw_idx[2], raw_idx[1], raw_idx[0],
-          arb_l2tlb_size_bus, l2tlb_size_int_comb, l2tlb_size_exp_comb,
-          arb_l2tlb_bank_sel, l2tlb_bank_int_comb, l2tlb_bank_exp_comb,
-          tlboper_arb_idx_not_va);
+        // Detailed per-cycle hash check disabled by default — uncomment
+        // for L2TLB hash function debugging only.  The formatted $display
+        // on every L2TLB request cycle severely slows simulation.
+        // $display("[L2TLB_HASH_CHECK] count=%0d ...", ...);
       end
     end
   end

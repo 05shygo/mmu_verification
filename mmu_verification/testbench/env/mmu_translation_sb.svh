@@ -376,29 +376,33 @@ class mmu_translation_sb extends uvm_scoreboard;
         m_prev_satp_asid = m_cur_satp_asid;
       end
       if (v_probe.mon_cb.l2tlb_ptw_req
-          && v_probe.mon_cb.ptw_jtlb_ready
           && !v_probe.mon_cb.tlboper_ptw_abort) begin
-        m_last_l2tlb_ptw_req_valid = 1'b1;
-        m_last_l2tlb_ptw_req_id    = v_probe.mon_cb.l2tlb_ptw_id;
-        m_last_l2tlb_ptw_req_vpn   = v_probe.mon_cb.l2tlb_ptw_vpn;
-        m_last_l2tlb_ptw_req_satp_ppn = v_probe.mon_cb.regs_ptw_satp_ppn;
-        m_last_l2tlb_ptw_req_asid = v_probe.mon_cb.regs_ptw_cur_asid;
-        m_last_l2tlb_ptw_req_priv_mode = v_probe.mon_cb.ptw_cp0_priv_mode;
-        m_last_l2tlb_ptw_req_mxr = v_probe.mon_cb.ptw_cp0_mxr;
-        m_last_l2tlb_ptw_req_sum = v_probe.mon_cb.ptw_cp0_sum;
-        m_last_l2tlb_ptw_req_mprv = v_probe.mon_cb.ptw_cp0_mprv;
-        m_last_l2tlb_ptw_req_mpp = v_probe.mon_cb.ptw_cp0_mpp;
-        m_last_l2tlb_ptw_req_time  = $time;
-        m_last_l2tlb_ptw_req_cycle = m_probe_cycle;
-        _ptw_req_shadow_write(v_probe.mon_cb.l2tlb_ptw_id,
-                              v_probe.mon_cb.l2tlb_ptw_vpn,
-                              v_probe.mon_cb.regs_ptw_satp_ppn,
-                              v_probe.mon_cb.regs_ptw_cur_asid,
-                              v_probe.mon_cb.ptw_cp0_priv_mode,
-                              v_probe.mon_cb.ptw_cp0_mxr,
-                              v_probe.mon_cb.ptw_cp0_sum,
-                              v_probe.mon_cb.ptw_cp0_mprv,
-                              v_probe.mon_cb.ptw_cp0_mpp);
+        // Track every PTW request by (id, type) — the shadow model has
+        // 16 independent slots.  Using a single m_last_* flag would drop
+        // concurrent ITLB + DTLB requests, causing orphan completions.
+        if (!m_last_l2tlb_ptw_req_valid) begin
+          m_last_l2tlb_ptw_req_valid = 1'b1;
+          m_last_l2tlb_ptw_req_id    = v_probe.mon_cb.l2tlb_ptw_id;
+          m_last_l2tlb_ptw_req_vpn   = v_probe.mon_cb.l2tlb_ptw_vpn;
+          m_last_l2tlb_ptw_req_satp_ppn = v_probe.mon_cb.regs_ptw_satp_ppn;
+          m_last_l2tlb_ptw_req_asid = v_probe.mon_cb.regs_ptw_cur_asid;
+          m_last_l2tlb_ptw_req_priv_mode = v_probe.mon_cb.ptw_cp0_priv_mode;
+          m_last_l2tlb_ptw_req_mxr = v_probe.mon_cb.ptw_cp0_mxr;
+          m_last_l2tlb_ptw_req_sum = v_probe.mon_cb.ptw_cp0_sum;
+          m_last_l2tlb_ptw_req_mprv = v_probe.mon_cb.ptw_cp0_mprv;
+          m_last_l2tlb_ptw_req_mpp = v_probe.mon_cb.ptw_cp0_mpp;
+          m_last_l2tlb_ptw_req_time  = $time;
+          m_last_l2tlb_ptw_req_cycle = m_probe_cycle;
+          _ptw_req_shadow_write(v_probe.mon_cb.l2tlb_ptw_id,
+                                v_probe.mon_cb.l2tlb_ptw_vpn,
+                                v_probe.mon_cb.regs_ptw_satp_ppn,
+                                v_probe.mon_cb.regs_ptw_cur_asid,
+                                v_probe.mon_cb.ptw_cp0_priv_mode,
+                                v_probe.mon_cb.ptw_cp0_mxr,
+                                v_probe.mon_cb.ptw_cp0_sum,
+                                v_probe.mon_cb.ptw_cp0_mprv,
+                                v_probe.mon_cb.ptw_cp0_mpp);
+        end
         if (m_l2_shadow != null) begin
           m_l2_shadow.on_ptw_request(v_probe.mon_cb.l2tlb_ptw_id,
             v_probe.mon_cb.l2tlb_ptw_type,
@@ -467,6 +471,9 @@ class mmu_translation_sb extends uvm_scoreboard;
           v_probe.mon_cb.ptw_arb_ref_data_din,
           v_probe.mon_cb.ptw_l2tlb_flg);
       end
+      // PTW completion consumed — allow next request to be tracked
+      if (v_probe.mon_cb.ptw_l2tlb_cmplt)
+        m_last_l2tlb_ptw_req_valid = 1'b0;
       m_l2_prev_reset_asserted = cur_reset_asserted;
       m_l2_prev_tlboper_ptw_abort = cur_tlboper_ptw_abort;
       m_l2_prev_rtu_flush = cur_rtu_flush;

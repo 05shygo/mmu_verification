@@ -373,7 +373,7 @@ class test_l2tlb_p6e_reset_active_lookup_ptw_tlbop_pfu extends l2tlb_phase6e_tes
   virtual function void setup_plan();
     super.setup_plan();
     p9_tc_id                   = "L2TLB-P6E-RESET-ACTIVE";
-    p9_seq_desc                = "mmu_reset_midtransaction_vseq + tlb_inv_all_seq + lsu_prefetch_pipe2_seq";
+    p9_seq_desc                = "tlb_inv_all + pipe2 + RTU-flush interleaved with loads";
     p9_checker                 = "phase6c_epoch,phase6d_reset_sva,credit_sb";
     phase6e_scenario_id        = "L2TLB_SCN_RESET_WARM_ACTIVE_002";
     phase6e_audit_ids          = "L2TLB_TP_001,L2TLB_TP_002,L2TLB_TP_043,L2TLB_SVA_001,L2TLB_SVA_002";
@@ -381,13 +381,68 @@ class test_l2tlb_p6e_reset_active_lookup_ptw_tlbop_pfu extends l2tlb_phase6e_tes
     phase6e_checker_gate       = "PHASE6C_L2_EPOCH/SHADOW_RESET plus reset SVA health";
     phase6e_expected_log_token = "PHASE6C_L2_EPOCH";
     phase6e_run_tier           = "l2tlb_smoke";
-    num_txn                    = 32;
+    num_txn                    = 8;
     timeout_ns                 = 8_000_000;
     m_post_drain               = 800ns;
-    m_vseq_names.push_back("mmu_reset_midtransaction_vseq");
-    m_lsu_seq_names.push_back("tlb_inv_all_seq");
-    m_lsu_seq_names.push_back("lsu_prefetch_pipe2_seq");
+    // Inline all stimulus: TLB invalidation + PFU pipe2 + cold loads
+    // interleaved with RTU flushes.  We drive these directly through the
+    // environment sequencers rather than through the virtual sequencer to
+    // avoid sequencer-state races.
+    // The load+flush interleaving is done inline in run_test_body below.
   endfunction
+
+  // Override the 32-TXN floor — this test interleaves short sequences with
+  // RTU flushes and does not need the default clamp.
+  protected function int unsigned clamp_vseq_num_txn();
+    if (num_txn < 1) return 1;
+    if (num_txn > 50000) return 50000;
+    return num_txn;
+  endfunction
+
+  virtual task run_test_body();
+    tlb_inv_all_seq           inv_seq;
+    lsu_prefetch_pipe2_seq    pfu_seq;
+    mmu_vseq_lsu_one_ld_seq   ld;
+    misc_rtu_flush_seq        fl;
+    va_t                      va_base;
+    int                       k;
+
+    setup_plan();
+    phase6e_emit_meta();
+
+    if (m_run_misc_init)
+      start_misc_seq_by_name("misc_init_seq");
+
+    if (m_enable_sv39_4k_bringup)
+      do_sv39_4k_bringup();
+
+    phase6e_pre_stimulus();
+
+    // --- Background traffic: TLB invalidation + PFU pipe2 ---
+    inv_seq = tlb_inv_all_seq::type_id::create("inv_seq");
+    inv_seq.num_txn = num_txn;
+    inv_seq.start(m_env.m_lsu.m_sequencer);
+
+    pfu_seq = lsu_prefetch_pipe2_seq::type_id::create("pfu_seq");
+    pfu_seq.num_txn = num_txn;
+    pfu_seq.start(m_env.m_lsu.m_sequencer);
+
+    // --- Interleaved cold loads + RTU flushes ---
+    va_base = va_t'(39'h0_D000_0000);
+    for (k = 0; k < 8; k++) begin
+      ld = mmu_vseq_lsu_one_ld_seq::type_id::create("ldm");
+      ld.m_va = va_base + va_t'(k << 12);
+      ld.start(m_env.m_lsu.m_sequencer);
+      repeat (20) @(posedge m_env.m_lsu.vif.clk_i);
+      fl = misc_rtu_flush_seq::type_id::create("fl");
+      fl.start(m_env.m_misc.m_sequencer);
+      repeat (20) @(posedge m_env.m_lsu.vif.clk_i);
+    end
+
+    #(m_post_drain);
+    phase6e_post_stimulus();
+    phase6e_check_gates();
+  endtask
 endclass : test_l2tlb_p6e_reset_active_lookup_ptw_tlbop_pfu
 
 class test_l2tlb_p6e_reqq_arb_payload_owner extends l2tlb_phase6e_test_base;

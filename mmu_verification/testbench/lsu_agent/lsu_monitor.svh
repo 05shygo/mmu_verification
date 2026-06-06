@@ -814,17 +814,21 @@ class lsu_monitor extends uvm_monitor;
           ap_pipe2_rsp.write(_clone_txn(tr, "lsu_p2_rsp_ap"));
       end
 
-      if (!vif.monitor_cb.lsu_mmu_va2_vld && has_visible_req) begin
+      if (m_p2_rsp_seen && has_visible_req) begin
+        // Only allow a new request after the current response is fully
+        // processed (not when va2_vld merely deasserts).  This prevents
+        // a new VA from being enqueued while the previous PA response
+        // is still in flight, which would cause VA/PA mis-pairing.
         if (m_pending_p2.size() > 0) begin
           tr = m_pending_p2.pop_front();
-          if (!m_p2_rsp_seen) begin
-            `uvm_info(get_type_name(),
-              $sformatf("[LSU_P2_DROP] granted PFU req released before visible rsp: va2=0x%07h", tr.va2),
-              UVM_DEBUG)
-          end
         end
         has_visible_req = 1'b0;
         m_p2_rsp_seen = 1'b0;
+      end else if (!vif.monitor_cb.lsu_mmu_va2_vld && has_visible_req && !m_p2_rsp_seen) begin
+        // VA deasserted but no response arrived — keep the request pending.
+        `uvm_info(get_type_name(),
+          $sformatf("[LSU_P2_WAIT] va2 deasserted before rsp, holding request"),
+          UVM_DEBUG)
       end
 
       prev_rsp_seen = vif.monitor_cb.mmu_lsu_pa2_vld;

@@ -36,6 +36,7 @@ class test_mmu_csr_no_op extends phase9_generated_test_base;
     m_run_misc_init = 1'b1;
     m_post_drain = 500ns;
     m_cp0_seq_names.push_back("cp0_no_op_assert_seq");
+    m_cp0_seq_names.push_back("cp0_no_op_clear_seq");
     m_vseq_names.push_back("mmu_smoke_vseq");
   endfunction
 

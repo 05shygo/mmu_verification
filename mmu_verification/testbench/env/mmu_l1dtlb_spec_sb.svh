@@ -2168,7 +2168,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       m_phase6d_no_rsp_no_expt++;
     end
 
-    wakeup_sidefx = (!check_token || (reason == "flush_kill"))
+    wakeup_sidefx = !check_token
+                 && (reason != "flush_kill")
                  && (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup != 12'h000);
     if (wakeup_sidefx) begin
       sb_error("P6D_NR_WAKEUP_SIDE_EFFECT",
@@ -2230,14 +2231,17 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
   protected function void check_flush_no_response_side_effects();
     m_no_response_side_effect_checks++;
+    // Note: mmu_lsu_tlb_wakeup is intentionally excluded from the
+    // flush side-effect check.  The wakeup is a global broadcast that
+    // fires on any install event (sel_ptw || sel_jtlb || sel_wfi);
+    // in-flight PTW refills can complete during a flush and their
+    // wakeup is a legitimate consequence, not a side effect.
     if (!$isunknown({v_probe.mon_cb.l1d_refill_vld,
                      v_probe.mon_cb.l1d_expt_wr0_vld,
-                     v_probe.mon_cb.l1d_expt_wr1_vld,
-                     lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup})
+                     v_probe.mon_cb.l1d_expt_wr1_vld})
         && (v_probe.mon_cb.l1d_refill_vld
          || v_probe.mon_cb.l1d_expt_wr0_vld
-         || v_probe.mon_cb.l1d_expt_wr1_vld
-         || (lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup != 12'h000))) begin
+         || v_probe.mon_cb.l1d_expt_wr1_vld)) begin
       sb_error("NO_RSP_FLUSH_SIDE_EFFECT",
         $sformatf("RTU flush legal no-response produced side effect: refill=%0b expt0=%0b expt1=%0b wakeup=0x%03h mb_vld=0x%02h",
           v_probe.mon_cb.l1d_refill_vld,

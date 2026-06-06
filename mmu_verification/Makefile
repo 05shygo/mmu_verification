@@ -253,6 +253,11 @@ URG_VDB_GLOB          ?=
 # require the compile step to be coverage-enabled.
 COV_TAG         ?= $(TEST_NAME)_$(SEED)
 COV_METRICS     := line+cond+fsm+tgl+branch+assert
+COV_ALL_LIST    ?= $(SIMU_DIR)/all_tests_coverage_list
+COV_L1L2_LIST   ?= $(SIMU_DIR)/l1l2_cov_list
+COV_QUICK_LIST  ?= $(SIMU_DIR)/mmu_coverage_list
+COV_DEF_SEED    ?= 1
+COV_TIMEOUT     ?= 12000000
 COV_HIER_CFG    := $(PROJECT_DIR)/scripts/cov_hier.cfg
 COV_COMPILE_OPTS:= -cm $(COV_METRICS) \
                    -cm_dir $(COV_DB_DIR) \
@@ -754,6 +759,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
 
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
+        cov_quick cov_l1l2 cov_all cov_gen_list \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -2174,6 +2180,52 @@ cov:
 
 merge_cov:
 	@$(MAKE) cov URG_REPORT_DIR="$(URG_MERGE_REPORT_DIR)" URG_MERGED_DB="$(URG_MERGED_DB)"
+
+# --- 覆盖率一键目标 -----------------------------------------------------------
+# 均依赖 comp（coverage-enabled 编译），串行跑完 test 后自动生成 URG 报告。
+#
+#   make cov_quick   — 41-test 精简列表（~10 分钟）
+#   make cov_l1l2    — L1TLB + L2TLB + RRPV 相关（~30 分钟）
+#   make cov_all     — 全部 423 个 test（~70-100 分钟）
+
+cov_run = $(MAKE) regress REGRESS_MODE=run_cov REGRESS_SEEDS=$(COV_DEF_SEED) \
+          REGRESS_JOBS=1 TIMEOUT=$(COV_TIMEOUT) UVM_ERR_ONLY=1
+
+cov_quick: comp
+	@echo "=== cov_quick: running $(COV_QUICK_LIST) ==="
+	@$(cov_run) LIST=$(COV_QUICK_LIST)
+	@$(MAKE) cov
+
+cov_l1l2: comp
+	@if [ ! -f "$(COV_ALL_LIST)" ]; then $(MAKE) cov_gen_list; fi
+	@echo "=== cov_l1l2: running ALL tests, then filtering report to L1+L2 ==="
+	@$(cov_run) LIST=$(COV_ALL_LIST)
+	@$(MAKE) cov
+	@echo "=== Generating L1+L2 hierarchy-filtered report ==="
+	@mkdir -p "$(COV_DIR)/l1l2_urgReport"
+	@$(URG) -full64 -dir "$(COV_DB_DIR)" \
+	  -metric $(COV_METRICS) \
+	  -hier u_dut.u_mmu_l1dtlb \
+	  -hier u_dut.x_mmu_l2tlb \
+	  -hier u_dut.u_mmu_l1itlb \
+	  -format both \
+	  -report "$(COV_DIR)/l1l2_urgReport" \
+	  > "$(COV_DIR)/l1l2_urg.log" 2>&1 || true
+	@echo "=== Full report: $(COV_DIR)/urgReport ==="
+	@echo "=== L1+L2 only:  $(COV_DIR)/l1l2_urgReport ==="
+
+cov_all: comp
+	@if [ ! -f "$(COV_ALL_LIST)" ]; then $(MAKE) cov_gen_list; fi
+	@echo "=== cov_all: running $(COV_ALL_LIST) ($$(wc -l < $(COV_ALL_LIST)) tests) ==="
+	@$(cov_run) LIST=$(COV_ALL_LIST)
+	@$(MAKE) cov
+
+cov_gen_list:
+	@echo "=== Generating all-tests coverage list ==="
+	@find $(PROJECT_DIR)/testbench/test -name "*.svh" \
+	  -exec grep -h "uvm_component_utils" {} \; | \
+	  sed 's/.*uvm_component_utils(//' | sed 's/).*//' | sort -u > $(COV_ALL_LIST)
+	@echo "=== Generated $(COV_ALL_LIST): $$(wc -l < $(COV_ALL_LIST)) tests ==="
 
 #===============================================================================
 # Test List

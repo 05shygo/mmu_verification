@@ -165,6 +165,38 @@ interface mmu_dut_probes_if (
   wire [26:0]  l2_dtlb_ref_vpn;
   wire [27:0]  l2_dtlb_ref_ppn;
 
+  // mmu_l2tlb — RRPV exact model observation signals
+  wire         l2_arb_req;
+  wire         l2_arb_write;
+  wire [2:0]   l2_arb_acc_type;
+  wire [7:0]   l2_arb_bank_sel;
+  wire [7:0]   l2_arb_idx_w0;
+  wire [7:0]   l2_arb_idx_w1;
+  wire [7:0]   l2_arb_idx_w2;
+  wire [7:0]   l2_arb_idx_w3;
+  wire [7:0]   l2_arb_idx_w4;
+  wire [7:0]   l2_arb_idx_w5;
+  wire [7:0]   l2_arb_idx_w6;
+  wire [7:0]   l2_arb_idx_w7;
+  wire [23:0]  l2_arb_rrpv_din;
+  wire [47:0]  l2_arb_tag_din;
+  wire         l2_raw_vld;
+  wire [7:0]   l2_raw_way_mask;
+  wire [7:0]   l2_raw_way_vld;
+  wire [23:0]  l2_rrpv_dout_bus;
+  wire [7:0]   l2_wbuf_cam_hit;
+  wire [23:0]  l2_bypassed_rrpv_rdata;
+  wire         l2_final_pa_vld;
+  wire [7:0]   l2_final_way_sel;
+  wire [2:0]   l2_final_acc_type;
+  wire [63:0]  l2_final_bank_index;
+  wire [7:0]   l2_final_way_vld;
+  wire [7:0]   l2_victim_way;
+  wire [23:0]  l2_rrpv_updata;
+  wire         l2_wbuf_push_req;
+  wire         l2_wbuf_pop_grant;
+  wire         l2_wbuf_empty;
+
   // mmu_l2tlb / x_l2tlb_reqq
   wire [8:0]   l2_reqq_vld_vec;  // TOTAL_DEPTH=9
   wire [8:0]   l2_reqq_rdy_vec;
@@ -325,6 +357,46 @@ interface mmu_dut_probes_if (
   wire [26:0]  tlboper_utlb_inv_va;
   wire         biu_mmu_smp_disable;
 
+  // ct_mmu_tlboper — TLBOP exact transaction decode signals
+  wire [1:0]   tlbop_tlbp_fsm;
+  wire [1:0]   tlbop_tlbr_fsm;
+  wire [1:0]   tlbop_tlbwi_fsm;
+  wire [1:0]   tlbop_tlbwr_fsm;
+  wire [2:0]   tlbop_tlbiasid_fsm;
+  wire         tlbop_tlbiall_fsm;
+  wire         tlbop_arb_req;
+  wire         tlbop_arb_write;
+  wire         tlbop_arb_grant;
+  wire         tlbop_regs_cmplt;
+  wire         tlbop_regs_tlbp_cmplt;
+  wire         tlbop_regs_tlbr_cmplt;
+  // Register request triggers
+  wire         tlbop_regs_req_tlbp;
+  wire         tlbop_regs_req_tlbr;
+  wire         tlbop_regs_req_tlbwi;
+  wire         tlbop_regs_req_tlbwr;
+  wire [26:0]  tlbop_regs_cur_vpn;
+  wire [15:0]  tlbop_regs_cur_asid;
+  wire [2:0]   tlbop_regs_cur_pgs;
+  wire [11:0]  tlbop_regs_mir;
+  wire [27:0]  tlbop_regs_cur_ppn;
+  wire [13:0]  tlbop_regs_cur_flg;
+  wire         tlbop_regs_cur_g;
+  // L2TLB TLBOP response
+  wire         tlbop_l2_hit;
+  wire         tlbop_l2_hit_mult;
+  wire [10:0]  tlbop_l2_tlbp_hit_idx;
+  wire [26:0]  tlbop_l2_tlbr_vpn;
+  wire [2:0]   tlbop_l2_tlbr_pgs;
+  wire [15:0]  tlbop_l2_tlbr_asid;
+  wire [27:0]  tlbop_l2_tlbr_ppn;
+  wire [13:0]  tlbop_l2_tlbr_flg;
+  wire         tlbop_l2_tlbr_g;
+  wire         tlbop_l2_tlboper_cmplt;
+  wire [7:0]   tlbop_l2_tlboper_sel;
+  wire         tlbop_l2_va_hit;
+  wire         tlbop_l2_asid_hit;
+
   // Monitor clocking
   clocking mon_cb @(posedge clk_i);
     default input #1step;
@@ -367,6 +439,16 @@ interface mmu_dut_probes_if (
     input l2_bank0, l2_final_way_hit, l2_raw_pre_pgs0, l2_final_vld, l2_final_tlb_hit;
     input l2_miss, l2_final_is_dtlb, l2_final_vpn, l2_final_hit_ppn;
     input l2_dtlb_ref_pavld, l2_dtlb_ref_cmplt, l2_dtlb_ref_vpn, l2_dtlb_ref_ppn;
+    input l2_arb_req, l2_arb_write, l2_arb_acc_type, l2_arb_bank_sel;
+    input l2_arb_idx_w0, l2_arb_idx_w1, l2_arb_idx_w2, l2_arb_idx_w3;
+    input l2_arb_idx_w4, l2_arb_idx_w5, l2_arb_idx_w6, l2_arb_idx_w7;
+    input l2_arb_rrpv_din, l2_arb_tag_din;
+    input l2_raw_vld, l2_raw_way_mask, l2_raw_way_vld;
+    input l2_rrpv_dout_bus, l2_wbuf_cam_hit, l2_bypassed_rrpv_rdata;
+    input l2_final_pa_vld, l2_final_way_sel, l2_final_acc_type;
+    input l2_final_bank_index, l2_final_way_vld;
+    input l2_victim_way, l2_rrpv_updata;
+    input l2_wbuf_push_req, l2_wbuf_pop_grant, l2_wbuf_empty;
     input l2_reqq_vld_vec, l2_reqq_rdy_vec, l2_reqq_qid, l2_reqq_issue_valid, l2_reqq_issue_type;
     input l2mb_vld_vec, l2mb_rdy_vec, l2mb_issue_req, l2mb_issue_eid, l2mb_issue_type, l2mb_alloc_valid;
     input l2mb_entry_vpn, l2mb_entry_l1eid, l2mb_entry_type, l2mb_entry_queue_id, l2mb_entry_sent;
@@ -414,6 +496,18 @@ interface mmu_dut_probes_if (
     input tlbiva_cur_st, rtu_yy_xx_flush, tlboper_utlb_clr, tlboper_utlb_inv_va_req;
     input tlboper_utlb_inv_va;
     input biu_mmu_smp_disable;
+    input tlbop_tlbp_fsm, tlbop_tlbr_fsm, tlbop_tlbwi_fsm, tlbop_tlbwr_fsm;
+    input tlbop_tlbiasid_fsm, tlbop_tlbiall_fsm;
+    input tlbop_arb_req, tlbop_arb_write, tlbop_arb_grant;
+    input tlbop_regs_cmplt, tlbop_regs_tlbp_cmplt, tlbop_regs_tlbr_cmplt;
+    input tlbop_regs_req_tlbp, tlbop_regs_req_tlbr, tlbop_regs_req_tlbwi, tlbop_regs_req_tlbwr;
+    input tlbop_regs_cur_vpn, tlbop_regs_cur_asid, tlbop_regs_cur_pgs, tlbop_regs_mir;
+    input tlbop_regs_cur_ppn, tlbop_regs_cur_flg, tlbop_regs_cur_g;
+    input tlbop_l2_hit, tlbop_l2_hit_mult, tlbop_l2_tlbp_hit_idx;
+    input tlbop_l2_tlbr_vpn, tlbop_l2_tlbr_pgs, tlbop_l2_tlbr_asid;
+    input tlbop_l2_tlbr_ppn, tlbop_l2_tlbr_flg, tlbop_l2_tlbr_g;
+    input tlbop_l2_tlboper_cmplt, tlbop_l2_tlboper_sel;
+    input tlbop_l2_va_hit, tlbop_l2_asid_hit;
   endclocking
 
 endinterface : mmu_dut_probes_if

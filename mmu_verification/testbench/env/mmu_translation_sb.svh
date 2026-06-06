@@ -76,6 +76,9 @@ class mmu_translation_sb extends uvm_scoreboard;
   // ── Reference model (injected from mmu_env.build_phase) ──────────────────
   mmu_ref_model m_ref;
   mmu_l2tlb_txn_shadow m_l2_shadow;
+  // Phase 6F+: RRPV exact model and TLBOP decode
+  mmu_l2tlb_rrpv_exact_scoreboard m_rrpv_exact;
+  mmu_l2tlb_tlbop_decode          m_tlbop_decode;
 
   // ── Statistics ────────────────────────────────────────────────────────────
   int unsigned m_total_checked;
@@ -290,6 +293,11 @@ class mmu_translation_sb extends uvm_scoreboard;
       if (!uvm_config_db #(mmu_l2tlb_txn_shadow)::get(this, "", "L2TLB_TXN_SHADOW", m_l2_shadow))
         m_l2_shadow = mmu_l2tlb_txn_shadow::type_id::create("m_l2_shadow");
     end
+    // Phase 6F+: instantiate RRPV exact model and TLBOP decode
+    if (m_rrpv_exact == null)
+      m_rrpv_exact = mmu_l2tlb_rrpv_exact_scoreboard::type_id::create("m_rrpv_exact", this);
+    if (m_tlbop_decode == null)
+      m_tlbop_decode = mmu_l2tlb_tlbop_decode::type_id::create("m_tlbop_decode", this);
     m_allow_satp_midwalk_old_accept = $test$plusargs("ALLOW_SATP_MIDWALK_OLD_ACCEPT");
   endfunction
 
@@ -478,6 +486,26 @@ class mmu_translation_sb extends uvm_scoreboard;
       m_l2_prev_tlboper_ptw_abort = cur_tlboper_ptw_abort;
       m_l2_prev_rtu_flush = cur_rtu_flush;
       m_l2_prev_utlb_clr = cur_utlb_clr;
+
+      // ── Phase 6F+: RRPV exact model ─────────────────────────────────
+      if (m_rrpv_exact != null) begin
+        if (m_rrpv_exact.vif == null)
+          m_rrpv_exact.vif = v_probe;
+        if (cur_reset_asserted && !m_l2_prev_reset_asserted)
+          m_rrpv_exact.reset_state();
+        m_rrpv_exact.sample_cycle();
+      end
+
+      // ── Phase 6F+: TLBOP decode ─────────────────────────────────────
+      if (m_tlbop_decode != null) begin
+        if (m_tlbop_decode.vif == null)
+          m_tlbop_decode.vif = v_probe;
+        if (m_tlbop_decode.l2_shadow == null)
+          m_tlbop_decode.l2_shadow = m_l2_shadow;
+        if (cur_reset_asserted && !m_l2_prev_reset_asserted)
+          m_tlbop_decode.reset_state();
+        m_tlbop_decode.sample_cycle();
+      end
     end
   endtask
 
@@ -1195,6 +1223,12 @@ class mmu_translation_sb extends uvm_scoreboard;
     if (m_l2_shadow != null)
       $display("[PHASE6C_L2_SHADOW] component=%s %s",
         get_full_name(), m_l2_shadow.summary());
+    if (m_rrpv_exact != null)
+      $display("[RRPV_EXACT] component=%s %s",
+        get_full_name(), m_rrpv_exact.summary());
+    if (m_tlbop_decode != null)
+      $display("[TLBOP_DECODE] component=%s %s",
+        get_full_name(), m_tlbop_decode.summary());
     if (m_mismatch > 0)
       `uvm_error(get_type_name(),
         $sformatf("Translation SB FAILED: %0d mismatch(es) detected!", m_mismatch))

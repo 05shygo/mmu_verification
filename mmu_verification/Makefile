@@ -82,6 +82,68 @@ PLUS_ARGS       ?=
 LOG_STATUS_MAX_HITS ?= 20
 LOG_CHECKER     ?= bash $(PROJECT_DIR)/scripts/check_sim_status.sh
 
+# Compatibility for interactive invocations such as:
+#   make run_cov test_name seed=3
+# The canonical form remains TEST_NAME=<name> SEED=<seed>, but normalizing these
+# before RUN_OPTS/SEED_OPTS are expanded keeps direct runs and covp shards aligned.
+DETECTED_TESTS_CMD = grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test 2>/dev/null | \
+                     sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u
+TEST_GROUP_DIRS   := $(filter-out phase9_common,$(notdir $(patsubst %/,%,$(wildcard $(TB_DIR)/test/*/))))
+
+ifneq ($(origin seed),undefined)
+  SEED := $(seed)
+endif
+ifneq ($(origin test_name),undefined)
+  TEST_NAME := $(test_name)
+endif
+ifneq ($(origin test),undefined)
+  TEST_NAME := $(test)
+endif
+
+RUN_COMPAT_ENTRY_GOALS := run run_check run_cov run_batch run_gui debug fast_check
+RUN_COMPAT_KNOWN_GOALS := all help setup check_env env comp comp_all comp_fast comp_rtl comp_tb elab \
+        run run_check fast fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
+        cov_quick cov_l1l2 cov_all covp cov_gen_list \
+        clean clean_all clean_wave clean_cov list_tests status info print-% \
+        phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
+        phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
+        phase6 phase6_fast phase6_run_matrix phase6_check print-phase6 \
+        phase6_rtu_ptw phase6_rtu_ptw_fast phase6_rtu_ptw_run phase6_rtu_ptw_check \
+        print-phase6-rtu-ptw phase6_full phase6_full_fast \
+        phase7 phase7_cov print-phase7 \
+        print-phase8 phase8_run_matrix phase8_run_matrix_fast phase8_check \
+        phase8_check_errfatal phase8_scan_errfatal phase8_quick \
+        regress regress_smoke regress_nightly print-regress ptw_code_cov print-ptw-code-cov \
+        print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
+        regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
+        phase14_make_parallel_shards regress_v4_full_parallel phase14_show_parallel_failures phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
+        phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
+        print-l1dtlb-audit l1dtlb_audit_check l1dtlb_audit_run l1dtlb_audit_run_cov \
+        l1dtlb_phase6g_check l1dtlb_phase6g_smoke l1dtlb_phase6g_targeted l1dtlb_phase6g_replay l1dtlb_phase6g_closure \
+        phase12_exit_check phase12_pgflt_urg_probe
+RUN_COMPAT_POSITIONAL_TEST := $(firstword $(filter-out $(RUN_COMPAT_KNOWN_GOALS),$(MAKECMDGOALS)))
+ifneq ($(RUN_COMPAT_POSITIONAL_TEST),)
+RUN_COMPAT_POSITIONAL_TEST_IS_KNOWN := $(shell ($(DETECTED_TESTS_CMD); printf '%s\n' $(TEST_GROUP_DIRS)) | grep -x "$(RUN_COMPAT_POSITIONAL_TEST)" >/dev/null 2>&1 && echo 1)
+ifeq ($(RUN_COMPAT_POSITIONAL_TEST_IS_KNOWN),1)
+RUN_COMPAT_CAN_SET_TEST_NAME := 1
+ifeq ($(origin TEST_NAME),command line)
+RUN_COMPAT_CAN_SET_TEST_NAME := 0
+endif
+ifneq ($(origin test_name),undefined)
+RUN_COMPAT_CAN_SET_TEST_NAME := 0
+endif
+ifneq ($(origin test),undefined)
+RUN_COMPAT_CAN_SET_TEST_NAME := 0
+endif
+ifeq ($(RUN_COMPAT_CAN_SET_TEST_NAME),1)
+  TEST_NAME := $(RUN_COMPAT_POSITIONAL_TEST)
+endif
+.PHONY: $(RUN_COMPAT_POSITIONAL_TEST)
+$(RUN_COMPAT_POSITIONAL_TEST):
+	@:
+endif
+endif
+
 ifeq ($(UVM_ERR_ONLY),1)
   ERR_ONLY_OPTS := +UVM_ERR_ONLY
 else
@@ -723,13 +785,9 @@ phase8_quick: comp phase8_run_matrix_fast phase8_check_errfatal
 #   2) a test directory alias such as basic_tests / l1itlb_tests to run every
 #      registered test under that directory sequentially with the same seed.
 #===============================================================================
-DETECTED_TESTS_CMD = grep -Rho "uvm_component_utils([^)]*)" $(PROJECT_DIR)/testbench/test 2>/dev/null | \
-                     sed -E 's/.*uvm_component_utils\(([^)]*)\).*/\1/' | sort -u
-TEST_GROUP_DIRS   := $(filter-out phase9_common,$(notdir $(patsubst %/,%,$(wildcard $(TB_DIR)/test/*/))))
-
 define CHECK_TEST_NAME
 	@if ! ( \
-		($(DETECTED_TESTS_CMD) | grep -x "$(TEST_NAME)" >/dev/null 2>&1) || \
+			($(DETECTED_TESTS_CMD) | grep -x "$(TEST_NAME)" >/dev/null 2>&1) || \
 		(printf '%s\n' $(TEST_GROUP_DIRS) | grep -x "$(TEST_NAME)" >/dev/null 2>&1) \
 	); then \
 		echo "ERROR: TEST_NAME='$(TEST_NAME)' is neither a registered UVM test nor a supported test directory alias."; \
@@ -2087,21 +2145,30 @@ run_cov: setup
 			-cm_dir $(COV_DB_DIR) \
 			-l $$cov_log; \
 		sim_rc=$$?; \
-		if [ $$sim_rc -ne 0 ]; then \
-			echo "ERROR: run_cov simulation failed: TEST_NAME=$(TEST_NAME) SEED=$(SEED) rc=$$sim_rc"; \
-			echo "       Log: $$cov_log"; \
-			echo "       Aggregate VDB: $(COV_DB_DIR)"; \
-			exit $$sim_rc; \
-		fi; \
-		if [ ! -s "$$cov_log" ]; then \
-			echo "ERROR: run_cov did not produce a non-empty coverage log: $$cov_log"; \
-			exit 1; \
-		fi; \
-		if grep -Eiq 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|CovErrorException|unexpected termination|signal: Aborted|During dumping of toggle coverage data|error while loading shared libraries|cannot open shared object file|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log"; then \
-			echo "ERROR: coverage log contains fatal/crash/license pattern: $$cov_log"; \
-			grep -Ein -m 5 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|CovErrorException|unexpected termination|signal: Aborted|During dumping of toggle coverage data|error while loading shared libraries|cannot open shared object file|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log" | sed 's/^/  /'; \
-			exit 1; \
-		fi; \
+			if [ $$sim_rc -ne 0 ]; then \
+				echo "ERROR: run_cov simulation failed: TEST_NAME=$(TEST_NAME) SEED=$(SEED) rc=$$sim_rc"; \
+				echo "       Log: $$cov_log"; \
+				echo "       Aggregate VDB: $(COV_DB_DIR)"; \
+				exit $$sim_rc; \
+			fi; \
+			if [ ! -s "$$cov_log" ]; then \
+				echo "ERROR: run_cov did not produce a non-empty coverage log: $$cov_log"; \
+				exit 1; \
+			fi; \
+			set +e; \
+			MMU_LOG_MAX_MATCHES=$(LOG_STATUS_MAX_HITS) $(LOG_CHECKER) "$$cov_log"; \
+			log_rc=$$?; \
+			set -e; \
+			if [ $$log_rc -ne 0 ]; then \
+				echo "ERROR: run_cov log check failed: TEST_NAME=$(TEST_NAME) SEED=$(SEED) rc=$$log_rc"; \
+				echo "       Log: $$cov_log"; \
+				exit $$log_rc; \
+			fi; \
+			if grep -Eiq 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|CovErrorException|unexpected termination|signal: Aborted|During dumping of toggle coverage data|error while loading shared libraries|cannot open shared object file|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log"; then \
+				echo "ERROR: coverage log contains fatal/crash/license pattern: $$cov_log"; \
+				grep -Ein -m 5 'UVM_FATAL[[:space:]].*@|Segmentation fault|segmentation violation|SIGSEGV|core dumped|VCS internal error|Internal Error|CovErrorException|unexpected termination|signal: Aborted|During dumping of toggle coverage data|error while loading shared libraries|cannot open shared object file|License checkout failed|Unable to checkout|No such feature exists' "$$cov_log" | sed 's/^/  /'; \
+				exit 1; \
+			fi; \
 		if [ ! -d "$(COV_DB_DIR)" ]; then \
 			echo "ERROR: run_cov did not produce aggregate coverage VDB: $(COV_DB_DIR)"; \
 			echo "       Log: $$cov_log"; \

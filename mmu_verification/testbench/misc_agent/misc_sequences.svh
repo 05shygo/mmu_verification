@@ -40,7 +40,8 @@ class misc_rtu_flush_seq extends misc_base_seq;
   virtual task body();
     misc_txn tr;
     `uvm_create(tr)
-    tr.op = MISC_RTU_FLUSH;
+    tr.op          = MISC_RTU_FLUSH;
+    tr.flush_pulse = 1'b1;
     `uvm_send(tr)
   endtask
 

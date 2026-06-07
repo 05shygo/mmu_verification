@@ -4,9 +4,9 @@
 > **日期**：2026-04-22
 > **适用 DUT**：`mmu/rtl/ct_mmu_top.v`（OpenRISCV2030 MMU，Sv39）
 > **参考框架**：[hpdcache_verification/](../hpdcache_verification/)（UVM 1.2 + VCS/Verdi）
-> **验证计划**：[MMU_VerificationPlan.md](MMU_VerificationPlan.md)（功能点 / 测试用例 / 覆盖率目标 / 回归 / 签核）
-> **历史版本**：[MMU_UVM_搭建计划_v2_代码级.md](MMU_UVM_搭建计划_v2_代码级.md)（保留作历史）
-> **Phase 14 Closure Owner**：[MMU_Phase14_ClosureOwner.md](MMU_Phase14_ClosureOwner.md)
+> **验证计划**：[MMU_VerificationPlan_final.md](MMU_VerificationPlan_final.md)（功能点 / 测试用例 / 覆盖率目标 / 回归 / 签核）
+> **历史版本**：v2 代码级搭建计划口径已融合到本文档附录 A
+> **Phase 14 Closure Owner**：Closure Owner 策略已融合到本文档 §13 Phase 14
 
 | 版本                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | 日期       | 作者              | 变更说明                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------- | ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -62,13 +62,13 @@
 
 | 不写                                              | 去哪里看                                                                                              |
 | ------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| 待验证功能点列表（F1–F14, 共 100+ 条）           | [VerificationPlan.md §5](MMU_VerificationPlan.md#5-待验证功能点列表feature-list)                        |
-| 测试用例详表（TC-XXX，共 120+ 条，含通过标准）    | [VerificationPlan.md §6.3](MMU_VerificationPlan.md#63-test-case-详表)                                   |
-| 覆盖率目标百分比 / 豁免机制                       | [VerificationPlan.md §7](MMU_VerificationPlan.md#7-覆盖率计划coverage-plan)                             |
-| 回归测试列表（smoke / nightly / coverage）        | [VerificationPlan.md §8](MMU_VerificationPlan.md#8-回归测试策略regression-strategy)                     |
-| 签核标准 / Signoff Checklist                      | [VerificationPlan.md §9](MMU_VerificationPlan.md#9-签核标准signoff-criteria)                            |
-| 资源与时间表 / 风险评估                           | [VerificationPlan.md §10–§11](MMU_VerificationPlan.md#10-资源与时间表resources--schedule)             |
-| Sv39 规范细节 / DUT 行为决策（refmodel 算法语义） | [VerificationPlan.md §3.3](MMU_VerificationPlan.md#33-参考模型reference-model) + RISC-V Privileged Spec |
+| 待验证功能点列表（F1–F14, 共 100+ 条）           | [VerificationPlan.md §5](MMU_VerificationPlan_final.md#5-待验证功能点列表feature-list)                        |
+| 测试用例详表（TC-XXX，共 120+ 条，含通过标准）    | [VerificationPlan.md §6.3](MMU_VerificationPlan_final.md#63-test-case-详表)                                   |
+| 覆盖率目标百分比 / 豁免机制                       | [VerificationPlan.md §7](MMU_VerificationPlan_final.md#7-覆盖率计划coverage-plan)                             |
+| 回归测试列表（smoke / nightly / coverage）        | [VerificationPlan.md §8](MMU_VerificationPlan_final.md#8-回归测试策略regression-strategy)                     |
+| 签核标准 / Signoff Checklist                      | [VerificationPlan.md §9](MMU_VerificationPlan_final.md#9-签核标准signoff-criteria)                            |
+| 资源与时间表 / 风险评估                           | [VerificationPlan.md §10–§11](MMU_VerificationPlan_final.md#10-资源与时间表resources--schedule)             |
+| Sv39 规范细节 / DUT 行为决策（refmodel 算法语义） | [VerificationPlan.md §3.3](MMU_VerificationPlan_final.md#33-参考模型reference-model) + RISC-V Privileged Spec |
 | SystemVerilog 方法体 / 算法伪代码                 | 由代码实现工程师在 Phase 4–8 编写                                                                    |
 
 ### 0.3 阅读对象
@@ -124,6 +124,17 @@ UVM 代码实现工程师 / Coding AI（具备 SystemVerilog + UVM 1.2 基础，
 | SVA:`credit_sva.sv`         | `hpdcache_sva.sv` 内的 outstanding 检查                                                       | 仿照                                    |
 | Makefile                      | [hpdcache_verification/Makefile](../hpdcache_verification/Makefile)                                | 复制后裁剪                              |
 | `scripts/run_test.py`       | 同名                                                                                            | 直接复用                                |
+
+### 1.4 融合后的责任与实现边界
+
+顶层分散的任务分工、环境架构、preflight、stage split 与审计记录已融合到本 build plan。后续实现按以下边界维护：
+
+| 领域 | 融合后口径 |
+| --- | --- |
+| A/B 分工 | Phase 1/2/4/10/12-SVA/13-SVA/14 closure 以 A/Closure Owner 为主；Phase 3 IFU/LSU、Phase 5/6、Phase 7 covergroup、Phase 8/9/11/12/13 tests 以 B 为主；历史分工只作追溯，不再拆出独立顶层文档 |
+| Env architecture | `tb_top -> interfaces -> agents -> env -> ref_model/scoreboards/coverage/SVA` 是唯一架构链；数据流连接以 §8 和 §10 为维护入口 |
+| Phase 11/12 stage split | stage split 不再作为可执行入口；其命名、list、blocked/xfail、handoff、exit gate 契约已并入 §13 对应 Phase |
+| 审计/Review | Covergroup VIF、Phase 8 A Review、Phase 12 A handoff/review、DA-003 和 Phase 14 gate 结论分别并入 §10、§8、§13 |
 
 ---
 
@@ -267,7 +278,7 @@ mmu_verification/
 ├── README.md                               # 项目说明（用户已提供 doc/）
 ├── setup_env.sh / setup_env.csh            # 复制自 hpdcache_verification/config/
 ├── doc/                                    # 已存在
-│   ├── MMU_VerificationPlan.md
+│   ├── MMU_VerificationPlan_final.md
 │   ├── MMU_UVM_BuildPlan_v3_final.md       # 本文档
 │   └── MMU_Traceability_Matrix.csv
 ├── scripts/                                # 整块复制自 hpdcache_verification/scripts/
@@ -437,7 +448,7 @@ mmu_verification/
 | `testbench/env/`                                 | 11                                                                                     |
 | `testbench/top/`                                 | 6                                                                                      |
 | `testbench/test/` 基类                           | 2（test_pkg + test_base）                                                              |
-| `testbench/test/` 各分类                         | ≈120（详见[VerificationPlan §6](MMU_VerificationPlan.md#6-测试用例计划test-case-plan)） |
+| `testbench/test/` 各分类                         | ≈120（详见[VerificationPlan §6](MMU_VerificationPlan_final.md#6-测试用例计划test-case-plan)） |
 | `testbench/simu/`                                | 6                                                                                      |
 | `Files.f` + `Makefile` + `setup_env.*`       | 4                                                                                      |
 | **环境本体（不含测试用例）**                 | **≈ 96 文件**                                                                   |
@@ -1534,6 +1545,15 @@ class mmu_ref_model extends uvm_component;
 endclass
 ```
 
+#### 8.4.1 Phase 14 shadow-state 融合约束
+
+后续 ref_model 维护按 Phase 14 收敛口径执行：
+
+- PMP monitor 的 PA/fetch 观测样本不得当成配置更新消费；只有 `cfg_update=1` 的 `pmp_txn` 能更新 `m_pmp_flg` shadow。
+- PMP/SysMap/CSR/TLB shadow 更新在 `translate()` 前同步 drain，避免后台 FIFO consumer 与当前比较点产生竞态。
+- direct SW map4k / 特殊 bringup 测试可关闭 auto sync，但必须在 test 元数据中注明，避免与普通 Phase9/12/13 wrapper 混用。
+- PFU/LSU_P2 fault mismatch 调试必须同时打印 `ref_pmp_flg4`、PFU PMP/SysMap 白盒观测和最近 PTW/L2TLB fault 快照，不能只报 PA/fault mismatch。
+
 ### 8.5 Scoreboard 拆分
 
 #### 8.5.1 `mmu_translation_sb.svh`
@@ -1629,6 +1649,16 @@ class mmu_credit_sb extends uvm_scoreboard;
   extern task run_phase(uvm_phase phase);
 endclass
 ```
+
+#### 8.5.3a Phase 14 credit / drain 融合约束
+
+CreditSB 和 PTW memory responder/monitor 的 PTW 外部请求记账边界以真实 accept pulse 为准：
+
+- `ptw_mem_if.sv` 提供 TB-only `mmu_lsu_data_req_accept`。
+- `tb_top.sv` 从 PTW MBUF grant/accept 接出该 pulse。
+- `ptw_mem_monitor.svh`、`ptw_mem_responder.svh`、`ptw_mem_covergroups.svh` 只在 accept pulse 上开新请求，raw `mmu_lsu_data_req` level 仅作诊断参考。
+- monitor 同周期先处理 response 再处理 accept；responder 允许 response 后 back-to-back accept 一拍暂存。
+- `mmu_credit_sb.svh` 在 test done 前执行 pre-drop end-drain，等待 PTW/L2/MMU 内部 pending 和外部 credit 同时稳定空闲；最终 report 仍只对真实未 drain 状态报错。
 
 #### 8.5.4 `mmu_perf_mon.svh`
 
@@ -2012,9 +2042,11 @@ sva_busy_from_any_dtlb_mb_entry: assert property(@(posedge clk_i) disable iff(!r
 
 ## 第 10 章 Covergroup 实现侧落点
 
-> 仅列出 **位置 / 触发时钟 / coverpoint 字段表**。覆盖率目标值（百分比、豁免）见 [VerificationPlan §7](MMU_VerificationPlan.md#7-覆盖率计划coverage-plan)。
+> 仅列出 **位置 / 触发时钟 / coverpoint 字段表**。覆盖率目标值（百分比、豁免）见 [VerificationPlan §7](MMU_VerificationPlan_final.md#7-覆盖率计划coverage-plan)。
 
 ### 10.1 黑盒 covergroup（在各 agent 内）
+
+P7-B-01 审计结论已融合：下表所列黑盒 covergroup 对应的 VIF 成员均已在 7 个 interface 中具备采样来源；无 blocking gap。若 coverpoint 采样使用代理量，必须在对应 `*_covergroups.svh` 中以注释标明代理关系，例如 PTW in-flight 使用 `mmu_lsu_tlb_busy`，PMP entry 映射到当前可观测 PMP 端口。
 
 | Covergroup         | 文件                           | 触发                                                  | Coverpoint / Cross                                                                                               |
 | ------------------ | ------------------------------ | ----------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- |
@@ -2038,6 +2070,13 @@ sva_busy_from_any_dtlb_mb_entry: assert property(@(posedge clk_i) disable iff(!r
 | `cg_l1dtlb`      | `mmu_l1dtlb.sv` 内部 | cp_mb_occupancy, cp_fsm_state（**7 状态含 WFG**）                                                                         |
 | `cg_l2_reqq`     | `mmu_l2tlb_reqq.sv`  | cp_alloc_idx(0..8), cp_depth(0..9), cp_credit_back                                                                              |
 | `cg_tlboper_fsm` | `ct_mmu_tlboper.v`   | cp_fsm_state（7 个 FSM 状态全采样；**INVVA 已简化为 single-pass FSM**）                                                   |
+
+Phase 12/13 融合后的白盒采样规则：
+
+- Phase 12 的 9 个 covergroup 统一落在 `mmu_env_cg_whitebox.svh`，通过 `MMU_DUT_PROBES_VIF` 访问 `mmu_dut_probes_if.sv`，并由 `tb_top.sv` 放入 `uvm_config_db`。
+- Phase 12 必须覆盖 `cg_ptw_ready_transition`、`cg_twu_idle_vs_mask_state`、`cg_xbar_hit_level`、`cg_twu_except_while_arb_busy`、`cg_twu_data_ready_per_stage`、`cg_arb_grant_type`、`cg_ptw_arb_pgs_type`、`cg_maee_leaf_level`、`cg_maee_path`。
+- Phase 13 必须覆盖 `cg_pmp_per_level_result`、`cg_pmp_grant_level`、`cg_pmp_pa_format`、`cg_pmp_deny_by_level`、`cg_twu_mask_cause`、`cg_ptw_pmp_port_map`、`cg_sysmap_flg_per_region`、`cg_sysmap_cross_1g`、`cg_sysmap_cross_2m`、`cg_sysmap_degrade_pgs`、`cg_sysmap_pa_align`、`cg_sysmap_4twu_concurrent`、`cg_sysmap_default_flag`。
+- URG 报告不可用时，Phase 12/13 gate 可以使用仿真 log 中的 whitebox covergroup summary fallback，但该 fallback 属于 gate 逻辑，不改变 covergroup 的实现落点。
 
 ### 10.3 【v3.0 Final 新增】Gap/BUG-Driven Covergroup（对应 VerificationPlan v3 §7.2 新增 5 项）
 
@@ -2119,7 +2158,7 @@ endclass
 
 ### 11.2 测试目录划分
 
-参考 [VerificationPlan §6.3](MMU_VerificationPlan.md#63-test-case-详表) 与 [MMU_VerificationPlan_v3.md](../lc_test_plan_doc/MMU_VerificationPlan_v3.md) §6.5 Gap/BUG TC 清单：
+参考 [VerificationPlan §6.3](MMU_VerificationPlan_final.md#63-test-case-详表) 与 [MMU_VerificationPlan_v3.md](../lc_test_plan_doc/MMU_VerificationPlan_v3.md) §6.5 Gap/BUG TC 清单：
 
 | 目录                                                     | 涵盖 F-ID                                            | TC 数（参考）                   |
 | -------------------------------------------------------- | ---------------------------------------------------- | ------------------------------- |
@@ -2426,16 +2465,16 @@ make regress LIST=simu/mmu_smoke_list
 
 ### Phase 9：测试用例填充
 
-- **交付范围**：按 [VerificationPlan §6.3](MMU_VerificationPlan.md#63-test-case-详表) 列表逐条创建 test class（每个 test class 通常 < 50 行：调用 1–N 个 sequence + 配置环境 + 设定 num_txn）
+- **交付范围**：按 [VerificationPlan §6.3](MMU_VerificationPlan_final.md#63-test-case-详表) 列表逐条创建 test class（每个 test class 通常 < 50 行：调用 1–N 个 sequence + 配置环境 + 设定 num_txn）
 - **退出准则**：所有 test 单跑通过；冒烟列表 100% 通过。
 
 ### Phase 10：回归脚本 + 覆盖率收敛
 
 - **交付范围**：
-  - `simu/mmu_smoke_list` / `mmu_nightly_list` / `mmu_coverage_list`（内容见 [VerificationPlan §8](MMU_VerificationPlan.md#8-回归测试策略regression-strategy)）
+  - `simu/mmu_smoke_list` / `mmu_nightly_list` / `mmu_coverage_list`（内容见 [VerificationPlan §8](MMU_VerificationPlan_final.md#8-回归测试策略regression-strategy)）
   - `simu/exclude.do`（覆盖率豁免）
   - `Makefile` 添加 `regress` target
-- **退出准则**：参考 [VerificationPlan §9 签核标准](MMU_VerificationPlan.md#9-签核标准signoff-criteria)。
+- **退出准则**：参考 [VerificationPlan §9 签核标准](MMU_VerificationPlan_final.md#9-签核标准signoff-criteria)。
 
 ### Phase 11：【v3.0 Final 新增】v3.0 Gap-driven 回归
 
@@ -2447,6 +2486,10 @@ make regress LIST=simu/mmu_smoke_list
 - **JIRA 联动**：
   - R19（F4.NEW.4 / TC-BUG-011）独立 JIRA；修复前 `tc_bug_011` 与依赖 `csr_data_flop` 的 2MB CSR 跨界场景 TC 设置 `Status=Blocked-Waiting-RTL-Fix` + `xfail`
   - R20（F5.NEW.2 / F5.NEW.3）中等风险，由 `sva_ptw_write_pipe_reset_safe` + `cg_xbar_cold_start` 作为主保护
+- **融合后的 stage / list 契约**：
+  - `phase11_b_stage_manifest.csv` 是 trace、seed_policy、blocked_reason、xfail_required、review_mode 的机器可读事实源。
+  - `TC-BUG-015` 保持 DOC_REVIEW，不生成 runnable test；R19 proof 和 BUG015 review 通过 `PHASE11_R19_PROOF` / `PHASE11_BUG015_REVIEW` 传入 gate。
+  - `phase11_exit_check` 必须覆盖 compile、R19 proof、BUG015 review、bug single runs、PTW->LSU protocol 3-seed、R20 focused 10-seed、v3 union 3-seed 和 integrated log scan。
 - **签核增量条件**：
   1. `tc_bug_005`~`008`、`tc_bug_011` 全 pass（或 known-fix 关闭）
   2. F4.42a/b/c 全部 SVA 全绿，`cg_lsu_req_outstanding` / `cg_mbuf_ptr_hold` 100% 命中
@@ -2467,6 +2510,11 @@ make regress LIST=simu/mmu_smoke_list
   1. MAEE 双路 SVA（`sva_twu_maee_paths_mutex`）全绿，`cg_maee_path` 两路 bins 均命中
   2. `cg_ptw_ready_transition` 含 fall/rise edge，ready 拉低恢复时序正确
   3. F4.NEW.6-11 全部 TC 单跑通过
+- **融合后的 handoff / gate 契约**：
+  - Phase 12 scope 固定为 `MAEE / PTW-ready / TWU bypass / PTW->arb VPN&PGS`，不吸收 Phase 13 SysMap/PMP-deny/PMP-port 主体验证。
+  - `simu/mmu_v4_phase12_list` 固定 22 个 runnable tests，默认 seeds `95101 95102 95103`。
+  - A 侧必须提供 MAEE SVA、PMP skeleton 静态完整性、Files.f/tb_top/Makefile 接线；B 侧必须提供 MAEE/PTW test wrappers、9 个 covergroups、probe/config_db 绑定。
+  - `phase12_exit_check` 是唯一退出入口，包含 frozen-doc/list 检查、compile、3-seed regression、log scan、URG/fallback、MAEE cover hit 和 9 个 covergroup threshold。
 - **退出准则**：Phase 12 列表通过率 100%；MAEE + PTW-ready + TWU-bypass SVA 无 fire。
 
 ### Phase 13：【v4.0 新增】plan_v6 sysmap / PMP-deny / PMP-port 验证
@@ -2480,8 +2528,9 @@ make regress LIST=simu/mmu_smoke_list
   - `simu/mmu_v4_phase13_list` 回归列表
   - `Makefile` 添加 `regress_v4_sysmap_pmp` target
 - **关键 RTL 对位**：
-  - `pmp_if.sv` 使用 `mmu_pmp_fecth7`（typo）绑定，验证 `TC-PTW-PMP-TYPO-BIND-001`（F7.NEW.8）；编译失败即验证失败
-  - PTW PMP 端口映射：pa3/flg3→twu_one，pa5/flg5→twu_two，pa6/flg6→twu_three，pa7/flg7→twu_four（需设计确认 DA-003）
+  - `pmp_if.sv` 顶层 interface 使用 `mmu_pmp_fetch7`；TWU 内部 SVA 观测 `mmu_pmp_fecth` 内部 RTL 名。旧文档中的 `mmu_pmp_fecth7` 仅作为历史 typo 说明，不再作为顶层端口名。
+  - PTW PMP 端口映射：pa3/flg3→twu_one，pa5/flg5→twu_two，pa6/flg6→twu_three，pa7/flg7→twu_four。该映射为 DA-003 written tracking item，Phase 13 SVA/回归按 RTL-observed 口径执行。
+  - `mmu_pmp_fetch{3,5,6,7}` / internal `mmu_pmp_fecth` 是 original miss fetch sideband，不是 PTW PTE bus-read 类型；PMP permission selection 使用 fetch->X、load/prefetch->R、store->W。
 - **签核增量条件**：
   1. PMP 序列化 SVA（`sva_pmp_check_before_lsu_req` / `sva_pmp_wait_implies_mask`）全绿
   2. sysmap 跨界降级 SVA（`sva_sysmap_cross_degrade`）全绿，`cg_sysmap_degrade_pgs` cross bins 命中
@@ -2498,6 +2547,11 @@ make regress LIST=simu/mmu_smoke_list
 - **JIRA 联动**：
   - DA-003（pa3 端口归属冲突）解决前 `TC-PTW-PMP-PORT-MAP-001` 设置 `Status=Blocked-Waiting-Design-Confirm`
   - F7.NEW.8 typo 绑定（`mmu_pmp_fecth7`）纳入静态代码检查 checklist
+- **融合后的 closure owner / gate 契约**：
+  - Phase 14 使用 Phase14 Closure Owner 单一执行角色；A/B 历史归属只保留为追溯信息。
+  - 默认入口为高并发 testcase/seed shard VDB flow：每个 shard 独立 runtime VDB、log 和 `run/` 目录；compile baseline VDB 只作为共享 clean source。
+  - 小型 testcase/list/covergroup/Makefile/gate 修正可由 Closure Owner 直接关闭；coverage threshold、waiver、signoff criteria 或 URG fallback policy 变更必须有 issue 记录与二次 review。
+  - SignoffMatrix 的 `Waived` / `Accepted` 行必须引用 `MMU-P14-ISSUE-NNN`，并具备 reviewer 和 `Reviewed` / `Approved` 状态。
 - **签核增量条件**：
   1. 全量 FA/FB/FC covergroup 达 [VerificationPlan v3 §7](../lc_test_plan_doc/MMU_VerificationPlan_v3.md) 目标
   2. 所有 P0 SVA 无 fire（含 Phase 12/13 新增）
@@ -2534,19 +2588,19 @@ make regress LIST=simu/mmu_smoke_list
 | Part B.2 子模块参数                 | 参数冻结表                      | ✅ 保留                                                  | v3 §2.2                                                                                      |
 | Part B.3 关键 FSM                   | 12 个 FSM                       | ✅ 保留                                                  | v3 §2.3                                                                                      |
 | Part B.4 CP0 寄存器位               | 寄存器位影响表                  | ✅ 保留                                                  | v3 §2.5                                                                                      |
-| Part C.0–C.13 测试点 196 个 TP-XXX | 测试点列表                      | ❌**剥离**                                         | [VerificationPlan §5（F1–F14 功能点）](MMU_VerificationPlan.md#5-待验证功能点列表feature-list) |
-| Part C.14 测试点→用例映射          | 110+ 测试用例映射               | ❌**剥离**                                         | [VerificationPlan §6.3](MMU_VerificationPlan.md#63-test-case-详表)                              |
+| Part C.0–C.13 测试点 196 个 TP-XXX | 测试点列表                      | ❌**剥离**                                         | [VerificationPlan §5（F1–F14 功能点）](MMU_VerificationPlan_final.md#5-待验证功能点列表feature-list) |
+| Part C.14 测试点→用例映射          | 110+ 测试用例映射               | ❌**剥离**                                         | [VerificationPlan §6.3](MMU_VerificationPlan_final.md#63-test-case-详表)                              |
 | Part D.1 mmu_params_pkg             | 包骨架                          | ✅ 保留                                                  | v3 §5.1                                                                                      |
 | Part D.2 mmu_common_pkg             | 工具函数                        | ✅ 保留并精简（仅签名）                                  | v3 §5.2                                                                                      |
 | Part D.3–D.8 各 agent 骨架         | 类签名 + 部分方法体             | ✅**保留 + 精简方法体**                            | v3 §6, §7, §8                                                                              |
 | Part D.9 Files.f                    | 编译顺序                        | ✅ 保留并扩充 misc_agent                                 | v3 §12.1                                                                                     |
 | Part D.10 Makefile 变量             | 关键变量                        | ✅ 保留                                                  | v3 §4.3, §12                                                                                |
 | Part D.11 目录全量清单              | 目录树                          | ✅ 保留并扩充至 misc_agent / sysmap_cfg_agent / vseq_lib | v3 §3.1                                                                                      |
-| Part E.1 代码覆盖率目标             | 99% / 98%                       | ❌**剥离目标值**                                   | [VerificationPlan §7](MMU_VerificationPlan.md#7-覆盖率计划coverage-plan)                        |
+| Part E.1 代码覆盖率目标             | 99% / 98%                       | ❌**剥离目标值**                                   | [VerificationPlan §7](MMU_VerificationPlan_final.md#7-覆盖率计划coverage-plan)                        |
 | Part E.2 功能 covergroup 表         | covergroup 字段表               | ✅ 保留                                                  | v3 §10                                                                                       |
 | Part E.3 SVA 文件                   | SVA 清单                        | ✅ 保留                                                  | v3 §9.2                                                                                      |
-| Part F.1 回归列表                   | smoke / nightly / coverage list | ❌**剥离**                                         | [VerificationPlan §8](MMU_VerificationPlan.md#8-回归测试策略regression-strategy)                |
-| Part F.2 签核矩阵                   | 签核条目表                      | ❌**剥离**                                         | [VerificationPlan §9](MMU_VerificationPlan.md#9-签核标准signoff-criteria)                       |
+| Part F.1 回归列表                   | smoke / nightly / coverage list | ❌**剥离**                                         | [VerificationPlan §8](MMU_VerificationPlan_final.md#8-回归测试策略regression-strategy)                |
+| Part F.2 签核矩阵                   | 签核条目表                      | ❌**剥离**                                         | [VerificationPlan §9](MMU_VerificationPlan_final.md#9-签核标准signoff-criteria)                       |
 | —（v2 无）                         | 实施落地 10 阶段                | ✨**新增**                                         | v3 §13                                                                                       |
 | —（v2 无）                         | 端口分组→Agent 映射            | ✨**新增**                                         | v3 §2.4                                                                                      |
 | —（v2 无）                         | 与 hpdcache 框架对位映射        | ✨**新增**                                         | v3 §1.3                                                                                      |

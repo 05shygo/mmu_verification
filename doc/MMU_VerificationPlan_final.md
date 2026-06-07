@@ -1,7 +1,7 @@
 ﻿# MMU Verification Plan
 
 > **DUT**：`mmu/rtl/ct_mmu_top.v`（OpenRISCV2030 MMU，Sv39 分页）
-> **文档版本**：v7.6-L2TLB-Audit（同步 L2TLB audit package：测试点、SVA requirement、scoreboard/reference model 建模边界）
+> **文档版本**：v7.7-DocMerge（融合顶层 VerificationPlan 历史版本、GapAudit、Spec QA、baseline TC extract、Phase 14 signoff/issue 口径）
 > **发布日期**：2026-04-23
 > **模板依据**：[doc/IC验证计划_报告_签核清单.md](IC验证计划_报告_签核清单.md) §1.2 IP 验证计划模板
 > **UVM 环境搭建参考**：[doc/MMU_UVM_搭建计划_v2_代码级.md](MMU_UVM_搭建计划_v2_代码级.md)
@@ -22,6 +22,7 @@
 | v7.4 | 2026-04-25 | Verification Team | **IFU miss-hold + LSU expt lifecycle 补充**：新增 core 场景 IFU miss-hold 协议（miss 期间 PC/取指冻结，不允许新 PC 请求进入 MMU，直到该 miss 请求完成；abort/flush 例外）；新增 LSU 异常 CAM 生命周期验证点（产生→挂起→唤醒→命中回放→消费删除），并补充双口同拍命中 port0 优先消费策略测试；新增对应 sequence/test/coverage/SVA 条目。 |
 | v7.5-L1DTLB-Audit | 2026-05-10 | Phase14 Closure Owner | 同步 L1DTLB audit package：`doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` chapter 3.9 SVA requirement list、chapter 3.10 65 条 required test scenarios、`L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` HPDcache-style Excel testplan、以及 `make l1dtlb_audit_check` / `make l1dtlb_audit_run_cov` 入口。UVM 代码仍以最终稳定分支的 run/cov 结果为签核证据。 |
 | v7.6-L2TLB-Audit | 2026-05-21 | L2TLB Audit Owner | 同步 L2TLB audit package：`doc/l2tlb_uvm_audit/l2tlb_function_description.md` Phase 2 `L2TLB_TP_001..058` 测试点、Phase 3 `L2TLB_SVA_001..024` SVA requirement、Phase 4 scoreboard/reference model 建模边界，以及 `L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` Excel testplan。若旧 F3/F5/TLBOP 条目与 L2TLB audit `.md` 冲突，Phase 6 重写或删除旧条目前以 audit `.md` 为准；本次同步不声明 UVM/RTL 实现已完成。 |
+| v7.7-DocMerge | 2026-06-07 | Verification Team | 顶层 Markdown 文档融合：旧版 `MMU_VerificationPlan*.md` 的重复正文不再单独维护，保留版本演进差异；`MMU_GapAudit_v1.md` 的 165 条 gap / 60+ gap TC 已归并到 §6.5、§11、§12；`MMU_UVM_Spec_QA_Checklist.md` 的重构决策问题已归并到 §3/§4/§5/§9；`section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` 已归并到 §6.3 baseline import；Phase 14 Issue/Signoff 状态并入 §9/§11。 |
 | v7.2 | 2026-04-23 | Verification Team | **PMP Agent 验证计划完善**（对照 `pmp/rtl/ct_pmp_top.v` / `ct_pmp_regs.v` / `ct_pmp_comp_hit.v` / `ct_pmp_acc.v` 精读；用户澄清：**RTL 为 PMP 旧版本实例化 5 个 `ct_pmp_acc`（x_ct_pmp_acc0..4），spec 目标 8 端口**）：（1）**§2.3 Row 8 修订**：确认 `pmp_mmu_flg[3:0]={L,X,W,R}`（bit[3]=L，ct_pmp_acc.v:L163/L195），pmpcfg2 硬连线 0、pmp8-15 不实现（ct_pmp_regs.v:L512），NA4 未实现（ct_pmp_comp_hit.v:L59 `na4_addr_match=1'b0`），L-bit 复位清 0（ct_pmp_regs.v:L83-L88，偏离 RISC-V 规范）；（2）**F7.1 追加 RTL-Gap-PMP.1 注记**：当前 RTL 仅实例化 5 个 `ct_pmp_acc`，spec 目标 8 端口存在端口缺口；（3）**F7.2 纠错**：`pmp_mmu_flg[3]` 含义由"Reserved"→"L 锁定"，补充 WARL bits[6:5]=0 注记；（4）**§4.2 PMP Agent 独立子节**（§4.2.6）：Driver / Responder / Reference Model / Coverage Matrix / Sequence Library 全要素；（5）**F7.NEW.10..F7.NEW.22 新增 13 条**：TOR 级联 / TOR 零宽 / NAPOT 掩码 / NAPOT 非法 / NA4 未实现 / 优先级 lowest-idx / 默认权限 M=all U=none / flg bit 顺序 / L-lock+TOR 依赖 / L 复位清 / MPRV 端口差异 / pmpcfg2 零 / 5-vs-8 端口并发；（6）**18+1 条 TC**：TC-PMP-TOR-CHAIN-001 / TOR-ZERO-LEN-001 / TOR-LOCK-DEP-001 / NAPOT-ALL-SIZES-001 / NAPOT-ILLEGAL-001 / NA4-UNSUPPORTED-001 / PRIORITY-LOWEST-IDX-001 / DEFAULT-M-ALLOW-001 / DEFAULT-U-DENY-001 / FLG-LXWR-ORDER-001 / L-BIT-LOCK-001 / L-BIT-RESET-CLR-001 / MPRV-PORT2-IMMUNE-001 / MPRV-PORT3-FETCH-MASK-001 / PMPCFG2-ZERO-001 / PMPADDR8-15-NOOP-001 / 5PORT-CONCURRENT-001 / 8PORT-CONCURRENT-001 / CSR-WARL-RSVD-001；（7）**10 条 SVA**：`sva_pmp_flg_bit_layout` / `sva_pmp_priority_lowest_wins` / `sva_pmp_tor_chain` / `sva_pmp_napot_mask_shape` / `sva_pmp_na4_never_hits` / `sva_pmp_l_bit_lock_no_update` / `sva_pmp_m_mode_no_match_allow` / `sva_pmp_u_mode_no_match_deny` / `sva_pmp_mprv_port2_zero` / `sva_pmp_mprv_port3_fetch_mask`；（8）**7 条 CG**：`cg_pmp_addr_mode_per_entry` / `cg_pmp_napot_size` / `cg_pmp_priority_hit_index` / `cg_pmp_priv_perm_matrix` / `cg_pmp_lock_sequence` / `cg_pmp_mprv_scenarios` / `cg_pmp_port_concurrency`；（9）**4 条新风险**：R-NEW.PMP.1（RTL 5 vs 规格 8 端口，高）/ R-NEW.PMP.2（NA4 未实现，中）/ R-NEW.PMP.3（L bit 复位清除偏离规范，中）/ R-NEW.PMP.4（pmpcfg2 硬连线 0，低） |
 
 ---
@@ -271,6 +272,22 @@ MMU 的主要职责：
 - 7 个 Agent（见 §4）按 UVM 标准设计，将复用到后续 SoC 级验证。
 - 覆盖组、断言、refmodel 全部 package 化，便于 SoC 级复用。
 - 复用 `hpdcache_verification/modules/dv_utils/`（clock_gen / reset_gen / bp_gen / watchdog / memory_rsp_model / memory_shadow / perf_mon / generic_agent）。
+
+### 3.5 Spec QA 融合决策口径
+
+原 `MMU_UVM_Spec_QA_Checklist.md` 的问题清单已融合为本计划的重构决策入口。后续 tests / scoreboard / reference model / monitor 改动必须遵守下表，未决项进入风险或 signoff waiver，不再另开顶层问卷文档。
+
+| 领域 | 当前决策 / 默认口径 |
+| --- | --- |
+| 签核金标准 | 以外部可观察 IFU/LSU/CP0/PTW/PMP/SysMap 行为、scoreboard 比对、SVA 和 coverage gate 为准；白盒 probe 用于诊断和 cover，不替代最终外部结果 |
+| 支持范围 | Sv39 为唯一分页模式；Bare/MMU-off/bypass 作为显式场景处理，不引入 Sv48/Sv57 |
+| SATP/MMU enable | active SATP、`mmu_xx_mmu_en`、`ptw_en`、`maee`、`no_op` 必须进入 ref_model 状态；非法/disabled 组合按显式 testcase 口径处理 |
+| VA/PA 比较 | 正常完成比较完整 PA/属性；fault 时只比较规范定义的 fault 信号和可定义属性，未定义 PA 不作为 mismatch 根因 |
+| PTE/权限 | 4K/2M/1G、非法 PTE、A/D、G/ASID、MXR/SUM/MPRV、U/S/M privilege 均由 ref_model 明确建模；A/D write-back 维持 trap-only 风险口径 |
+| PMP/SysMap/MAEE 属性 | PMP flag 位序为 `{L,X,W,R}`；SysMap `flg[4:0]`、MAEE 双路选路和 original access type 的 PMP permission selection 必须同步建模 |
+| IFU/LSU 可观察语义 | IFU miss-hold、abort、LSU pipe0/1 replay fault、pipe2 prefetch、STAMO、tlb_busy/wakeup 均进入正式验证；中间态只用于诊断，最终 compare 点由 monitor 定义 |
+| PTW/memory response | PTW external memory 以 accept pulse 作为请求入账边界；`data_vld` 与 `bus_error` 同拍合法；late response/orphan/stale 分类由 scoreboard epoch 和 drain 规则处理 |
+| Reset/flush/end-of-test | mid-transaction reset/flush 是正式场景；test done 前必须排空 driver/sequencer pending 与 PTW/L2/MMU 内部状态，timeout 仍作为真死锁暴露 |
 
 ---
 
@@ -1405,7 +1422,9 @@ For signoff, every row in this import table must have one of these statuses in t
 
 ### 6.5 Gap-Driven 新增 Test Case 一览（v2.0 补充）
 
-> 来源：[doc/MMU_GapAudit_v1.md](MMU_GapAudit_v1.md) 165 条 gap → 60 个新 TC（**仅声明**；详细 stimuli/checker 见 §12 / CSV）
+> 融合来源：原 `MMU_GapAudit_v1.md` 165 条 gap → 60 个新 TC，已归并到本节和 §12 / CSV；归档文件只作历史证据，不再作为主入口。
+
+Baseline import 规则：原 `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` 仅筛选 §6.3 中落入 `l1dtlb_tests` / `l2tlb_tests` / `tlbop_tests` 的 baseline TC，并排除 ITLB-only、PTW/ARB、SysMap/PMP/CSR、bug_hunt、ptw_lsu_protocol、pmp_v7、v4 扩展、stress/top-level/gap 项。该筛选结果已用于 Phase 9 wrapper 落地：`l1dtlb_tests` 23 个、`l2tlb_tests` 42 个、`tlbop_tests` 25 个。后续若 §6.3 TC 调整，baseline import 必须同步更新 wrapper suite 和 traceability CSV。
 
 | TC-ID                                                                                                                                                                                                                                                       | 对应 F-ID                                | Type                                                                                                                                                            | Sequence                                                                                                                                                           | Prio         |
 | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------ |
@@ -1715,6 +1734,36 @@ L2TLB assertion closure gates:
 
 采用 [doc/IC验证计划_报告_签核清单.md §3.3](IC验证计划_报告_签核清单.md) IP 模板，本 MMU 具体条目在版本冻结阶段由验证负责人生成 `doc/MMU_SignoffChecklist.md`（本验证计划文档外，后续交付）。
 
+### 9.3 Phase 14 签核矩阵融合状态
+
+Phase 14 的 Closure Owner policy、IssueTracker 和 SignoffMatrix 已融合为本节维护入口。最终签核行允许状态为 `Pass`、`Waived`、`Accepted`；`Waived` / `Accepted` 必须引用 `MMU-P14-ISSUE-NNN`，并具备 reviewer 与 `Reviewed` / `Approved` 状态。
+
+| ID | Criterion | Current status | Evidence / issue |
+| --- | --- | --- | --- |
+| S1 | full list 5-seed regression 100% pass | Pass | high-parallel shards clean，summary pass_rate=1.0000 |
+| S2 | latest coverage run has no regression | Pass | `phase14_coverage_merge_parallel` generated URG report |
+| S3 | line/branch/toggle/FSM coverage target | Pass | line/branch/toggle/FSM all 100.00% |
+| S4 | functional coverage 100% | Open | functional coverage 67.66%；tracked by MMU-P14-ISSUE-003 |
+| S5 | assertion coverage 100%, 0 fail | Pass | assertion 100.00%，0 fail |
+| S6 | P0/P1 open bugs are 0 | Pass | Phase14 issues 007-015、017-019 closed; no open P0/P1 |
+| S7 | P2 bugs reviewed and agreed | Open | depends on MMU-P14-ISSUE-003 review |
+| S8 | waivers all co-signed | Open | depends on MMU-P14-ISSUE-003 and final waiver review |
+| S9 | GLS zero-delay critical set | Open | requires GLS logs or scope waiver |
+| S10 | Lint/CDC/RDC | Open | requires reports or scope waiver |
+| S11 | plan/report/checklist approval | Open | depends on final progress/signoff approval |
+| S12 | L1DTLB audit/testplan synchronization | Open | tracked by MMU-P14-ISSUE-016 |
+
+Phase 14 issue rollup:
+
+| Issue group | Status |
+| --- | --- |
+| URG `No context available` and coverage fallback | Issue 001 deferred, Issue 003 open |
+| Gate/signoff workflow | Issue 004/005 open until final matrix review |
+| VCS coverage dump abort / VDB flow | Issue 006 closed |
+| PTW mbuf abort / late response / credit accounting | Issue 007 closed |
+| RTL/design records and scoreboard fixes | Issue 008-015, 017-019 closed |
+| L1DTLB audit sync | Issue 016 open |
+
 ---
 
 ## 10. 资源与时间表（Resources & Schedule）
@@ -1779,6 +1828,25 @@ L2TLB assertion closure gates:
 | **R-NEW.PMP.3** | **【v7.2 新增】L-bit 复位清 0，偏离 RISC-V Priv spec "sticky" 语义**（F7.NEW.19）                                                                                        | **中**                         | `ct_pmp_regs.v#L83-L88` 在 `!cpurst_b` 时将 `pmp{i}cfg_lock` 清 0，系统复位后安全区需软件重新上锁；与架构/安全团队书面确认可接受性；建议设计方改为 power-on-only reset 或 sticky FF；`sva_pmp_l_bit_lock_no_update` 仅覆盖 reset 未断言期间的 L 行为                                                                                                       |
 | **R-NEW.PMP.4** | **【v7.2 新增】pmpcfg2 硬连线 0 / pmpaddr8-15 未实现**（F7.NEW.21）                                                                                                        | **低**                         | `ct_pmp_regs.v#L512` `pmpcfg2_value[63:0]=64'b0`；pmp8-15 不存在。RISC-V 允许实现 0/16/64 entry，本 RTL 仅 8 entry，已在规格中登记，不影响功能安全；`TC-PMP-PMPCFG2-ZERO-001` / `TC-PMP-PMPADDR8-15-NOOP-001` 作正向确认                                                                                                                                                     |
 
+### 11.1 GapAudit 融合审计结论
+
+原 GapAudit 的 165 条 gap 已分解进 feature/test/coverage/risk。下表保留审计维度和当前主入口：
+
+| 审计域 | 关键结论 | 主入口 |
+| --- | --- | --- |
+| L1 ITLB/DTLB | entry 数、MB FSM、busy/wakeup、STAMO、fault/replay、invalidate/flush race 等补强已映射到 F1/F2、baseline import 和 L1DTLB audit appendix | §5.1、§6.3、Appendix E |
+| L2 TLB / Arbiter | ReqQ、MB、RRPV、replacement、raw_vld、store type、PTW refill helper access 等 gap 已归入 F3/F5、R15/R20 和 L2TLB audit appendix | §5.2、§11、Appendix F |
+| PTW/TWU/MBUF/PDE Cache | PTW->LSU single outstanding、bus_error/data_vld、abort/late refill、PDE cache update/clear、MAEE/PMP/SysMap PTW 路径已归入 F4/F5 和 Phase 11-13 TC | §5.3、§6.5、§7 |
+| System-side | SysMap、PMP、TLBOper、CSR hazard、reset、bypass/SoC interface 已归入 F6-F9、R11-R14、R-NEW.PMP.* 和 Phase 13 gate | §5.4、§9、§11 |
+| Top/integration | 多端口并发、属性传播、HPCP、performance/reset/stress 与 end-of-test drain 已进入 top-level F10-F14、Phase14 issue/signoff 和 Spec QA 口径 | §5.5、§8、§9.3 |
+
+### 11.2 Spec QA 未决项处理规则
+
+- 如果 RTL 偏离 spec 且当前 UVM 已按 RTL 签核，必须在风险表或 Phase14 issue 中记录 `Accepted` / `Waived` 依据。
+- 如果行为仅靠 whitebox 观察可确认，需标注为 `sva_only_whitebox` 或 `closed_by_sva_only_whitebox`，不能冒充 directed external closure。
+- 如果 coverage tooling fallback 替代 URG 指标，必须由 signoff reviewer 二次确认，不能由 Closure Owner 单独关闭。
+- L1DTLB/L2TLB audit package 中的 SVA requirement 是需求清单，只有绑定状态、run log、coverage hit 或 waiver 齐备后才能作为 signoff evidence。
+
 ---
 
 ## 12. Traceability Matrix（追溯矩阵节选）
@@ -1787,7 +1855,7 @@ L2TLB assertion closure gates:
 
 > CSV 列：Requirement_ID · Requirement · Sub_Feature_ID · Sub_Feature · Test_Case_ID · Test_Case_Name · Feature_Description · Verification_Goal · Stimuli · Test_Type · Coverage_Method · Covergroup_Binding · Assertion_Binding · Sequence_Binding · Criteria_Pass_Fail · Priority · RTL_Reference · Spec_Reference · Status
 >
-> **v2.0 补充**：CSV 在原 248 行基础上追加了 60+ 行 `TC-GAP-*` / `TC-*-*-001` 记录（参考 §6.5 与 [MMU_GapAudit_v1.md](MMU_GapAudit_v1.md)），映射 v2.0 新增的 F1.13~F14.20 sub-feature；全量追溯以 CSV 为准。
+> **v2.0 补充**：CSV 在原 248 行基础上追加了 60+ 行 `TC-GAP-*` / `TC-*-*-001` 记录（参考 §6.5 与 §11.1 融合审计结论），映射 v2.0 新增的 F1.13~F14.20 sub-feature；全量追溯以 CSV 为准。
 >
 > 本节仅展示关键行预览（格式与 CSV 对齐的简化 markdown 表）。
 

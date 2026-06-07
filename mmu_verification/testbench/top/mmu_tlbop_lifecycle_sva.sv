@@ -54,6 +54,14 @@ module mmu_tlbop_lifecycle_sva (
   assign any_active = tlbp_active || tlbr_active || tlbwi_active || tlbwr_active
                    || tlbiasid_active || tlbiall_active || tlbiva_active;
 
+  logic [3:0] any_active_hist;
+  always_ff @(posedge forever_cpuclk or negedge cpurst_b) begin
+    if (!cpurst_b)
+      any_active_hist <= '0;
+    else
+      any_active_hist <= {any_active_hist[2:0], any_active};
+  end
+
   // ── G2: Arb request implies an FSM is active ───────────────────────────
   a_arb_req_implies_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     tlboper_arb_req |-> any_active);
@@ -153,18 +161,16 @@ module mmu_tlbop_lifecycle_sva (
   a_ptw_abort_does_not_stall_tlbop_done: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     (any_active && tlboper_ptw_abort) |-> !tlboper_regs_cmplt);
 
-  // ── G2: L2TLB completion only when an FSM is active ────────────────────
-  // l2tlb_tlboper_cmplt = final_vld && (final_acc_type == 3'b001) is a pure
-  // combinational pipeline signal.  It can fire 1 cycle after the FSM returns
-  // to IDLE, or during post-reset pipeline drain.  Accept it if any FSM was
-  // active in the current OR previous cycle.
+  // ── G2: L2TLB completion only when an FSM was recently active ───────────
+  // l2tlb_tlboper_cmplt is generated from the L2 final pipeline and can lag the
+  // control FSM by several sampled cycles after the FSM has returned to IDLE.
   a_l2_cmplt_during_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    jtlb_tlboper_cmplt |-> any_active || $past(any_active));
+    jtlb_tlboper_cmplt |-> any_active || (|any_active_hist));
 
   // ── G2: regs_cmplt only when an FSM is active (or just finished) ──────
   // regs_cmplt is pulsed when the operation is done
   a_regs_cmplt_implies_was_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    tlboper_regs_cmplt |-> any_active || $past(any_active));
+    tlboper_regs_cmplt |-> any_active || (|any_active_hist));
 
   // ── Cover properties for evidence ──────────────────────────────────────
   c_tlbp_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)

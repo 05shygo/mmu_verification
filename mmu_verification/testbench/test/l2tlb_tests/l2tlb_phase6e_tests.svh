@@ -856,6 +856,12 @@ class test_l2tlb_p6e_timeout_fairness_release extends l2tlb_phase6e_test_base;
     m_vseq_names.push_back("mmu_ptw_thrash_vseq");
     m_vseq_names.push_back("mmu_stress_all_ports_vseq");
   endfunction
+
+  protected virtual task phase6e_post_stimulus();
+    start_misc_seq_by_name("misc_rtu_flush_seq");
+    m_env.wait_for_quiescent_midtest("phase6e_timeout_fairness_release", 262144, 16);
+    super.phase6e_post_stimulus();
+  endtask
 endclass : test_l2tlb_p6e_timeout_fairness_release
 
 class test_l2tlb_p6e_rrpv_debug_pressure extends l2tlb_phase6e_test_base;

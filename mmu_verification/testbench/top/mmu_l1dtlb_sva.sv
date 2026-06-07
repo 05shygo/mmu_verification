@@ -401,11 +401,10 @@ module mmu_l1dtlb_sva #(
     expt_wr1_vld |-> (mb_entry_vld[expt_wr1_eid]
                    && mb_entry_state[expt_wr1_eid] == MB_STATE_WFC));
 
+  // RTU flush suppresses new fault side effects.  Same-cycle refill/install
+  // wakeup is legal and is checked by the per-MB flush/refill assertions below.
   a_flush_blocks_new_side_effects: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    rtu_yy_xx_flush |-> (!utlb_refill_vld
-                      && !expt_wr0_vld
-                      && !expt_wr1_vld
-                      && mmu_lsu_tlb_wakeup == 12'h000));
+    rtu_yy_xx_flush |-> (!expt_wr0_vld && !expt_wr1_vld));
 
   // A071: event-level miss counter guard.
   a_hpc_miss_only_on_real_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)

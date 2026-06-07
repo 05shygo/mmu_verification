@@ -7,11 +7,10 @@ content has been fused into the three maintained documents:
 - `../MMU_UVM_BuildPlan_v3_final.md`
 - `../MMU_VerificationPlan_final.md`
 
-Protected directories were not touched:
+Protected audit/review directories were not touched:
 
 - `../l1dtlb_uvm_audit/`
 - `../l2tlb_uvm_audit/`
-- `../plan/`
 - `../ptw_uvm_review/`
 
 The signoff template `../IC验证计划_报告_签核清单.md` was also left untouched.
@@ -59,6 +58,18 @@ The signoff template `../IC验证计划_报告_签核清单.md` was also left un
 | `MMU_VerificationPlan_v1.md` | `../MMU_VerificationPlan_final.md` version evolution |
 | `MMU_VerificationPlan_v2.md` | `../MMU_VerificationPlan_final.md` version evolution |
 | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | `../MMU_VerificationPlan_final.md` baseline TC import rule |
+
+## Plan ChangeLog
+
+| Archived source | Fused destination |
+| --- | --- |
+| `plan/plan_v1.md` | `../plan/MMU_VerificationPlan_ChangeLog.md` v1.0 section |
+| `plan/plan_v2.md` | `../plan/MMU_VerificationPlan_ChangeLog.md` v2/v3.0 section |
+| `plan/plan_v3.md` | `../plan/MMU_VerificationPlan_ChangeLog.md` duplicate of plan_v2, retained as archived snapshot |
+| `plan/plan_v4.md` | `../plan/MMU_VerificationPlan_ChangeLog.md` v4.0 section |
+| `plan/plan_v5.md` | `../plan/MMU_VerificationPlan_ChangeLog.md` v5.0 section |
+| `plan/plan_v6.md` | `../plan/MMU_VerificationPlan_ChangeLog.md` v6.0 section |
+| `plan/plan_v7.md` | `../plan/MMU_VerificationPlan_ChangeLog.md` v7.0 section |
 
 ## CSV
 

@@ -44,6 +44,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected int unsigned m_rsp_watchdog_cycles;
   protected int unsigned m_p2_grant_max_cycles;
   protected int unsigned m_p2_rsp_watchdog_cycles;
+  protected int unsigned m_inv_busy_wait_max_cycles;
 
   // Mutual exclusion between pipe0 and pipe1: the DUT's L1 DTLB lookup logic
   // shares resources between the two pipes.  Asserting va0_vld and va1_vld on
@@ -65,6 +66,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     m_rsp_watchdog_cycles = 200000;
     m_p2_grant_max_cycles = 256;
     m_p2_rsp_watchdog_cycles = 8192;
+    m_inv_busy_wait_max_cycles = 4096;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -80,6 +82,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     void'($value$plusargs("LSU_P2_GRANT_MAX_CYCLES=%0d", m_p2_grant_max_cycles));
     void'($value$plusargs("LSU_P2_RSP_WATCHDOG_CYCLES=%0d", m_p2_rsp_watchdog_cycles));
     void'($value$plusargs("LSU_P2_RSP_MAX_CYCLES=%0d", m_p2_rsp_watchdog_cycles));
+    void'($value$plusargs("LSU_INV_BUSY_WAIT_MAX_CYCLES=%0d", m_inv_busy_wait_max_cycles));
     if (m_retry_probe_cycles == 0)
       m_retry_probe_cycles = 1;
     if (m_rsp_watchdog_cycles == 0)
@@ -88,6 +91,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       m_p2_grant_max_cycles = 1;
     if (m_p2_rsp_watchdog_cycles == 0)
       m_p2_rsp_watchdog_cycles = 1;
+    if (m_inv_busy_wait_max_cycles == 0)
+      m_inv_busy_wait_max_cycles = 1;
   endfunction
 
   virtual function void set_end_quiesce(bit enable = 1'b1);
@@ -143,7 +148,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
               "rsp={p0:%0b p1:%0b p2:%0b} fault={p0_pg:%0b p0_ac:%0b p1_pg:%0b p1_ac:%0b p2_ac:%0b} ",
               "tlb_busy=%0b wakeup=0x%03h mmu_en=%0b ",
               "va0=0x%016h id0=%0d va1=0x%016h id1=%0d va2=0x%07h ",
-              "retry_probe=%0d rsp_watchdog=%0d p2_grant_max=%0d p2_rsp_watchdog=%0d"},
+              "retry_probe=%0d rsp_watchdog=%0d p2_grant_max=%0d p2_rsp_watchdog=%0d inv_busy_wait_max=%0d"},
       ctx,
       m_pending.size(),
       m_end_quiesce,
@@ -175,7 +180,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       m_retry_probe_cycles,
       m_rsp_watchdog_cycles,
       m_p2_grant_max_cycles,
-      m_p2_rsp_watchdog_cycles);
+      m_p2_rsp_watchdog_cycles,
+      m_inv_busy_wait_max_cycles);
   endfunction
 
   virtual task wait_for_idle(
@@ -647,11 +653,25 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       m_inv_busy = 1'b1;
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
-      // Normal directed invalidates avoid the busy window.  A process-switch
-      // SATP update is different: LSU must issue the ASID invalidate even while
-      // a walk is in flight so ct_mmu_tlboper raises tlboper_ptw_abort.
-      if ((tr.inv_allow_busy !== 1'b1) && (vif.driver_cb.mmu_lsu_tlb_busy === 1'b1))
-        @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
+      // Normal directed invalidates prefer the idle window, but SFENCE.VMA is
+      // also the mechanism that aborts outstanding PTW/L1DTLB work.  Keep the
+      // idle preference bounded so stress tests cannot deadlock inside the
+      // driver while mmu_lsu_tlb_busy remains high.
+      if (tr.inv_allow_busy !== 1'b1) begin
+        int unsigned busy_wait_cycles;
+        busy_wait_cycles = 0;
+        while ((vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)
+               && (busy_wait_cycles < m_inv_busy_wait_max_cycles)) begin
+          @(vif.driver_cb);
+          busy_wait_cycles++;
+        end
+        if (vif.driver_cb.mmu_lsu_tlb_busy === 1'b1) begin
+          `uvm_info(get_type_name(),
+            $sformatf("TLB INV busy wait expired after %0d cycles; issuing %s to abort/drain outstanding walk traffic",
+              busy_wait_cycles, tr.inv_kind.name()),
+            UVM_MEDIUM)
+        end
+      end
       @(vif.driver_cb);
       vif.driver_cb.lsu_mmu_tlb_va   <= tr.inv_va;
       vif.driver_cb.lsu_mmu_tlb_asid <= tr.inv_asid;

@@ -23,6 +23,7 @@
 | v7.5-L1DTLB-Audit | 2026-05-10 | Phase14 Closure Owner | 同步 L1DTLB audit package：`doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` chapter 3.9 SVA requirement list、chapter 3.10 65 条 required test scenarios、`L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` HPDcache-style Excel testplan、以及 `make l1dtlb_audit_check` / `make l1dtlb_audit_run_cov` 入口。UVM 代码仍以最终稳定分支的 run/cov 结果为签核证据。 |
 | v7.6-L2TLB-Audit | 2026-05-21 | L2TLB Audit Owner | 同步 L2TLB audit package：`doc/l2tlb_uvm_audit/l2tlb_function_description.md` Phase 2 `L2TLB_TP_001..058` 测试点、Phase 3 `L2TLB_SVA_001..024` SVA requirement、Phase 4 scoreboard/reference model 建模边界，以及 `L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` Excel testplan。若旧 F3/F5/TLBOP 条目与 L2TLB audit `.md` 冲突，Phase 6 重写或删除旧条目前以 audit `.md` 为准；本次同步不声明 UVM/RTL 实现已完成。 |
 | v7.7-DocMerge | 2026-06-07 | Verification Team | 顶层 Markdown 文档融合：旧版 `MMU_VerificationPlan*.md` 的重复正文不再单独维护，保留版本演进差异；`MMU_GapAudit_v1.md` 的 165 条 gap / 60+ gap TC 已归并到 §6.5、§11、§12；`MMU_UVM_Spec_QA_Checklist.md` 的重构决策问题已归并到 §3/§4/§5/§9；`section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` 已归并到 §6.3 baseline import；Phase 14 Issue/Signoff 状态并入 §9/§11。 |
+| v7.8-Audit-NonFunction-Merge | 2026-06-07 | Verification Team | 按 audit 非 function-description 文档更新主计划：合入 `doc/l1dtlb_uvm_audit/` 的 Phase6 BuildPlan/Progress、3.9/3.10/3.11 traceability、testpoint audit 与 Excel testplan 状态；合入 `doc/l2tlb_uvm_audit/` 的 Audit ImplementationPlan、Phase6 BuildPlan/Progress、progress、TLB operation notes 与 Excel testplan 状态。两个 audit 目录保持只读；本轮不从 `*_function_description.*` 抽取新增正文。 |
 | v7.2 | 2026-04-23 | Verification Team | **PMP Agent 验证计划完善**（对照 `pmp/rtl/ct_pmp_top.v` / `ct_pmp_regs.v` / `ct_pmp_comp_hit.v` / `ct_pmp_acc.v` 精读；用户澄清：**RTL 为 PMP 旧版本实例化 5 个 `ct_pmp_acc`（x_ct_pmp_acc0..4），spec 目标 8 端口**）：（1）**§2.3 Row 8 修订**：确认 `pmp_mmu_flg[3:0]={L,X,W,R}`（bit[3]=L，ct_pmp_acc.v:L163/L195），pmpcfg2 硬连线 0、pmp8-15 不实现（ct_pmp_regs.v:L512），NA4 未实现（ct_pmp_comp_hit.v:L59 `na4_addr_match=1'b0`），L-bit 复位清 0（ct_pmp_regs.v:L83-L88，偏离 RISC-V 规范）；（2）**F7.1 追加 RTL-Gap-PMP.1 注记**：当前 RTL 仅实例化 5 个 `ct_pmp_acc`，spec 目标 8 端口存在端口缺口；（3）**F7.2 纠错**：`pmp_mmu_flg[3]` 含义由"Reserved"→"L 锁定"，补充 WARL bits[6:5]=0 注记；（4）**§4.2 PMP Agent 独立子节**（§4.2.6）：Driver / Responder / Reference Model / Coverage Matrix / Sequence Library 全要素；（5）**F7.NEW.10..F7.NEW.22 新增 13 条**：TOR 级联 / TOR 零宽 / NAPOT 掩码 / NAPOT 非法 / NA4 未实现 / 优先级 lowest-idx / 默认权限 M=all U=none / flg bit 顺序 / L-lock+TOR 依赖 / L 复位清 / MPRV 端口差异 / pmpcfg2 零 / 5-vs-8 端口并发；（6）**18+1 条 TC**：TC-PMP-TOR-CHAIN-001 / TOR-ZERO-LEN-001 / TOR-LOCK-DEP-001 / NAPOT-ALL-SIZES-001 / NAPOT-ILLEGAL-001 / NA4-UNSUPPORTED-001 / PRIORITY-LOWEST-IDX-001 / DEFAULT-M-ALLOW-001 / DEFAULT-U-DENY-001 / FLG-LXWR-ORDER-001 / L-BIT-LOCK-001 / L-BIT-RESET-CLR-001 / MPRV-PORT2-IMMUNE-001 / MPRV-PORT3-FETCH-MASK-001 / PMPCFG2-ZERO-001 / PMPADDR8-15-NOOP-001 / 5PORT-CONCURRENT-001 / 8PORT-CONCURRENT-001 / CSR-WARL-RSVD-001；（7）**10 条 SVA**：`sva_pmp_flg_bit_layout` / `sva_pmp_priority_lowest_wins` / `sva_pmp_tor_chain` / `sva_pmp_napot_mask_shape` / `sva_pmp_na4_never_hits` / `sva_pmp_l_bit_lock_no_update` / `sva_pmp_m_mode_no_match_allow` / `sva_pmp_u_mode_no_match_deny` / `sva_pmp_mprv_port2_zero` / `sva_pmp_mprv_port3_fetch_mask`；（8）**7 条 CG**：`cg_pmp_addr_mode_per_entry` / `cg_pmp_napot_size` / `cg_pmp_priority_hit_index` / `cg_pmp_priv_perm_matrix` / `cg_pmp_lock_sequence` / `cg_pmp_mprv_scenarios` / `cg_pmp_port_concurrency`；（9）**4 条新风险**：R-NEW.PMP.1（RTL 5 vs 规格 8 端口，高）/ R-NEW.PMP.2（NA4 未实现，中）/ R-NEW.PMP.3（L bit 复位清除偏离规范，中）/ R-NEW.PMP.4（pmpcfg2 硬连线 0，低） |
 
 ---
@@ -584,7 +585,34 @@ If legacy F3/F5/TLBOP rows conflict with this audit package, the audit `.md` tak
 
 Scoreboard implementation must follow the Phase 4 boundary: v1 pass/fail is transaction-level and checks MMU-visible translation, PFU response, PTW completion ownership, and software-visible TLB operation results. Exact victim way, exact RRPV value, RRPV write-buffer latest-wins behavior, per-cycle ReqQ/MB/pipeline/arbiter state, and fault/no-pavld payload values are not v1 transaction scoreboard fail conditions unless a dedicated SVA/debug checker explicitly owns them.
 
----
+#### 5.2.2 L2TLB audit non-function merge status (v7.8)
+
+This subsection imports current L2TLB audit status from the non-function-description
+audit files: `L2TLB_UVM_Audit_ImplementationPlan.md`,
+`L2TLB_UVM_Phase6_BuildPlan.md`, `L2TLB_UVM_Phase6_Progress.md`,
+`progress.md`, `L2TLB_TLB_OPERATION_NOTES.txt`, and
+`L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx`.
+
+| Imported item | Current audit status | Main-plan override |
+| --- | --- | --- |
+| Excel testplan | `Phase2_Testpoints` sheet has 58 rows `L2TLB_TP_001..058`; summary reports 47 P0, 10 P1, 1 P2 | CSV traceability imports these rows as the L2TLB audit testpoint source. |
+| Phase 0~7 audit plan | Complete; Phase 0 protected the golden input, Phase 1 created the working copy, Phase 2/3/4 defined TP/SVA/scoreboard, Phase 5 synced main plan, Phase 6/7 created implementation gates | Historical text saying Phase6 documents are not yet created is superseded. |
+| Phase 6A/6B | Complete; observability and metadata/wrapper alignment are documented, but wrapper names and generic pass logs are not closure evidence | Every `L2TLB_TP_###` still requires trigger evidence plus checker/SVA/pass-fail evidence or waiver. |
+| Phase 6C/6D | Complete; transaction-level shadow helper and stable bind SVA baseline are implemented with compile/smoke evidence | L2 shadow, PFU payload-ignore, reset/abort epoch, MB/PTW ownership, and SVA bind evidence become required closure evidence classes. |
+| Phase 6E/6G | Complete with scoped future; directed, negative, manifest, scanner, replay, and closure report flow are implemented | Default closure gate is expected as `STATUS=PASS PASS=26 OPEN=0 FAIL=0 TOTAL=26`; manifest evidence overrides generic regression pass/fail. |
+| PTW source/fault closure | PTW disabled, page-fault, and access-error harness covers ITLB, DTLB load, DTLB store, and PFU sources with payload-ignore evidence | Prior PTW source-specific waivers are superseded by manifest closure evidence. |
+| Negative/control closure | Bad completion and control-hazard injectors are isolated from normal regression and have trigger/checker tokens | Negative rows must remain separate from legal directed/random regression. |
+| ReqQ/arbiter fine-grain closure | CP0 TLBP phase-aligned run hits four-source, PTW/ReqQ, TLBOP/ReqQ, PTW/TLBOP, triple conflicts, `ptw_on`, `tlboper_on`, and PFU mask release with clean UVM/SVA evidence | `P1_REQQ_ARB_FINE_CLOSURE` closes the prior open arbiter ownership row; DUT/RTL is not modified by this closure. |
+| RRPV exact model | 2026-06-06 exact model algorithm tracks 8-way x 256-set x 3-bit RRPV and an 8-entry wbuf FIFO; compile passes, runtime scoreboard hookup remains follow-up | `L2TLB_SVA_023/024` are no longer pure future/waiver, but final signoff still needs runtime integration evidence before claiming full regression closure. |
+
+`L2TLB_TLB_OPERATION_NOTES.txt` overrides ambiguous legacy TLBOP wording:
+`index[10:8]` is the way id and `index[7:0]` is the set index; TLBP, INVVA,
+INVASID, INVALL, and TLBWR read candidate ways with all-way bank select where
+appropriate; TLBR/TLBWI use one-hot `1 << index[10:8]`; INVASID writes the
+ASID-hit vector; INVVA writes the VA-hit vector; TLBWR writes the selected
+victim way. TLBP hit index is encoded as `{way_id[2:0], set_idx[7:0]}`. TLBOP
+keeps ordinary L2 lookup/refill blocked until the operation completes, and L1
+uTLB clear / invalidate side effects are part of the visible closure.
 
 ---
 
@@ -1410,6 +1438,33 @@ The legacy DTLB table above is retained for continuity, but L1DTLB directed clos
 
 For signoff, every row in this import table must have one of these statuses in the run report: `closed_by_directed`, `closed_by_random_plus_cover`, `closed_by_sva_only_whitebox`, or `waived_with_issue_id`. A wrapper inherited from a generic vseq is not counted as `closed_by_directed` unless it drives the audit trigger and checks the audit observable behavior.
 
+#### 6.3.7 L1DTLB audit Phase6 closure import (v7.8)
+
+This subsection imports the current L1DTLB audit implementation status from
+`L1DTLB_UVM_Phase6_BuildPlan.md`, `L1DTLB_UVM_Phase6_Progress.md`,
+`l1dtlb_3_9_3_10_traceability.md`, `l1dtlb_3_11_traceability.md`,
+`l1dtlb_testpoint_audit.md`, and the L1DTLB Excel testplan. It intentionally
+does not import new text from `l1dtlb_function_description.*`.
+
+| Imported area | Current status from audit docs | Main-plan impact |
+| --- | --- | --- |
+| Phase 6A observability | Complete; `make comp_fast` and `test_mmu_l1dtlb_dtlb_ref_model_observability_001` pass, with `fragile_root_paths=0` | L1DTLB closure may use stable probes/monitors and spec-SB inventory; probe presence alone still does not close a scenario. |
+| Phase 6B token/waive removal | Complete; page-fault T0, access-fault T1, overlap, PMP, STAMO, direct-map, and exception replay paths pass with `remaining_broad_waive=0` | Legacy broad L1DTLB replay/timing waivers are superseded by token, exception, and no-response classification evidence. |
+| Phase 6C entry shadow | Complete; entry-field, 4K/2M/1G hit/refill, permission, AD/US/SUM, VA8 invalidate, and invalidate/install directed runs pass | Hit-side PA/page-size/flag/attr compare is now a required L1DTLB signoff evidence class. |
+| Phase 6D MB/no-response | Complete; same-4K dedup, two-free, one-free age, full/drop, CAM, abort, flush, busy-sleep, and side-effect matrix runs pass | MB allocation and legal no-response closure must cite trigger counters and no-illegal-side-effect counters, not just wrapper names. |
+| Phase 6E refill/expt lifecycle | Complete; refill/install, fault replay, WFI, stale, ABT, ACFLT, dual-fault, and wakeup evidence recorded | Fault refill no-TLB-write and exception replay consume/release are promoted from planned audit gaps to active closure criteria. |
+| Phase 6F credit/race | Complete; credit owner, wakeup, cleanup scope, invalidate+hit, invalidate+install, and rejected-evidence handling recorded | Credit and race evidence must be clean; rejected warning/error-bearing runs remain analysis-only. |
+| Phase 6G closure automation | Complete; `make -C mmu_verification l1dtlb_phase6g_replay` PASS 28/28 and `make -C mmu_verification l1dtlb_phase6g_closure` PASS 28/28 | L1DTLB audit signoff uses the Phase6G manifest/closure report as the summary gate. |
+| Future/formal boundaries | `vabuf` functional equivalence and exact PLRU victim remain future/formal rows | Main translation pass/fail must not reintroduce black-box exact PLRU victim or unproven `vabuf` equivalence assumptions. |
+
+The current traceability rollup from the non-function-description audit files is:
+3.9/3.10 has 80 implemented, 81 partial, and 2 formal-only rows across SVA,
+cover, scenario, and RM references; 3.11 has 28 implemented, 58 partial, and
+4 planned rows. These statuses are not contradictions to Phase6G completion:
+the Phase6G closure report closes the agreed UVM simulation gate, while partial
+rows continue to document model-depth limits, formal-only items, and future
+refinement boundaries.
+
 ### 6.4 回归套件编组
 
 | 套件                | 运行频率               | 包含范围                                    | 预计时长             | 通过标准          |
@@ -1672,6 +1727,14 @@ L2TLB assertion closure gates:
 3. `future` rows (`L2TLB_SVA_023`, `L2TLB_SVA_024`) remain outside v1 closure until a replacement/RRPV exact reference model is approved.
 4. Negative illegal-input tests close through assertion/error-handling behavior only; ordinary functional scoreboard comparison must not continue after bad ID, illegal result combination, or protocol-illegal stimulus.
 
+2026-06-07 audit status update: Phase6D/6F/6G progress records supersede the
+original planning state above. Stable bind SVA and equivalent-waiver evidence
+close the Phase6D cover holes; Phase6G manifest/scanner closure records the
+expected default `STATUS=PASS PASS=26 OPEN=0 FAIL=0 TOTAL=26`; and the
+2026-06-06 RRPV exact-model implementation provides the approved algorithmic
+basis for `L2TLB_SVA_023/024`. Those two rows still require runtime scoreboard
+integration evidence before they can be counted as full regression closure.
+
 断言覆盖率：**100% 被触发**（未触发需分析）。
 
 ### 7.4 豁免（Waiver）流程
@@ -1751,7 +1814,8 @@ Phase 14 的 Closure Owner policy、IssueTracker 和 SignoffMatrix 已融合为�
 | S9 | GLS zero-delay critical set | Open | requires GLS logs or scope waiver |
 | S10 | Lint/CDC/RDC | Open | requires reports or scope waiver |
 | S11 | plan/report/checklist approval | Open | depends on final progress/signoff approval |
-| S12 | L1DTLB audit/testplan synchronization | Open | tracked by MMU-P14-ISSUE-016 |
+| S12 | L1DTLB audit/testplan synchronization | Pass | v7.8 non-function audit merge imported Phase6G replay/closure PASS 28/28, L1 traceability rollup, and Excel AUD rows into this plan/CSV |
+| S13 | L2TLB audit/testplan synchronization | Pass with scoped follow-up | v7.8 non-function audit merge imported 58 Excel TP rows, Phase6G closure `PASS=26 OPEN=0 FAIL=0`, TLBOP notes, and RRPV exact-model implementation status; runtime RRPV scoreboard hookup remains follow-up |
 
 Phase 14 issue rollup:
 
@@ -1762,7 +1826,8 @@ Phase 14 issue rollup:
 | VCS coverage dump abort / VDB flow | Issue 006 closed |
 | PTW mbuf abort / late response / credit accounting | Issue 007 closed |
 | RTL/design records and scoreboard fixes | Issue 008-015, 017-019 closed |
-| L1DTLB audit sync | Issue 016 open |
+| L1DTLB audit sync | Issue 016 closed by v7.8 non-function audit merge |
+| L2TLB audit sync | Closed for document/testplan/Phase6G manifest import; scoped follow-up remains for runtime RRPV exact scoreboard integration |
 
 ---
 
@@ -1827,6 +1892,9 @@ Phase 14 issue rollup:
 | **R-NEW.PMP.2** | **【v7.2 新增】NA4 模式未实现 + NAPOT 非法 pattern 默认 mask=0**（F7.NEW.14 / F7.NEW.13）                                                                                  | **中**                         | `ct_pmp_comp_hit.v#L59` `na4_addr_match=1'b0` 恒 0；非尾连续 1 的 pmpaddr NAPOT casez 走 default（mask=0），偏离 RISC-V Priv spec；与架构确认是否容忍（软件可用 NAPOT(4K) 替代 NA4）；`sva_pmp_na4_never_hits` 锁定；`cg_pmp_addr_mode_per_entry` 的 NA4 列仅覆盖"永不命中" bin                                                                                                   |
 | **R-NEW.PMP.3** | **【v7.2 新增】L-bit 复位清 0，偏离 RISC-V Priv spec "sticky" 语义**（F7.NEW.19）                                                                                        | **中**                         | `ct_pmp_regs.v#L83-L88` 在 `!cpurst_b` 时将 `pmp{i}cfg_lock` 清 0，系统复位后安全区需软件重新上锁；与架构/安全团队书面确认可接受性；建议设计方改为 power-on-only reset 或 sticky FF；`sva_pmp_l_bit_lock_no_update` 仅覆盖 reset 未断言期间的 L 行为                                                                                                       |
 | **R-NEW.PMP.4** | **【v7.2 新增】pmpcfg2 硬连线 0 / pmpaddr8-15 未实现**（F7.NEW.21）                                                                                                        | **低**                         | `ct_pmp_regs.v#L512` `pmpcfg2_value[63:0]=64'b0`；pmp8-15 不存在。RISC-V 允许实现 0/16/64 entry，本 RTL 仅 8 entry，已在规格中登记，不影响功能安全；`TC-PMP-PMPCFG2-ZERO-001` / `TC-PMP-PMPADDR8-15-NOOP-001` 作正向确认                                                                                                                                                     |
+| **R-AUD-L1.1** | **L1DTLB `vabuf` 等价与 exact PLRU victim 仍为 future/formal 边界** | **中** | Phase6G replay/closure 已 PASS 28/28，但 L1 audit progress 明确保留 `vabuf` functional equivalence 和 exact PLRU victim selection 为 future/formal；主 translation scoreboard 不得把 exact PLRU victim mismatch 当作黑盒功能失败，后续若要关闭需单独 formal/whitebox 证据。 |
+| **R-AUD-L2.1** | **L2TLB RRPV exact model 已实现算法但 runtime scoreboard hookup 仍需后续证据** | **中** | 2026-06-06 exact model 已跟踪 8-way x 256-set x 3-bit RRPV 与 wbuf FIFO，并覆盖 `L2TLB_SVA_023/024` 的算法基础；最终 signoff 仍需把 `sample_cycle` 接入 UVM monitor/scoreboard run path 并提供 clean run/coverage evidence。 |
+| **R-AUD-L2.2** | **L2TLB TLBWI/TLBWR write-data exact compare 仍是 TLBOP decode follow-up 子项** | **中** | TLBOP exact transaction decode 已能验证 TLBP/TLBR request->done/readback，且 TLB operation notes 已固化 index/bank select 规则；TLBWI/TLBWR 逐域 write-data compare 依赖 shadow update on TLB write，后续实现前不得把该子项当成完全关闭。 |
 
 ### 11.1 GapAudit 融合审计结论
 
@@ -1900,6 +1968,10 @@ L1DTLB verification scope without changing the existing feature numbering.
 | --- | --- | --- |
 | L1DTLB functional/audit specification | `doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` | Source for L1DTLB behavior, chapter 3.9 SVA requirements, and chapter 3.10 required test scenarios |
 | L1DTLB audit table | `doc/l1dtlb_uvm_audit/l1dtlb_testpoint_audit.md` | AUD-001..AUD-064 requirement gap and action tracking |
+| L1DTLB 3.9/3.10 traceability | `doc/l1dtlb_uvm_audit/l1dtlb_3_9_3_10_traceability.md` | Current implementation status for 71 assert rows, 27 cover rows, and the required scenario matrix |
+| L1DTLB 3.11 traceability | `doc/l1dtlb_uvm_audit/l1dtlb_3_11_traceability.md` | Reference model, scoreboard, monitor/probe, legal no-response, and open work package status |
+| L1DTLB Phase6 build plan | `doc/l1dtlb_uvm_audit/L1DTLB_UVM_Phase6_BuildPlan.md` | 6A~6G implementation gates and strict evidence policy |
+| L1DTLB Phase6 progress | `doc/l1dtlb_uvm_audit/L1DTLB_UVM_Phase6_Progress.md` | Current closure record: 6A~6G Complete, replay PASS 28/28, closure PASS 28/28 |
 | L1DTLB Excel testplan | `doc/l1dtlb_uvm_audit/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` | HPDcache-style review artifact with 65 L1DTLB scenario rows |
 | Makefile document check | `make l1dtlb_audit_check` from `mmu_verification/` | Confirms the markdown audit files and Excel testplan are present |
 | Optional directed run | `make l1dtlb_audit_run_cov` from `mmu_verification/` | Runs the `l1dtlb_tests` group after the current UVM edits stabilize |
@@ -1915,6 +1987,13 @@ The chapter 3.9 SVA matrix is a requirement list. Individual SVA implementation
 and binding status must be reviewed against the current UVM/testbench branch
 before being treated as signoff evidence.
 
+The current non-function-description audit status supersedes the older
+open-ended Appendix E text: Phase6A through Phase6G are marked Complete in
+`L1DTLB_UVM_Phase6_Progress.md`; `make -C mmu_verification
+l1dtlb_phase6g_replay` and `make -C mmu_verification l1dtlb_phase6g_closure`
+are both recorded as PASS 28/28. The remaining explicit future/formal boundary
+is `vabuf` equivalence and exact PLRU victim selection.
+
 ## Appendix F: L2TLB Audit Synchronization
 
 This appendix records the L2TLB audit package that extends the F3 L2TLB/JTLB
@@ -1927,18 +2006,21 @@ document.
 | L2TLB functional/audit specification | `doc/l2tlb_uvm_audit/l2tlb_function_description.md` | Authority for Phase 2 `L2TLB_TP_001..058`, Phase 3 `L2TLB_SVA_001..024`, and Phase 4 scoreboard/reference model boundaries |
 | L2TLB Excel testplan | `doc/l2tlb_uvm_audit/L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` | Review artifact aligned one-to-one with `L2TLB_TP_001..058` |
 | L2TLB audit implementation plan | `doc/l2tlb_uvm_audit/L2TLB_UVM_Audit_ImplementationPlan.md` | Phase plan for document audit, main-plan sync, and later UVM implementation |
-| L2TLB audit progress | `doc/l2tlb_uvm_audit/progress.md` | Current completion state for Phase 0~7 and Phase 6 entry guard |
-| Phase 6 build plan entry | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_BuildPlan.md` | To be created when Phase 6 starts; not created by Phase 5 |
-| Phase 6 progress entry | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_Progress.md` | To be created when Phase 6 starts; not created by Phase 5 |
+| L2TLB audit progress | `doc/l2tlb_uvm_audit/progress.md` | Current completion state: Phase 0~7 complete and UVM Phase6A~6G complete with scoped follow-up |
+| Phase 6 build plan entry | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_BuildPlan.md` | 6A~6G implementation plan, strict gates, probe/monitor inventory, SVA/test/checker mapping |
+| Phase 6 progress entry | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_Progress.md` | Detailed tracker for 6A~6G implementation, evidence, waiver/future, and closure manifest status |
+| TLB operation notes | `doc/l2tlb_uvm_audit/L2TLB_TLB_OPERATION_NOTES.txt` | Authority for TLBP/TLBR/TLBWI/TLBWR/INV* index, bank select, hit vector, and done/clear side-effect rules |
 
 The 58 L2TLB testpoint rows cover reset, ReqQ, arbitration, tag/data/page-size
 lookup, miss buffer and PTW refill, PFU paths, TLB operations, RRPV/replacement
 debug scope, abort, timeout/fairness, and illegal-input negative checks.
 
-The 24 L2TLB SVA rows are requirement intents. Individual SVA implementation,
-binding status, run logs, coverage hits, and waivers must be reviewed in Phase 6
-before being treated as signoff evidence. This Phase 5 synchronization does not
-claim that UVM monitor, scoreboard, SVA, tests, coverage, RTL, or Makefile
-changes have been implemented.
+The 24 L2TLB SVA rows started as requirement intents. The non-function audit
+progress now records implemented SVA/bind, directed/negative tests, closure
+manifest, replay/scanner flow, TLBOP exact decode, and RRPV exact-model
+algorithm status. The current Phase6G default closure gate is expected to be
+`STATUS=PASS PASS=26 OPEN=0 FAIL=0 TOTAL=26`; remaining scoped follow-up is
+runtime RRPV exact scoreboard integration and TLBWI/TLBWR write-data exact
+compare evidence.
 
 *END OF DOCUMENT*

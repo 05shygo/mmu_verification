@@ -75,6 +75,13 @@ class lsu_monitor extends uvm_monitor;
     return v_probe.mon_cb.l1d_cp0_priv_mode;
   endfunction
 
+  protected function bit _inv_active();
+    return vif.monitor_cb.lsu_mmu_tlb_va_all_inv
+        || vif.monitor_cb.lsu_mmu_tlb_all_inv
+        || vif.monitor_cb.lsu_mmu_tlb_va_asid_inv
+        || vif.monitor_cb.lsu_mmu_tlb_asid_all_inv;
+  endfunction
+
   protected function void _sample_obs_common(ref lsu_txn tr);
     tr.obs_valid = (v_probe != null);
     if (v_probe == null)
@@ -850,21 +857,32 @@ class lsu_monitor extends uvm_monitor;
   // ── TLB Invalidation event ────────────────────────────────────────────────
   protected task _collect_inv();
     lsu_txn tr;
+    bit     done_seen;
     forever begin
-      @(vif.monitor_cb iff (vif.monitor_cb.lsu_mmu_tlb_va_all_inv   |
-                             vif.monitor_cb.lsu_mmu_tlb_all_inv      |
-                             vif.monitor_cb.lsu_mmu_tlb_va_asid_inv  |
-                             vif.monitor_cb.lsu_mmu_tlb_asid_all_inv));
+      while (!_inv_active())
+        @(vif.monitor_cb);
       tr          = lsu_txn::type_id::create("lsu_inv");
       tr.kind     = LSU_INV;
       tr.inv_va   = vif.monitor_cb.lsu_mmu_tlb_va;
       tr.inv_asid = vif.monitor_cb.lsu_mmu_tlb_asid;
-      tr.inv_done = vif.monitor_cb.mmu_lsu_tlb_inv_done;
+      done_seen   = (vif.monitor_cb.mmu_lsu_tlb_inv_done === 1'b1);
       // Decode inv_kind from which strobe is high
       if      (vif.monitor_cb.lsu_mmu_tlb_all_inv)      tr.inv_kind = INV_ALL;
       else if (vif.monitor_cb.lsu_mmu_tlb_va_all_inv)   tr.inv_kind = INV_VA_ALL;
       else if (vif.monitor_cb.lsu_mmu_tlb_asid_all_inv) tr.inv_kind = INV_ASID_ALL;
       else                                               tr.inv_kind = INV_VA_ASID;
+
+      // LSU holds the selected invalidation strobe until the DUT returns
+      // mmu_lsu_tlb_inv_done.  Treat the whole held-valid window as one
+      // SFENCE transaction; sampling every cycle would replay one request
+      // hundreds of times into the invalidate scoreboard.
+      while (_inv_active()) begin
+        if (vif.monitor_cb.mmu_lsu_tlb_inv_done === 1'b1)
+          done_seen = 1'b1;
+        @(vif.monitor_cb);
+      end
+
+      tr.inv_done = done_seen;
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
       ap_inv.write(tr);
     end

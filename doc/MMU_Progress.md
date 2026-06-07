@@ -818,7 +818,8 @@ Phase 14 使用 Closure Owner 单一执行角色。A/B 历史归属仅保留为�
 | RTL design records 008-014、017-018 | 已作为 Phase 14 RTL/design record closed | P0/P1 open bug 计数按 0 处理，需保留证据链 |
 | Translation SB DTLB exception CAM replay | Issue 015 closed | scoreboard replay 建模已收口 |
 | PTW orphan completion epoch | Issue 019 closed | stale/orphan 分类已修正 |
-| L1DTLB audit sync | Issue 016 open | 文档/testplan sync 不阻塞普通 regression，但阻塞 L1DTLB audit signoff 完整闭环 |
+| L1DTLB audit sync | Issue 016 closed by v7.8 doc/testplan merge | Phase6G replay/closure PASS 28/28、traceability rollup 和 Excel AUD rows 已并入主文档/CSV；`vabuf` 等价与 exact PLRU 保持 future/formal |
+| L2TLB audit sync | Closed for document/testplan/manifest import; scoped follow-up | 58 Excel TP rows、Phase6G manifest PASS=26/OPEN=0/FAIL=0、TLBOP notes 和 RRPV exact-model状态已并入主文档/CSV；runtime RRPV scoreboard hookup 与 TLBWI/TLBWR write-data exact compare 仍是后续证据项 |
 
 SignoffMatrix 当前融合口径：
 
@@ -949,6 +950,25 @@ DA-003 仍是 PMP/SysMap port mapping 的书面 tracking item。Phase 13 A-side 
 `pa0/flg0`、`pa1/flg1`、`pa2/flg2` 仍分别为 LSU0、LSU1、IFU；`pa4/flg4` 为 LSU Pipe2 / prefetch。顶层 interface 使用 `mmu_pmp_fetch7` 拼写，TWU 内部 SVA 观测 `mmu_pmp_fecth` 内部 RTL 名。
 
 `mmu_pmp_fetch{3,5,6,7}` / `mmu_pmp_fecth` 表示 original miss fetch sideband，不是 PTW PTE bus-read 类型。Phase 13 最终检查 selected-stage propagation 与 original-type PMP permission selection：fetch->X、load/prefetch->R、store->W，M-mode L=0 bypass。
+
+---
+
+## L1DTLB / L2TLB Audit 主文档同步（2026-06-07）
+
+本次只更新 `doc` 顶层主文档和追溯表，不修改
+`doc/l1dtlb_uvm_audit/` 或 `doc/l2tlb_uvm_audit/` 下任何源文件。合并源
+排除 `*_function_description.md` 和 `*_function_description.txt`，仅使用
+audit build/progress/traceability/testpoint/notes/Excel 内容。
+
+| Audit area | Imported status | Progress impact |
+| --- | --- | --- |
+| L1DTLB Phase6 | 6A~6G Complete；`make -C mmu_verification l1dtlb_phase6g_replay` PASS 28/28；`make -C mmu_verification l1dtlb_phase6g_closure` PASS 28/28 | 主验证计划、build plan、progress 和 traceability CSV 已记录 L1 audit 当前闭环；`vabuf` equivalence 与 exact PLRU victim 仍是 future/formal |
+| L1DTLB traceability | 3.9/3.10 当前 rollup：80 implemented、81 partial、2 formal-only；3.11 当前 rollup：28 implemented、58 partial、4 planned | Partial/planned 表示模型深度和后续 refinement 边界，不推翻 Phase6G UVM simulation gate 完成状态 |
+| L1DTLB Excel/testpoint audit | `L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` 的 65 个 AUD 行和 `l1dtlb_testpoint_audit.md` action 口径已并入 CSV/主计划 | Generic wrapper 名称不作为 closure；必须有 trigger/checker/SVA/waiver evidence |
+| L2TLB Phase6/6G | 6A~6G Complete with scoped follow-up；Phase6G manifest/scanner expected `STATUS=PASS PASS=26 OPEN=0 FAIL=0 TOTAL=26` | 主文档不再保留“Phase6 文件待创建/未实现”的过期口径 |
+| L2TLB Excel/testplan | `L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` 的 58 个 `L2TLB_TP_001..058` 行已并入 CSV；summary 为 47 P0、10 P1、1 P2 | 49 个 TP 有 dedicated testcase + checker/SVA evidence，9 个 TP 通过 equivalent SVA/checker waiver 闭合 |
+| L2TLB TLBOP notes | `index[10:8]`=way、`index[7:0]`=set；TLBP/INV*/TLBWR/TLBR/TLBWI bank-select 和 hit-vector规则已并入主计划 | TLBOP exact decode 已交付；TLBWI/TLBWR write-data exact compare 仍需后续 shadow update evidence |
+| L2TLB RRPV exact model | 2026-06-06 exact model 算法已实现并编译通过，覆盖 victim/RRPV update 建模基础 | Runtime UVM scoreboard `sample_cycle` hookup 仍需后续 clean run 证据 |
 
 ---
 

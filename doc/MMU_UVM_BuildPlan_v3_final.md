@@ -2854,6 +2854,9 @@ Makefile surfaces that must stay aligned while the L1DTLB testbench edits settle
 | SVA requirements | `l1dtlb_function_description.md` chapter 3.9 | Treat as SVA/checker requirement list until implementation/bind status is reviewed |
 | Test scenario matrix | `l1dtlb_function_description.md` chapter 3.10 | 65 required scenarios mapped to `AUD-001` through `AUD-064` |
 | Excel testplan | `doc/l1dtlb_uvm_audit/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` | HPDcache-style review/import artifact for L1DTLB scenarios |
+| Testpoint audit | `doc/l1dtlb_uvm_audit/l1dtlb_testpoint_audit.md` | Requirement-driven AUD action table; legacy wrapper names remain traceability shells until trigger/checker evidence exists |
+| Traceability status | `doc/l1dtlb_uvm_audit/l1dtlb_3_9_3_10_traceability.md`; `doc/l1dtlb_uvm_audit/l1dtlb_3_11_traceability.md` | Implementation status for SVA/cover/scenario rows and scoreboard/reference-model partition |
+| Phase6 closure | `doc/l1dtlb_uvm_audit/L1DTLB_UVM_Phase6_Progress.md` | 6A~6G Complete; replay PASS 28/28; closure PASS 28/28 |
 | Makefile document check | `make l1dtlb_audit_check` from `mmu_verification/` | Confirms audit markdown and xlsx files are present |
 | Optional directed run | `make l1dtlb_audit_run_cov` from `mmu_verification/` | Intended for the final L1DTLB UVM branch, not for partially edited code |
 
@@ -2866,3 +2869,39 @@ Build-plan follow-up:
 3. Use `make l1dtlb_audit_check` as the low-risk document gate while UVM code is
    still changing; promote `make l1dtlb_audit_run_cov` only after the code branch
    is stable.
+4. Treat `vabuf` functional equivalence and exact PLRU victim selection as
+   future/formal boundaries unless a separate formal/whitebox closure phase is
+   approved.
+
+### 9.9 L2TLB audit synchronization (Phase6/Phase14 addendum)
+
+The L2TLB audit package is now part of the build and closure reference. This
+addendum imports only the non-function-description audit documents and tables:
+`L2TLB_UVM_Audit_ImplementationPlan.md`, `L2TLB_UVM_Phase6_BuildPlan.md`,
+`L2TLB_UVM_Phase6_Progress.md`, `progress.md`, `L2TLB_TLB_OPERATION_NOTES.txt`,
+and `L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx`.
+
+| Area | Current artifact / entry | Build-plan impact |
+| --- | --- | --- |
+| Excel testplan | `doc/l2tlb_uvm_audit/L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` | 58 `L2TLB_TP_001..058` rows; summary: 47 P0, 10 P1, 1 P2 |
+| Audit implementation plan | `doc/l2tlb_uvm_audit/L2TLB_UVM_Audit_ImplementationPlan.md` | Phase 0~7 document/audit workflow is complete; Phase6/7 documents are no longer placeholders |
+| Phase6 build plan | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_BuildPlan.md` | Defines 6A~6G gate policy for observability, metadata, scoreboard, SVA, directed/negative tests, RRPV, and closure |
+| Phase6 progress | `doc/l2tlb_uvm_audit/L2TLB_UVM_Phase6_Progress.md` and `progress.md` | 6A~6G are complete with evidence; Phase6G manifest/scanner gate expected `PASS=26 OPEN=0 FAIL=0` |
+| TLB operation notes | `doc/l2tlb_uvm_audit/L2TLB_TLB_OPERATION_NOTES.txt` | Locks TLBP/TLBR/TLBWI/TLBWR/INV* index and bank-select rules: `index[10:8]` way, `index[7:0]` set |
+| TLBOP exact decode | `mmu_l2tlb_tlbop_decode` progress entry | TLBP/TLBR transaction decode/readback algorithm delivered; TLBWI/TLBWR write-data exact compare remains follow-up |
+| RRPV exact model | `mmu_l2tlb_rrpv_exact_scoreboard.svh` progress entry | Exact victim/RRPV algorithm delivered and compiled; runtime scoreboard `sample_cycle` hookup remains follow-up |
+
+Build-plan follow-up:
+
+1. L2TLB closure must cite Phase6G manifest rows, required counters/covers, and
+   clean UVM/SVA evidence. Wrapper names, historical pass logs, and generic
+   coverage percentages are not closure evidence.
+2. Negative PTW/control/illegal-input tests stay in isolated negative lists and
+   close through expected assertion/error classification only.
+3. TLB operation implementation and checkers must follow the notes file:
+   TLBP and INVVA/INVASID read all ways, TLBR/TLBWI use one-hot index way,
+   INVASID writes ASID-hit vector, INVVA writes VA-hit vector, TLBWR writes
+   victim way, and TLBP reports `{way_id,set_idx}`.
+4. Do not count RRPV exact replacement as full regression closure until the
+   exact scoreboard is invoked in the UVM sampling path and has clean run
+   evidence.

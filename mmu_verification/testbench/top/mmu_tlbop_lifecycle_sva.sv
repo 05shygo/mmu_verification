@@ -157,9 +157,12 @@ module mmu_tlbop_lifecycle_sva (
     !cpurst_b ##1 cpurst_b |-> !tlboper_regs_cmplt && !arb_tlboper_grant);
 
   // ── TP_044: tlboper_ptw_abort must not corrupt active TLBOP ────────────
-  // When PTW abort fires, TLBOP FSM must remain consistent.
-  a_ptw_abort_does_not_stall_tlbop_done: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    (any_active && tlboper_ptw_abort) |-> !tlboper_regs_cmplt);
+  // LSU SFENCE keeps lsu_mmu_tlb_* asserted until done, so tlboper_ptw_abort
+  // can overlap a register-side TLBOP completion that was already in flight.
+  // Treat that overlap as legal, but require the completion to retain normal
+  // active/recent TLBOP context.
+  a_ptw_abort_regs_cmplt_has_tlbop_context: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    (tlboper_ptw_abort && tlboper_regs_cmplt) |-> (any_active || (|any_active_hist)));
 
   // ── G2: L2TLB completion only when an FSM was recently active ───────────
   // l2tlb_tlboper_cmplt is generated from the L2 final pipeline and can lag the

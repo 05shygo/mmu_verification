@@ -1,8 +1,8 @@
 # MMU UVM 验证环境 — 任务进度表
 
 > **项目**：OpenRiscv2030 MMU UVM Verification
-> **文档**：基于 [MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md)
-> **更新**：2026-05-05（Phase 14 已进入高并发回归与 UVM 环境问题收敛；补充 PMP/ref shadow 同步、PFU/LSU_P2 fault mismatch 与 PTW credit accept 记账调试记录；Phase 13 `make phase13_exit_check` PASS）
+> **文档**：基于 `MMU_UVM_BuildPlan_v3_final.md` 的阶段拆分、责任边界与回归门禁融合版
+> **更新**：2026-06-07（顶层 Markdown 文档已按进度 / UVM buildplan / verification plan 三类融合；Phase 14 问题单、签核矩阵、Closure Owner 策略和 PTW RTL debug 记录已并入本进度表维护入口）
 > **状态说明**：✅ 完成 | 🔄 进行中 | ⏳ 未开始 | 🔒 等待解锁
 
 ---
@@ -17,14 +17,14 @@
 | **Phase 4**  | PTW 内存模型 + 参考模型                    | A                  | ✅ 完成                                         | ✅ 18 个交付物；test_ptw_map4k_directed mismatch=0，UVM_ERROR=0                                                                                                                                                                                                                                                              |
 | **Phase 5**  | IFU + LSU Agent + Translation SB           | A , B 协同        | ✅ 完成（2026-04-26）                           | `make phase5` 通过（comp + 5+3 seeds + phase5_check）；8 份 log 均 `UVM_ERROR=0/UVM_FATAL=0`。`make phase5_ptw4k` 也通过（P5-34 修复后 `passthrough=0`）                                                                                                                                                             |
 | **Phase 6**  | misc_agent 完善 + TLB 失效 + Invalidate SB | B 主，A 配合       | ✅ 完成（2026-04-26）                           | ✅`make phase6_full` 通过（`comp` + `phase6` 矩阵/检查 + `phase6_rtu_ptw` 3 seed）；12+3 份 log 均 UVM 0/0，Invalidate SB 与 `[abort_check]` 摘要达标                                                                                                                                                              |
-| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅**已达成**（2026-04-26，A/B 合入+合并） | B：7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + `en_whitebox_cg` + `make phase7` / `run_cov`+`urgReport`；A：**5×SVA 为完整属性版**（与 `B_phase7` 合入时保留 A 实现，非桩代码）+ `tb_top` bind + `Files.f`；审计 [P7B01_covergroup_vif_audit.md](P7B01_covergroup_vif_audit.md)           |
-| **Phase 8**  | Virtual Sequence 实现（M8）                | B                  | ✅ 完成（2026-04-27）                           | ✅`make phase8` 42-run 矩阵完成；14 个 vseq × 3 seeds 全部收口，TaskDivision#3 统计行 `[MMU_VSEQ_TASKDIVISION#3]` 已留档；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 与 A Review 清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) 已记档                                                            |
+| **Phase 7**  | Covergroup + SVA bind                      | A/B 并行           | ✅**已达成**（2026-04-26，A/B 合入+合并） | B：7 黑盒 `*_covergroups.svh` + `mmu_env_cg_whitebox.svh` + `en_whitebox_cg` + `make phase7` / `run_cov`+`urgReport`；A：**5×SVA 为完整属性版**（与 `B_phase7` 合入时保留 A 实现，非桩代码）+ `tb_top` bind + `Files.f`；P7-B-01 VIF 审计结论已融合到 Phase 7 记录 |
+| **Phase 8**  | Virtual Sequence 实现（M8）                | B                  | ✅ 完成（2026-04-27）                           | ✅`make phase8` 42-run 矩阵完成；14 个 vseq × 3 seeds 全部收口，TaskDivision#3 统计行 `[MMU_VSEQ_TASKDIVISION#3]` 已留档；vseq/F 映射、preflight 与 A Review 结论已融合到 Phase 8 记录                                                            |
 | **Phase 9**  | 测试用例填充（~120个）                     | B 主，A Review     | ✅ 完成（2026-04-27）                           | ✅`phase9_generated_test_base` + `test_pkg` 已纳管 12 个新增 suite，并复用 3 个 `basic_tests` 基线入口；259 个 Phase 9 wrapper（总 262 stage 合同）已落地；全量 test class 编译通过，seed=1 单跑与 smoke 3-seed 回归已收口；`scan_logs.pl` 检查与 A 对 PTW/PMP/SysMap 精度类用例 review 已完成                       |
 | **Phase 10** | 回归脚本 + 覆盖率收敛                      | A 主，B 配合       | ✅ 完成（2026-04-27）                           | ✅`make regress_smoke` 22/22 通过、100%；✅ `make regress_nightly` 1260/1325 通过、95.09%（门槛≥50%）；✅ URG baseline 报告已生成；`Makefile` `regress*` / `run_test.py` / `run_vcs_verdi.py` / `cov_hier.cfg` 与 B 侧 `simu/mmu_*_list` / `exclude.do` 已完成联调                                        |
-| **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28）                           | ✅`bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `phase11_b_stage_manifest.csv` / `phase11_bug_hunt_matrix.md` 已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
+| **Phase 11** | v3.0 Gap-driven 回归                       | B 主，A 配合       | ✅ 完成（2026-04-28）                           | ✅`bug_hunt_tests` / `ptw_lsu_protocol_tests` / `mmu_*_list` / `MMU_Traceability_Matrix.csv` Implementation 字段 / bug-hunt matrix 融合结论已冻结；`Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `phase11_exit_check.sh` 门禁已闭环；当前项目按 `make phase11_exit_check` 完成记档 |
 | **Phase 12** | MAEE / PTW-ready / TWU bypass 验证         | B 主，A Review SVA | ✅ 完成（2026-05-01）                           | ✅ `simu/mmu_v4_phase12_list` 22 个 runnable tests × seeds `95101 95102 95103` 纳入 `run_cov` 回归；MAEE SVA / PMP 骨架 / Phase12 白盒 CG / probe / `phase12_exit_check` **15 项**门禁完成；URG `No context available`、单 VDB probe fail 与覆盖率报告缺失问题已按 debug 记录收口 |
 | **Phase 13** | sysmap / PMP-deny / PMP-port 验证          | B 主，A Review SVA | ✅ 完成（2026-05-02）                           | `make phase13_exit_check` PASS；Phase 13 list 55 tests × seeds `96101 96102 96103` 共 165/165 通过；SVA cover 与 13 个 covergroup threshold 均达标；URG `No context available` 记录为非阻塞 tooling issue |
-| **Phase 14** | 全量回归收敛与签核                         | A 主，B 配合       | 🔄 进行中（高并发回归与问题收敛）              | 已完成高并发 shard/VDB/tooling 收敛入口；UVM 环境侧已补 PFU/PMP/SysMap 白盒诊断与 Phase12/13 用例口径修正，详见 Phase 14 debug 记录与 [MMU_Phase14_IssueTracker.md](MMU_Phase14_IssueTracker.md) |
+| **Phase 14** | 全量回归收敛与签核                         | Phase14 Closure Owner | 🔄 进行中（高并发回归、覆盖率与签核收敛） | 已完成高并发 shard/VDB/tooling 收敛入口；UVM 环境侧已补 PFU/PMP/SysMap 白盒诊断与 Phase12/13 用例口径修正；IssueTracker、SignoffMatrix 与 Closure Owner 策略已融合到 Phase 14 记录 |
 
 ---
 
@@ -138,7 +138,7 @@
 
 | ID     | 描述                                                  | 状态                                                                                                                        |
 | ------ | ----------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
-| DA-003 | sysmap RTL force 路径与 Phase 13 PMP PTW 端口映射跟踪 | 🔄 Phase 13 A 侧已归档[DA-003_phase13_port_mapping.md](DA-003_phase13_port_mapping.md)；sysmap force 路径仍待设计确认或 waiver |
+| DA-003 | sysmap RTL force 路径与 Phase 13 PMP PTW 端口映射跟踪 | 🔄 Phase 13 A 侧端口映射结论已融合到 Phase 13 章节；sysmap force 路径仍待设计确认或 waiver |
 
 ---
 
@@ -404,7 +404,7 @@
 
 ### P7-B-00 — 与 A 同步、范围与 Files.f 冻结（2026-04-26）
 
-**依据**：[MMU_UVM_BuildPlan_v3_final.md](MMU_UVM_BuildPlan_v3_final.md) §10.1–§10.2、[MMU_UVM_TaskDivision.md](MMU_UVM_TaskDivision.md) §3 Phase 7 退出准则、Phase 7 B 子计划（与 §10.3/10.4 边界说明一致）。
+**依据**：[MMU_UVM_BuildPlan_v3_final.md](MMU_UVM_BuildPlan_v3_final.md) §10.1–§10.2、§13 Phase 7 退出准则与已融合的 Phase 7 B 子计划边界。
 
 #### 1）§10.3 / §10.4 是否纳入 Phase 7
 
@@ -449,6 +449,12 @@
 
 **A 侧**（非 B 改但为门禁依赖）：5×SVA 源 + `tb_top` bind；**与远程 `B_phase7` 合并后源文件为工程师 A 完整实现**（非仅时钟 X-check 桩）。
 
+### Phase 7 P7-B-01 Covergroup VIF 审计融合结论
+
+Phase 7 的黑盒 covergroup 与 7 个 VIF 审计结论已直接并入本进度表：`ifu/lsu/cp0/ptw_mem/pmp/sysmap_cfg/misc` 对应 interface 均具备 §10.1 所需采样信号，阻塞项清零。少量 coverpoint 使用代理量时已在实现侧注释说明，例如 PTW in-flight 使用 `mmu_lsu_tlb_busy` 代理、PMP entry 映射到当前可观测端口之一。
+
+与 A 侧合并时保留 A 的完整 SVA 实现；B 侧 covergroup 与 `en_whitebox_cg` 路径只承担覆盖率采样，不替代断言检查。Phase 7 退出口径仍为 `make phase7` / `run_cov` 编译运行 clean、黑盒/白盒 covergroup 至少有有效 hit、SVA 0 fire。
+
 ---
 
 ## Phase 8 详细进度（✅ 已完成 — 2026-04-27）
@@ -456,8 +462,10 @@
 **负责**：工程师 B（主实现） / 工程师 A（接口审查）**完成快照**：
 
 - B 侧：✅ `mmu_virtual_sequencer.svh`、`mmu_vseq_lib.svh`、`test_mmu_vseq_runner.svh`、`Makefile` `phase8*` 目标、`mmu_env` / `mmu_perf_mon` 接线已完成
-- A 侧：✅ 审查清单 [phase8_m8_a_review.md](phase8_m8_a_review.md) 已留档；F 映射 [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 已与实现对齐
+- A 侧：✅ Phase 8 A review 清单与 vseq/F 映射已融合到本节，ref_model / SB API / 统计口径已与实现对齐
 - 门禁口径：✅ `PHASE8_TEST=test_mmu_vseq_runner`，`PHASE8_SEEDS=81001 81002 81003`，`PHASE8_VSEQS` 共 14 项；`make phase8` = `phase8_run_matrix`（42 run）+ `phase8_check`
+- Preflight 融合口径：Phase 8 开工前已确认 virtual sequencer 的六路 handle 与 `m_env` 句柄对齐，Phase 7 整体验收解锁，14 个 vseq 均有基础 sequence / 配置步骤 / 风险草图。
+- A Review 融合口径：vseq 只通过 page-table builder / responder 注入链修改 shadow PT；scoreboard 入口保持 Phase 4-6 API 口径；`[MMU_VSEQ_TASKDIVISION#3]` 统计作为 TaskDivision #3 退出证据。
 
 | 项目                                 | 负责人 | 状态 | 说明                                                                                                          |
 | ------------------------------------ | ------ | ---- | ------------------------------------------------------------------------------------------------------------- |
@@ -467,8 +475,8 @@
 | `mmu_env_pkg.sv` / `mmu_env.svh` | B      | ✅   | env 内纳管 `m_vseqr`，并将 6 个子 sequencer handle 在 `connect_phase` 对接完成                            |
 | `mmu_perf_mon.svh`                 | B      | ✅   | 补齐 IFU/LSU miss 与 PTW mem 请求统计，支撑 TaskDivision #3 摘要打印                                          |
 | `Makefile` `phase8*` 目标        | B      | ✅   | 已固化 14×3 矩阵、`phase8_check` / `phase8_check_errfatal` / `phase8_scan_errfatal` / `phase8_quick` |
-| F ↔ vseq 映射文档                   | B      | ✅   | [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 14 行一一对应 VerificationPlan §6.3 代表功能点       |
-| A review 清单                        | A      | ✅   | [phase8_m8_a_review.md](phase8_m8_a_review.md) 记录 ref_model / SB API / 统计口径核查项                          |
+| F ↔ vseq 映射                         | B      | ✅   | 14 行一一对应 VerificationPlan §6.3 代表功能点，结论已融合到下方 vseq/F 小节                                     |
+| A review 清单                          | A      | ✅   | ref_model / SB API / 统计口径核查项已融合到本 Phase 8 记录                                                       |
 
 ### Phase 8 — 14 个 vseq 落地清单
 
@@ -496,8 +504,12 @@
 | 1 | `make compile` 0 errors           | ✅   | 已由 `make phase8` 前置 `comp` 门禁覆盖                                               |
 | 2 | 14 个 vseq × 3 seeds，UVM 0/0      | ✅   | `make phase8` 42-run 矩阵已收口                                                         |
 | 3 | 每条 vseq 输出 TaskDivision #3 统计 | ✅   | `mmu_base_vseq::print_vseq_taskdiv3_summary()` 已固定打印 `[MMU_VSEQ_TASKDIVISION#3]` |
-| 4 | A 审核 ref_model / SB API           | ✅   | 审核项已记录在[phase8_m8_a_review.md](phase8_m8_a_review.md)                                 |
-| 5 | B 提交 vseq ↔ F 映射               | ✅   | [phase8_m8_vseq_f_mapping.md](phase8_m8_vseq_f_mapping.md) 已记档                            |
+| 4 | A 审核 ref_model / SB API           | ✅   | 审核项已融合到 Phase 8 A Review 口径                                   |
+| 5 | B 提交 vseq ↔ F 映射               | ✅   | 14 个 vseq 与代表功能点映射已融合到本节                                |
+
+### Phase 8 vseq/F 映射融合结论
+
+14 个 vseq 覆盖 VerificationPlan §6.3 的代表功能族：基础翻译、LSU 三通道并发、PTW thrash、SFENCE during walk、ASID/SATP 切换、大页混合、RRPV aging、L2 bank conflict、SATP hot-swap、全端口压力、低功耗/时钟软路径、mid-transaction flush/abort、fault 恢复混合和性能统计。每个 vseq 只作为跨 agent 场景调度入口；最终签核仍由具体 testcase、scoreboard/SVA 和 coverage 共同闭环。
 
 ---
 
@@ -524,18 +536,18 @@
 | -------- | ---------------- | ---------------------------------------------------- | -------------- | ---- | ----------------------------------------------------------------------------------------------------------------------- |
 | Stage 2  | `basic_tests`  | 主文档内置 3 行                                      | 3              | ✅   | 复用 `test_mmu_translation_sanity` / `test_mmu_invalidate_sfence_matrix` / `test_ptw_map4k_directed` 作为基线入口 |
 | Stage 3  | `l1itlb_tests` | `phase9_b_stage_catalog_l1itlb.csv`                | 20             | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 4  | `l1dtlb_tests` | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | 23             | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 5  | `l2tlb_tests`  | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | 42             | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 6  | `ptw_tests`    | `phase9_b_stage_catalog_system.csv`                | 44             | ✅   | A+B reviewer 全覆盖                                                                                                     |
-| Stage 7  | `tlbop_tests`  | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | 25             | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 8  | `pmp_tests`    | `phase9_b_stage_catalog_system.csv`                | 15             | ✅   | A+B reviewer 全覆盖                                                                                                     |
-| Stage 9  | `sysmap_tests` | `phase9_b_stage_catalog_system.csv`                | 17             | ✅   | A+B reviewer 全覆盖                                                                                                     |
-| Stage 10 | `cp0_tests`    | `phase9_b_stage_catalog_system.csv`                | 16             | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 11 | `flush_tests`  | `phase9_b_stage_catalog_system.csv`                | 9              | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 12 | `cross_tests`  | `phase9_b_stage_catalog_system.csv`                | 8              | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 13 | `perf_tests`   | `phase9_b_stage_catalog_system.csv`                | 22             | ✅   | 新增 suite 已纳管                                                                                                       |
-| Stage 14 | `err_tests`    | `phase9_b_stage_catalog_system.csv`                | 18             | ✅   | 新增 suite 已纳管                                                                                                       |
-| 合计     | 13 个目录        | 3 份 stage catalog / baseline 索引                   | 262            | ✅   | 其中新增 Phase 9 wrapper 共 259 个                                                                                      |
+| Stage 4  | `l1dtlb_tests` | VerificationPlan §6.3 baseline import             | 23             | ✅   | 新增 suite 已纳管                                                                                                       |
+| Stage 5  | `l2tlb_tests`  | VerificationPlan §6.3 baseline import             | 42             | ✅   | 新增 suite 已纳管                                                                                                       |
+| Stage 6  | `ptw_tests`    | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 44             | ✅   | A+B reviewer 全覆盖                                                                                                     |
+| Stage 7  | `tlbop_tests`  | VerificationPlan §6.3 baseline import             | 25             | ✅   | 新增 suite 已纳管                                                                                                       |
+| Stage 8  | `pmp_tests`    | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 15             | ✅   | A+B reviewer 全覆盖                                                                                                     |
+| Stage 9  | `sysmap_tests` | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 17             | ✅   | A+B reviewer 全覆盖                                                                                                     |
+| Stage 10 | `cp0_tests`    | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 16             | ✅   | 新增 suite 已纳管                                                                                                       |
+| Stage 11 | `flush_tests`  | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 9              | ✅   | 新增 suite 已纳管                                                                                                       |
+| Stage 12 | `cross_tests`  | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 8              | ✅   | 新增 suite 已纳管                                                                                                       |
+| Stage 13 | `perf_tests`   | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 22             | ✅   | 新增 suite 已纳管                                                                                                       |
+| Stage 14 | `err_tests`    | `MMU_Traceability_Matrix.csv`（Phase 9 system merge） | 18             | ✅   | 新增 suite 已纳管                                                                                                       |
+| 合计     | 13 个目录        | Traceability / stage catalog / baseline 索引          | 262            | ✅   | 其中新增 Phase 9 wrapper 共 259 个；system catalog 已融合进 traceability CSV                                            |
 
 ### Phase 9 退出准则闭环
 
@@ -588,10 +600,12 @@
 
 **负责**：工程师 B（主实现） / 工程师 A（回归 gate 与失败定位入口配合）**当前快照**：
 
-- B 侧：✅ `bug_hunt_tests` 12 个 wrapper + suite、`ptw_lsu_protocol_tests` 5 个 wrapper + suite、`simu/mmu_bug_hunt_list` / `mmu_ptw_lsu_protocol_list` / `mmu_v3_regression_list`、[phase11_b_stage_manifest.csv](phase11_b_stage_manifest.csv) / [phase11_bug_hunt_matrix.md](phase11_bug_hunt_matrix.md) 已冻结
+- B 侧：✅ `bug_hunt_tests` 12 个 wrapper + suite、`ptw_lsu_protocol_tests` 5 个 wrapper + suite、`simu/mmu_bug_hunt_list` / `mmu_ptw_lsu_protocol_list` / `mmu_v3_regression_list`、[MMU_Traceability_Matrix.csv](MMU_Traceability_Matrix.csv) Implementation 字段与 bug-hunt matrix 结论已冻结
 - A/B 联调：✅ `Makefile` `regress_v3_gap` / `phase11_exit_check` / `phase11_show_failures` 与 `scripts/phase11_exit_check.sh` / `phase11_scan_regression_logs.sh` / `phase11_show_failures.sh` 已形成统一 gate / triage 入口
 - 退出口径：✅ 当前项目按 `make phase11_exit_check` 完成闭环记档；compile、R19 proof、BUG015 review、protocol 3-seed、R20 focused 10-seed、v3 union 3-seed 与 integrated log scan 均纳入同一检查路径
-- 记档说明：仓内保留的是 list / manifest / gate 脚本 / traceability 文档；运行输出与外部 proof 截图不作为版本库交付物纳管
+- 记档说明：仓内保留的是 list / gate 脚本 / traceability 文档；原 Phase 11 manifest 已归档到 `archive_merged_20260607/csv/`，运行输出与外部 proof 截图不作为版本库交付物纳管
+- Stage split 融合口径：Phase 11 按 “baseline freeze → repo gap audit → 命名/list/blocked 契约 → bug_hunt 真缺陷组 → R19/R20 gate → PTW->LSU protocol → 三份回归列表冻结 → exit gate” 顺序执行。blocked/xfail/DOC_REVIEW 不作为隐式通过，必须在 traceability CSV 的 `Status` / `Implementation_Notes` 中给出 `blocked_reason`、`xfail_required` 与 review mode。
+- 文档 review 融合口径：`TC-BUG-015` 保持 DOC_REVIEW，覆盖死代码/文档项，不生成 runnable test；R19/TC-BUG-011 使用 proof-gated 策略，关闭条件是 RTL 修复证据或明确的 xfail/waiver 记录。
 
 | 项目                                                                                                | 负责人 | 状态 | 说明                                                                                                                   |
 | --------------------------------------------------------------------------------------------------- | ------ | ---- | ---------------------------------------------------------------------------------------------------------------------- |
@@ -600,9 +614,9 @@
 | `simu/mmu_bug_hunt_list`                                                                          | B      | ✅   | active runnable scope 固化为 7 项；`TC-BUG-011` 维持 proof-gated comment-out 策略                                    |
 | `simu/mmu_ptw_lsu_protocol_list`                                                                  | B      | ✅   | 5 项 protocol list 已固定到 3-seed 执行口径                                                                            |
 | `simu/mmu_v3_regression_list`                                                                     | B      | ✅   | 16 项 union list 已冻结，作为 `regress_v3_gap` 默认输入                                                              |
-| [phase11_b_stage_manifest.csv](phase11_b_stage_manifest.csv)                                           | B      | ✅   | 18 条 trace 记录已冻结 `seed_policy` / `blocked_reason` / `xfail_required` / `review_mode=A+B`                 |
-| [phase11_bug_hunt_matrix.md](phase11_bug_hunt_matrix.md)                                               | B      | ✅   | wrapper / F-ID / priority / checker / list membership 可执行追踪矩阵已留档                                             |
-| [phase11_r19_gate.md](phase11_r19_gate.md) + [phase11_bug015_doc_review.md](phase11_bug015_doc_review.md) | A+B    | ✅   | R19 proof / BUG015 书面 review 已纳入 `PHASE11_R19_PROOF` / `PHASE11_BUG015_REVIEW` gate 口径                      |
+| [MMU_Traceability_Matrix.csv](MMU_Traceability_Matrix.csv) Implementation 字段                         | B      | ✅   | 原 Phase 11 manifest 18 条 trace 记录已融合，保留 `seed_policy` / `blocked_reason` / `xfail_required` / `review_mode=A+B` |
+| Bug-hunt matrix 结论                                                                                     | B      | ✅   | wrapper / F-ID / priority / checker / list membership 可执行追踪矩阵已融合到本节                                      |
+| R19 proof + BUG015 review                                                                                 | A+B    | ✅   | R19 proof / BUG015 书面 review 已纳入 `PHASE11_R19_PROOF` / `PHASE11_BUG015_REVIEW` gate 口径                      |
 | `Makefile` `regress_v3_gap`                                                                     | A+B    | ✅   | 已串接 `mmu_v3_regression_list` 3-seed union、summary 输出路径、`phase11_scan_regression_logs.sh` 与 coverage 汇总 |
 | `Makefile` `phase11_exit_check` / `phase11_show_failures`                                     | A+B    | ✅   | 已固化 Phase 11 最终 gate 与 compile/regression 失败定位入口                                                           |
 
@@ -618,11 +632,23 @@
 | 6 | v3 union + integrated log scan    | ✅   | `regress_v3_gap` 已串接 `run_cov`、`phase11_scan_regression_logs.sh` 与 `make cov` |
 | 7 | Phase 11 最终退出检查             | ✅   | 当前项目按 `make phase11_exit_check` 完成口径记档；后续 Phase 12 已全部完成              |
 
+### Phase 11 融合后的交付契约
+
+Phase 11 的源分散文档已压缩为以下维护规则：
+
+| 契约 | 当前口径 |
+| --- | --- |
+| 运行列表 | `mmu_bug_hunt_list`、`mmu_ptw_lsu_protocol_list`、`mmu_v3_regression_list` 是唯一回归入口 |
+| 命名 | bug wrapper 使用 `test_bug_NNN_*`；protocol wrapper 使用 `test_mmu_ptw_lsu_*` / `test_mmu_mbuf_*` 语义名 |
+| 状态 | `Functional`、`Blocked-Waiting-RTL-Fix`、`DOC_REVIEW`、`xfail_required` 均以 `MMU_Traceability_Matrix.csv` 的 `Status` / `Implementation_Notes` 为准 |
+| Gate | `make phase11_exit_check` 统一检查 compile、proof/review 文件、focused seeds、union regression 与 log scan |
+| 证据 | 版本库保留脚本、list、traceability CSV 和 review 结论；大体量回归输出由运行目录/服务器归档 |
+
 ### Phase 11 Debug 记录（2026-04-28 收口）
 
 | #      | 调试主题                                                     | 结论 / 已落地修正                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | ------ | ------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| P11-D1 | bug-hunt / protocol / v3 union 列表收敛                      | [phase11_b_stage_manifest.csv](phase11_b_stage_manifest.csv) 已冻结 18 条记录；active runnable scope 固化为 `mmu_bug_hunt_list` 7 项、`mmu_ptw_lsu_protocol_list` 5 项、`mmu_v3_regression_list` 16 项；`TC-BUG-011` 保持 proof-gated comment-out，`TC-BUG-015` 保持 doc-only                                                                                                                                                                                |
+| P11-D1 | bug-hunt / protocol / v3 union 列表收敛                      | [MMU_Traceability_Matrix.csv](MMU_Traceability_Matrix.csv) 已融合原 Phase 11 manifest 的 18 条记录；active runnable scope 固化为 `mmu_bug_hunt_list` 7 项、`mmu_ptw_lsu_protocol_list` 5 项、`mmu_v3_regression_list` 16 项；`TC-BUG-011` 保持 proof-gated comment-out，`TC-BUG-015` 保持 doc-only                                                                                                                                                                                |
 | P11-D2 | v3 gap 入口与日志扫描闭环                                    | `Makefile` `regress_v3_gap` 已串起 `run_cov` union 3-seed、`phase11_scan_regression_logs.sh` 与 `make cov`，避免 Phase 11 只看回归返回码、不扫 runtime log                                                                                                                                                                                                                                                                                                |
 | P11-D3 | exit gate / fail triage 统一入口                             | `scripts/phase11_exit_check.sh` 固化 compile / R19 proof / BUG015 review / protocol 3-seed / R20 focus / v3 gap gate；`phase11_show_failures.sh` 补齐 compile / proof / summary 缺失、FAIL/XPASS/XFAIL 摘要与 log tail 定位                                                                                                                                                                                                                                     |
 | P11-D4 | IFU fault mismatch 误报收口                                  | `ifu_if.sv` / `ifu_txn.svh` / `ifu_monitor.svh` / `tb_top.sv` 已补 `dbg_iutlb_acc_flt` / `dbg_iutlb_pmp_deny` / `dbg_iutlb_ref_pgflt` / `dbg_jtlb_acc_fault_flop` 白盒观测；`mmu_translation_sb.svh` 仅在精确 completion signature 下 waive IFU fault mismatch，避免粗放屏蔽                                                                                                                                                                      |
@@ -642,6 +668,8 @@
 - 覆盖率：✅ `testbench/env/mmu_env_cg_whitebox.svh` 补齐 9 个 Phase 12 白盒 covergroup，并通过 `MMU_DUT_PROBES_VIF` 绑定检查防止空采样；`scripts/phase12_cov_gate.py` 可从 URG text/html 报告检查每组覆盖率阈值。
 - 回归入口：✅ `Makefile` `print-phase12` / `regress_v4_maee_ptw` / `phase12_exit_check` / `phase12_pgflt_urg_probe` 已闭环；`scripts/run_test.py` 支持 `REGRESS_JOBS`，Phase 12 默认串行 `PHASE12_REGRESS_JOBS=1`，避免覆盖数据库并发写入风险。
 - 覆盖率报告：✅ `make cov` 已切到 `scripts/run_urg_report.sh`，统一生成 `output/coverage/urgReport`，并把 URG 调试日志落到 `output/coverage/urg_report.log`；脚本支持 `URG_VDB_GLOB` 单 VDB 过滤、version 打印、design-context/runtime-only probe 与 batched fallback。
+- Stage split 融合口径：Phase 12 按 “范围冻结 → repo 可复用资产盘点 → 命名/list/Phase12-13 分界 → MAEE/PTW-ready/TWU bypass 场景矩阵 → wrapper family → 9 个 covergroup → A-side SVA/Makefile handoff → exit checklist” 顺序闭环。
+- A handoff/review 融合口径：B 侧冻结 22 个 runnable tests、9 个 covergroups、3-seed 策略和 probe 扩展；A 侧完成 MAEE SVA 命名、probe/sample 复核、PMP skeleton 静态完整性和 Makefile gate 接入。
 
 | 项目                                                                                                            | 负责人 | 状态 | 说明                                                                                                                           |
 | --------------------------------------------------------------------------------------------------------------- | ------ | ---- | ------------------------------------------------------------------------------------------------------------------------------ |
@@ -658,8 +686,8 @@
 
 | #  | 检查项                         | 状态 | 说明                                                                                                                                                                |
 | -- | ------------------------------ | ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 1  | frozen docs present            | ✅   | `phase12_scene_matrix.md` / `phase12_b_stage_manifest.csv` / `phase12_covergroup_matrix.md` / `phase12_a_handoff.md` / `phase12_exit_checklist.md` 已冻结 |
-| 2  | A-side review note present     | ✅   | `phase12_a_review.md` 已归档                                                                                                                                      |
+| 1  | frozen scope present           | ✅   | Phase 12 scene matrix、manifest、covergroup matrix、A handoff、exit checklist 结论已融合；CSV manifest 保持为机器可读索引 |
+| 2  | A-side review note present     | ✅   | A-side review 结论已融合到 Phase 12 交接口径                                                                                                      |
 | 3  | Phase 12 list and seed scope   | ✅   | `simu/mmu_v4_phase12_list` 固化 22 项；默认 seeds 为 `95101 95102 95103`                                                                                        |
 | 4  | MAEE SVA static definition     | ✅   | 3 条 assert property 与 3 条 cover property 均存在，且 cover hit 打印可被门禁聚合                                                                                   |
 | 5  | PMP skeleton static definition | ✅   | `mmu_pmp_twu_sva.sv` module / endmodule 静态检查通过，作为 Phase 13 承接文件                                                                                      |
@@ -673,6 +701,18 @@
 | 13 | regression summary gate        | ✅   | 检查 `mode=run_cov`、seed set、`total_runs=66`、`failed_runs=0`、`xpass_unexpected_runs=0`、`pass_rate=1.0000`                                            |
 | 14 | MAEE cover hit gate            | ✅   | 聚合 3 个 MAEE cover property hits，默认阈值 `PHASE12_MAEE_MIN_HITS=20`                                                                                           |
 | 15 | covergroup percentage gate     | ✅   | covergroup probe 绑定检查通过，且 9 个 Phase 12 白盒 covergroup 由 `phase12_cov_gate.py` 按 `PHASE12_CG_MIN_PERCENT` 阈值检查                                   |
+
+### Phase 12 场景矩阵与交接融合结论
+
+Phase 12 只覆盖 `MAEE / PTW-ready / TWU bypass / PTW->arb VPN&PGS`，不吸收 Phase 13 的 SysMap/PMP-deny/PMP-port 主体验证。22 个 runnable tests 分为 MAEE family、PTW-ready、TWU idle/mask、PDE cache hit-level、异常 bypass、MBUF ready/have/multi、arb grant/prio/fairness、arb vpn/pgs 八组。9 个 covergroup 统一落在 `mmu_env_cg_whitebox.svh`，通过 `mmu_dut_probes_if.sv` 和 `tb_top.sv` 绑定，最低门禁为每组达到配置阈值（默认 50%）。
+
+最终退出命令为：
+
+```bash
+make phase12_exit_check
+```
+
+该命令覆盖 frozen docs/list、A-side SVA 静态检查、compile、22 tests × 3 seeds、integrated log scan、URG/coverage fallback、MAEE cover hit 和 9 个 covergroup threshold。
 
 ### Phase 12 Debug 记录（2026-05-01 收口）
 
@@ -704,9 +744,9 @@ Bootstrap artifacts:
 - `mmu_verification/scripts/phase14_exit_gate.py`
 - Makefile targets: `print-phase14`, `regress_v4_full`,
   `phase14_coverage_merge`, `phase14_exit_check`
-- `doc/MMU_Phase14_ClosureOwner.md`
-- `doc/MMU_Phase14_IssueTracker.md`
-- `doc/MMU_Phase14_SignoffMatrix.md`
+- Phase 14 Closure Owner policy, issue tracker, and signoff matrix are now
+  maintained in this Phase 14 section rather than as separate top-level entry
+  documents.
 
 Review policy:
 
@@ -714,7 +754,7 @@ Review policy:
   by the Closure Owner.
 - All Phase 14 waiver / signoff decisions require second review.
 - Any change to signoff criteria, coverage thresholds, waiver policy, or URG
-  fallback policy must be recorded in `doc/MMU_Phase14_IssueTracker.md`.
+  fallback policy must be recorded in the Phase 14 Issue / Signoff 融合状态 section.
 
 ## Phase 14 Coverage Abort Triage (2026-05-03)
 
@@ -765,6 +805,35 @@ in the IssueTracker and SignoffMatrix.
 
 ---
 
+### Phase 14 Issue / Signoff 融合状态
+
+Phase 14 使用 Closure Owner 单一执行角色。A/B 历史归属仅保留为追溯信息；新问题按 `Regression`、`Testcase`、`Covergroup`、`List`、`Makefile/Gate`、`URG/Tooling`、`Waiver/Signoff`、`RTL/Design Record` 分类。
+
+| 议题组 | 当前状态 | 签核影响 |
+| --- | --- | --- |
+| URG `No context available` / coverage fallback | Issue 001 deferred；Issue 003 仍是 coverage fallback / waiver policy 的主入口 | 条件阻塞，最终需补覆盖或二次 review waiver |
+| Gate / Signoff workflow | Issue 004/005 维护 Phase 14 gate、matrix 与二次 review 流程 | SignoffMatrix 中 Open 行必须关闭 |
+| VCS coverage dump abort / VDB flow | Issue 006 closed，高并发 shard 私有 VDB + isolated run 目录成为默认路径 | 不再阻塞功能回归 |
+| PTW mbuf / late response / credit accounting | Issue 007 closed，accept pulse 与 end-drain 口径已落地 | 不再作为已知开放阻塞项 |
+| RTL design records 008-014、017-018 | 已作为 Phase 14 RTL/design record closed | P0/P1 open bug 计数按 0 处理，需保留证据链 |
+| Translation SB DTLB exception CAM replay | Issue 015 closed | scoreboard replay 建模已收口 |
+| PTW orphan completion epoch | Issue 019 closed | stale/orphan 分类已修正 |
+| L1DTLB audit sync | Issue 016 closed by v7.8 doc/testplan merge | Phase6G replay/closure PASS 28/28、traceability rollup 和 Excel AUD rows 已并入主文档/CSV；`vabuf` 等价与 exact PLRU 保持 future/formal |
+| L2TLB audit sync | Closed for document/testplan/manifest import; scoped follow-up | 58 Excel TP rows、Phase6G manifest PASS=26/OPEN=0/FAIL=0、TLBOP notes 和 RRPV exact-model状态已并入主文档/CSV；runtime RRPV scoreboard hookup 与 TLBWI/TLBWR write-data exact compare 仍是后续证据项 |
+
+SignoffMatrix 当前融合口径：
+
+| Criterion | 状态 |
+| --- | --- |
+| Full regression / 5-seed Phase14 list | Pass：高并发 shards clean，summary pass_rate=1.0000 |
+| Coverage merge | Pass：URG report 已生成 |
+| Code coverage line/branch/toggle/FSM | Pass：均 100.00% |
+| Functional coverage | Open：67.66%，低于 100% threshold，需补测或 waiver |
+| Assertion coverage | Pass：100.00%，0 fail |
+| P0/P1 open bugs | Pass：IssueTracker 无开放 P0/P1 |
+| P2 review / waivers / GLS / Lint-CDC-RDC / checklist approval | Open：需二次 review 或范围 waiver |
+| L1DTLB audit/testplan synchronization | Open：等待 `make l1dtlb_audit_check` 和审查记录 |
+
 ### Phase 14 Debug 记录（2026-05-05 持续收敛中）
 
 | # | 调试主题 | 根因 | 已落地修正 / 结果 |
@@ -772,7 +841,7 @@ in the IssueTracker and SignoffMatrix.
 | P14-D1 | 高并发回归中 LSU_P2 `fault mismatch` / `PA mismatch`：`ref.exc=EXC_NONE ref.deny=0`，`dut.access_fault=1 dut.pa=0` | Phase14 失败样例（如 `test_twu_mask_pmp_wait_all4`、`test_bug_001_twu_fst_fetch_type`、`test_mmu_mbuf_multi_twu_independent_ready`、`test_sysmap_hit_bypass_walk`）显示 DUT 侧 PFU/LSU_P2 会进入 access fault，而参考模型按 PFU 正常翻译。静态排查后确认：PFU 走 PMP port4，且 TWU 的 PMP 权限选择跟随 original miss type；原 UVM 用例/辅助函数把“PTW read deny”过度等价成清 R 权限，导致 PFU/load walker 被错误注入 deny。 | `pmp_sequences.svh` 中 `pmp_flg_deny_rw_seq` 不再误伤 PFU port4，并新增 `pmp_flg_deny_pfu_seq` 专门描述 PFU deny；`phase9_generated_test_base.svh` 已接入新 sequence 分发；`phase12_generated_test_base.svh` 的 `phase12_set_pmp_deny_ptw_reads()` 默认改为保留 R、只 deny W/X，只有访问异常定向测试才显式传 `deny_read_perm=1`。`test_ptw_pmp_deny_accflt.svh`、`test_ptw_pmp_deny_stop.svh`、`test_mmu_twu_accerr_bypass_arb.svh`、`test_mmu_arb_refill_except_priority.svh` 已按新口径显式请求读权限 deny。 |
 | P14-D2 | LSU_P2 PFU fault 来源难区分：PMP deny、SysMap flag fault、还是 PTW/L2 ref access error | 仅看 `mmu_translation_sb` 的 `fault mismatch` 无法判断是 PFU port4 的 `pmp_mmu_flg[0]` 异常、SysMap `flg4` 组合非法，还是 DUT 内部 PTW/L2TLB acc_err 传播。 | `mmu_dut_probes_if.sv` / `tb_top.sv` 已新增并接出 PFU 白盒观测：`pfu_pmp_flg4`、`pfu_sysmap_flg4`、`pfu_l2tlb_deny`、`pfu_l2tlb_acc_fault`、`pfu_l2tlb_flag_fault`；`mmu_translation_sb.svh` 在 LSU_P2 mismatch 时追加 `[LSU_P2][WB]` 诊断，并同时打印 `ref_pmp_flg4` 与最近一次 `ptw_l2tlb_ref_{pgflt,acc_err}` 快照，后续可直接区分 PFU PMP deny / SysMap flag fault / PTW acc_err 三类来源。 |
 | P14-D3 | Phase14 PFU 相关 false fault 受 SysMap 缺省序列影响，非目标用例也会跑进 deny/fault 口径 | 多个 Phase9/13 复用的 SysMap 序列会随机或宽泛改动 flag 组合；对 PFU/LSU_P2 来说，`sysmap_mmu_flg4` 若不是可翻译口径，会把并非想测 SysMap fault 的用例转成 access fault。 | `sysmap_cfg_sequences.svh` 中 `sysmap_hit_cross_tlb_seq.hit_flg` 与 `sysmap_perm_flag_seq.perm_flg` 当前已收敛为 translation-safe 默认值 `5'b01111`，避免在 Phase14 功能回归中把 PFU false fault 混入非目标用例。该修正已作为当前 UVM 环境收敛手段记档，后续若恢复更激进 flag 覆盖，需要按 testcase 目标做更细粒度拆分。 |
-| P14-D4 | Phase14 额外暴露出 RTL 侧 `a_lsu_addr_stable_until_vld` 断言失败，需要与 UVM 侧 false fault 分开记账 | 部分 shard（如 `test_mmu_ptw_ready_all_mask_low`、`test_mmu_pmp_port_config_independence`）同时出现 PTW/MBUF 地址稳定性 SVA 与 LSU/PFU 侧异常；其中前者是 DUT/RTL 行为问题，后者是 UVM 环境配置/建模问题。两者若混在一起，容易把 UVM 误配当成 RTL 根因，或反过来掩盖真实 RTL bug。 | Phase14 调试口径已拆分：`doc/ptw_rtl_debug.md` 单独记 RTL 侧 PTW/MBUF 指针跳转与 LSU PA 稳定性问题；`MMU_Progress.md` 的 Phase14 仅归档 UVM 环境侧已落地修正。当前结论是：PFU/PMP/SysMap false fault 路径已通过 UVM 代码约束与白盒诊断收口；PTW MBUF 指针导致的 LSU PA 失稳仍按 RTL 调试事项单独追踪。 |
+| P14-D4 | Phase14 额外暴露出 RTL 侧 `a_lsu_addr_stable_until_vld` 断言失败，需要与 UVM 侧 false fault 分开记账 | 部分 shard（如 `test_mmu_ptw_ready_all_mask_low`、`test_mmu_pmp_port_config_independence`）同时出现 PTW/MBUF 地址稳定性 SVA 与 LSU/PFU 侧异常；其中前者是 DUT/RTL 行为问题，后者是 UVM 环境配置/建模问题。两者若混在一起，容易把 UVM 误配当成 RTL 根因，或反过来掩盖真实 RTL bug。 | Phase14 调试口径已拆分：PTW RTL debug 摘要见下方融合表；本节 Phase14 debug 只归档 UVM 环境侧已落地修正。当前结论是：PFU/PMP/SysMap false fault 路径已通过 UVM 代码约束与白盒诊断收口；PTW MBUF 指针导致的 LSU PA 失稳仍按 RTL 调试事项单独追踪。 |
 | P14-D5 | `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=96` 中 LSU_P2 PFU `fault mismatch` 仍可由 PMP agent / ref_model shadow 不一致触发 | 失败点为 `VA=0x0040008000`，`ref.exc=EXC_NONE ref.deny=0 exp_fault=0`，但 `dut.access_fault=1 dut.pa=0`；现场观察该请求是 LSU 的 PFU 类型，DUT 侧 `pmp_mmu_flg[0]` 拉低，导致 PMP 检查未通过。进一步排查确认：旧 `pmp_monitor.ap` 同时广播 PA/fetch 观测样本和 PMP flag 配置样本，`mmu_ref_model` 把所有 `pmp_txn` 都当成配置更新消费，PA/fetch 观测可能污染 `m_pmp_flg`；同时 ref_model 原后台 FIFO consumer 与 `translate()` 存在时序竞态，可能让模型期待结果落后或超前于 DUT 当前 PMP 配置。 | `pmp_txn.svh` 新增 `cfg_update` 语义；`pmp_monitor.svh` 将 PA/fetch 观测样本标为 `cfg_update=0` 并只送 `ap_obs`，只有 flag 变化样本标为 `cfg_update=1` 后送入 ref 路径，同时增加 reset/X guard，避免未知 flag 写入模型；`mmu_ref_model.svh` 不再后台异步消费 PMP/SysMap/CSR/TLB shadow FIFO，改为 `translate()` 前同步 drain，并忽略 `cfg_update=0` 样本；Phase9/Phase12 在 PMP sequence 后显式 `sync_shadow_state()`，direct SW map4k 测试关闭 auto sync，保证 PMP agent 与参考模型期待结果同口径。 |
 | P14-D6 | CreditSB 报 `ptw_mbuf_cnt != 0 at end-of-sim (1): PTW serialized external request not drained` | 该错误不是单纯“响应缺失”，而是 UVM 侧 PTW mem monitor/responder 使用原始 `mmu_lsu_data_req` level 记账。RTL 中真正接受外部 PTW 请求的边界是 MBUF grant/accept；raw req 可能在 response、abort 或 back-to-back 请求窗口中保持高电平并重指向，导致 monitor 重复开 credit，或 responder 在未被 RTL accept 的周期服务错误/重复事务，最终 end-of-sim 遗留 `ptw_mbuf_cnt=1`。 | `ptw_mem_if.sv` 新增 TB-only `mmu_lsu_data_req_accept`；`tb_top.sv` 用 `|u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant` 接出真实 accept；`ptw_mem_monitor.svh`、`ptw_mem_responder.svh` 与 `ptw_mem_covergroups.svh` 均改为以 accept pulse 作为请求进入外部 PTW memory 的唯一记账点。monitor 先处理同周期 response 再处理 accept；responder 支持 response 后 back-to-back accept 的一拍暂存，避免漏采新请求。 |
 | P14-D7 | 本地验证状态与剩余限制 | 由于当前 Windows/WSL 环境缺 VCS，无法在本地完成 `make regress_v4_full_parallel` 或完整 VCS compile；ModelSim 可用于有限语法探测，但不等价于最终回归签核。 | 已执行 `git diff --check`，除仓库既有 CRLF 警告外无 whitespace error；ModelSim 定向语法检查覆盖 `ptw_mem_if.sv`、`pmp_if.sv`、`mmu_ptw_lsu_protocol_sva.sv`，并修正 `ptw_mem_responder.svh` 中被 ModelSim 识别为保留字的 `context` 形参命名。完整功能闭环仍需在具备 VCS 的服务器上重跑 Phase14 高并发回归确认。 |
@@ -780,6 +849,19 @@ in the IssueTracker and SignoffMatrix.
 | P14-D9 | `test_mmu_pde_cache_hit_l2_skip_scd` shard_0025 seed `97101` 在 test-end quiesce 阶段 LSU stimulus 与 MMU 内部状态未完全排空 | 失败日志显示 `@263992000` `lsu_driver` 等待 `262144` cycles 后仍有 `pending=2`，`busy={p0:1 p1:0 p2:0 stamo:0 inv:0}`，且 `tlb_busy=1`；随后 `@296760000` CreditSB 仍观测到 `l1d_mb=0x01`、`twu_idle=0xe`，说明 test body 结束时 driver/sequencer 侧仍有未真正送入并退休的 LSU 激励，DUT 内也仍保留 L1D miss buffer/TWU in-flight 状态。当前 end-quiesce 若先锁住 driver 再等待 idle，会把“停止产生新 late stimulus”和“已排空既有 stimulus”混在一起，不能满足该用例必须发完并完成全部 LSU 请求的结束条件。 | 调试结论已记录为 Phase14 end-of-test drain 问题：结束流程应先允许 LSU/IFU driver 继续消费并发出已排队 stimulus，等待 driver pending/busy 和 sequencer traffic 归零，再进入 end-quiesce 锁定并调用 CreditSB 的 PTW/L2/MMU 内部 drain；同时需要把默认 `TEST_END_STIM_DRAIN_MAX_CYCLES` 调整到能覆盖 PDE-cache hit/L2-skip 场景下的慢 PTW/L1D 完成窗口，但仍保留 timeout 报错以暴露真死锁。完整修正后需用 `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=96` 定向确认该 shard 不再出现 LSU 未排空和 `PTW/L2 internal state not idle`。 |
 
 ---
+
+### PTW RTL Debug 融合摘要
+
+PTW RTL 调试记录已压缩为 Phase 14 的 RTL/design record 背景，不再作为顶层入口单独维护。仍需追溯原始细节时，以归档文件为准。当前进度表保留以下结论：
+
+| 主题 | 融合结论 |
+| --- | --- |
+| `ptw.sv` / `ptw_mbuf.sv` / `twu.sv` 大改与信号补齐 | 已作为 PTW/PTW-MBUF/TWU 稳定性调试背景；后续变更必须同步 SVA、CreditSB 和 responder accept 口径 |
+| TWU CSR 仲裁与 2MB CSR cross | `twu.sv` CSR grant 编码和 2MB CSR cross 分支重复曾触发 R19/TC-BUG-011；当前按 Phase 11/14 issue 证据链追踪 |
+| PDE cache refill/update/clear | 同 VPN 去重、leaf 级更新排除、abort/PMP config 变更 flush、直连 access fault 时禁止 xbar 分发均是回归保护点 |
+| TLBOP abort / late refill / bus_error | abort 与 MBUF 入队、LSU req hold、refill arbitration、`mbuf_bus_error` 清零等语义已并入 PTW protocol 与 Phase14 credit/drain 检查 |
+| MPRV=1 && MPP=M | data/PFU 不进入 PTW 的 RTL 行为被确认为正确，UVM 期待结果需按该规格修正 |
+| 当前未闭环风险 | PTW MBUF 指针 / LSU PA 稳定性类 SVA 仍需在具备 VCS 的服务器通过 Phase14 定向或全量回归最终确认 |
 
 ## Phase 13 详细进度（✅ 已完成 — 2026-05-02 `make phase13_exit_check` PASS）
 
@@ -789,7 +871,7 @@ in the IssueTracker and SignoffMatrix.
 - A 侧：✅ 新增 `testbench/top/mmu_sysmap_sva.sv`，覆盖 SysMap flag 替换、跨界降级、no-cross 不降级与 PA 对齐场景；每类属性均有对应 `cover property`。
 - A 侧：✅ `testbench/Files.f` / `testbench/top/tb_top.sv` 已接入 Phase 13 SVA；`scripts/cov_hier.cfg` 已排除新增 SVA module，避免覆盖率统计污染。
 - A 侧：✅ `Makefile` 已新增 `PHASE13_*` 变量、`print-phase13` 与 `regress_v4_sysmap_pmp`；该 target 复用现有 `run_cov`、日志扫描与 URG 生成流程，并在 Phase 13 list 缺失时明确报错。
-- A 侧：✅ DA-003 书面记录已归档：[DA-003_phase13_port_mapping.md](DA-003_phase13_port_mapping.md)，当前按 `pa3/flg3->twu_one`、`pa5/flg5->twu_two`、`pa6/flg6->twu_three`、`pa7/flg7->twu_four` 跟踪。
+- A 侧：✅ DA-003 书面记录已融合到本节，当前按 `pa3/flg3->twu_one`、`pa5/flg5->twu_two`、`pa6/flg6->twu_three`、`pa7/flg7->twu_four` 跟踪。
 - B 侧：✅ `pmp_twu_tests_v6/`、`sysmap_tests/` 扩展、13 个 covergroup 与最终 `simu/mmu_v4_phase13_list` 已完成；服务器 Phase 13 exit check 已收口。
 
 | 项目                                                                                | 负责人 | 状态 | 说明                                                                                                     |
@@ -799,7 +881,7 @@ in the IssueTracker and SignoffMatrix.
 | `testbench/Files.f` / `testbench/top/tb_top.sv`                                 | A      | ✅   | `mmu_pmp_twu_sva` 与 `mmu_sysmap_sva` 已编译接入并 bind 到 `twu`                                   |
 | `scripts/cov_hier.cfg`                                                            | A      | ✅   | 新增排除 `mmu_pmp_twu_sva` / `mmu_sysmap_sva` module                                                 |
 | `Makefile` `print-phase13` / `regress_v4_sysmap_pmp` / `phase13_exit_check` | A      | ✅   | 默认 seeds `96101 96102 96103`；Phase 13 exit gate 已 PASS，URG 失败时使用 log coverage fallback       |
-| `doc/DA-003_phase13_port_mapping.md`                                              | A      | ✅   | 记录 Phase 13 PMP PTW port mapping 与 fetch spelling 口径                                                |
+| DA-003 PMP/SysMap port mapping record                                             | A      | ✅   | Phase 13 PMP PTW port mapping 与 fetch spelling 口径已融合到本进度表                                    |
 | `simu/mmu_v4_phase13_list`                                                        | A/B    | ✅   | B 侧最终 Phase 13 list 已完成并用于服务器复验入口                                                        |
 | Phase 13 tests / covergroups                                                        | B      | ✅   | B 侧 Phase 13 tests / covergroups 已完成；服务器 165/165 regression 与 13 个 covergroup threshold 已通过 |
 
@@ -811,7 +893,7 @@ make print-phase13
 make phase13_exit_check
 ```
 
-归档结果：`PHASE13_EXIT_CHECK: PASS`。若后续必须交付 Synopsys URG HTML/text report，再单独处理 `output/coverage/urg_report.log` 中的 `No context available`；该项不阻塞 Phase 13 exit，已跟踪为 [MMU-P14-ISSUE-001](MMU_Phase14_IssueTracker.md)。
+归档结果：`PHASE13_EXIT_CHECK: PASS`。若后续必须交付 Synopsys URG HTML/text report，再单独处理 `output/coverage/urg_report.log` 中的 `No context available`；该项不阻塞 Phase 13 exit，已跟踪为 `MMU-P14-ISSUE-001`。
 
 ### Phase 13 Server Regression Note (2026-05-02)
 
@@ -829,7 +911,7 @@ make phase13_exit_check
 - Criterion 2: all Phase 13 SVA cover properties reached the hit threshold. Representative final hits include `cp_no_lsu_req_during_pmp_wait=558343`, `cp_pmp_fetch_uses_x_perm=1155`, `cp_pmp_store_uses_w_perm=300`, `cp_pmp_mmode_l0_bypass=45000`, `cp_sysmap_cross_degrade=96`.
 - Criterion 3/4: `mmu_sysmap_sva.sv` and `mmu_pmp_twu_sva.sv` static completeness checks PASS.
 - Criterion 5: 13 Phase 13 covergroups reached threshold via `phase13_whitebox_cg summary` fallback because URG report generation remained unavailable. Lowest passing groups were `cg_twu_mask_cause=50.00%`, `cg_sysmap_cross_1g=50.00%`, and `cg_sysmap_cross_2m=50.00%`.
-- Criterion 6: DA-003 written record present at `doc/DA-003_phase13_port_mapping.md`.
+- Criterion 6: DA-003 written record present and fused into this Phase 13 section.
 - Non-blocking tooling issue: Synopsys URG still reports `No context available` for `output/coverage/urgReport`. Current Phase 13 gate treats this as a coverage report tooling issue, not a functional/SVA/covergroup miss, and uses simulation log coverage fallback. Follow up only if Phase 14 or signoff explicitly requires a generated URG HTML/text report.
 
 #### Phase 13 Error Process Record - PTW PMP fetch sideband (2026-05-02)
@@ -848,11 +930,45 @@ make phase13_exit_check
 | - | ------------------------------------- | ---- | ------------------------------------------------------------------------------------------- |
 | 1 | A-side SVA implementation             | ✅   | PMP/TWU 与 SysMap/TWU SVA 文件已落地                                                        |
 | 2 | A-side integration wiring             | ✅   | `Files.f` / `tb_top.sv` / `cov_hier.cfg` / `Makefile` 已接入                        |
-| 3 | DA-003 written record                 | ✅   | `DA-003_phase13_port_mapping.md` 已归档                                                   |
+| 3 | DA-003 written record                 | ✅   | DA-003 端口映射结论已融合到本节                                                           |
 | 4 | Phase 13 list present                 | ✅   | B 侧最终 Phase 13 list 已完成；服务器复验入口已具备                                         |
 | 5 | compile on server                     | ✅   | `make phase13_exit_check` 触发 compile，编译通过                                          |
 | 6 | 3-seed Phase 13 functional regression | ✅   | 55 tests × 3 seeds = 165/165 PASS，`regress target rc=0`                                 |
 | 7 | Phase 13 covergroup threshold         | ✅   | 13 个 covergroup 全部 ≥50%；URG report 缺失时使用 `phase13_whitebox_cg summary` fallback |
+
+### Phase 13 DA-003 端口映射融合结论
+
+DA-003 仍是 PMP/SysMap port mapping 的书面 tracking item。Phase 13 A-side SVA 和回归接线使用当前 RTL 观测映射，不声明设计规格已额外关闭。
+
+| PMP port | Phase 13 interpretation |
+| --- | --- |
+| `pa3/flg3` | PTW `twu_one` |
+| `pa5/flg5` | PTW `twu_two` |
+| `pa6/flg6` | PTW `twu_three` |
+| `pa7/flg7` | PTW `twu_four` |
+
+`pa0/flg0`、`pa1/flg1`、`pa2/flg2` 仍分别为 LSU0、LSU1、IFU；`pa4/flg4` 为 LSU Pipe2 / prefetch。顶层 interface 使用 `mmu_pmp_fetch7` 拼写，TWU 内部 SVA 观测 `mmu_pmp_fecth` 内部 RTL 名。
+
+`mmu_pmp_fetch{3,5,6,7}` / `mmu_pmp_fecth` 表示 original miss fetch sideband，不是 PTW PTE bus-read 类型。Phase 13 最终检查 selected-stage propagation 与 original-type PMP permission selection：fetch->X、load/prefetch->R、store->W，M-mode L=0 bypass。
+
+---
+
+## L1DTLB / L2TLB Audit 主文档同步（2026-06-07）
+
+本次只更新 `doc` 顶层主文档和追溯表，不修改
+`doc/l1dtlb_uvm_audit/` 或 `doc/l2tlb_uvm_audit/` 下任何源文件。合并源
+排除 `*_function_description.md` 和 `*_function_description.txt`，仅使用
+audit build/progress/traceability/testpoint/notes/Excel 内容。
+
+| Audit area | Imported status | Progress impact |
+| --- | --- | --- |
+| L1DTLB Phase6 | 6A~6G Complete；`make -C mmu_verification l1dtlb_phase6g_replay` PASS 28/28；`make -C mmu_verification l1dtlb_phase6g_closure` PASS 28/28 | 主验证计划、build plan、progress 和 traceability CSV 已记录 L1 audit 当前闭环；`vabuf` equivalence 与 exact PLRU victim 仍是 future/formal |
+| L1DTLB traceability | 3.9/3.10 当前 rollup：80 implemented、81 partial、2 formal-only；3.11 当前 rollup：28 implemented、58 partial、4 planned | Partial/planned 表示模型深度和后续 refinement 边界，不推翻 Phase6G UVM simulation gate 完成状态 |
+| L1DTLB Excel/testpoint audit | `L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx` 的 65 个 AUD 行和 `l1dtlb_testpoint_audit.md` action 口径已并入 CSV/主计划 | Generic wrapper 名称不作为 closure；必须有 trigger/checker/SVA/waiver evidence |
+| L2TLB Phase6/6G | 6A~6G Complete with scoped follow-up；Phase6G manifest/scanner expected `STATUS=PASS PASS=26 OPEN=0 FAIL=0 TOTAL=26` | 主文档不再保留“Phase6 文件待创建/未实现”的过期口径 |
+| L2TLB Excel/testplan | `L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx` 的 58 个 `L2TLB_TP_001..058` 行已并入 CSV；summary 为 47 P0、10 P1、1 P2 | 49 个 TP 有 dedicated testcase + checker/SVA evidence，9 个 TP 通过 equivalent SVA/checker waiver 闭合 |
+| L2TLB TLBOP notes | `index[10:8]`=way、`index[7:0]`=set；TLBP/INV*/TLBWR/TLBR/TLBWI bank-select 和 hit-vector规则已并入主计划 | TLBOP exact decode 已交付；TLBWI/TLBWR write-data exact compare 仍需后续 shadow update evidence |
+| L2TLB RRPV exact model | 2026-06-06 exact model 算法已实现并编译通过，覆盖 victim/RRPV update 建模基础 | Runtime UVM scoreboard `sample_cycle` hookup 仍需后续 clean run 证据 |
 
 ---
 

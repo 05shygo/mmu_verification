@@ -28,6 +28,39 @@ class test_mmu_sfence_refill_conflict extends phase9_generated_test_base;
     m_vseq_names.push_back("mmu_ptw_thrash_vseq");
   endfunction
 
+  // Drain all in-flight TLB invalidations before starting the PTW thrash
+  // traffic.  Without this barrier, INV_ALL completions can overlap with
+  // active PTW walks and trigger a DUT-level zero-delay loop (observed on
+  // seed 5 where bringup latency shifts the INV_ALL window into the fork).
+  virtual task run_test_body();
+    setup_plan();
+
+    if (l1dtlb_directed_vseq::is_l1dtlb_tc(p9_tc_id)) begin
+      if (m_run_misc_init) start_misc_seq_by_name("misc_init_seq");
+      start_l1dtlb_directed_by_tc_id(p9_tc_id);
+      #(m_post_drain);
+      return;
+    end
+
+    if (m_run_misc_init)  start_misc_seq_by_name("misc_init_seq");
+    if (m_enable_sv39_4k_bringup) do_sv39_4k_bringup();
+
+    foreach (m_cp0_seq_names[i])    start_cp0_seq_by_name(m_cp0_seq_names[i]);
+    foreach (m_pmp_seq_names[i])    start_pmp_seq_by_name(m_pmp_seq_names[i]);
+    foreach (m_sysmap_seq_names[i]) start_sysmap_seq_by_name(m_sysmap_seq_names[i]);
+    foreach (m_misc_seq_names[i])   start_misc_seq_by_name(m_misc_seq_names[i]);
+    foreach (m_ptw_seq_names[i])    start_ptw_seq_by_name(m_ptw_seq_names[i]);
+    foreach (m_ifu_seq_names[i])    start_ifu_seq_by_name(m_ifu_seq_names[i]);
+    foreach (m_lsu_seq_names[i])    start_lsu_seq_by_name(m_lsu_seq_names[i]);
+
+    // Wait for all LSU INV_ALL operations to drain before starting PTW thrash.
+    m_env.wait_for_quiescent_midtest("sfence_pre_thrash_drain", 262144, 16);
+
+    foreach (m_vseq_names[i])       start_vseq_by_name(m_vseq_names[i]);
+
+    #(m_post_drain);
+  endtask
+
 endclass : test_mmu_sfence_refill_conflict
 
 `endif // TEST_MMU_SFENCE_REFILL_CONFLICT_SVH

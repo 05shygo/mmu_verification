@@ -26,7 +26,8 @@ module mmu_twu_sva (
     input logic        fst_pmp_vld,
     input logic        scd_pmp_vld,
     input logic        thd_pmp_vld,
-    input logic        thd_chk_vld
+    input logic        thd_chk_vld,
+    input logic        tlboper_ptw_abort
 );
 
   // R19: 2 MB CSR cross must shift-update csr_data_flop.
@@ -47,9 +48,11 @@ module mmu_twu_sva (
         || (scd_chk_vld && !scd_chk_page_flt && !scd_chk_leaf_vld && !thd_pmp_wait)));
 
   // When the first-stage slot is free and the TWU is unmasked, a new request
-  // must advance into fst_pmp_vld on the next TWU clock.
+  // must advance into fst_pmp_vld on the next TWU clock unless a concurrent
+  // TLBOP abort legally clears the TWU pipeline.
   a_twu_pipeline_no_stall_when_unmasked: assert property (@(posedge twu_clk) disable iff (!cpurst_b)
-    (xbar_twu_req && !twu_mask && (xbar_twu_hit_level == 2'b00)) |=> fst_pmp_vld);
+    (xbar_twu_req && !twu_mask && (xbar_twu_hit_level == 2'b00) && !tlboper_ptw_abort)
+    |=> (tlboper_ptw_abort || fst_pmp_vld));
 
   // This is a legal scenario, not an error: multiple stage valids may coexist.
   c_twu_multi_inflight_legal: cover property (@(posedge twu_clk) disable iff (!cpurst_b)

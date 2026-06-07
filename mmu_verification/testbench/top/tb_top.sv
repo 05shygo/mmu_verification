@@ -1233,6 +1233,525 @@ module tb_top;
     end
   end
 
+  // Opt-in delta-cycle diagnostic for PTW/L2MB/TWU combinational feedback.
+  bit              ptw_delta_dbg_enable;
+  longint unsigned ptw_delta_dbg_from_ps;
+  int unsigned     ptw_delta_dbg_comb_limit;
+  time             ptw_delta_dbg_comb_time;
+  int unsigned     ptw_delta_dbg_comb_count;
+
+  initial begin
+    ptw_delta_dbg_enable = $test$plusargs("PTW_DELTA_DBG");
+    ptw_delta_dbg_from_ps = 0;
+    ptw_delta_dbg_comb_limit = 128;
+    ptw_delta_dbg_comb_time = 0;
+    ptw_delta_dbg_comb_count = 0;
+    void'($value$plusargs("PTW_DELTA_DBG_FROM_PS=%0d", ptw_delta_dbg_from_ps));
+    void'($value$plusargs("PTW_DELTA_DBG_COMB_LIMIT=%0d", ptw_delta_dbg_comb_limit));
+    if (ptw_delta_dbg_comb_limit == 0)
+      ptw_delta_dbg_comb_limit = 1;
+    if (ptw_delta_dbg_enable) begin
+      $display("[PTW_DELTA_DBG][CFG] enable=1 from_ps=%0d comb_limit=%0d",
+        ptw_delta_dbg_from_ps, ptw_delta_dbg_comb_limit);
+    end
+  end
+
+  function automatic bit ptw_delta_dbg_active();
+    return ptw_delta_dbg_enable && cpurst_b && ($time >= ptw_delta_dbg_from_ps);
+  endfunction
+
+  task automatic ptw_delta_dbg_print(input string tag);
+    $display({"[PTW_DELTA_DBG][%s][XBAR] t=%0t ",
+              "ptw_ready=%0b pde_ready=%0b xbar_ready=%0b pde_req=%0b pde_ptw_req=%0b ",
+              "pde_hit{l2:%0b l1:%0b acc:%0b} pde_id=0x%02h pde_type=0x%0h pde_vpn=0x%07h ",
+              "xbar{mask:%0b hash:0x%0h req:0x%0h hit_lvl:0x%0h id:0x%02h type:0x%0h vpn:0x%07h} ",
+              "l2mb{ptw_ready:%0b issue:%0b entry_ready:%0b req_alloc:%0b vld:0x%03h rdy:0x%03h ",
+              "entry_grant:0x%03h bypass_grant:0x%03h issue_eid:0x%02h issue_type:0x%0h issue_vpn:0x%07h}"},
+      tag,
+      $time,
+      u_dut.x_ct_mmu_ptw.ptw_jtlb_ready,
+      u_dut.x_ct_mmu_ptw.pde_cache_ready,
+      u_dut.x_ct_mmu_ptw.xbar_pde_ready,
+      u_dut.x_ct_mmu_ptw.PDE_xbar_req,
+      u_dut.x_ct_mmu_ptw.u_PDE_cache.ptw_req,
+      u_dut.x_ct_mmu_ptw.L2PDE_xbar_hit_vld,
+      u_dut.x_ct_mmu_ptw.L1PDE_xbar_hit_vld,
+      u_dut.x_ct_mmu_ptw.u_PDE_cache.L2PDE_entry_acc_err_vld,
+      u_dut.x_ct_mmu_ptw.PDE_xbar_id,
+      u_dut.x_ct_mmu_ptw.PDE_xbar_type,
+      u_dut.x_ct_mmu_ptw.PDE_xbar_vpn,
+      u_dut.x_ct_mmu_ptw.u_one_to_four_xbar.twu_xbar_mask,
+      u_dut.x_ct_mmu_ptw.u_one_to_four_xbar.twu_req_hash,
+      u_dut.x_ct_mmu_ptw.xbar_twu_req,
+      u_dut.x_ct_mmu_ptw.xbar_twu_hit_level,
+      u_dut.x_ct_mmu_ptw.xbar_twu_id,
+      u_dut.x_ct_mmu_ptw.xbar_twu_type,
+      u_dut.x_ct_mmu_ptw.xbar_twu_vpn,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.ptw_ready,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_ready,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.req_alloc_valid,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_vld_vec,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_rdy_vec,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_grant_vec,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.bypass_grant_vec,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_eid,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_type,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_vpn);
+
+    $display({"[PTW_DELTA_DBG][%s][MBUF] t=%0t ",
+              "req=0x%0h type={0x%0h,0x%0h,0x%0h,0x%0h} lvl={0x%0h,0x%0h,0x%0h,0x%0h} ",
+              "grant=0x%0h create=%0b itlb_sel=%0b sel{fth:%0b thd:%0b scd:%0b fst:%0b} ",
+              "upd=0x%03h entry_vld=0x%03h entry_on=0x%03h entry_get=0x%03h ",
+              "lsu_req=%0b lsu_grant=0x%03h req_addr=0x%010h abort=%0b abort_reg=%0b"},
+      tag,
+      $time,
+      u_dut.x_ct_mmu_ptw.twu_mbuf_req,
+      u_dut.x_ct_mmu_ptw.twu_mbuf_type[3],
+      u_dut.x_ct_mmu_ptw.twu_mbuf_type[2],
+      u_dut.x_ct_mmu_ptw.twu_mbuf_type[1],
+      u_dut.x_ct_mmu_ptw.twu_mbuf_type[0],
+      u_dut.x_ct_mmu_ptw.twu_mbuf_lvl[3],
+      u_dut.x_ct_mmu_ptw.twu_mbuf_lvl[2],
+      u_dut.x_ct_mmu_ptw.twu_mbuf_lvl[1],
+      u_dut.x_ct_mmu_ptw.twu_mbuf_lvl[0],
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_grant,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.create_en,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.twu_itlb_sel,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.fth_twu_sel,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.thd_twu_sel,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.scd_twu_sel,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.fst_twu_sel,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_upd,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_on,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_get,
+      u_dut.x_ct_mmu_ptw.mmu_lsu_data_req,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant,
+      u_dut.x_ct_mmu_ptw.mmu_lsu_data_req_addr,
+      u_dut.tlboper_ptw_abort,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.tlboper_ptw_abort_reg);
+
+    $display({"[PTW_DELTA_DBG][%s][TWU_VEC] t=%0t ",
+              "mask=0x%0h idle=0x%0h xbar_req=0x%0h mbuf_req=0x%0h ",
+              "fst{vld:0x%0h wait:0x%0h grant:0x%0h req:0x%0h deny:0x%0h} ",
+              "scd{vld:0x%0h wait:0x%0h grant:0x%0h req:0x%0h deny:0x%0h} ",
+              "thd{vld:0x%0h wait:0x%0h grant:0x%0h req:0x%0h deny:0x%0h} ",
+              "pmp_grant={0x%0h,0x%0h,0x%0h,0x%0h}"},
+      tag,
+      $time,
+      u_dut.x_ct_mmu_ptw.twu_mask,
+      dut_probes_if.ptw_twu_idle,
+      u_dut.x_ct_mmu_ptw.xbar_twu_req,
+      u_dut.x_ct_mmu_ptw.twu_mbuf_req,
+      {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vld},
+      {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_wait},
+      {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_grant},
+      {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_mbuf_req},
+      {u_dut.x_ct_mmu_ptw.twu_four.fst_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_three.fst_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_two.fst_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_deny},
+      {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vld},
+      {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_wait},
+      {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_grant},
+      {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_mbuf_req},
+      {u_dut.x_ct_mmu_ptw.twu_four.scd_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_three.scd_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_two.scd_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_deny},
+      {u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_vld,
+       u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_vld},
+      {u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_wait,
+       u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_wait},
+      {u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_grant,
+       u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_grant},
+      {u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_mbuf_req,
+       u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_mbuf_req},
+      {u_dut.x_ct_mmu_ptw.twu_four.thd_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_three.thd_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_two.thd_pmp_deny,
+       u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_deny},
+      u_dut.x_ct_mmu_ptw.twu_four.pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_three.pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_two.pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_one.pmp_grant);
+
+    $display({"[PTW_DELTA_DBG][%s][TWU0] t=%0t ",
+              "xreq=%0b hit_lvl=0x%0h mask=%0b mbuf_grant=%0b ",
+              "fst{vld:%0b wait:%0b grant:%0b req:%0b deny:%0b type:0x%0h vpn:0x%07h pa:0x%010h} ",
+              "scd{vld:%0b wait:%0b grant:%0b req:%0b deny:%0b type:0x%0h vpn:0x%07h pa:0x%010h} ",
+              "thd{vld:%0b wait:%0b grant:%0b req:%0b deny:%0b type:0x%0h vpn:0x%07h pa:0x%010h} ",
+              "sel{fst:%0b scd:%0b thd:%0b itlb:%0b} pmp_grant=0x%0h lvl=0x%0h"},
+      tag,
+      $time,
+      u_dut.x_ct_mmu_ptw.xbar_twu_req[0],
+      u_dut.x_ct_mmu_ptw.xbar_twu_hit_level,
+      u_dut.x_ct_mmu_ptw.twu_one.twu_mask,
+      u_dut.x_ct_mmu_ptw.mbuf_grant[0],
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vld,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_wait,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_mbuf_req,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_deny,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_type,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vpn,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_pa,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vld,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_wait,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_mbuf_req,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_deny,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_type,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vpn,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_pa,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_vld,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_wait,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_mbuf_req,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_deny,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_type,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_vpn,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_pa,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_sel,
+      u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_sel,
+      u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_sel,
+      u_dut.x_ct_mmu_ptw.twu_one.pmp_itlb_sel,
+      u_dut.x_ct_mmu_ptw.twu_one.pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_one.twu_mbuf_lvl);
+  endtask
+
+  task automatic ptw_delta_dbg_strobe();
+    $strobe({"[PTW_DELTA_DBG][posedge][STROBE] t=%0t ",
+             "ready=%0b pde_ready=%0b xbar_ready=%0b pde_req=%0b ptw_req=%0b ",
+             "xbar_mask=%0b xbar_req=0x%0h twu_mask=0x%0h twu_mbuf_req=0x%0h ",
+             "mbuf_grant=0x%0h create=%0b l2mb_issue=%0b l2mb_rdy=0x%03h ",
+             "twu0_fst{v:%0b w:%0b g:%0b req:%0b deny:%0b}"},
+      $time,
+      u_dut.x_ct_mmu_ptw.ptw_jtlb_ready,
+      u_dut.x_ct_mmu_ptw.pde_cache_ready,
+      u_dut.x_ct_mmu_ptw.xbar_pde_ready,
+      u_dut.x_ct_mmu_ptw.PDE_xbar_req,
+      u_dut.x_ct_mmu_ptw.u_PDE_cache.ptw_req,
+      u_dut.x_ct_mmu_ptw.u_one_to_four_xbar.twu_xbar_mask,
+      u_dut.x_ct_mmu_ptw.xbar_twu_req,
+      u_dut.x_ct_mmu_ptw.twu_mask,
+      u_dut.x_ct_mmu_ptw.twu_mbuf_req,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_grant,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.create_en,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req,
+      u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_rdy_vec,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vld,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_wait,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_grant,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_mbuf_req,
+      u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_deny);
+  endtask
+
+  always @(posedge forever_cpuclk) begin
+    if (ptw_delta_dbg_active()
+        && (u_dut.x_ct_mmu_ptw.PDE_xbar_req
+            || (|u_dut.x_ct_mmu_ptw.xbar_twu_req)
+            || (|u_dut.x_ct_mmu_ptw.twu_mbuf_req)
+            || (|u_dut.x_ct_mmu_ptw.twu_mask)
+            || u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req
+            || u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_ready)) begin
+      ptw_delta_dbg_print("posedge");
+      ptw_delta_dbg_strobe();
+    end
+  end
+
+  always @(u_dut.x_ct_mmu_ptw.PDE_xbar_req
+        or u_dut.x_ct_mmu_ptw.u_PDE_cache.ptw_req
+        or u_dut.x_ct_mmu_ptw.xbar_pde_ready
+        or u_dut.x_ct_mmu_ptw.pde_cache_ready
+        or u_dut.x_ct_mmu_ptw.ptw_jtlb_ready
+        or u_dut.x_ct_mmu_ptw.u_one_to_four_xbar.twu_xbar_mask
+        or u_dut.x_ct_mmu_ptw.xbar_twu_req
+        or u_dut.x_ct_mmu_ptw.twu_mask
+        or u_dut.x_ct_mmu_ptw.twu_mbuf_req
+        or u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_grant
+        or u_dut.x_ct_mmu_ptw.u_ptw_mbuf.create_en
+        or u_dut.x_mmu_l2tlb.x_l2tlb_mb.issue_req
+        or u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_rdy_vec
+        or u_dut.x_mmu_l2tlb.x_l2tlb_mb.entry_grant_vec
+        or u_dut.x_mmu_l2tlb.x_l2tlb_mb.bypass_grant_vec
+        or u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_wait
+        or u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_mbuf_req) begin
+    if (ptw_delta_dbg_active()) begin
+      if (ptw_delta_dbg_comb_time != $time) begin
+        ptw_delta_dbg_comb_time = $time;
+        ptw_delta_dbg_comb_count = 0;
+      end
+      if (ptw_delta_dbg_comb_count < ptw_delta_dbg_comb_limit) begin
+        ptw_delta_dbg_print($sformatf("comb%0d", ptw_delta_dbg_comb_count));
+      end else if (ptw_delta_dbg_comb_count == ptw_delta_dbg_comb_limit) begin
+        $display("[PTW_DELTA_DBG][COMB_LIMIT] t=%0t suppressed further same-time comb prints",
+          $time);
+      end
+      ptw_delta_dbg_comb_count = ptw_delta_dbg_comb_count + 1;
+    end
+  end
+
+  // Opt-in hang/root-cause diagnostic.  This block only samples and prints
+  // existing TB/DUT signals when +MMU_DIAG_ENABLE is supplied.
+  bit              mmu_diag_enable;
+  bit              mmu_diag_event_trace;
+  int unsigned     mmu_diag_heartbeat_cycles;
+  int unsigned     mmu_diag_from_cycle;
+  longint unsigned mmu_diag_cycle;
+  logic [3:0]      mmu_diag_inv_vec_q;
+  logic            mmu_diag_inv_done_q;
+  logic            mmu_diag_tlb_busy_q;
+  logic [11:0]     mmu_diag_tlb_wakeup_q;
+  logic            mmu_diag_tlboper_ptw_abort_q;
+  logic            mmu_diag_ptw_abort_flop_q;
+  logic [8:0]      mmu_diag_ptw_mbuf_entry_vld_q;
+  logic [8:0]      mmu_diag_l2_reqq_vld_q;
+  logic [8:0]      mmu_diag_l2mb_vld_q;
+  logic [7:0]      mmu_diag_l1d_mb_vld_q;
+  logic [3:0]      mmu_diag_ptw_twu_ref_req_q;
+  logic [3:0]      mmu_diag_ptw_twu_mbuf_req_q;
+
+  initial begin
+    mmu_diag_enable = $test$plusargs("MMU_DIAG_ENABLE");
+    mmu_diag_event_trace = $test$plusargs("MMU_DIAG_EVENT_TRACE");
+    mmu_diag_heartbeat_cycles = 256;
+    mmu_diag_from_cycle = 0;
+    void'($value$plusargs("MMU_DIAG_HEARTBEAT_CYCLES=%0d", mmu_diag_heartbeat_cycles));
+    void'($value$plusargs("MMU_DIAG_FROM_CYCLE=%0d", mmu_diag_from_cycle));
+    if (mmu_diag_heartbeat_cycles == 0)
+      mmu_diag_heartbeat_cycles = 1;
+    if (mmu_diag_enable) begin
+      $display("[MMU_DIAG][CFG] enable=1 event_trace=%0b from_cycle=%0d heartbeat_cycles=%0d",
+        mmu_diag_event_trace, mmu_diag_from_cycle, mmu_diag_heartbeat_cycles);
+    end
+  end
+
+  function automatic logic [3:0] mmu_diag_inv_vec();
+    return {lsu_if_inst.lsu_mmu_tlb_all_inv,
+            lsu_if_inst.lsu_mmu_tlb_va_all_inv,
+            lsu_if_inst.lsu_mmu_tlb_asid_all_inv,
+            lsu_if_inst.lsu_mmu_tlb_va_asid_inv};
+  endfunction
+
+  function automatic bit mmu_diag_inv_active();
+    return |mmu_diag_inv_vec();
+  endfunction
+
+  task automatic mmu_diag_print(input string tag);
+    $display({"[MMU_DIAG] tag=\"%s\" cyc=%0d t=%0t rst=%0b ",
+              "lsu_inv={all:%0b va_all:%0b asid_all:%0b va_asid:%0b done:%0b busy:%0b wakeup:0x%03h va:0x%07h asid:0x%04h} ",
+              "ptw_lsu={req:%0b grant:0x%03h vld:%0b buserr:%0b addr:0x%010h size:%0b data:0x%016h} ",
+              "ptw={abort:%0b abort_flop:%0b jtlb_ready:%0b mbuf_vld:0x%03h mbuf_have:0x%0h ",
+              "twu_idle:0x%0h twu_mask:0x%0h twu_ref:0x%0h twu_mbuf_req:0x%0h pgflt:0x%0h acc:0x%0h ",
+              "l2ptw_req:%0b/id:0x%02h/type:0x%0h/vpn:0x%07h cmplt:%0b data_vld:%0b} ",
+              "tlbop={fsm{p:%0d r:%0d wi:%0d wr:%0d asid:%0d all:%0b} arb_req:%0b write:%0b grant:%0b ",
+              "regs_cmplt:%0b l2_cmplt:%0b utlb_clr:%0b utlb_inv_va_req:%0b tlbiva_st:%0d} ",
+              "l2={reqq_vld:0x%03h reqq_rdy:0x%03h qid:0x%0h issue:%0b/type:0x%0h ",
+              "mb_vld:0x%03h mb_rdy:0x%03h mb_issue:%0b/eid:0x%02h/type:0x%0h alloc:%0b final:%0b hit:%0b miss:%0b dtlb:%0b vpn:0x%07h} ",
+              "l1d={mb_vld:0x%02h mb_state0:%0d mb_ready:0x%02h mb_issued:0x%02h mb_wfc:0x%02h mb_wfi:0x%02h ",
+              "l2_req:%0b/eid:%0d/vpn:0x%07h ptw_ref:%0b/pavld:%0b/id:%0d l2_ref:%0b/pavld:%0b/eid:%0d ",
+              "install_req{ptw:%0b l2:%0b wfi:%0b} install_sel{ptw:%0b l2:%0b wfi:%0b} refill:%0b/src:%0d/idx:%0d/vpn:0x%07h entry_upd:0x%04h}"},
+      tag,
+      mmu_diag_cycle,
+      $time,
+      cpurst_b,
+      lsu_if_inst.lsu_mmu_tlb_all_inv,
+      lsu_if_inst.lsu_mmu_tlb_va_all_inv,
+      lsu_if_inst.lsu_mmu_tlb_asid_all_inv,
+      lsu_if_inst.lsu_mmu_tlb_va_asid_inv,
+      lsu_if_inst.mmu_lsu_tlb_inv_done,
+      lsu_if_inst.mmu_lsu_tlb_busy,
+      lsu_if_inst.mmu_lsu_tlb_wakeup,
+      lsu_if_inst.lsu_mmu_tlb_va,
+      lsu_if_inst.lsu_mmu_tlb_asid,
+      dut_probes_if.ptw_lsu_data_req,
+      dut_probes_if.ptw_lsu_data_req_grant,
+      dut_probes_if.ptw_lsu_data_vld,
+      dut_probes_if.ptw_lsu_bus_error,
+      dut_probes_if.ptw_lsu_data_req_addr,
+      dut_probes_if.ptw_lsu_data_req_size,
+      dut_probes_if.ptw_lsu_data,
+      dut_probes_if.tlboper_ptw_abort,
+      dut_probes_if.ptw_abort_flop,
+      dut_probes_if.ptw_jtlb_ready,
+      dut_probes_if.ptw_mbuf_entry_vld,
+      dut_probes_if.ptw_mbuf_twu_have,
+      dut_probes_if.ptw_twu_idle,
+      dut_probes_if.ptw_twu_mask,
+      dut_probes_if.ptw_twu_ref_req,
+      dut_probes_if.ptw_twu_mbuf_req,
+      dut_probes_if.ptw_twu_pgflt_vec,
+      dut_probes_if.ptw_twu_acc_err_vec,
+      dut_probes_if.l2tlb_ptw_req,
+      dut_probes_if.l2tlb_ptw_id,
+      dut_probes_if.l2tlb_ptw_type,
+      dut_probes_if.l2tlb_ptw_vpn,
+      dut_probes_if.ptw_l2tlb_cmplt,
+      dut_probes_if.ptw_l2tlb_ref_data_vld,
+      dut_probes_if.tlbop_tlbp_fsm,
+      dut_probes_if.tlbop_tlbr_fsm,
+      dut_probes_if.tlbop_tlbwi_fsm,
+      dut_probes_if.tlbop_tlbwr_fsm,
+      dut_probes_if.tlbop_tlbiasid_fsm,
+      dut_probes_if.tlbop_tlbiall_fsm,
+      dut_probes_if.tlbop_arb_req,
+      dut_probes_if.tlbop_arb_write,
+      dut_probes_if.tlbop_arb_grant,
+      dut_probes_if.tlbop_regs_cmplt,
+      dut_probes_if.tlbop_l2_tlboper_cmplt,
+      dut_probes_if.tlboper_utlb_clr,
+      dut_probes_if.tlboper_utlb_inv_va_req,
+      dut_probes_if.tlbiva_cur_st,
+      dut_probes_if.l2_reqq_vld_vec,
+      dut_probes_if.l2_reqq_rdy_vec,
+      dut_probes_if.l2_reqq_qid,
+      dut_probes_if.l2_reqq_issue_valid,
+      dut_probes_if.l2_reqq_issue_type,
+      dut_probes_if.l2mb_vld_vec,
+      dut_probes_if.l2mb_rdy_vec,
+      dut_probes_if.l2mb_issue_req,
+      dut_probes_if.l2mb_issue_eid,
+      dut_probes_if.l2mb_issue_type,
+      dut_probes_if.l2mb_alloc_valid,
+      dut_probes_if.l2_final_vld,
+      dut_probes_if.l2_final_tlb_hit,
+      dut_probes_if.l2_miss,
+      dut_probes_if.l2_final_is_dtlb,
+      dut_probes_if.l2_final_vpn,
+      dut_probes_if.l1d_mb_vld,
+      dut_probes_if.l1d_mb_state[0],
+      dut_probes_if.l1d_mb_ready,
+      dut_probes_if.l1d_mb_issued,
+      dut_probes_if.l1d_mb_wfc,
+      dut_probes_if.l1d_mb_wfi,
+      dut_probes_if.l1d_l2_req_vld,
+      dut_probes_if.l1d_l2_req_eid,
+      dut_probes_if.l1d_l2_req_vpn,
+      dut_probes_if.l1d_ptw_ref_cmplt,
+      dut_probes_if.l1d_ptw_ref_pavld,
+      dut_probes_if.l1d_ptw_ref_id,
+      dut_probes_if.l1d_l2_ref_cmplt,
+      dut_probes_if.l1d_l2_ref_pavld,
+      dut_probes_if.l1d_l2_ref_eid,
+      dut_probes_if.l1d_install_req_ptw,
+      dut_probes_if.l1d_install_req_l2,
+      dut_probes_if.l1d_install_req_wfi,
+      dut_probes_if.l1d_install_sel_ptw,
+      dut_probes_if.l1d_install_sel_l2,
+      dut_probes_if.l1d_install_sel_wfi,
+      dut_probes_if.l1d_refill_vld,
+      dut_probes_if.l1d_refill_src,
+      dut_probes_if.l1d_refill_idx,
+      dut_probes_if.l1d_refill_vpn,
+      dut_probes_if.l1d_entry_upd);
+  endtask
+
+  function automatic bit mmu_diag_event();
+    return (mmu_diag_inv_vec() !== mmu_diag_inv_vec_q)
+        || (lsu_if_inst.mmu_lsu_tlb_inv_done !== mmu_diag_inv_done_q)
+        || (lsu_if_inst.mmu_lsu_tlb_busy !== mmu_diag_tlb_busy_q)
+        || (lsu_if_inst.mmu_lsu_tlb_wakeup !== mmu_diag_tlb_wakeup_q)
+        || (dut_probes_if.tlboper_ptw_abort !== mmu_diag_tlboper_ptw_abort_q)
+        || (dut_probes_if.ptw_abort_flop !== mmu_diag_ptw_abort_flop_q)
+        || (dut_probes_if.ptw_mbuf_entry_vld !== mmu_diag_ptw_mbuf_entry_vld_q)
+        || (dut_probes_if.l2_reqq_vld_vec !== mmu_diag_l2_reqq_vld_q)
+        || (dut_probes_if.l2mb_vld_vec !== mmu_diag_l2mb_vld_q)
+        || (dut_probes_if.l1d_mb_vld !== mmu_diag_l1d_mb_vld_q)
+        || (dut_probes_if.ptw_twu_ref_req !== mmu_diag_ptw_twu_ref_req_q)
+        || (dut_probes_if.ptw_twu_mbuf_req !== mmu_diag_ptw_twu_mbuf_req_q)
+        || mmu_diag_inv_active()
+        || dut_probes_if.ptw_lsu_data_req
+        || dut_probes_if.ptw_lsu_data_vld
+        || (dut_probes_if.ptw_lsu_data_req_grant != 9'h000)
+        || dut_probes_if.l2_reqq_issue_valid
+        || dut_probes_if.l2mb_issue_req
+        || dut_probes_if.l2tlb_ptw_req
+        || dut_probes_if.ptw_l2tlb_cmplt
+        || dut_probes_if.l1d_l2_req_vld
+        || dut_probes_if.l1d_ptw_ref_cmplt
+        || dut_probes_if.l1d_l2_ref_cmplt
+        || dut_probes_if.l1d_refill_vld
+        || dut_probes_if.tlbop_arb_req
+        || dut_probes_if.tlbop_arb_grant
+        || dut_probes_if.tlbop_regs_cmplt
+        || dut_probes_if.tlbop_l2_tlboper_cmplt
+        || dut_probes_if.tlboper_utlb_clr
+        || dut_probes_if.tlboper_utlb_inv_va_req;
+  endfunction
+
+  always @(posedge forever_cpuclk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+      mmu_diag_cycle <= 0;
+      mmu_diag_inv_vec_q <= '0;
+      mmu_diag_inv_done_q <= 1'b0;
+      mmu_diag_tlb_busy_q <= 1'b0;
+      mmu_diag_tlb_wakeup_q <= '0;
+      mmu_diag_tlboper_ptw_abort_q <= 1'b0;
+      mmu_diag_ptw_abort_flop_q <= 1'b0;
+      mmu_diag_ptw_mbuf_entry_vld_q <= '0;
+      mmu_diag_l2_reqq_vld_q <= '0;
+      mmu_diag_l2mb_vld_q <= '0;
+      mmu_diag_l1d_mb_vld_q <= '0;
+      mmu_diag_ptw_twu_ref_req_q <= '0;
+      mmu_diag_ptw_twu_mbuf_req_q <= '0;
+    end else begin
+      if (mmu_diag_enable && (mmu_diag_cycle >= mmu_diag_from_cycle)) begin
+        if (mmu_diag_event_trace && mmu_diag_event())
+          mmu_diag_print("event");
+        else if ((mmu_diag_cycle % mmu_diag_heartbeat_cycles) == 0)
+          mmu_diag_print("heartbeat");
+      end
+
+      mmu_diag_cycle <= mmu_diag_cycle + 1;
+      mmu_diag_inv_vec_q <= mmu_diag_inv_vec();
+      mmu_diag_inv_done_q <= lsu_if_inst.mmu_lsu_tlb_inv_done;
+      mmu_diag_tlb_busy_q <= lsu_if_inst.mmu_lsu_tlb_busy;
+      mmu_diag_tlb_wakeup_q <= lsu_if_inst.mmu_lsu_tlb_wakeup;
+      mmu_diag_tlboper_ptw_abort_q <= dut_probes_if.tlboper_ptw_abort;
+      mmu_diag_ptw_abort_flop_q <= dut_probes_if.ptw_abort_flop;
+      mmu_diag_ptw_mbuf_entry_vld_q <= dut_probes_if.ptw_mbuf_entry_vld;
+      mmu_diag_l2_reqq_vld_q <= dut_probes_if.l2_reqq_vld_vec;
+      mmu_diag_l2mb_vld_q <= dut_probes_if.l2mb_vld_vec;
+      mmu_diag_l1d_mb_vld_q <= dut_probes_if.l1d_mb_vld;
+      mmu_diag_ptw_twu_ref_req_q <= dut_probes_if.ptw_twu_ref_req;
+      mmu_diag_ptw_twu_mbuf_req_q <= dut_probes_if.ptw_twu_mbuf_req;
+    end
+  end
+
   //=========================================================================
   // UVM Config DB — Publish Virtual Interfaces
   //=========================================================================

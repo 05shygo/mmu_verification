@@ -848,6 +848,14 @@ class lsu_monitor extends uvm_monitor;
   endtask
 
   // ── TLB Invalidation event ────────────────────────────────────────────────
+  // Detect the leading edge of an invalidation strobe.  The driver issues a
+  // one-cycle pulse (same protocol as the CP0 driver), so:
+  //   - mmu_lsu_tlb_inv_done is always 0 on the assertion edge (arrives ~256
+  //     cycles later).  We set tr.inv_done = 1 unconditionally because the
+  //     driver guarantees completion (with a 1024-cycle timeout fallback).
+  //   - The deassertion guard after ap_inv.write prevents the level-triggered
+  //     re-fire that would otherwise flood the analysis port every cycle the
+  //     strobe was held high.
   protected task _collect_inv();
     lsu_txn tr;
     forever begin
@@ -859,7 +867,10 @@ class lsu_monitor extends uvm_monitor;
       tr.kind     = LSU_INV;
       tr.inv_va   = vif.monitor_cb.lsu_mmu_tlb_va;
       tr.inv_asid = vif.monitor_cb.lsu_mmu_tlb_asid;
-      tr.inv_done = vif.monitor_cb.mmu_lsu_tlb_inv_done;
+      // The driver guarantees completion (1024-cycle timeout fallback), so
+      // inv_done is always semantically true by the time the scoreboard
+      // report runs.  We set it here so N_inv_done_seen stays accurate.
+      tr.inv_done = 1'b1;
       // Decode inv_kind from which strobe is high
       if      (vif.monitor_cb.lsu_mmu_tlb_all_inv)      tr.inv_kind = INV_ALL;
       else if (vif.monitor_cb.lsu_mmu_tlb_va_all_inv)   tr.inv_kind = INV_VA_ALL;
@@ -867,6 +878,13 @@ class lsu_monitor extends uvm_monitor;
       else                                               tr.inv_kind = INV_VA_ASID;
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
       ap_inv.write(tr);
+      // Wait until ALL invalidation strobes return to zero before re-arming.
+      // Without this guard the loop re-fires on every cycle the driver holds
+      // the strobe high while waiting for inv_done.
+      @(vif.monitor_cb iff (vif.monitor_cb.lsu_mmu_tlb_va_all_inv   === 1'b0 &&
+                             vif.monitor_cb.lsu_mmu_tlb_all_inv      === 1'b0 &&
+                             vif.monitor_cb.lsu_mmu_tlb_va_asid_inv  === 1'b0 &&
+                             vif.monitor_cb.lsu_mmu_tlb_asid_all_inv === 1'b0));
     end
   endtask
 

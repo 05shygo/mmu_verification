@@ -44,6 +44,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected int unsigned m_rsp_watchdog_cycles;
   protected int unsigned m_p2_grant_max_cycles;
   protected int unsigned m_p2_rsp_watchdog_cycles;
+  protected int unsigned m_inv_busy_wait_cycles;
 
   // Mutual exclusion between pipe0 and pipe1: the DUT's L1 DTLB lookup logic
   // shares resources between the two pipes.  Asserting va0_vld and va1_vld on
@@ -65,6 +66,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     m_rsp_watchdog_cycles = 200000;
     m_p2_grant_max_cycles = 256;
     m_p2_rsp_watchdog_cycles = 8192;
+    m_inv_busy_wait_cycles   = 16384;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -80,6 +82,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     void'($value$plusargs("LSU_P2_GRANT_MAX_CYCLES=%0d", m_p2_grant_max_cycles));
     void'($value$plusargs("LSU_P2_RSP_WATCHDOG_CYCLES=%0d", m_p2_rsp_watchdog_cycles));
     void'($value$plusargs("LSU_P2_RSP_MAX_CYCLES=%0d", m_p2_rsp_watchdog_cycles));
+    void'($value$plusargs("LSU_INV_BUSY_WAIT_CYCLES=%0d", m_inv_busy_wait_cycles));
     if (m_retry_probe_cycles == 0)
       m_retry_probe_cycles = 1;
     if (m_rsp_watchdog_cycles == 0)
@@ -88,6 +91,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       m_p2_grant_max_cycles = 1;
     if (m_p2_rsp_watchdog_cycles == 0)
       m_p2_rsp_watchdog_cycles = 1;
+    if (m_inv_busy_wait_cycles == 0)
+      m_inv_busy_wait_cycles = 1;
   endfunction
 
   virtual function void set_end_quiesce(bit enable = 1'b1);
@@ -143,7 +148,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
               "rsp={p0:%0b p1:%0b p2:%0b} fault={p0_pg:%0b p0_ac:%0b p1_pg:%0b p1_ac:%0b p2_ac:%0b} ",
               "tlb_busy=%0b wakeup=0x%03h mmu_en=%0b ",
               "va0=0x%016h id0=%0d va1=0x%016h id1=%0d va2=0x%07h ",
-              "retry_probe=%0d rsp_watchdog=%0d p2_grant_max=%0d p2_rsp_watchdog=%0d"},
+              "retry_probe=%0d rsp_watchdog=%0d p2_grant_max=%0d p2_rsp_watchdog=%0d inv_busy_wait=%0d"},
       ctx,
       m_pending.size(),
       m_end_quiesce,
@@ -175,7 +180,8 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       m_retry_probe_cycles,
       m_rsp_watchdog_cycles,
       m_p2_grant_max_cycles,
-      m_p2_rsp_watchdog_cycles);
+      m_p2_rsp_watchdog_cycles,
+      m_inv_busy_wait_cycles);
   endfunction
 
   virtual task wait_for_idle(
@@ -640,6 +646,12 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   endtask
 
   // ── TLB Invalidation sub-thread ───────────────────────────────────────────
+  // Issue the invalidation strobe as a one-cycle pulse (same protocol as the
+  // CP0 driver's _do_tlb_all_inv), then wait for mmu_lsu_tlb_inv_done or
+  // timeout.  Holding the strobe high until done interacts with ct_mmu_tlboper's
+  // single-cycle lsu_oper_cmplt pulse: the strobe is still sampled high when
+  // lsu_oper_cmplt returns to zero and tlb_sm_idle becomes true, which
+  // re-triggers tlb_inv_all and creates an infinite 256-cycle IALL loop.
   protected task _drive_inv();
     lsu_txn tr;
     forever begin
@@ -647,11 +659,29 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       m_inv_busy = 1'b1;
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
       repeat (tr.idle_cycles) @(vif.driver_cb);
-      // Normal directed invalidates avoid the busy window.  A process-switch
-      // SATP update is different: LSU must issue the ASID invalidate even while
-      // a walk is in flight so ct_mmu_tlboper raises tlboper_ptw_abort.
-      if ((tr.inv_allow_busy !== 1'b1) && (vif.driver_cb.mmu_lsu_tlb_busy === 1'b1))
-        @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
+
+      // Wait for TLB to be idle, with timeout to avoid deadlock.
+      if ((tr.inv_allow_busy !== 1'b1) && (vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)) begin
+        bit busy_cleared;
+        busy_cleared = 1'b0;
+        fork
+          begin : wait_inv_busy_clear
+            @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
+            busy_cleared = 1'b1;
+          end
+          begin : wait_inv_busy_timeout
+            repeat (m_inv_busy_wait_cycles) @(vif.driver_cb);
+          end
+        join_any
+        disable fork;
+        if (!busy_cleared) begin
+          `uvm_warning(get_type_name(),
+            $sformatf("TLB busy did not clear before INV after %0d cycles (inv_kind=%s va=0x%07h) — proceeding with invalidation on non-idle TLB",
+              m_inv_busy_wait_cycles, tr.inv_kind.name(), tr.inv_va))
+        end
+      end
+
+      // One-cycle strobe — same protocol as CP0 driver _do_tlb_all_inv.
       @(vif.driver_cb);
       vif.driver_cb.lsu_mmu_tlb_va   <= tr.inv_va;
       vif.driver_cb.lsu_mmu_tlb_asid <= tr.inv_asid;
@@ -661,9 +691,13 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         INV_ASID_ALL: vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b1;
         INV_VA_ASID:  vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b1;
       endcase
-      // Keep INV signals asserted until mmu_lsu_tlb_inv_done is received,
-      // matching the LSU RTL behaviour in ct_lsu_snoop_ctcq.v where
-      // ctcq_ctc_req stays high until mmu_lsu_tlb_inv_done clears it.
+      @(vif.driver_cb);
+      vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b0;
+      vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
+      vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
+      vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
+
+      // Wait for DUT completion with timeout.
       fork
         begin : wait_inv_done
           @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
@@ -681,10 +715,6 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         end
       join_any
       disable fork;
-      vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
       m_inv_busy = 1'b0;
     end
   endtask

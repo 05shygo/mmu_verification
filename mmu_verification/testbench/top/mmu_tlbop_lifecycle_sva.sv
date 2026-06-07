@@ -155,11 +155,12 @@ module mmu_tlbop_lifecycle_sva (
 
   // ── G2: L2TLB completion only when an FSM is active ────────────────────
   // l2tlb_tlboper_cmplt = final_vld && (final_acc_type == 3'b001) is a pure
-  // combinational pipeline signal.  It can fire 1 cycle after the FSM returns
-  // to IDLE, or during post-reset pipeline drain.  Accept it if any FSM was
-  // active in the current OR previous cycle.
+  // combinational pipeline signal.  It can fire up to 3 cycles after the FSM
+  // returns to IDLE due to pipeline drain, or during post-reset pipeline
+  // flush.  The 3-cycle $past window covers multi-stage pipeline delay from
+  // FSM → arbiter → L2TLB → completion path.
   a_l2_cmplt_during_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    jtlb_tlboper_cmplt |-> any_active || $past(any_active));
+    jtlb_tlboper_cmplt |-> any_active || $past(any_active) || $past(any_active, 2) || $past(any_active, 3));
 
   // ── G2: regs_cmplt only when an FSM is active (or just finished) ──────
   // regs_cmplt is pulsed when the operation is done

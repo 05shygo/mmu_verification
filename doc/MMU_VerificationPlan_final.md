@@ -1151,7 +1151,7 @@ Scoreboard implementation must follow the Phase 4 boundary: v1 pass/fail is tran
 
 ---
 
-## § Traceability Matrix CSV（35 行 × 19 列）
+## § Traceability Matrix CSV（维护入口）
 
 ---
 
@@ -1853,9 +1853,11 @@ Phase 14 issue rollup:
 
 完整矩阵见 **[MMU_Traceability_Matrix.csv](MMU_Traceability_Matrix.csv)**（可直接用 Excel 打开，UTF-8 with BOM 编码）。
 
-> CSV 列：Requirement_ID · Requirement · Sub_Feature_ID · Sub_Feature · Test_Case_ID · Test_Case_Name · Feature_Description · Verification_Goal · Stimuli · Test_Type · Coverage_Method · Covergroup_Binding · Assertion_Binding · Sequence_Binding · Criteria_Pass_Fail · Priority · RTL_Reference · Spec_Reference · Status
+> CSV 列：Requirement_ID · Requirement · Sub_Feature_ID · Sub_Feature · Test_Case_ID · Test_Case_Name · Feature_Description · Verification_Goal · Stimuli · Test_Type · Coverage_Method · Covergroup_Binding · Assertion_Binding · Sequence_Binding · Criteria_Pass_Fail · Priority · RTL_Reference · Spec_Reference · Status · Implementation_Stage · Implementation_Artifact · Implementation_Notes
 >
 > **v2.0 补充**：CSV 在原 248 行基础上追加了 60+ 行 `TC-GAP-*` / `TC-*-*-001` 记录（参考 §6.5 与 §11.1 融合审计结论），映射 v2.0 新增的 F1.13~F14.20 sub-feature；全量追溯以 CSV 为准。
+>
+> **2026-06-07 CSV 合并口径**：原 `phase9_b_stage_catalog_system.csv` 与 `phase11_b_stage_manifest.csv` 已融合到 `MMU_Traceability_Matrix.csv`，通过 `Implementation_*` 字段记录 stage、wrapper/list、seed_policy、blocked_reason、xfail_required 与 review mode；历史源文件归档在 `archive_merged_20260607/csv/`。`phase12_b_stage_manifest.csv` 是 Phase 12 exit gate 的阶段任务 manifest，仍保留为 `mmu_verification/scripts/phase12_exit_check.sh` 的输入，不并入 traceability 行。
 >
 > 本节仅展示关键行预览（格式与 CSV 对齐的简化 markdown 表）。
 

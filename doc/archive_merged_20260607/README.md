@@ -59,3 +59,15 @@ The signoff template `../IC验证计划_报告_签核清单.md` was also left un
 | `MMU_VerificationPlan_v1.md` | `../MMU_VerificationPlan_final.md` version evolution |
 | `MMU_VerificationPlan_v2.md` | `../MMU_VerificationPlan_final.md` version evolution |
 | `section6_3_lsu_l1dtlb_l2tlb_tlbop_baseline_tc.md` | `../MMU_VerificationPlan_final.md` baseline TC import rule |
+
+## CSV
+
+| Archived source | Fused destination |
+| --- | --- |
+| `csv/phase9_b_stage_catalog_system.csv` | `../MMU_Traceability_Matrix.csv` Phase 9 system wrapper stage/artifact fields |
+| `csv/phase11_b_stage_manifest.csv` | `../MMU_Traceability_Matrix.csv` Phase 11 implementation status, seed policy, blocked/xfail/review notes |
+
+`../phase12_b_stage_manifest.csv` was intentionally kept in place because it is
+the Phase 12 stage/task manifest consumed by
+`../mmu_verification/scripts/phase12_exit_check.sh`, not a one-row-per-testcase
+traceability source.

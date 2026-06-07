@@ -2487,7 +2487,7 @@ make regress LIST=simu/mmu_smoke_list
   - R19（F4.NEW.4 / TC-BUG-011）独立 JIRA；修复前 `tc_bug_011` 与依赖 `csr_data_flop` 的 2MB CSR 跨界场景 TC 设置 `Status=Blocked-Waiting-RTL-Fix` + `xfail`
   - R20（F5.NEW.2 / F5.NEW.3）中等风险，由 `sva_ptw_write_pipe_reset_safe` + `cg_xbar_cold_start` 作为主保护
 - **融合后的 stage / list 契约**：
-  - `phase11_b_stage_manifest.csv` 是 trace、seed_policy、blocked_reason、xfail_required、review_mode 的机器可读事实源。
+  - `MMU_Traceability_Matrix.csv` 的 `Implementation_Stage` / `Implementation_Artifact` / `Implementation_Notes` 是 trace、seed_policy、blocked_reason、xfail_required、review_mode 的机器可读事实源；原 `phase11_b_stage_manifest.csv` 已作为历史来源归档到 `archive_merged_20260607/csv/`。
   - `TC-BUG-015` 保持 DOC_REVIEW，不生成 runnable test；R19 proof 和 BUG015 review 通过 `PHASE11_R19_PROOF` / `PHASE11_BUG015_REVIEW` 传入 gate。
   - `phase11_exit_check` 必须覆盖 compile、R19 proof、BUG015 review、bug single runs、PTW->LSU protocol 3-seed、R20 focused 10-seed、v3 union 3-seed 和 integrated log scan。
 - **签核增量条件**：

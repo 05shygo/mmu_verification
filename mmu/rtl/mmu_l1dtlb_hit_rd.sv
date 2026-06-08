@@ -180,7 +180,7 @@ assign dutlb_page_fault = ( !dutlb_fin_flg[0]
                          || !dutlb_fin_flg[5]
                          || !dutlb_fin_flg[6] && !dutlb_read_type_x
                           )
-                          && dutlb_addr_hit
+                          && lsu_mmu_va_vld_x && dutlb_addr_hit
                           || expt_match_x && expt_pgflt_x
                           || dutlb_va_illegal;
 

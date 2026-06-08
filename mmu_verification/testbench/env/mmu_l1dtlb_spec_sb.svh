@@ -392,6 +392,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   l1_entry_shadow_t m_l1_shadow[L1_ENTRY_COUNT];
   mb_shadow_t m_mb_shadow[MB_DEPTH];
   mb_alloc_expect_t m_mb_alloc_expect_q[MB_ALLOC_EXPECT_DEPTH];
+  logic [7:0] m_phase6d_alloc_match_mask;
   expt_lifecycle_t m_expt_life[MB_DEPTH];
   mb_release_expect_t m_phase6e_release_expect[MB_DEPTH];
   int unsigned m_mb_alloc_expect_count;
@@ -742,6 +743,16 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     return n;
   endfunction
 
+  protected function logic [7:0] mb_new_entry_mask();
+    logic [7:0] mask;
+    mask = 8'h00;
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (v_probe.mon_cb.l1d_mb_vld[i] && !m_prev_mb_vld[i])
+        mask[i] = 1'b1;
+    end
+    return mask;
+  endfunction
+
   protected function int unsigned mb_new_entry_count_from(input logic [7:0] base_vld);
     int unsigned n;
     n = 0;
@@ -837,6 +848,20 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     return 1'b0;
   endfunction
 
+  protected function void mark_phase6d_expected_alloc_match(
+    input logic [7:0] base_vld,
+    input lsu_pipe_token_t tok
+  );
+    int unsigned got_idx;
+
+    if (!tok.vld)
+      return;
+
+    if (mb_alloc_transition_matches_from(base_vld, tok.vpn, tok.iid, tok.store, got_idx)
+        && (got_idx < MB_DEPTH))
+      m_phase6d_alloc_match_mask[got_idx] = 1'b1;
+  endfunction
+
   protected function bit mb_current_vpn_match(input logic [26:0] key, output int unsigned idx);
     idx = MB_DEPTH;
     for (int i = 0; i < MB_DEPTH; i++) begin
@@ -852,6 +877,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     for (int i = 0; i < MB_ALLOC_EXPECT_DEPTH; i++)
       m_mb_alloc_expect_q[i] = '{default: '0};
     m_mb_alloc_expect_count = 0;
+    m_phase6d_alloc_match_mask = 8'h00;
   endfunction
 
   protected function void phase6e_lifecycle_reset();
@@ -1378,6 +1404,10 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if (m_mb_alloc_expect_count > m_phase6d_alloc_expect_max)
       m_phase6d_alloc_expect_max = m_mb_alloc_expect_count;
     m_phase6d_alloc_expect_enq++;
+    if (expect_p0)
+      mark_phase6d_expected_alloc_match(base_vld, p0);
+    if (expect_p1)
+      mark_phase6d_expected_alloc_match(base_vld, p1);
 
     `uvm_info({get_type_name(), "::PHASE6D_MB_ALLOC_EXPECT"},
       $sformatf("enqueue slot=%0d reason=%s issue_cycle=%0d due_cycle=%0d base_vld=0x%02h exp_count=%0d expect_p0=%0b expect_p1=%0b drop_p0=%0b drop_p1=%0b exp_idx0=%0d exp_idx1=%0d p0{%s} p1{%s}",
@@ -1402,6 +1432,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
           reason, exp_idx, token_s(tok), base_vld, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld));
       return;
     end
+    if (got_idx < MB_DEPTH)
+      m_phase6d_alloc_match_mask[got_idx] = 1'b1;
 
     if (exp_idx < MB_DEPTH && got_idx != exp_idx) begin
       sb_error("P6D_ALLOC_INDEX",
@@ -2066,6 +2098,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   );
     int unsigned new_entries;
     int unsigned sidefx_idx;
+    logic [7:0] new_entry_mask;
+    logic [7:0] unexpected_new_entry_mask;
     bit alloc_sidefx;
     bit l2_sidefx;
     bit refill_sidefx;
@@ -2075,6 +2109,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     string diag_token;
 
     new_entries = mb_new_entry_count();
+    new_entry_mask = mb_new_entry_mask();
+    unexpected_new_entry_mask = new_entry_mask;
     diag_token = check_token ? token_s(tok) : "global";
     prev_owner_match = 1'b0;
     if (check_token) begin
@@ -2091,15 +2127,23 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     alloc_sidefx = 1'b0;
     if (!check_token) begin
-      alloc_sidefx = (new_entries != 0);
+      if (reason == "flush_kill") begin
+        // A flush can share a cycle with a legal T1 MB allocation from a
+        // miss observed before the flush.  The allocator oracle records
+        // those expected entries, so only unexpected new entries are
+        // treated as no-response side effects here.
+        unexpected_new_entry_mask = new_entry_mask & ~m_phase6d_alloc_match_mask;
+      end
+      alloc_sidefx = (unexpected_new_entry_mask != 8'h00);
     end else if (mb_new_entry_matches(tok.vpn, tok.iid, tok.store, sidefx_idx)) begin
       alloc_sidefx = 1'b1;
     end
 
     if (alloc_sidefx) begin
       sb_error("P6D_NR_ALLOC_SIDE_EFFECT",
-        $sformatf("legal no-response reason=%s allocated a matching MB side effect new_entries=%0d prev_vld=0x%02h cur_vld=0x%02h token{%s}",
-          reason, new_entries, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld,
+        $sformatf("legal no-response reason=%s allocated a matching MB side effect new_entries=%0d new_mask=0x%02h expected_mask=0x%02h unexpected_mask=0x%02h prev_vld=0x%02h cur_vld=0x%02h token{%s}",
+          reason, new_entries, new_entry_mask, m_phase6d_alloc_match_mask,
+          unexpected_new_entry_mask, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld,
           diag_token));
     end else begin
       m_phase6d_no_rsp_no_alloc++;
@@ -2128,7 +2172,12 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     refill_sidefx = 1'b0;
     if (!check_token) begin
-      refill_sidefx = v_probe.mon_cb.l1d_refill_vld;
+      // A global RTU flush can coincide with completion of an older in-flight
+      // PTW/L2 refill.  Per the flush contract, this is not a side effect of
+      // the no-response flush event; satp/utlb clear behavior is checked by
+      // the invalidate/race-closure logic below.
+      refill_sidefx = (reason != "flush_kill")
+                   && v_probe.mon_cb.l1d_refill_vld;
     end else if (v_probe.mon_cb.l1d_refill_vld
               && (v_probe.mon_cb.l1d_refill_vpn == tok.vpn)
               && (v_probe.mon_cb.l1d_refill_iid_sel == tok.iid)
@@ -2236,11 +2285,13 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     // fires on any install event (sel_ptw || sel_jtlb || sel_wfi);
     // in-flight PTW refills can complete during a flush and their
     // wakeup is a legitimate consequence, not a side effect.
-    if (!$isunknown({v_probe.mon_cb.l1d_refill_vld,
-                     v_probe.mon_cb.l1d_expt_wr0_vld,
+    //
+    // l1d_refill_vld is intentionally allowed for the same reason: RTU flush
+    // controls in-flight miss lifecycle and exception replay, but it is not a
+    // blanket mask on already-completing DTLB installs.
+    if (!$isunknown({v_probe.mon_cb.l1d_expt_wr0_vld,
                      v_probe.mon_cb.l1d_expt_wr1_vld})
-        && (v_probe.mon_cb.l1d_refill_vld
-         || v_probe.mon_cb.l1d_expt_wr0_vld
+        && (v_probe.mon_cb.l1d_expt_wr0_vld
          || v_probe.mon_cb.l1d_expt_wr1_vld)) begin
       sb_error("NO_RSP_FLUSH_SIDE_EFFECT",
         $sformatf("RTU flush legal no-response produced side effect: refill=%0b expt0=%0b expt1=%0b wakeup=0x%03h mb_vld=0x%02h",
@@ -3826,6 +3877,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       end
 
       m_cycles++;
+      m_phase6d_alloc_match_mask = 8'h00;
       t0_p0 = sample_pipe_token(0);
       t0_p1 = sample_pipe_token(1);
       t1_p0 = retime_t1_token(m_t1_token[0]);

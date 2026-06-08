@@ -1,0 +1,4 @@
+1.rtu_yy_xx_flush来自 RTU 的 backend flush 阶段.触发源包括异常、异步异常、debug、带 flush 属性的 retire 指令，以及分支/跳转预测错误进入 flush FSM 后的 BE 阶段。flush 在这里主要是“控制 in-flight miss 的生命周期”，不是专门“防止旧页表 refill install”。
+2.写satp的指令是带flush属性的指令，退休时会产生flush信号。satp_write_en/regs_utlb_clr 发生时，不应该还有旧 satp epoch 的 D-side PTW refill 在路上。这个保证来自 fence/ROB/LSIQ 的全局顺序，不是 MMU refill install 处的 mask。rtu_yy_xx_flush 写入 dUTLB”这个 SATP 场景，core 是靠 IDU fence 串行化保证理论上不会发生；MMU 本身没有兜底逻辑。如果引起refill的load/store是在写satp指令发出之前发出的，那么在ROB里面保证了前面引起refill的load/store指令和写satp指令的order，在写satp指令退休之前，load/store会完成退休。
+3.satp 后面的 load/store 要等 CSR 串行化完成后才会发出，因此不会和这条 CSR 的 rtu_yy_xx_flush 形成“正在 walk 同拍 refill”的关系。
+4.其他情况造成的rtu flush即使和refill完成信号同一拍到达，并且refill的页表写进tlb，也没有影响

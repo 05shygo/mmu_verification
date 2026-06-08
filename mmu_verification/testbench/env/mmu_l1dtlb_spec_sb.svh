@@ -560,8 +560,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   endfunction
 
   protected function bit [1:0] effective_priv_snapshot();
-    if ((v_probe.mon_cb.l1d_cp0_priv_mode == 2'b11)
-        && (v_probe.mon_cb.l1d_cp0_mprv === 1'b1))
+    // Match RTL: cp0_priv_mode = cp0_mmu_mprv ? cp0_mmu_mpp : cp0_yy_priv_mode
+    if (v_probe.mon_cb.l1d_cp0_mprv === 1'b1)
       return v_probe.mon_cb.l1d_cp0_mpp;
     return v_probe.mon_cb.l1d_cp0_priv_mode;
   endfunction

@@ -69,8 +69,8 @@ class lsu_monitor extends uvm_monitor;
   protected function bit [1:0] _effective_priv();
     if (v_probe == null)
       return 2'b00;
-    if ((v_probe.mon_cb.l1d_cp0_priv_mode == 2'b11)
-        && (v_probe.mon_cb.l1d_cp0_mprv === 1'b1))
+    // Match RTL: cp0_priv_mode = cp0_mmu_mprv ? cp0_mmu_mpp : cp0_yy_priv_mode
+    if (v_probe.mon_cb.l1d_cp0_mprv === 1'b1)
       return v_probe.mon_cb.l1d_cp0_mpp;
     return v_probe.mon_cb.l1d_cp0_priv_mode;
   endfunction

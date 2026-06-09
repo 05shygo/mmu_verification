@@ -1194,17 +1194,24 @@ end
 assign mmu_hpcp_jtlb_miss = l2tlb_miss;
 
 
+`ifndef SYNTHESIS
 logic                   ptw_lsu_req_dbg_q ;
 logic [PADDR_WIDTH-1:0] ptw_lsu_addr_dbg_q;
+logic                   ptw_lsu_req_trace_en;
 
-// PTW->LSU request trace for run_check log parsing.
-// Emit once per new request (req rising edge or address change while req high).
+initial begin
+	ptw_lsu_req_trace_en = $test$plusargs("PTW_LSU_REQ_TRACE");
+end
+
+// PTW->LSU request trace for targeted log parsing. Keep it runtime-gated so
+// long coverage regressions stay diagnosable by default.
 always_ff @(posedge ptw_clk or negedge cpurst_b) begin
 	if(!cpurst_b) begin
 		ptw_lsu_req_dbg_q  <= 1'b0;
 		ptw_lsu_addr_dbg_q <= 40'b0;
 	end else begin
-		if(mmu_lsu_data_req
+		if(ptw_lsu_req_trace_en
+		   && mmu_lsu_data_req
 		   && (!ptw_lsu_req_dbg_q || (mmu_lsu_data_req_addr != ptw_lsu_addr_dbg_q))) begin
 			$display("[%0t][PTW LSU REQ] addr=0x%010h size=%0b satp_base=0x%07h",
 			         $time, mmu_lsu_data_req_addr, mmu_lsu_data_req_size, regs_ptw_satp_ppn);
@@ -1214,6 +1221,7 @@ always_ff @(posedge ptw_clk or negedge cpurst_b) begin
 			ptw_lsu_addr_dbg_q <= mmu_lsu_data_req_addr;
 	end
 end
+`endif
 
 // synopsys translate_off
 logic mmu_itlb_dbg_en;
@@ -1334,5 +1342,4 @@ end
 //
 
 endmodule
-
 

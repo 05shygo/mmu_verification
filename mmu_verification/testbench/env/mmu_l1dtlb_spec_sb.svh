@@ -283,6 +283,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_phase6d_alloc_abort_drop;
   int unsigned m_phase6d_alloc_cam_drop;
   int unsigned m_phase6d_alloc_flush_drop;
+  int unsigned m_phase6d_alloc_flush_prior_visible;
   int unsigned m_phase6d_alloc_match_checks;
   int unsigned m_phase6d_alloc_expect_enq;
   int unsigned m_phase6d_alloc_expect_check;
@@ -308,6 +309,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   int unsigned m_phase6d_no_rsp_priority_drop;
   int unsigned m_phase6d_no_rsp_no_alloc;
   int unsigned m_phase6d_no_rsp_no_l2_req;
+  int unsigned m_phase6d_no_rsp_flush_l2_wfg_grant;
+  int unsigned m_phase6d_no_rsp_flush_alloc_prior_visible;
   int unsigned m_phase6d_no_rsp_no_refill;
   int unsigned m_phase6d_no_rsp_no_expt;
   int unsigned m_phase6d_no_rsp_no_wakeup;
@@ -807,12 +810,20 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     return mask;
   endfunction
 
+  protected function bit flush_transition_is_prior_visible(input logic [7:0] trans_mask);
+    if (!v_probe.mon_cb.rtu_yy_xx_flush || (trans_mask == 8'h00))
+      return 1'b0;
+    if ($isunknown(v_probe.mon_cb.l1d_mb_alloc_we_safe))
+      return 1'b0;
+    return ((v_probe.mon_cb.l1d_mb_alloc_we_safe & trans_mask) == 8'h00);
+  endfunction
+
   protected function string flush_alloc_diag_s(input logic [7:0] base_vld,
                                                input logic [7:0] trans_mask);
     string s;
     mb_shadow_t ent;
     s = $sformatf(
-      " diag{cycle=%0d flush=%0b base_vld=0x%02h prev_vld=0x%02h cur_vld=0x%02h trans_mask=0x%02h ready=0x%02h issued=0x%02h wfc=0x%02h wfi=0x%02h l2_req={vld:%0b eid:%0d vpn:0x%07h is_load:%0b} ptw_ref={cmplt:%0b pavld:%0b eid:%0d vpn:0x%07h pgflt:%0b acflt:%0b} l2_ref={cmplt:%0b pavld:%0b eid:%0d vpn:0x%07h pgflt:%0b}",
+      " diag{cycle=%0d flush=%0b base_vld=0x%02h prev_vld=0x%02h cur_vld=0x%02h trans_mask=0x%02h ready=0x%02h issued=0x%02h wfc=0x%02h wfi=0x%02h l2_req={vld:%0b eid:%0d vpn:0x%07h is_load:%0b} alloc={req0:%0b req1:%0b gnt_raw:%0b%0b gnt_safe:%0b%0b sel0:%0d sel1:%0d we_raw:0x%02h we_safe:0x%02h issue_sel:0x%02h issue_gnt:0x%02h} missq={m0{v:%0b abt:%0b vpn:0x%07h iid:%0d st:%0b} m1{v:%0b abt:%0b vpn:0x%07h iid:%0d st:%0b}} ptw_ref={cmplt:%0b pavld:%0b eid:%0d vpn:0x%07h pgflt:%0b acflt:%0b} l2_ref={cmplt:%0b pavld:%0b eid:%0d vpn:0x%07h pgflt:%0b}",
       m_cycles,
       v_probe.mon_cb.rtu_yy_xx_flush,
       base_vld,
@@ -827,6 +838,28 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       v_probe.mon_cb.l1d_l2_req_eid,
       v_probe.mon_cb.l1d_l2_req_vpn,
       v_probe.mon_cb.l1d_l2_req_is_load,
+      v_probe.mon_cb.l1d_alloc_req0_vld,
+      v_probe.mon_cb.l1d_alloc_req1_vld,
+      v_probe.mon_cb.l1d_alloc_gnt0_raw,
+      v_probe.mon_cb.l1d_alloc_gnt1_raw,
+      v_probe.mon_cb.l1d_alloc_gnt0_safe,
+      v_probe.mon_cb.l1d_alloc_gnt1_safe,
+      v_probe.mon_cb.l1d_alloc_sel0,
+      v_probe.mon_cb.l1d_alloc_sel1,
+      v_probe.mon_cb.l1d_mb_alloc_we_raw,
+      v_probe.mon_cb.l1d_mb_alloc_we_safe,
+      v_probe.mon_cb.l1d_mb_issue_sel,
+      v_probe.mon_cb.l1d_mb_issue_grant,
+      v_probe.mon_cb.l1d_miss0_vld_q,
+      v_probe.mon_cb.l1d_miss0_abort_q,
+      v_probe.mon_cb.l1d_miss0_vpn_q,
+      v_probe.mon_cb.l1d_miss0_iid_q,
+      v_probe.mon_cb.l1d_miss0_store_q,
+      v_probe.mon_cb.l1d_miss1_vld_q,
+      v_probe.mon_cb.l1d_miss1_abort_q,
+      v_probe.mon_cb.l1d_miss1_vpn_q,
+      v_probe.mon_cb.l1d_miss1_iid_q,
+      v_probe.mon_cb.l1d_miss1_store_q,
       v_probe.mon_cb.l1d_ptw_ref_cmplt,
       v_probe.mon_cb.l1d_ptw_ref_pavld,
       v_probe.mon_cb.l1d_ptw_ref_id,
@@ -1562,11 +1595,21 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         if (new_count != 0) begin
           alloc_transition_mask = mb_alloc_transition_mask_from(exp.base_vld);
           flush_diag = flush_alloc_diag_limited_s(exp.base_vld, alloc_transition_mask);
-          sb_error("P6D_ALLOC_FLUSH_SIDE_EFFECT",
-            $sformatf("flush due cycle allocated MB entry reason=%s issue_cycle=%0d due_cycle=%0d exp=%0d got=%0d base_vld=0x%02h cur_vld=0x%02h trans_mask=0x%02h p0{%s} p1{%s}%s",
-              exp.reason, exp.issue_cycle, exp.due_cycle, exp.exp_count, new_count,
-              exp.base_vld, v_probe.mon_cb.l1d_mb_vld, alloc_transition_mask,
-              token_s(exp.p0), token_s(exp.p1), flush_diag));
+          if (flush_transition_is_prior_visible(alloc_transition_mask)) begin
+            m_phase6d_alloc_flush_prior_visible += count8(alloc_transition_mask);
+            `uvm_info({get_type_name(), "::PHASE6D_MB_ALLOC_FLUSH_PRIOR_VISIBLE"},
+              $sformatf("flush cycle sees prior allocation result reason=%s issue_cycle=%0d due_cycle=%0d exp=%0d got=%0d base_vld=0x%02h cur_vld=0x%02h trans_mask=0x%02h%s",
+                exp.reason, exp.issue_cycle, exp.due_cycle, exp.exp_count,
+                new_count, exp.base_vld, v_probe.mon_cb.l1d_mb_vld,
+                alloc_transition_mask, flush_diag),
+              UVM_MEDIUM)
+          end else begin
+            sb_error("P6D_ALLOC_FLUSH_SIDE_EFFECT",
+              $sformatf("flush due cycle allocated MB entry reason=%s issue_cycle=%0d due_cycle=%0d exp=%0d got=%0d base_vld=0x%02h cur_vld=0x%02h trans_mask=0x%02h p0{%s} p1{%s}%s",
+                exp.reason, exp.issue_cycle, exp.due_cycle, exp.exp_count, new_count,
+                exp.base_vld, v_probe.mon_cb.l1d_mb_vld, alloc_transition_mask,
+                token_s(exp.p0), token_s(exp.p1), flush_diag));
+          end
         end
         `uvm_info({get_type_name(), "::PHASE6D_MB_ALLOC_FLUSH_DROP"},
           $sformatf("drop pending allocation under flush slot=%0d reason=%s issue_cycle=%0d due_cycle=%0d exp_count=%0d got_count=%0d base_vld=0x%02h cur_vld=0x%02h",
@@ -2197,6 +2240,35 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     end
   endfunction
 
+  protected function bit legal_flush_wfg_l2_issue(input string reason);
+    int unsigned eid;
+
+    if (reason != "flush_kill")
+      return 1'b0;
+    if (!v_probe.mon_cb.rtu_yy_xx_flush || !v_probe.mon_cb.l1d_l2_req_vld)
+      return 1'b0;
+    if ($isunknown({v_probe.mon_cb.l1d_l2_req_eid,
+                    v_probe.mon_cb.l1d_l2_req_vpn,
+                    v_probe.mon_cb.l1d_l2_req_is_load}))
+      return 1'b0;
+
+    eid = v_probe.mon_cb.l1d_l2_req_eid;
+    if (eid >= MB_DEPTH)
+      return 1'b0;
+    if ($isunknown({v_probe.mon_cb.l1d_mb_vld[eid],
+                    v_probe.mon_cb.l1d_mb_ready[eid],
+                    v_probe.mon_cb.l1d_mb_state[eid],
+                    v_probe.mon_cb.l1d_mb_vpn[eid],
+                    v_probe.mon_cb.l1d_mb_store[eid]}))
+      return 1'b0;
+
+    return v_probe.mon_cb.l1d_mb_vld[eid]
+        && v_probe.mon_cb.l1d_mb_ready[eid]
+        && (v_probe.mon_cb.l1d_mb_state[eid] == MB_STATE_WFG)
+        && (v_probe.mon_cb.l1d_l2_req_vpn == v_probe.mon_cb.l1d_mb_vpn[eid])
+        && (v_probe.mon_cb.l1d_l2_req_is_load == !v_probe.mon_cb.l1d_mb_store[eid]);
+  endfunction
+
   protected function void check_no_response_cycle_side_effects(
     input string reason,
     input lsu_pipe_token_t tok,
@@ -2212,6 +2284,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     bit expt_sidefx;
     bit wakeup_sidefx;
     bit prev_owner_match;
+    bit legal_flush_l2_wfg_grant;
     string diag_token;
     string alloc_diag;
 
@@ -2241,24 +2314,36 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     if (alloc_sidefx) begin
       alloc_diag = flush_alloc_diag_limited_s(m_prev_mb_vld, unexpected_new_entry_mask);
-      sb_error("P6D_NR_ALLOC_SIDE_EFFECT",
-        $sformatf("legal no-response reason=%s allocated a matching MB side effect new_entries=%0d new_mask=0x%02h expected_mask=0x%02h unexpected_mask=0x%02h prev_vld=0x%02h cur_vld=0x%02h token{%s}%s",
-          reason, new_entries, new_entry_mask, m_phase6d_alloc_match_mask,
-          unexpected_new_entry_mask, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld,
-          diag_token, alloc_diag));
+      if ((reason == "flush_kill") && flush_transition_is_prior_visible(unexpected_new_entry_mask)) begin
+        m_phase6d_no_rsp_flush_alloc_prior_visible += count8(unexpected_new_entry_mask);
+        m_phase6d_no_rsp_no_alloc++;
+        `uvm_info({get_type_name(), "::PHASE6D_NO_RSP_ALLOC_PRIOR_VISIBLE"},
+          $sformatf("legal no-response reason=%s sees prior allocation result new_entries=%0d new_mask=0x%02h unexpected_mask=0x%02h prev_vld=0x%02h cur_vld=0x%02h token{%s}%s",
+            reason, new_entries, new_entry_mask, unexpected_new_entry_mask,
+            m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld, diag_token, alloc_diag),
+          UVM_MEDIUM)
+      end else begin
+        sb_error("P6D_NR_ALLOC_SIDE_EFFECT",
+          $sformatf("legal no-response reason=%s allocated a matching MB side effect new_entries=%0d new_mask=0x%02h expected_mask=0x%02h unexpected_mask=0x%02h prev_vld=0x%02h cur_vld=0x%02h token{%s}%s",
+            reason, new_entries, new_entry_mask, m_phase6d_alloc_match_mask,
+            unexpected_new_entry_mask, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld,
+            diag_token, alloc_diag));
+      end
     end else begin
       m_phase6d_no_rsp_no_alloc++;
     end
 
+    legal_flush_l2_wfg_grant = legal_flush_wfg_l2_issue(reason);
     l2_sidefx = 1'b0;
     if (!check_token) begin
-      l2_sidefx = v_probe.mon_cb.l1d_l2_req_vld;
+      l2_sidefx = v_probe.mon_cb.l1d_l2_req_vld && !legal_flush_l2_wfg_grant;
     end else if (v_probe.mon_cb.l1d_l2_req_vld
               && (v_probe.mon_cb.l1d_l2_req_eid < MB_DEPTH)
               && !m_prev_mb_vld[v_probe.mon_cb.l1d_l2_req_eid]
               && (v_probe.mon_cb.l1d_l2_req_vpn == tok.vpn)
               && (v_probe.mon_cb.l1d_mb_iid[v_probe.mon_cb.l1d_l2_req_eid] == tok.iid)
-              && !prev_owner_match) begin
+              && !prev_owner_match
+              && !legal_flush_l2_wfg_grant) begin
       l2_sidefx = 1'b1;
     end
 
@@ -2267,6 +2352,8 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         $sformatf("legal no-response reason=%s produced L2 request vpn=0x%07h eid=%0d token{%s}",
           reason, v_probe.mon_cb.l1d_l2_req_vpn, v_probe.mon_cb.l1d_l2_req_eid,
           diag_token));
+    end else if (legal_flush_l2_wfg_grant) begin
+      m_phase6d_no_rsp_flush_l2_wfg_grant++;
     end else begin
       m_phase6d_no_rsp_no_l2_req++;
     end
@@ -4108,7 +4195,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6c_shadow_stamo_bypass),
       UVM_LOW)
     `uvm_info({get_type_name(), "::PHASE6D_MB_SHADOW"},
-      $sformatf("status=implemented reset=%0d shadow_update=%0d state_check=%0d payload_check=%0d alloc_oracle=%0d alloc_expect_enq=%0d alloc_expect_check=%0d alloc_expect_max=%0d alloc_match=%0d single=%0d dual_same_4k=%0d dual_diff_two_free=%0d dual_diff_one_free=%0d full_drop=%0d cam_drop=%0d abort_drop=%0d flush_drop=%0d busy_sleep_drop=%0d iid_age=%0d iid_wrap=%0d mb_cam_hit=%0d mb_cam_current_window=%0d wfg=%0d wfc=%0d wfi=%0d pgflt=%0d acflt=%0d abt=%0d replay_release=%0d policy='MB valid/state/VPN/IID/store/sent/ready/WFC/WFI/payload shadow; allocation oracle mirrors RTL T1 mb_hit gating and checks next sampled MB occupancy; IID age matches ct_rtu_compare_iid including wraparound'",
+      $sformatf("status=implemented reset=%0d shadow_update=%0d state_check=%0d payload_check=%0d alloc_oracle=%0d alloc_expect_enq=%0d alloc_expect_check=%0d alloc_expect_max=%0d alloc_match=%0d single=%0d dual_same_4k=%0d dual_diff_two_free=%0d dual_diff_one_free=%0d full_drop=%0d cam_drop=%0d abort_drop=%0d flush_drop=%0d flush_prior_visible=%0d busy_sleep_drop=%0d iid_age=%0d iid_wrap=%0d mb_cam_hit=%0d mb_cam_current_window=%0d wfg=%0d wfc=%0d wfi=%0d pgflt=%0d acflt=%0d abt=%0d replay_release=%0d policy='MB valid/state/VPN/IID/store/sent/ready/WFC/WFI/payload shadow; allocation oracle mirrors RTL T1 mb_hit gating and checks next sampled MB occupancy; IID age matches ct_rtu_compare_iid including wraparound'",
         m_phase6d_shadow_reset, m_phase6d_shadow_update,
         m_phase6d_shadow_state_check, m_phase6d_shadow_payload_check,
         m_phase6d_alloc_oracle_checks, m_phase6d_alloc_expect_enq,
@@ -4118,6 +4205,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6d_alloc_dual_diff_two_free, m_phase6d_alloc_dual_diff_one_free,
         m_phase6d_alloc_full_drop, m_phase6d_alloc_cam_drop,
         m_phase6d_alloc_abort_drop, m_phase6d_alloc_flush_drop,
+        m_phase6d_alloc_flush_prior_visible,
         m_phase6d_alloc_busy_sleep_drop, m_phase6d_iid_age_checks,
         m_phase6d_iid_wrap_checks, m_phase6d_mb_cam_hit_checks,
         m_phase6d_mb_cam_current_window,
@@ -4127,12 +4215,14 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6d_replay_release),
       UVM_LOW)
     `uvm_info({get_type_name(), "::PHASE6D_NO_RESPONSE"},
-      $sformatf("status=implemented records=%0d mb_cam=%0d mb_full=%0d abort=%0d flush=%0d busy_sleep=%0d priority_drop=%0d sidefx_checks=%0d no_alloc=%0d no_l2_req=%0d no_refill=%0d no_expt=%0d no_wakeup=%0d matrix_checks=%0d taxonomy='mb_cam_hit,mb_full,abort_mask,flush_kill,busy_sleep,priority_drop_one_free'",
+      $sformatf("status=implemented records=%0d mb_cam=%0d mb_full=%0d abort=%0d flush=%0d busy_sleep=%0d priority_drop=%0d sidefx_checks=%0d no_alloc=%0d no_l2_req=%0d flush_l2_wfg_grant=%0d flush_alloc_prior_visible=%0d no_refill=%0d no_expt=%0d no_wakeup=%0d matrix_checks=%0d taxonomy='mb_cam_hit,mb_full,abort_mask,flush_kill,busy_sleep,priority_drop_one_free'",
         m_phase6d_no_rsp_records, m_phase6d_no_rsp_mb_cam,
         m_phase6d_no_rsp_mb_full, m_phase6d_no_rsp_abort,
         m_phase6d_no_rsp_flush, m_phase6d_no_rsp_busy_sleep,
         m_phase6d_no_rsp_priority_drop, m_phase6d_no_rsp_side_effect_checks,
         m_phase6d_no_rsp_no_alloc, m_phase6d_no_rsp_no_l2_req,
+        m_phase6d_no_rsp_flush_l2_wfg_grant,
+        m_phase6d_no_rsp_flush_alloc_prior_visible,
         m_phase6d_no_rsp_no_refill, m_phase6d_no_rsp_no_expt,
         m_phase6d_no_rsp_no_wakeup, m_phase6d_side_effect_matrix_checks),
       UVM_LOW)

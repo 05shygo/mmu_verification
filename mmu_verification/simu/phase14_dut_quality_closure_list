@@ -84,6 +84,7 @@ test_ptw_pde_accerr_priority_type_id_001 +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MO
 
 # L2TLB REQQ depth and arbiter contention closure.
 test_l2tlb_p6e_reqq_arb_fine_overlap
+test_mmu_l1dtlb_dtlb_l2_reqq_depth_001
 
 # TLBOP FSM and invalidation lifecycle coverage with checked behavior.
 test_mmu_tlbp_query_hit

@@ -87,8 +87,6 @@ module mmu_l1dtlb_sva #(
     input logic [2:0] alloc_sel0,
     input logic [2:0] alloc_sel1,
     input logic [MB_DEPTH-1:0] mb_alloc_we,
-    input logic dutlb_inst_id_match0,
-    input logic dutlb_inst_id_match1,
     input logic dutlb_acc_flt0,
     input logic dutlb_acc_flt1,
     input logic expt_match0,
@@ -659,7 +657,7 @@ module mmu_l1dtlb_mb_entry_sva #(
     entry_vld == (entry_state != STATE_IDLE));
 
   a_entry_ready_state_decode: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
-    entry_ready |-> (entry_state == STATE_WFG && !rtu_yy_xx_flush));
+    entry_ready == (entry_state == STATE_WFG));
 
   a_entry_wfc_state_decode: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
     entry_wfc == ((entry_state == STATE_WFC) || (entry_state == STATE_ABT)));
@@ -1137,7 +1135,6 @@ module mmu_l1dtlb_hit_rd_sva #(
     input logic mmu_lsu_access_fault_x,
     input logic mmu_lsu_page_fault_x,
     input logic dutlb_acc_flt_x,
-    input logic dutlb_inst_id_match_x,
     input logic dutlb_miss_vld_short_x,
     input logic dutlb_miss_vld_x,
     input logic dutlb_plru_read_hit_vld_x,

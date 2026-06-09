@@ -33,7 +33,7 @@ module mmu_l1dtlb_hit_rd #(
 
     // Miscellaneous
     input  logic         pad_yy_icg_scan_en,
-    input  logic [6 :0]  refill_id_flop,
+    //input  logic [6 :0]  refill_id_flop,
 
     // DUTLB Control
     input  logic         biu_mmu_smp_disable,
@@ -44,15 +44,11 @@ module mmu_l1dtlb_hit_rd #(
     input  logic         dutlb_off_hit,
     input  logic         dutlb_ori_read_x,
     input  logic         dutlb_read_type_x,
-    input  logic         dutlb_ref_pgflt,
-    input  logic	 dutlb_ref_accflt,
-    input  logic         dutlb_refill_on_x,
-    //input  logic         dutlb_stall_override_x,
 
     // DUTLB Status/Miss Outputs
     output logic         dutlb_acc_flt_x,
-    output logic         dutlb_inst_id_match_x,
-    output logic         dutlb_inst_id_older_x,
+    //output logic         dutlb_inst_id_match_x,
+    //output logic         dutlb_inst_id_older_x,
     output logic         dutlb_miss_vld_short_x,
     output logic         dutlb_miss_vld_x,
     output logic         dutlb_plru_read_hit_vld_x,
@@ -223,18 +219,18 @@ assign dutlb_miss_vld_short_x = lsu_mmu_va_vld_x
                               & !dutlb_off_hit
                               & !dutlb_expt_match;
 
-assign dutlb_inst_id_hit = (refill_id_flop[6:0] == lsu_mmu_id_x[6:0])
-                         & lsu_mmu_va_vld_x;
+//assign dutlb_inst_id_hit = (refill_id_flop[6:0] == lsu_mmu_id_x[6:0])
+//                         & lsu_mmu_va_vld_x;
 
-assign dutlb_inst_id_match_x = dutlb_inst_id_hit & !lsu_mmu_abort_x;
+//assign dutlb_inst_id_match_x = dutlb_inst_id_hit & !lsu_mmu_abort_x;
 
-ct_rtu_compare_iid  x_mmu_dutlb_read_compare_req_iid (
-  .x_iid0               (lsu_mmu_id_x[6:0]  ),
-  .x_iid0_older         (dutlb_req_id_older ),
-  .x_iid1               (refill_id_flop[6:0])
-);
+//ct_rtu_compare_iid  x_mmu_dutlb_read_compare_req_iid (
+//  .x_iid0               (lsu_mmu_id_x[6:0]  ),
+//  .x_iid0_older         (dutlb_req_id_older ),
+//  .x_iid1               (refill_id_flop[6:0])
+//);
 
-assign dutlb_inst_id_older_x = dutlb_req_id_older && lsu_mmu_va_vld_x && !lsu_mmu_abort_x;
+//assign dutlb_inst_id_older_x = dutlb_req_id_older && lsu_mmu_va_vld_x && !lsu_mmu_abort_x;
 assign dutlb_expt_match = expt_match_x;
 
 //==========================================================
@@ -376,10 +372,9 @@ end
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va_vld_x || dutlb_expt_for_taken || dutlb_expt_match) begin
     $display("[MMU_DTLB_HIT_RD_EXPT_DBG] t=%0t id=%0d refill_id=%0d inst_id_hit=%0b inst_id_match=%0b inst_id_older=%0b expt_for_taken=%0b expt_match=%0b | ref_pgflt=%0b ref_acflt=%0b refill_on=%0b | addr_hit=%0b hit_vld=%0b miss=%0b page_fault=%0b access_fault=%0b",
-      $time, lsu_mmu_id_x, refill_id_flop,
-      dutlb_inst_id_hit, dutlb_inst_id_match_x, dutlb_inst_id_older_x,
+      $time, lsu_mmu_id_x, 
+      dutlb_inst_id_hit, 
       dutlb_expt_for_taken, dutlb_expt_match,
-      dutlb_ref_pgflt, dutlb_ref_accflt, dutlb_refill_on_x,
       dutlb_addr_hit, mmu_lsu_pa_vld_x, dutlb_miss_vld_x,
       mmu_lsu_page_fault_x, mmu_lsu_access_fault_x);
   end

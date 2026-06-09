@@ -30,6 +30,7 @@ typedef enum int {
   L1DTLB_SCN_FLUSH_RACE,
   L1DTLB_SCN_RESET_ONLY,
   L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX,
+  L1DTLB_SCN_L2_REQQ_DEPTH,
   L1DTLB_SCN_GENERIC_AUDIT
 } l1dtlb_scn_e;
 
@@ -279,6 +280,11 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         scn = L1DTLB_SCN_RESET_ONLY;
         sid = "L1DTLB_TS_CTRL_RESET_STATE";
         intent = "post-reset L1DTLB visible state";
+      end
+      "DTLB_L2_REQQ_DEPTH_001": begin
+        scn = L1DTLB_SCN_L2_REQQ_DEPTH;
+        sid = "L2TLB_TS_REQQ_DEPTH_QID";
+        intent = "L1 DTLB miss burst under TLBP arb block fills L2 REQQ depth and high queue ids";
       end
       "DTLB_MB_STATE_SIGNAL_001",
       "DTLB_MB_HIGH_ENTRY_MATRIX_001",
@@ -1230,6 +1236,95 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       `uvm_warning(get_type_name(), {ctx, ": did not observe same-cycle invalidate/install conflict"})
   endtask
 
+  protected function string l2_reqq_probe_snapshot();
+    if (m_probe_vif == null)
+      return "l2_reqq_probe=null";
+    return $sformatf(
+      "l2_reqq={vld:0x%03h rdy:0x%03h qid:%0d issue:%0b type:0x%0h} arb={l2_req:%0b tlbop_req:%0b tlbop_grant:%0b} l1={credit:%0d l2_req:%0b}",
+      m_probe_vif.mon_cb.l2_reqq_vld_vec,
+      m_probe_vif.mon_cb.l2_reqq_rdy_vec,
+      m_probe_vif.mon_cb.l2_reqq_qid,
+      m_probe_vif.mon_cb.l2_reqq_issue_valid,
+      m_probe_vif.mon_cb.l2_reqq_issue_type,
+      m_probe_vif.mon_cb.l2_arb_req,
+      m_probe_vif.mon_cb.tlbop_arb_req,
+      m_probe_vif.mon_cb.tlbop_arb_grant,
+      m_probe_vif.mon_cb.l1d_sched_credit_cnt,
+      m_probe_vif.mon_cb.l1d_l2_req_vld);
+  endfunction
+
+  protected task wait_tlbop_arb_activity(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 8192
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for TLBOP arb activity"})
+      wait_lsu_cycles(128);
+      return;
+    end
+    for (int unsigned cyc = 0; (cyc < max_cycles) && !seen; cyc++) begin
+      @(m_probe_vif.mon_cb);
+      if (m_probe_vif.mon_cb.tlbop_arb_req || m_probe_vif.mon_cb.tlbop_arb_grant)
+        seen = 1'b1;
+    end
+    if (!seen)
+      `uvm_warning(get_type_name(),
+        $sformatf("%s: timed out waiting for TLBOP arb activity %s",
+          ctx, l2_reqq_probe_snapshot()))
+  endtask
+
+  protected task wait_l2_reqq_depth_and_qids(
+    string ctx,
+    input int unsigned target_depth,
+    input logic [8:0] target_qid_mask,
+    output bit closed,
+    input int unsigned max_cycles = 262144
+  );
+    int unsigned max_depth;
+    int unsigned issue_count;
+    logic [8:0] qid_seen_mask;
+
+    closed = 1'b0;
+    max_depth = 0;
+    issue_count = 0;
+    qid_seen_mask = 9'h000;
+    if (m_probe_vif == null) begin
+      `uvm_error(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot check L2 REQQ depth/qids"})
+      return;
+    end
+
+    for (int unsigned cyc = 0; (cyc < max_cycles) && !closed; cyc++) begin
+      int unsigned depth;
+      int unsigned qid;
+
+      @(m_probe_vif.mon_cb);
+      depth = $countones(m_probe_vif.mon_cb.l2_reqq_vld_vec);
+      qid = int'(m_probe_vif.mon_cb.l2_reqq_qid);
+      if (depth > max_depth)
+        max_depth = depth;
+      if (qid < 9)
+        qid_seen_mask[qid] = 1'b1;
+      if (m_probe_vif.mon_cb.l2_reqq_issue_valid)
+        issue_count++;
+      if ((max_depth >= target_depth)
+       && ((qid_seen_mask & target_qid_mask) == target_qid_mask))
+        closed = 1'b1;
+    end
+
+    `uvm_info(get_type_name(),
+      $sformatf("%s: L2 REQQ depth/qid observation closed=%0b max_depth=%0d qid_seen=0x%03h target_depth=%0d target_qid=0x%03h issue_count=%0d %s",
+        ctx, closed, max_depth, qid_seen_mask, target_depth, target_qid_mask,
+        issue_count, l2_reqq_probe_snapshot()),
+      UVM_LOW)
+    if (!closed)
+      `uvm_error(get_type_name(),
+        $sformatf("%s: failed to observe L2 REQQ target depth/qids max_depth=%0d qid_seen=0x%03h target_depth=%0d target_qid=0x%03h issue_count=%0d %s",
+          ctx, max_depth, qid_seen_mask, target_depth, target_qid_mask,
+          issue_count, l2_reqq_probe_snapshot()))
+  endtask
+
   protected task wait_l1d_tlboper_clr(
     string ctx,
     output bit seen,
@@ -1785,6 +1880,39 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif.driver_cb.lsu_mmu_abort1   <= abt1;
     m_lsu_vif.driver_cb.lsu_mmu_vabuf1   <= vabuf_for(va1);
     @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0 <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1 <= 1'b0;
+  endtask
+
+  protected task raw_pipe01_contiguous_burst(
+    int unsigned base_idx,
+    int unsigned num_pairs,
+    bit [6:0] iid_base = 7'd24
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    for (int unsigned pair = 0; pair < num_pairs; pair++) begin
+      va_t va0;
+      va_t va1;
+
+      va0 = va_page(base_idx + (pair * 2));
+      va1 = va_page(base_idx + (pair * 2) + 1);
+      m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+      m_lsu_vif.driver_cb.lsu_mmu_va0      <= canon_va(va0);
+      m_lsu_vif.driver_cb.lsu_mmu_id0      <= 7'(iid_base + pair[6:0] * 2);
+      m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= pair[0];
+      m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
+      m_lsu_vif.driver_cb.lsu_mmu_vabuf0   <= vabuf_for(va0);
+      m_lsu_vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
+      m_lsu_vif.driver_cb.lsu_mmu_va1      <= canon_va(va1);
+      m_lsu_vif.driver_cb.lsu_mmu_id1      <= 7'(iid_base + pair[6:0] * 2 + 1);
+      m_lsu_vif.driver_cb.lsu_mmu_st_inst1 <= ~pair[0];
+      m_lsu_vif.driver_cb.lsu_mmu_abort1   <= 1'b0;
+      m_lsu_vif.driver_cb.lsu_mmu_vabuf1   <= vabuf_for(va1);
+      @(m_lsu_vif.driver_cb);
+    end
     m_lsu_vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
     m_lsu_vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
     m_lsu_vif.driver_cb.lsu_mmu_abort0 <= 1'b0;
@@ -3227,6 +3355,45 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_mb_state_signal", 524288, 16);
   endtask
 
+  protected task scenario_l2_reqq_depth();
+    cp0_l2tlb_tlbwr_visible_exact_seq cp0_tlbwr;
+    bit tlbop_seen;
+    bit reqq_closed;
+    int unsigned burst_base;
+
+    burst_base = 160;
+    do_bringup(256, 39'h10_0000);
+    configure_ptw_delay(96, 192);
+    raw_idle();
+    wait_lsu_cycles(16);
+
+    cp0_tlbwr = cp0_l2tlb_tlbwr_visible_exact_seq::type_id::create("l1dtlb_l2_reqq_depth_tlbwr_block");
+    cp0_tlbwr.num_writes = 32;
+
+    fork
+      begin
+        cp0_tlbwr.start(p_sequencer.cp0_sqr);
+      end
+      begin
+        wait_tlbop_arb_activity("l1dtlb_l2_reqq_depth_tlbwr_window", tlbop_seen, 16384);
+        if (!tlbop_seen)
+          wait_lsu_cycles(16);
+        raw_pipe01_contiguous_burst(burst_base, 4, 7'd24);
+      end
+      begin
+        wait_l2_reqq_depth_and_qids(
+          "l1dtlb_l2_reqq_depth",
+          5,
+          9'h1fe,
+          reqq_closed,
+          65536);
+      end
+    join
+
+    reset_ptw_responder_controls(1, 4);
+    wait_lsu_cycles(128);
+  endtask
+
   protected task scenario_plru_pressure();
     do_bringup(96, 39'h10_0000);
     for (int unsigned i = 0; i < 24; i++) begin
@@ -3346,6 +3513,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_FLUSH_RACE:       scenario_flush_race();
       L1DTLB_SCN_RESET_ONLY:       scenario_reset_only();
       L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX: scenario_mb_high_entry_matrix();
+      L1DTLB_SCN_L2_REQQ_DEPTH:    scenario_l2_reqq_depth();
       default: begin
         if (tc_id == "DTLB_SYSMAP_001")
           scenario_direct_map();

@@ -440,9 +440,9 @@ module tb_top;
   assign dut_probes_if.l1d_refill_flg    = u_dut.u_mmu_l1dtlb.utlb_refill_flg;
   assign dut_probes_if.l1d_entry_upd     = u_dut.u_mmu_l1dtlb.entry_upd;
   assign dut_probes_if.l1d_refill_gnt_bus = u_dut.u_mmu_l1dtlb.refill_gnt_bus;
-  assign dut_probes_if.l1d_refill_iid0   = u_dut.u_mmu_l1dtlb.refill_id_flop0;
-  assign dut_probes_if.l1d_refill_iid1   = u_dut.u_mmu_l1dtlb.refill_id_flop1;
-  assign dut_probes_if.l1d_refill_iid_sel = u_dut.u_mmu_l1dtlb.refill_id_flop;
+  assign dut_probes_if.l1d_refill_iid0   = 7'b0;
+  assign dut_probes_if.l1d_refill_iid1   = 7'b0;
+  assign dut_probes_if.l1d_refill_iid_sel = 7'b0;
   assign dut_probes_if.l1d_p0_hit_vec    = u_dut.u_mmu_l1dtlb.entry_hit0;
   assign dut_probes_if.l1d_p0_hit_idx    = tb_l1d_p0_hit_idx;
   assign dut_probes_if.l1d_p0_hit_vpn    = tb_l1d_p0_hit_vpn;
@@ -473,6 +473,35 @@ module tb_top;
   assign dut_probes_if.l1d_l2_ref_flg    = u_dut.l2tlb_l1tlb_ref_flg;
   assign dut_probes_if.l1d_l2_ref_pgs    = u_dut.l2tlb_l1tlb_ref_pgs;
   assign dut_probes_if.l1d_l2_ref_pgflt  = u_dut.l2tlb_l1dtlb_pgflt;
+  assign dut_probes_if.l1d_miss0_vld_q      = u_dut.u_mmu_l1dtlb.miss0_vld_q;
+  assign dut_probes_if.l1d_miss1_vld_q      = u_dut.u_mmu_l1dtlb.miss1_vld_q;
+  assign dut_probes_if.l1d_miss0_abort_q    = u_dut.u_mmu_l1dtlb.miss0_abort_q;
+  assign dut_probes_if.l1d_miss1_abort_q    = u_dut.u_mmu_l1dtlb.miss1_abort_q;
+  assign dut_probes_if.l1d_miss0_vpn_q      = u_dut.u_mmu_l1dtlb.miss0_vpn_q;
+  assign dut_probes_if.l1d_miss1_vpn_q      = u_dut.u_mmu_l1dtlb.miss1_vpn_q;
+  assign dut_probes_if.l1d_miss0_iid_q      = u_dut.u_mmu_l1dtlb.miss0_iid_q;
+  assign dut_probes_if.l1d_miss1_iid_q      = u_dut.u_mmu_l1dtlb.miss1_iid_q;
+  assign dut_probes_if.l1d_miss0_store_q    = u_dut.u_mmu_l1dtlb.miss0_is_store;
+  assign dut_probes_if.l1d_miss1_store_q    = u_dut.u_mmu_l1dtlb.miss1_is_store;
+  assign dut_probes_if.l1d_alloc_req0_vld   = u_dut.u_mmu_l1dtlb.miss0_vld_q
+                                            && !u_dut.u_mmu_l1dtlb.miss0_abort_q
+                                            && !u_dut.u_mmu_l1dtlb.mb_hit0
+                                            && !misc_if_inst.rtu_yy_xx_flush;
+  assign dut_probes_if.l1d_alloc_req1_vld   = u_dut.u_mmu_l1dtlb.miss1_vld_q
+                                            && !u_dut.u_mmu_l1dtlb.miss1_abort_q
+                                            && !u_dut.u_mmu_l1dtlb.mb_hit1
+                                            && !u_dut.u_mmu_l1dtlb.same_4k_miss01
+                                            && !misc_if_inst.rtu_yy_xx_flush;
+  assign dut_probes_if.l1d_alloc_gnt0_raw   = u_dut.u_mmu_l1dtlb.alloc_gnt0;
+  assign dut_probes_if.l1d_alloc_gnt1_raw   = u_dut.u_mmu_l1dtlb.alloc_gnt1;
+  assign dut_probes_if.l1d_alloc_gnt0_safe  = u_dut.u_mmu_l1dtlb.alloc_gnt0_safe;
+  assign dut_probes_if.l1d_alloc_gnt1_safe  = u_dut.u_mmu_l1dtlb.alloc_gnt1_safe;
+  assign dut_probes_if.l1d_alloc_sel0       = u_dut.u_mmu_l1dtlb.alloc_sel0;
+  assign dut_probes_if.l1d_alloc_sel1       = u_dut.u_mmu_l1dtlb.alloc_sel1;
+  assign dut_probes_if.l1d_mb_alloc_we_raw  = u_dut.u_mmu_l1dtlb.mb_alloc_we;
+  assign dut_probes_if.l1d_mb_alloc_we_safe = u_dut.u_mmu_l1dtlb.mb_alloc_we_safe;
+  assign dut_probes_if.l1d_mb_issue_sel     = u_dut.u_mmu_l1dtlb.mb_issue_sel;
+  assign dut_probes_if.l1d_mb_issue_grant   = u_dut.u_mmu_l1dtlb.mb_issue_grant;
   assign dut_probes_if.l1d_install_req_ptw = u_dut.u_mmu_l1dtlb.x_install.req_ptw_vld;
   assign dut_probes_if.l1d_install_req_l2  = u_dut.u_mmu_l1dtlb.x_install.req_jtlb_vld;
   assign dut_probes_if.l1d_install_req_wfi = u_dut.u_mmu_l1dtlb.x_install.req_wfi_vld;

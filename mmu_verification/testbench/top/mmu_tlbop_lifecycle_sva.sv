@@ -32,7 +32,9 @@ module mmu_tlbop_lifecycle_sva (
     input logic [3:0] tlbiva_cur_st,
 
     // PTW abort (for TP_044)
-    input logic       tlboper_ptw_abort
+    input logic       tlboper_ptw_abort,
+    input logic       tlb_lsu_oper,
+    input logic       tlb_lsu_oper_flop
 );
 
   localparam [1:0] IDLE = 2'b00;
@@ -148,10 +150,15 @@ module mmu_tlbop_lifecycle_sva (
   a_reset_no_stale_done: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     !cpurst_b ##1 cpurst_b |-> !tlboper_regs_cmplt && !arb_tlboper_grant);
 
-  // ── TP_044: tlboper_ptw_abort must not corrupt active TLBOP ────────────
-  // When PTW abort fires, TLBOP FSM must remain consistent.
-  a_ptw_abort_does_not_stall_tlbop_done: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    (any_active && tlboper_ptw_abort) |-> !tlboper_regs_cmplt);
+  // ── TP_044: tlboper_ptw_abort marks an uncaptured LSU invalidate ───────
+  // OpenC910 drives this as a level while the raw LSU invalidate request is
+  // pending but has not yet been captured by TLBOper.  It is not a one-cycle
+  // pulse when real LSU CTCQ holds the request until mmu_lsu_tlb_inv_done.
+  a_ptw_abort_only_uncaptured_lsu: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    tlboper_ptw_abort |-> (tlb_lsu_oper && !tlb_lsu_oper_flop));
+
+  a_ptw_abort_drops_after_capture: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+    tlb_lsu_oper_flop |-> !tlboper_ptw_abort);
 
   // ── G2: L2TLB completion only when an FSM is active ────────────────────
   // l2tlb_tlboper_cmplt = final_vld && (final_acc_type == 3'b001) is a pure

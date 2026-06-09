@@ -74,6 +74,12 @@ class mmu_invalidate_sb extends uvm_scoreboard;
       m_n_invalidations++;
       m_n_inv_kind[int'(tr.inv_kind)]++;
       if (tr.inv_done) m_n_inv_done_seen++;
+      else begin
+        m_mismatch++;
+        `uvm_error(get_type_name(),
+          $sformatf("LSU invalidate did not complete: kind=%s va=0x%07h asid=0x%04h",
+            tr.inv_kind.name(), tr.inv_va, tr.inv_asid))
+      end
       if (m_l2_shadow != null)
         m_l2_shadow.on_lsu_invalidate(tr.inv_kind, tr.inv_va, tr.inv_asid);
 
@@ -117,6 +123,11 @@ class mmu_invalidate_sb extends uvm_scoreboard;
       $display("[PHASE6C_L2_SHADOW] component=%s %s",
         get_full_name(), m_l2_shadow.summary());
 
+    if (m_n_inv_done_seen != m_n_invalidations) begin
+      `uvm_error(get_type_name(),
+        $sformatf("Invalidate SB FAILED: completed=%0d invalidations=%0d",
+          m_n_inv_done_seen, m_n_invalidations))
+    end
     if (m_mismatch > 0) begin
       `uvm_error(get_type_name(),
         $sformatf("Invalidate SB FAILED: mismatch=%0d", m_mismatch))

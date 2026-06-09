@@ -36,6 +36,7 @@ class phase9_generated_test_base extends test_base;
 
   bit          m_enable_sv39_4k_bringup;
   bit          m_run_misc_init;
+  bit          m_wait_lsu_idle_before_vseq;
   int unsigned m_nmap;
   va_t         m_va_base;
   ppn_t        m_root_ppn;
@@ -67,6 +68,7 @@ class phase9_generated_test_base extends test_base;
 
     m_enable_sv39_4k_bringup = 1'b1;
     m_run_misc_init          = 1'b1;
+    m_wait_lsu_idle_before_vseq = 1'b0;
     m_nmap                   = 32;
     m_va_base                = 39'h10_0000;
     m_root_ppn               = 28'h0;
@@ -140,6 +142,9 @@ class phase9_generated_test_base extends test_base;
       "mmu_ptw_thrash_vseq":          seq = mmu_ptw_thrash_vseq::type_id::create(seq_name);
       "mmu_sfence_during_walk_vseq":  seq = mmu_sfence_during_walk_vseq::type_id::create(seq_name);
       "mmu_asid_context_switch_vseq": seq = mmu_asid_context_switch_vseq::type_id::create(seq_name);
+      "mmu_inv_asid_hit_directed_vseq": seq = mmu_inv_asid_hit_directed_vseq::type_id::create(seq_name);
+      "mmu_inv_asid_global_directed_vseq": seq = mmu_inv_asid_global_directed_vseq::type_id::create(seq_name);
+      "mmu_inv_asid_overlap_directed_vseq": seq = mmu_inv_asid_overlap_directed_vseq::type_id::create(seq_name);
       "mmu_huge_page_mix_vseq":       seq = mmu_huge_page_mix_vseq::type_id::create(seq_name);
       "mmu_rrpv_aging_vseq":          seq = mmu_rrpv_aging_vseq::type_id::create(seq_name);
       "mmu_l2tlb_bank_conflict_vseq": seq = mmu_l2tlb_bank_conflict_vseq::type_id::create(seq_name);
@@ -674,6 +679,9 @@ class phase9_generated_test_base extends test_base;
 
   virtual task run_test_body();
     setup_plan();
+    // Leaf wrappers set scenario defaults in setup_plan(); keep +NB_TXNS as the
+    // final override for focused debug and short regressions.
+    void'($value$plusargs("NB_TXNS=%0d", num_txn));
 
     if (l1dtlb_directed_vseq::is_l1dtlb_tc(p9_tc_id)) begin
       p9_seq_desc = "l1dtlb_directed_vseq";
@@ -707,6 +715,10 @@ class phase9_generated_test_base extends test_base;
     foreach (m_ptw_seq_names[i])    start_ptw_seq_by_name(m_ptw_seq_names[i]);
     foreach (m_ifu_seq_names[i])    start_ifu_seq_by_name(m_ifu_seq_names[i]);
     foreach (m_lsu_seq_names[i])    start_lsu_seq_by_name(m_lsu_seq_names[i]);
+    if (m_wait_lsu_idle_before_vseq && (m_lsu_seq_names.size() > 0)
+        && (m_vseq_names.size() > 0)) begin
+      m_env.wait_for_quiescent_midtest("phase9_before_vseq", 524288, 16);
+    end
     foreach (m_vseq_names[i])       start_vseq_by_name(m_vseq_names[i]);
 
     #(m_post_drain);

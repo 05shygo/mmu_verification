@@ -903,6 +903,46 @@ class cp0_l2tlb_tlbwi_write_exact_seq extends cp0_l2tlb_tlbop_exact_base_seq;
 
 endclass : cp0_l2tlb_tlbwi_write_exact_seq
 
+class cp0_l2tlb_inv_asid_directed_probe_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_inv_asid_directed_probe_seq)
+
+  bit do_write;
+  bit expect_hit;
+  bit global_entry;
+
+  function new(string name = "cp0_l2tlb_inv_asid_directed_probe_seq");
+    super.new(name);
+    do_write = 1'b1;
+    expect_hit = 1'b1;
+    global_entry = 1'b0;
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent;
+    bit [10:0] observed_index;
+    string ctx_prefix;
+
+    ent = make_entry(27'h000423, 16'h1234, 28'h00abc, pgs_4k(), 3'd5,
+                     global_entry, make_flags(.u(1'b1), .rsw(2'b01)));
+    ctx_prefix = global_entry ? "inv_asid_global" : "inv_asid_nonglobal";
+
+    if (do_write) begin
+      tlbwi_entry(ent, {ctx_prefix, "_setup"});
+      tlbr_read_check(ent, ent.index, 1'b1, {ctx_prefix, "_setup_tlbr"});
+      tlbp_probe(ent, 1'b1, 1'b1, ent.index, observed_index,
+                 {ctx_prefix, "_pre_inv_tlbp"});
+    end else begin
+      tlbp_probe(ent, expect_hit, expect_hit, ent.index, observed_index,
+                 {ctx_prefix, "_post_inv_tlbp"});
+      if (expect_hit) begin
+        tlbr_read_check(ent, observed_index, 1'b1,
+                        {ctx_prefix, "_post_inv_tlbr"});
+      end
+    end
+  endtask
+
+endclass : cp0_l2tlb_inv_asid_directed_probe_seq
+
 class cp0_l2tlb_tlbwi_overwrite_exact_seq extends cp0_l2tlb_tlbop_exact_base_seq;
   `uvm_object_utils(cp0_l2tlb_tlbwi_overwrite_exact_seq)
 

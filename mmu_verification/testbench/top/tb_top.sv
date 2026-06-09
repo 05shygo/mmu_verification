@@ -1752,6 +1752,104 @@ module tb_top;
     end
   end
 
+  // Focused opt-in TLB invalidation diagnostic.  This is intentionally kept
+  // separate from MMU_DIAG so the INV liveness path can be debugged without
+  // flooding the log with unrelated PTW/L1D state.
+  bit          mmu_invdbg_enable;
+  int unsigned mmu_invdbg_from_cycle;
+  int unsigned mmu_invdbg_stride;
+
+  initial begin
+    mmu_invdbg_enable = $test$plusargs("MMU_INVDBG_ENABLE");
+    mmu_invdbg_from_cycle = 0;
+    mmu_invdbg_stride = 1;
+    void'($value$plusargs("MMU_INVDBG_FROM_CYCLE=%0d", mmu_invdbg_from_cycle));
+    void'($value$plusargs("MMU_INVDBG_STRIDE=%0d", mmu_invdbg_stride));
+    if (mmu_invdbg_stride == 0)
+      mmu_invdbg_stride = 1;
+    if (mmu_invdbg_enable) begin
+      $display("[MMU_INVDBG][CFG] enable=1 from_cycle=%0d stride=%0d",
+        mmu_invdbg_from_cycle, mmu_invdbg_stride);
+    end
+  end
+
+  always @(posedge forever_cpuclk) begin
+    if (cpurst_b
+        && mmu_invdbg_enable
+        && (mmu_diag_cycle >= mmu_invdbg_from_cycle)
+        && ((mmu_diag_cycle % mmu_invdbg_stride) == 0)
+        && (mmu_diag_inv_active()
+            || u_dut.x_ct_mmu_tlboper.tlb_cnt_inv_on
+            || u_dut.x_ct_mmu_tlboper.tlb_lsu_oper_flop
+            || u_dut.x_ct_mmu_tlboper.tlb_lsu_oper_cmplt
+            || u_dut.x_ct_mmu_tlboper.lsu_oper_cmplt)) begin
+      $display({"[MMU_INVDBG] cyc=%0d t=%0t ",
+                "lsu={all:%0b va_all:%0b asid_all:%0b va_asid:%0b done:%0b busy:%0b va:0x%07h asid:0x%04h} ",
+                "core={raw_lsu:%0b flop:%0b lsu_cmplt:%0b lsu_oper_cmplt:%0b sm_idle:%0b ptw_abort:%0b regs_cmplt:%0b} ",
+                "cnt={cnt:%0d target:%0d done:%0b init:%0b dec:%0b inv_on:%0b idx:0x%03h} ",
+                "asid={st:%0d inv:%0b req:%0b rd:%0b wt:%0b cinit:%0b cdec:%0b cmplt:%0b l2_cmplt:%0b hit:%0b sel:0x%02h} ",
+                "all={st:%0b inv:%0b req:%0b cinit:%0b cdec:%0b cmplt:%0b} ",
+                "arb={tlb_req:%0b write:%0b grant:%0b idx:0x%03h bank:0x%02h ptw_req:%0b ptw_on:%0b tlb_on:%0b wbuf_block:%0b} ",
+                "l2={raw:%0b final:%0b acc:0x%0h asid_hit:%0b way_asid:0x%02h sel:0x%02h}"},
+        mmu_diag_cycle,
+        $time,
+        lsu_if_inst.lsu_mmu_tlb_all_inv,
+        lsu_if_inst.lsu_mmu_tlb_va_all_inv,
+        lsu_if_inst.lsu_mmu_tlb_asid_all_inv,
+        lsu_if_inst.lsu_mmu_tlb_va_asid_inv,
+        lsu_if_inst.mmu_lsu_tlb_inv_done,
+        lsu_if_inst.mmu_lsu_tlb_busy,
+        lsu_if_inst.lsu_mmu_tlb_va,
+        lsu_if_inst.lsu_mmu_tlb_asid,
+        u_dut.x_ct_mmu_tlboper.tlb_lsu_oper,
+        u_dut.x_ct_mmu_tlboper.tlb_lsu_oper_flop,
+        u_dut.x_ct_mmu_tlboper.tlb_lsu_oper_cmplt,
+        u_dut.x_ct_mmu_tlboper.lsu_oper_cmplt,
+        u_dut.x_ct_mmu_tlboper.tlb_sm_idle,
+        u_dut.tlboper_ptw_abort,
+        u_dut.tlboper_regs_cmplt,
+        u_dut.x_ct_mmu_tlboper.tlb_inv_cnt,
+        u_dut.x_ct_mmu_tlboper.jtlb_cnt,
+        u_dut.x_ct_mmu_tlboper.tlb_inv_done,
+        u_dut.x_ct_mmu_tlboper.tlb_inv_cnt_init,
+        u_dut.x_ct_mmu_tlboper.tlb_inv_cnt_dec,
+        u_dut.x_ct_mmu_tlboper.tlb_cnt_inv_on,
+        u_dut.x_ct_mmu_tlboper.tlboper_arb_idx,
+        u_dut.x_ct_mmu_tlboper.tlbiasid_cur_st,
+        u_dut.x_ct_mmu_tlboper.tlb_inv_asid,
+        u_dut.x_ct_mmu_tlboper.tlb_invasid_req,
+        u_dut.x_ct_mmu_tlboper.tlb_invasid_rd_req,
+        u_dut.x_ct_mmu_tlboper.tlb_invasid_wt_req,
+        u_dut.x_ct_mmu_tlboper.tlb_invasid_cnt_init,
+        u_dut.x_ct_mmu_tlboper.tlb_invasid_cnt_dec,
+        u_dut.x_ct_mmu_tlboper.tlb_invasid_cmplt,
+        u_dut.x_mmu_l2tlb.l2tlb_tlboper_cmplt,
+        u_dut.x_mmu_l2tlb.l2tlb_tlboper_asid_hit,
+        u_dut.x_mmu_l2tlb.l2tlb_tlboper_sel,
+        u_dut.x_ct_mmu_tlboper.tlbiall_cur_st,
+        u_dut.x_ct_mmu_tlboper.tlb_inv_all,
+        u_dut.x_ct_mmu_tlboper.tlb_invall_req,
+        u_dut.x_ct_mmu_tlboper.tlb_invall_cnt_init,
+        u_dut.x_ct_mmu_tlboper.tlb_invall_cnt_dec,
+        u_dut.x_ct_mmu_tlboper.tlb_invall_cmplt,
+        u_dut.tlboper_arb_req,
+        u_dut.tlboper_arb_write,
+        u_dut.arb_tlboper_grant,
+        u_dut.tlboper_arb_idx,
+        u_dut.tlboper_arb_bank_sel,
+        u_dut.ptw_arb_req,
+        u_dut.x_mmu_arb.ptw_on,
+        u_dut.x_mmu_arb.tlboper_on,
+        u_dut.x_mmu_arb.arb_block_by_wbuf,
+        u_dut.x_mmu_l2tlb.raw_vld,
+        u_dut.x_mmu_l2tlb.final_vld,
+        u_dut.x_mmu_l2tlb.final_acc_type,
+        u_dut.x_mmu_l2tlb.l2tlb_tlboper_asid_hit,
+        u_dut.x_mmu_l2tlb.final_way_asid_hit,
+        u_dut.x_mmu_l2tlb.l2tlb_tlboper_sel);
+    end
+  end
+
   //=========================================================================
   // UVM Config DB — Publish Virtual Interfaces
   //=========================================================================

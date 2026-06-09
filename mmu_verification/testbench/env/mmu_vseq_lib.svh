@@ -108,6 +108,48 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
   endtask
 endclass
 
+class mmu_vseq_lsu_fixed_inv_asid_seq extends lsu_base_seq;
+  `uvm_object_utils(mmu_vseq_lsu_fixed_inv_asid_seq)
+
+  bit [15:0] m_inv_asid;
+  bit [26:0] m_inv_va;
+  bit        m_allow_busy;
+  int unsigned m_idle_cycles;
+
+  function new(string name = "mmu_vseq_lsu_fixed_inv_asid_seq");
+    super.new(name);
+    num_txn = 1;
+    m_inv_asid = 16'h1234;
+    m_inv_va = '0;
+    m_allow_busy = 1'b0;
+    m_idle_cycles = 0;
+  endfunction
+
+  virtual task body();
+    lsu_txn tr;
+    bit [15:0] asid_local;
+    bit [26:0] va_local;
+    int unsigned idle_local;
+
+    asid_local = m_inv_asid;
+    va_local = m_inv_va;
+    idle_local = m_idle_cycles;
+    for (int unsigned i = 0; i < num_txn; i++) begin
+      `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
+      assert(tr.randomize() with {
+        kind        == LSU_INV;
+        inv_kind    == INV_ASID_ALL;
+        inv_va      == va_local;
+        inv_asid    == asid_local;
+        idle_cycles == int'(idle_local);
+      }) else `uvm_fatal(get_full_name(), "fixed INV_ASID randomize failed")
+      tr.inv_allow_busy = m_allow_busy;
+      `uvm_send(tr)
+    end
+  endtask
+endclass
+
 class mmu_vseq_lsu_p2_short_seq extends lsu_base_seq;
   `uvm_object_utils(mmu_vseq_lsu_p2_short_seq)
   function new(string name = "mmu_vseq_lsu_p2_short_seq"); super.new(name); endfunction
@@ -637,6 +679,104 @@ class mmu_asid_context_switch_vseq extends mmu_base_vseq;
     sw0.satp_val = {4'h8, 16'h0, 44'h0};
     sw0.start(p_sequencer.cp0_sqr);
     #50000ns;
+  endtask
+endclass
+
+class mmu_inv_asid_hit_directed_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_inv_asid_hit_directed_vseq)
+
+  function new(string name = "mmu_inv_asid_hit_directed_vseq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    mmu_env env = get_env();
+    cp0_l2tlb_inv_asid_directed_probe_seq cp0_probe;
+    mmu_vseq_lsu_fixed_inv_asid_seq lsu_inv;
+
+    cp0_probe = cp0_l2tlb_inv_asid_directed_probe_seq::type_id::create("inv_asid_hit_setup");
+    cp0_probe.do_write = 1'b1;
+    cp0_probe.global_entry = 1'b0;
+    cp0_probe.expect_hit = 1'b1;
+    cp0_probe.start(p_sequencer.cp0_sqr);
+
+    lsu_inv = mmu_vseq_lsu_fixed_inv_asid_seq::type_id::create("inv_asid_hit_lsu_inv");
+    lsu_inv.m_inv_asid = 16'h1234;
+    lsu_inv.m_allow_busy = 1'b0;
+    lsu_inv.start(p_sequencer.lsu_sqr);
+    repeat (4) @(posedge env.m_lsu.vif.clk_i);
+
+    cp0_probe = cp0_l2tlb_inv_asid_directed_probe_seq::type_id::create("inv_asid_hit_post_probe");
+    cp0_probe.do_write = 1'b0;
+    cp0_probe.global_entry = 1'b0;
+    cp0_probe.expect_hit = 1'b0;
+    cp0_probe.start(p_sequencer.cp0_sqr);
+
+    #1000ns;
+  endtask
+endclass
+
+class mmu_inv_asid_global_directed_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_inv_asid_global_directed_vseq)
+
+  function new(string name = "mmu_inv_asid_global_directed_vseq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    mmu_env env = get_env();
+    cp0_l2tlb_inv_asid_directed_probe_seq cp0_probe;
+    mmu_vseq_lsu_fixed_inv_asid_seq lsu_inv;
+
+    cp0_probe = cp0_l2tlb_inv_asid_directed_probe_seq::type_id::create("inv_asid_global_setup");
+    cp0_probe.do_write = 1'b1;
+    cp0_probe.global_entry = 1'b1;
+    cp0_probe.expect_hit = 1'b1;
+    cp0_probe.start(p_sequencer.cp0_sqr);
+
+    lsu_inv = mmu_vseq_lsu_fixed_inv_asid_seq::type_id::create("inv_asid_global_lsu_inv");
+    lsu_inv.m_inv_asid = 16'h1234;
+    lsu_inv.m_allow_busy = 1'b0;
+    lsu_inv.start(p_sequencer.lsu_sqr);
+    repeat (4) @(posedge env.m_lsu.vif.clk_i);
+
+    cp0_probe = cp0_l2tlb_inv_asid_directed_probe_seq::type_id::create("inv_asid_global_post_probe");
+    cp0_probe.do_write = 1'b0;
+    cp0_probe.global_entry = 1'b1;
+    cp0_probe.expect_hit = 1'b1;
+    cp0_probe.start(p_sequencer.cp0_sqr);
+
+    #1000ns;
+  endtask
+endclass
+
+class mmu_inv_asid_overlap_directed_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_inv_asid_overlap_directed_vseq)
+
+  function new(string name = "mmu_inv_asid_overlap_directed_vseq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    mmu_env env = get_env();
+    cp0_tlb_allinv_seq cp0_inv;
+    mmu_vseq_lsu_fixed_inv_asid_seq lsu_inv;
+
+    fork
+      begin
+        cp0_inv = cp0_tlb_allinv_seq::type_id::create("overlap_cp0_invall");
+        cp0_inv.start(p_sequencer.cp0_sqr);
+      end
+      begin
+        repeat (8) @(posedge env.m_lsu.vif.clk_i);
+        lsu_inv = mmu_vseq_lsu_fixed_inv_asid_seq::type_id::create("overlap_lsu_inv_asid");
+        lsu_inv.m_inv_asid = 16'h1234;
+        lsu_inv.m_allow_busy = 1'b1;
+        lsu_inv.start(p_sequencer.lsu_sqr);
+      end
+    join
+
+    #2000ns;
   endtask
 endclass
 

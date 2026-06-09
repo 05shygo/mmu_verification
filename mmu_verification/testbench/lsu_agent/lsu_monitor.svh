@@ -58,6 +58,7 @@ class lsu_monitor extends uvm_monitor;
   // 0 when va_vld falls, the driver timed out → discard the pending entry.
   protected bit m_p0_rsp_seen;
   protected bit m_p1_rsp_seen;
+  protected int unsigned m_inv_done_watchdog_cycles;
 
   protected function lsu_txn _clone_txn(lsu_txn src, string name);
     lsu_txn dst;
@@ -175,6 +176,7 @@ class lsu_monitor extends uvm_monitor;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
+    m_inv_done_watchdog_cycles = 8192;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -195,6 +197,10 @@ class lsu_monitor extends uvm_monitor;
     ap_pipe2_rsp = new("ap_pipe2_rsp", this);
     ap_inv       = new("ap_inv",       this);
     ap_stamo     = new("ap_stamo",     this);
+    void'($value$plusargs("LSU_INV_DONE_WATCHDOG_CYCLES=%0d", m_inv_done_watchdog_cycles));
+    void'($value$plusargs("LSU_INV_RSP_WATCHDOG_CYCLES=%0d", m_inv_done_watchdog_cycles));
+    if (m_inv_done_watchdog_cycles == 0)
+      m_inv_done_watchdog_cycles = 1;
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -848,17 +854,14 @@ class lsu_monitor extends uvm_monitor;
   endtask
 
   // ── TLB Invalidation event ────────────────────────────────────────────────
-  // Detect the leading edge of an invalidation strobe.  The driver issues a
-  // one-cycle pulse (same protocol as the CP0 driver), so:
-  //   - mmu_lsu_tlb_inv_done is always 0 on the assertion edge (arrives ~256
-  //     cycles later).  We set tr.inv_done = 1 unconditionally because the
-  //     driver guarantees completion (with a 1024-cycle timeout fallback).
-  //   - The deassertion guard after ap_inv.write prevents the level-triggered
-  //     re-fire that would otherwise flood the analysis port every cycle the
-  //     strobe was held high.
+  // Publish the invalidate event after the DUT completion pulse is observed or
+  // the bounded watchdog expires.  inv_done is the sampled DUT response.
   protected task _collect_inv();
     lsu_txn tr;
     forever begin
+      bit inv_done_seen;
+      int unsigned wait_cycles;
+
       @(vif.monitor_cb iff (vif.monitor_cb.lsu_mmu_tlb_va_all_inv   |
                              vif.monitor_cb.lsu_mmu_tlb_all_inv      |
                              vif.monitor_cb.lsu_mmu_tlb_va_asid_inv  |
@@ -867,24 +870,42 @@ class lsu_monitor extends uvm_monitor;
       tr.kind     = LSU_INV;
       tr.inv_va   = vif.monitor_cb.lsu_mmu_tlb_va;
       tr.inv_asid = vif.monitor_cb.lsu_mmu_tlb_asid;
-      // The driver guarantees completion (1024-cycle timeout fallback), so
-      // inv_done is always semantically true by the time the scoreboard
-      // report runs.  We set it here so N_inv_done_seen stays accurate.
-      tr.inv_done = 1'b1;
+      tr.inv_done = 1'b0;
       // Decode inv_kind from which strobe is high
       if      (vif.monitor_cb.lsu_mmu_tlb_all_inv)      tr.inv_kind = INV_ALL;
       else if (vif.monitor_cb.lsu_mmu_tlb_va_all_inv)   tr.inv_kind = INV_VA_ALL;
       else if (vif.monitor_cb.lsu_mmu_tlb_asid_all_inv) tr.inv_kind = INV_ASID_ALL;
       else                                               tr.inv_kind = INV_VA_ASID;
       `uvm_info(get_type_name(), {"INV: ", tr.convert2string()}, UVM_HIGH)
+
+      inv_done_seen = (vif.monitor_cb.mmu_lsu_tlb_inv_done === 1'b1);
+      wait_cycles = 0;
+      while (!inv_done_seen && (wait_cycles < m_inv_done_watchdog_cycles)) begin
+        @(vif.monitor_cb);
+        wait_cycles++;
+        if (vif.monitor_cb.mmu_lsu_tlb_inv_done === 1'b1)
+          inv_done_seen = 1'b1;
+      end
+      tr.inv_done = inv_done_seen;
+      if (!tr.inv_done) begin
+        `uvm_error(get_type_name(),
+          $sformatf({"LSU INV monitor did not observe mmu_lsu_tlb_inv_done ",
+                     "within %0d cycles: kind=%s va=0x%07h asid=0x%04h tlb_busy=%0b wakeup=0x%03h"},
+            m_inv_done_watchdog_cycles, tr.inv_kind.name(), tr.inv_va, tr.inv_asid,
+            vif.monitor_cb.mmu_lsu_tlb_busy, vif.monitor_cb.mmu_lsu_tlb_wakeup))
+      end
+
       ap_inv.write(tr);
       // Wait until ALL invalidation strobes return to zero before re-arming.
-      // Without this guard the loop re-fires on every cycle the driver holds
-      // the strobe high while waiting for inv_done.
-      @(vif.monitor_cb iff (vif.monitor_cb.lsu_mmu_tlb_va_all_inv   === 1'b0 &&
-                             vif.monitor_cb.lsu_mmu_tlb_all_inv      === 1'b0 &&
-                             vif.monitor_cb.lsu_mmu_tlb_va_asid_inv  === 1'b0 &&
-                             vif.monitor_cb.lsu_mmu_tlb_asid_all_inv === 1'b0));
+      if ((vif.monitor_cb.lsu_mmu_tlb_va_all_inv   !== 1'b0) ||
+          (vif.monitor_cb.lsu_mmu_tlb_all_inv      !== 1'b0) ||
+          (vif.monitor_cb.lsu_mmu_tlb_va_asid_inv  !== 1'b0) ||
+          (vif.monitor_cb.lsu_mmu_tlb_asid_all_inv !== 1'b0)) begin
+        @(vif.monitor_cb iff (vif.monitor_cb.lsu_mmu_tlb_va_all_inv   === 1'b0 &&
+                               vif.monitor_cb.lsu_mmu_tlb_all_inv      === 1'b0 &&
+                               vif.monitor_cb.lsu_mmu_tlb_va_asid_inv  === 1'b0 &&
+                               vif.monitor_cb.lsu_mmu_tlb_asid_all_inv === 1'b0));
+      end
     end
   endtask
 

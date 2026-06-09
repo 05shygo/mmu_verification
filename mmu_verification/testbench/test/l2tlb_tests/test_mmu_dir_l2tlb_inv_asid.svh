@@ -22,6 +22,7 @@ class test_mmu_dir_l2tlb_inv_asid extends phase9_generated_test_base;
     num_txn = 64;
     m_enable_sv39_4k_bringup = 1'b1;
     m_run_misc_init = 1'b1;
+    m_wait_lsu_idle_before_vseq = 1'b1;
     m_post_drain = 500ns;
     m_lsu_seq_names.push_back("tlb_inv_asid_seq");
     m_vseq_names.push_back("mmu_smoke_vseq");

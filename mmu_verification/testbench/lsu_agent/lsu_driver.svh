@@ -67,7 +67,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     m_rsp_watchdog_cycles = 200000;
     m_p2_grant_max_cycles = 256;
     m_p2_rsp_watchdog_cycles = 8192;
-    m_inv_busy_wait_cycles   = 16384;
+    m_inv_busy_wait_cycles   = 262144;
     m_inv_done_watchdog_cycles = 8192;
   endfunction
 

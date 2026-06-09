@@ -284,7 +284,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_L2_REQQ_DEPTH_001": begin
         scn = L1DTLB_SCN_L2_REQQ_DEPTH;
         sid = "L2TLB_TS_REQQ_DEPTH_QID";
-        intent = "L1 DTLB miss burst under TLBP arb block fills L2 REQQ depth and high queue ids";
+        intent = "L1 DTLB miss burst under INVASID arb block fills L2 REQQ depth and high queue ids";
       end
       "DTLB_MB_STATE_SIGNAL_001",
       "DTLB_MB_HIGH_ENTRY_MATRIX_001",
@@ -3356,7 +3356,6 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   endtask
 
   protected task scenario_l2_reqq_depth();
-    cp0_l2tlb_tlbwr_visible_exact_seq cp0_tlbwr;
     bit tlbop_seen;
     bit reqq_closed;
     int unsigned burst_base;
@@ -3367,15 +3366,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     raw_idle();
     wait_lsu_cycles(16);
 
-    cp0_tlbwr = cp0_l2tlb_tlbwr_visible_exact_seq::type_id::create("l1dtlb_l2_reqq_depth_tlbwr_block");
-    cp0_tlbwr.num_writes = 32;
-
     fork
       begin
-        cp0_tlbwr.start(p_sequencer.cp0_sqr);
+        raw_inv_pulse(INV_ASID_ALL, va_page(0), m_asid, 1'b1, 1'b1);
       end
       begin
-        wait_tlbop_arb_activity("l1dtlb_l2_reqq_depth_tlbwr_window", tlbop_seen, 16384);
+        wait_tlbop_arb_activity("l1dtlb_l2_reqq_depth_invasid_window", tlbop_seen, 16384);
         if (!tlbop_seen)
           wait_lsu_cycles(16);
         raw_pipe01_contiguous_burst(burst_base, 4, 7'd24);

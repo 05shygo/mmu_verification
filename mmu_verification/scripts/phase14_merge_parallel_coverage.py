@@ -373,7 +373,9 @@ def parse_functional_file(path: Path, accumulator: FunctionalAccumulator) -> Non
                         parent_stack[-1]["auto_max"] = int_attr(elem, "cross_auto_bin_max", 0)
                     elif tag == "bn" and parent_stack:
                         parent = parent_stack[-1]
-                        if elem.attrib.get("excl", "0") == "1" or elem.attrib.get("unreachable", "0") == "1":
+                        if (elem.attrib.get("excl", "0") == "1"
+                                or elem.attrib.get("unreachable", "0") == "1"
+                                or elem.attrib.get("illegal", "0") == "1"):
                             continue
                         bin_id = elem.attrib.get("id", "")
                         bin_name = elem.attrib.get("name", "") or bin_id

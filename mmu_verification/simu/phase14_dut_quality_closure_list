@@ -71,6 +71,10 @@ test_ptw_pmp_deny_accflt
 test_ptw_pmp_port_map_concurrent
 test_mmu_pmp_cross_port_deny
 test_mmu_pmp_8port_concurrent
+test_sysmap_cfg_coverage_sweep
+test_mmu_pmp_cfg_coverage_sweep
+test_ptw_rsp_delay0_coverage_001
+test_ptw_rsp_delay1_coverage_001
 
 # PTW source-directed checks for PTE permission, MAEE/sysmap, and PDE/PMP cache.
 test_ptw_p0_permission_matrix +EN_PTW_SOURCE_SB +EN_PTW_SOURCE_REF_MODEL +EN_PTW_SOURCE_MONITOR +EN_PTW_SOURCE_COV

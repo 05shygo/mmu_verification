@@ -529,3 +529,145 @@ bash scripts/check_sim_status.sh output/logs/test_l2tlb_p6e_reqq_arb_fine_overla
 4. PTW 覆盖本轮仍未继续推进，符合当前任务范围；后续重点仍是 TWU lane/stage
    directed pressure、SysMap/PMP/MAEE explicit functional gaps，以及 official
    URG 工具闭环。
+
+### 2026-06-09 L2 REQQ depth closure 与当前 L1/L2 目标判断
+
+继续针对 L2TLB `cg_l2_reqq` explicit gap 补 focused 场景。普通顺序压力
+`test_l2_bank_conflict_and_reqq_full` 可以 clean pass，但 `L2TLB_REQQ_FINE`
+显示 `max_occ=1`，不能覆盖 `d5_9`。TLBP/TLBWR 短窗口探索也只能到
+`max_depth=4`，说明需要连续的合法 arb block，而不是简单增加 DTLB miss 数量。
+
+最终采用 L1DTLB directed raw LSU `INV_ASID_ALL` 触发长 INVASID TLBOP 扫描，
+同时发出 8 个 DTLB miss，使 REQQ 在 `tlboper_on` 期间积压到高深度。该方案是
+合法外部 stimulus，未 force 内部信号，也未修改 DUT RTL。
+
+执行命令：
+
+```sh
+make comp COV_FORCE_REBUILD=1 UVM_CONFIG_DB_TRACE=0
+make run_cov TEST_NAME=test_mmu_l1dtlb_dtlb_l2_reqq_depth_001 SEED=97101 \
+  RUN_DIR=/home/st-wangjun/project/mmu_verification/mmu_verification/output/run_l2_reqq_depth_focused_invasid \
+  COV_DB_DIR=/home/st-wangjun/project/mmu_verification/mmu_verification/output/coverage/probe_l2_reqq_depth_focused_invasid.vdb \
+  UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0 TIMEOUT=20000000
+bash scripts/check_sim_status.sh output/logs/test_mmu_l1dtlb_dtlb_l2_reqq_depth_001_97101_cov.log
+python3 scripts/phase14_coverage_hotspots.py \
+  --vdb-root output/coverage/phase14_l1_l2_current_trend_inputs_invasid \
+  --report-dir output/coverage/phase14_l1_l2_current_trend_report_invasid \
+  --top 40
+```
+
+结果：
+
+- Focused REQQ depth run PASS：`UVM_ERROR=0`、`UVM_FATAL=0`、
+  `hard_failures=0`。
+- `L2TLB_REQQ_FINE`: `d_load_alloc=4`、`d_store_alloc=4`、
+  `d_entry_grant=8`、`fb_miss_alloc=8`、`max_occ=8`。
+- `L2TLB_ARB_FINE`: `tlbop_req=768`、`reqq_req=1029`、
+  `tlbop_reqq_conflict=255`、`multi_req=255`。
+- `cg_l2_reqq` 已不再出现在新趋势报告的 functional explicit uncovered
+  group/coverpoint/sample 列表中。
+
+新趋势报告：
+
+- 输入目录：
+  `output/coverage/phase14_l1_l2_current_trend_inputs_invasid`
+- 报告：
+  `output/coverage/phase14_l1_l2_current_trend_report_invasid/coverage_hotspots.md`
+- VDB 数量：5
+- FSM: 77.42% (240/310)
+- Toggle: 59.50% (117740/197870)
+- Condition: 67.58% (5639/8344)
+- Functional: 75.00% (348/464)
+
+对照阶段性目标：
+
+- L1/L2 focused checker/SVA 风险：当前 L1 WFG race、L2 REQQ/arb fine overlap、
+  L2 REQQ depth focused run 均 PASS。
+- L2 REQQ functional explicit bins：当前已闭合。
+- FSM 总体 77.42%，高于阶段性 75% 目标；`x_mmu_l2tlb` 为 81.82%。但
+  L1DTLB high MB entry 局部仍有低于 75% 的对象，例如 entry2 为 66.67%，
+  entry5/6/7 为 71.43%。
+- Overall functional 75.00%，仍低于阶段性 85% 目标。
+
+因此，当前答案是：L1/L2 已关闭本轮最明确的 focused 风险点，尤其是
+`cg_l2_reqq`；但按覆盖文档的总 functional 85% 目标，当前还没有达标。下一步
+应优先补 `cg_twu_data_ready_per_stage`、`cg_sysmap`、`cg_pmp`、
+`cg_twu_mask_cause`、`cg_maee_leaf_level` 和剩余 `cg_l1dtlb` explicit gaps，
+同时继续处理 official URG 崩溃问题。
+
+### 2026-06-09 final L1/L2 current-trend target closure
+
+在上面的 L2 REQQ depth 闭合之后，继续补当前 functional 目标的最低风险缺口：
+
+- `scripts/phase14_merge_parallel_coverage.py` 修正 XML fallback 解析，跳过
+  VDB XML 中标记为 `illegal="1"` 的 covergroup bins，避免把 illegal bins
+  计入 diagnostic denominator。
+- 新增 `test_sysmap_cfg_coverage_sweep`，只闭合 `sysmap_cfg_agent`
+  configuration mirror covergroup。该测试不 force SysMap RTL，不作为
+  `ct_mmu_sysmap` DUT 行为 signoff 证据。
+- 新增 `test_mmu_pmp_cfg_coverage_sweep`，闭合 PMP flag interface/agent
+  covergroup 的 port 和 flag tuple 缺口。
+- 新增 `test_ptw_rsp_delay1_coverage_001` 和
+  `test_ptw_rsp_delay0_coverage_001`。其中 delay0 对应 covergroup 统计中的
+  `cg_rsp_delay_range.d1`，因为 responder 在 accept 后零等待驱动响应时，
+  monitor 侧看到的 accept-to-response 周期差为 1。
+
+执行命令：
+
+```sh
+make comp COV_FORCE_REBUILD=1 UVM_CONFIG_DB_TRACE=0
+make run_cov TEST_NAME=test_sysmap_cfg_coverage_sweep SEED=97101 \
+  RUN_DIR=output/run_sysmap_cfg_coverage_sweep_current \
+  COV_DB_DIR=output/coverage/probe_cfg_sweeps_current.vdb \
+  UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0 TIMEOUT=8000000
+make run_cov TEST_NAME=test_mmu_pmp_cfg_coverage_sweep SEED=97101 \
+  RUN_DIR=output/run_pmp_cfg_coverage_sweep_current \
+  COV_DB_DIR=output/coverage/probe_cfg_sweeps_current.vdb \
+  UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0 TIMEOUT=8000000
+make run_cov TEST_NAME=test_ptw_rsp_delay1_coverage_001 SEED=97101 \
+  RUN_DIR=output/run_ptw_rsp_delay1_coverage_current \
+  COV_DB_DIR=output/coverage/probe_cfg_sweeps_current.vdb \
+  UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0 TIMEOUT=12000000
+make run_cov TEST_NAME=test_ptw_rsp_delay0_coverage_001 SEED=97101 \
+  RUN_DIR=output/run_ptw_rsp_delay0_coverage_current \
+  COV_DB_DIR=/home/st-wangjun/project/mmu_verification/mmu_verification/output/coverage/probe_ptw_rsp_delay0_current.vdb \
+  UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0 TIMEOUT=12000000
+bash scripts/check_sim_status.sh \
+  output/logs/test_sysmap_cfg_coverage_sweep_97101_cov.log \
+  output/logs/test_mmu_pmp_cfg_coverage_sweep_97101_cov.log \
+  output/logs/test_ptw_rsp_delay1_coverage_001_97101_cov.log \
+  output/logs/test_ptw_rsp_delay0_coverage_001_97101_cov.log
+python3 scripts/phase14_coverage_hotspots.py \
+  --vdb-root output/coverage/phase14_l1_l2_current_trend_inputs_final \
+  --report-dir output/coverage/phase14_l1_l2_current_trend_report_final \
+  --top 40
+```
+
+注意：前三个 focused run 使用相对 `COV_DB_DIR` 时，实际 testdata 写在各自
+`RUN_DIR/output/coverage/probe_cfg_sweeps_current.vdb` 下；最终趋势输入目录已链接
+这些实际 VDB。后续复现建议使用绝对 `COV_DB_DIR`。
+
+结果：
+
+- 4 个新增 focused run 均 PASS：`UVM_ERROR=0`、`UVM_FATAL=0`、
+  `hard_failures=0`。
+- 最终趋势输入：
+  `output/coverage/phase14_l1_l2_current_trend_inputs_final`
+- 最终趋势报告：
+  `output/coverage/phase14_l1_l2_current_trend_report_final/coverage_hotspots.md`
+- VDB 数量：9。
+- FSM: 77.42% (240/310)。
+- Toggle: 59.58% (117896/197870)。
+- Condition: 67.63% (5643/8344)。
+- Functional: 85.10% (394/463)。
+
+当前结论：
+
+- 按本覆盖文档当前阶段性目标，Functional 85%+ 已达到。
+- L1/L2 focused 风险点仍保持 clean：L1 WFG flush/grant checker/SVA、L2
+  REQQ/arb fine overlap、L2 REQQ depth 均为 PASS。
+- 剩余 explicit gaps 仍包括 `cg_twu_data_ready_per_stage`、`cg_twu_mask_cause`、
+  `cg_maee_leaf_level`、`cg_ifu_req`、`cg_l1dtlb` 等；这些是下一轮质量提升项，
+  但不再阻塞当前 85% functional 目标。
+- 最终 signoff 仍必须基于 official Synopsys URG report；本节使用的 XML
+  hotspot report 是诊断/趋势证据。

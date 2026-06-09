@@ -550,6 +550,10 @@ class phase9_generated_test_base extends test_base;
         pmp_flg_raw_seq seq = pmp_flg_raw_seq::type_id::create(seq_name);
         seq.start(m_env.m_pmp.m_sequencer);
       end
+      "pmp_flg_coverage_sweep_seq": begin
+        pmp_flg_coverage_sweep_seq seq = pmp_flg_coverage_sweep_seq::type_id::create(seq_name);
+        seq.start(m_env.m_pmp.m_sequencer);
+      end
       "pmp_flg_deny_ptw_rd_seq": begin
         pmp_flg_deny_ptw_rd_seq seq = pmp_flg_deny_ptw_rd_seq::type_id::create(seq_name);
         void'(seq.randomize());
@@ -581,6 +585,10 @@ class phase9_generated_test_base extends test_base;
       "sysmap_perm_flag_seq": begin
         sysmap_perm_flag_seq seq = sysmap_perm_flag_seq::type_id::create(seq_name);
         void'(seq.randomize());
+        seq.start(m_env.m_sysmap_cfg.m_sequencer);
+      end
+      "sysmap_cfg_coverage_sweep_seq": begin
+        sysmap_cfg_coverage_sweep_seq seq = sysmap_cfg_coverage_sweep_seq::type_id::create(seq_name);
         seq.start(m_env.m_sysmap_cfg.m_sequencer);
       end
       default:
@@ -638,6 +646,18 @@ class phase9_generated_test_base extends test_base;
     case (seq_name)
       "ptw_mem_normal_rsp_seq": begin
         ptw_mem_normal_rsp_seq seq = ptw_mem_normal_rsp_seq::type_id::create(seq_name);
+        seq.start(m_env.m_ptw_mem.m_sequencer);
+      end
+      "ptw_mem_delay0_rsp_seq": begin
+        ptw_mem_delay_range_seq seq = ptw_mem_delay_range_seq::type_id::create(seq_name);
+        seq.delay_min = 0;
+        seq.delay_max = 0;
+        seq.start(m_env.m_ptw_mem.m_sequencer);
+      end
+      "ptw_mem_delay1_rsp_seq": begin
+        ptw_mem_delay_range_seq seq = ptw_mem_delay_range_seq::type_id::create(seq_name);
+        seq.delay_min = 1;
+        seq.delay_max = 1;
         seq.start(m_env.m_ptw_mem.m_sequencer);
       end
       "ptw_mem_ooo_rsp_seq": begin

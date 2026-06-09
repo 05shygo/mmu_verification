@@ -53,6 +53,8 @@
 `include "test_sfence_abort_walk.svh"
 `include "test_twu_concurrent_4way.svh"
 `include "test_twu_concurrent_same_vpn.svh"
+`include "test_ptw_rsp_delay0_coverage_001.svh"
+`include "test_ptw_rsp_delay1_coverage_001.svh"
 `include "test_twu_idle_state.svh"
 `include "test_xbar_1to4_distribution.svh"
 `include "test_xbar_twu_round_robin.svh"

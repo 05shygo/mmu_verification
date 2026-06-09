@@ -135,4 +135,61 @@ class sysmap_perm_flag_seq extends sysmap_cfg_base_seq;
 
 endclass : sysmap_perm_flag_seq
 
+// ── Coverage sweep for the SysMap configuration mirror -----------------------
+class sysmap_cfg_coverage_sweep_seq extends sysmap_cfg_base_seq;
+  `uvm_object_utils(sysmap_cfg_coverage_sweep_seq)
+
+  function new(string name = "sysmap_cfg_coverage_sweep_seq");
+    super.new(name);
+  endfunction
+
+  protected task send_cfg(
+    input bit [27:0] base_in   [8],
+    input bit [27:0] mask_in   [8],
+    input bit [4:0]  flg_in    [8],
+    input bit        enable_in [8]
+  );
+    sysmap_cfg_txn tr;
+    `uvm_create(tr)
+    foreach (tr.base[i]) begin
+      tr.base[i]   = base_in[i];
+      tr.mask[i]   = mask_in[i];
+      tr.flg[i]    = flg_in[i];
+      tr.enable[i] = enable_in[i];
+    end
+    `uvm_send(tr)
+    #20ns;
+  endtask
+
+  virtual task body();
+    bit [27:0] base[8];
+    bit [27:0] mask[8];
+    bit [4:0]  flg[8];
+    bit        enable[8];
+
+    foreach (base[i]) begin
+      base[i]   = 28'h100_0000 + (i << 12);
+      mask[i]   = 28'hfff_f000;
+      flg[i]    = 5'h00;
+      enable[i] = 1'b0;
+    end
+
+    // Sweep the full 5-bit attr space on region0.  The cg wrapper records the
+    // first changed region each cycle, so only region0 changes in this loop.
+    enable[0] = 1'b1;
+    for (int unsigned attr = 0; attr < 32; attr++) begin
+      flg[0] = attr[4:0];
+      send_cfg(base, mask, flg, enable);
+    end
+
+    // Then toggle each remaining region individually so cp_region sees r[1:7].
+    for (int unsigned region = 1; region < 8; region++) begin
+      enable[region] = 1'b1;
+      flg[region]    = (region[0]) ? 5'b10011 : 5'b01111;
+      send_cfg(base, mask, flg, enable);
+    end
+  endtask
+
+endclass : sysmap_cfg_coverage_sweep_seq
+
 `endif // SYSMAP_CFG_SEQUENCES_SVH

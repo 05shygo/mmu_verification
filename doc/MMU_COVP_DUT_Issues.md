@@ -222,6 +222,23 @@ The key REQQ/arb counters included `i_alloc=104`, `d_load_alloc=162`,
 `reqq_pfu_conflict=423`, `ptw_reqq_conflict=2`, and
 `tlbop_reqq_conflict=9`.
 
+Focused L2TLB REQQ depth run:
+
+```text
+make run_cov TEST_NAME=test_mmu_l1dtlb_dtlb_l2_reqq_depth_001 SEED=97101 \
+  RUN_DIR=/home/st-wangjun/project/mmu_verification/mmu_verification/output/run_l2_reqq_depth_focused_invasid \
+  COV_DB_DIR=/home/st-wangjun/project/mmu_verification/mmu_verification/output/coverage/probe_l2_reqq_depth_focused_invasid.vdb \
+  UVM_ERR_ONLY=1 UVM_CONFIG_DB_TRACE=0 TIMEOUT=20000000
+```
+
+Result: PASS with `UVM_ERROR=0`, `UVM_FATAL=0`, `hard_failures=0`. The scenario
+uses a legal raw LSU `INV_ASID_ALL` TLBOP window plus 8 DTLB misses; it does not
+force internal DUT state. Key counters: `L2TLB_REQQ_FINE max_occ=8`,
+`d_load_alloc=4`, `d_store_alloc=4`, `d_entry_grant=8`, and
+`L2TLB_ARB_FINE tlbop_reqq_conflict=255`. The updated trend report
+`output/coverage/phase14_l1_l2_current_trend_report_invasid/coverage_hotspots.md`
+no longer lists `cg_l2_reqq` in functional explicit uncovered bins.
+
 ### Residual Risk
 
 This closure relies on the current DUT contract that same-cycle
@@ -229,3 +246,32 @@ WFG flush/grant request issue is legal and handled by the ABT path. The checker
 now encodes that specific legality rule. Any future case that allocates a new MB
 entry under the active flush write-enable, or issues a non-matching/non-WFG L2
 request under `flush_kill`, remains a hard checker failure.
+
+### Current Coverage Status Update
+
+On 2026-06-09, the remaining current L1/L2 coverage task continued without
+modifying DUT RTL. No new confirmed DUT issue was opened.
+
+Additional verification-side closure added:
+
+- `test_sysmap_cfg_coverage_sweep`: SysMap configuration mirror covergroup
+  closure only; this does not sign off `ct_mmu_sysmap` DUT behavior.
+- `test_mmu_pmp_cfg_coverage_sweep`: PMP flag interface covergroup closure.
+- `test_ptw_rsp_delay1_coverage_001` and
+  `test_ptw_rsp_delay0_coverage_001`: PTW responder delay coverage, with
+  delay0 closing the diagnostic `cg_rsp_delay_range.d1` bin.
+- `scripts/phase14_merge_parallel_coverage.py`: XML fallback now ignores
+  `illegal="1"` bins when reconstructing functional coverage.
+
+Verification evidence:
+
+- `make comp COV_FORCE_REBUILD=1 UVM_CONFIG_DB_TRACE=0`: PASS.
+- The four additional focused runs all PASS with `UVM_ERROR=0`,
+  `UVM_FATAL=0`, and `hard_failures=0`.
+- Final diagnostic trend report:
+  `output/coverage/phase14_l1_l2_current_trend_report_final/coverage_hotspots.md`.
+- Final diagnostic functional coverage: 85.10% (394/463), meeting the current
+  85% target in `phase14_dut_quality_coverage_closure.md`.
+
+Official Synopsys URG signoff is still required; the XML hotspot report remains
+a diagnostic trend artifact.

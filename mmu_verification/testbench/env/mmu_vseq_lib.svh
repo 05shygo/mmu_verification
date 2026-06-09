@@ -108,6 +108,48 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
   endtask
 endclass
 
+class mmu_vseq_lsu_fixed_inv_va_seq extends lsu_base_seq;
+  `uvm_object_utils(mmu_vseq_lsu_fixed_inv_va_seq)
+
+  bit [26:0] m_inv_va;
+  bit [15:0] m_inv_asid;
+  bit        m_allow_busy;
+  int unsigned m_idle_cycles;
+
+  function new(string name = "mmu_vseq_lsu_fixed_inv_va_seq");
+    super.new(name);
+    num_txn = 1;
+    m_inv_va = '0;
+    m_inv_asid = 16'h0;
+    m_allow_busy = 1'b0;
+    m_idle_cycles = 0;
+  endfunction
+
+  virtual task body();
+    lsu_txn tr;
+    bit [26:0] va_local;
+    bit [15:0] asid_local;
+    int unsigned idle_local;
+
+    va_local = m_inv_va;
+    asid_local = m_inv_asid;
+    idle_local = m_idle_cycles;
+    for (int unsigned i = 0; i < num_txn; i++) begin
+      `uvm_create(tr)
+      tr.c_kind_default.constraint_mode(0);
+      assert(tr.randomize() with {
+        kind        == LSU_INV;
+        inv_kind    == INV_VA_ALL;
+        inv_va      == va_local;
+        inv_asid    == asid_local;
+        idle_cycles == int'(idle_local);
+      }) else `uvm_fatal(get_full_name(), "fixed INV_VA randomize failed")
+      tr.inv_allow_busy = m_allow_busy;
+      `uvm_send(tr)
+    end
+  endtask
+endclass
+
 class mmu_vseq_lsu_fixed_inv_asid_seq extends lsu_base_seq;
   `uvm_object_utils(mmu_vseq_lsu_fixed_inv_asid_seq)
 

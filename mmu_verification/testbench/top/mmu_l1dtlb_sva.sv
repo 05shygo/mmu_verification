@@ -667,11 +667,15 @@ module mmu_l1dtlb_mb_entry_sva #(
   a_entry_wfi_state_decode: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
     entry_wfi == (entry_state == STATE_WFI));
 
-  a_alloc_latches_payload: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
-    (alloc_vld && entry_state == STATE_IDLE)
-    |=> (entry_vpn == $past(alloc_vpn)
-      && entry_iid == $past(alloc_iid)
-      && entry_store == $past(alloc_store)));
+	  a_alloc_latches_payload: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+	    (alloc_vld && !rtu_yy_xx_flush && entry_state == STATE_IDLE)
+	    |=> (entry_vpn == $past(alloc_vpn)
+	      && entry_iid == $past(alloc_iid)
+	      && entry_store == $past(alloc_store)));
+
+	  a_idle_flush_blocks_alloc: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+	    (alloc_vld && rtu_yy_xx_flush && entry_state == STATE_IDLE)
+	    |=> entry_state == STATE_IDLE);
 
   a_wfi_data_stable_without_grant: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
     (entry_state == STATE_WFI && !refill_gnt && !rtu_yy_xx_flush)
@@ -697,6 +701,12 @@ module mmu_l1dtlb_mb_entry_sva #(
 
   a_wfg_flush_with_grant_to_abt: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
     (entry_state == STATE_WFG && rtu_yy_xx_flush && issue_sel && issue_grant) |=> entry_state == STATE_ABT);
+
+  cp_l1dtlb_wfg_flush_no_grant: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
+    entry_state == STATE_WFG && rtu_yy_xx_flush && !(issue_sel && issue_grant));
+
+  cp_l1dtlb_wfg_flush_with_grant: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
+    entry_state == STATE_WFG && rtu_yy_xx_flush && issue_sel && issue_grant);
 
   a_wfc_flush_no_refill_to_abt: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
     (entry_state == STATE_WFC && rtu_yy_xx_flush && !refill_vld) |=> entry_state == STATE_ABT);
@@ -1156,8 +1166,17 @@ module mmu_l1dtlb_hit_rd_sva #(
   a_expt_replay_has_fault_class: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
     (lsu_mmu_va_vld_x && expt_match_x) |-> (expt_pgflt_x ^ expt_acflt_x));
 
-  a_tlb_hit_not_expt_hit_same_req: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
-    !(lsu_mmu_va_vld_x && (|entry_hit_vec) && expt_match_x));
+  // RTL gives exception-CAM replay priority via dutlb_pre_sel.  A replay may
+  // coincide with a stale/independent TLB entry hit for the same VPN; the
+  // required behavior is that the request is completed as the replayed fault
+  // and does not allocate a new miss or source stale entry PA.
+  a_expt_entry_overlap_is_terminal_replay: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+    (lsu_mmu_va_vld_x && (|entry_hit_vec) && expt_match_x)
+    |-> (mmu_lsu_pa_vld_x && !dutlb_miss_vld_x && !dutlb_miss_vld_short_x
+         && (mmu_lsu_pa_x == mmu_sysmap_pa_x)));
+
+  cp_l1dtlb_expt_entry_overlap_replay: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+    lsu_mmu_va_vld_x && (|entry_hit_vec) && expt_match_x);
 
   a_abort_blocks_miss: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
     (lsu_mmu_va_vld_x && lsu_mmu_abort_x) |-> !dutlb_miss_vld_x);

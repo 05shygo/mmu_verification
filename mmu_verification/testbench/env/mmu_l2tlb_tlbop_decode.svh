@@ -56,6 +56,7 @@ typedef struct {
   bit               write_data_valid;  // write data captured
   bit [47:0]        write_tag_din;     // actual tag written to L2TLB
   bit [41:0]        write_data_din;    // actual data written to L2TLB
+  bit               aborted_by_reset;  // active operation was intentionally reset-dropped
   bit               validated;
 } tlbop_txn_t;
 
@@ -92,6 +93,7 @@ class mmu_l2tlb_tlbop_decode extends uvm_component;
   int unsigned m_hitindex_mismatch;   // TLBP hit_idx doesn't match shadow
   int unsigned m_tlbr_field_mismatch; // TLBR readback != shadow
   int unsigned m_shadow_update_seen;  // TLBWI/TLBWR wrote to shadow
+  int unsigned m_reset_drop_seen;     // reset-mid-TLBOP transactions intentionally canceled
   int unsigned m_cycle;
 
   // ── Reference to L2TLB entry shadow ─────────────────────────────────────
@@ -122,6 +124,7 @@ class mmu_l2tlb_tlbop_decode extends uvm_component;
     m_hitindex_mismatch  = 0;
     m_tlbr_field_mismatch = 0;
     m_shadow_update_seen = 0;
+    m_reset_drop_seen   = 0;
     m_cycle             = 0;
   endfunction
 
@@ -145,6 +148,9 @@ class mmu_l2tlb_tlbop_decode extends uvm_component;
 
     // ── Track active transaction lifecycle ───────────────────────────────
     if (txn_active) begin
+      if (vif.rst_ni !== 1'b1)
+        active_txn.aborted_by_reset = 1'b1;
+
       // G2: Count grants (must be exactly 1)
       if (vif.mon_cb.tlbop_arb_grant) begin
         active_txn.grant_count++;
@@ -231,6 +237,17 @@ class mmu_l2tlb_tlbop_decode extends uvm_component;
     // Use regs_cmplt cycle as done if FSM returned IDLE first
     if (active_txn.done_cycle == 0)
       active_txn.done_cycle = m_cycle;
+
+    if (active_txn.aborted_by_reset) begin
+      m_reset_drop_seen++;
+      `uvm_info(get_type_name(),
+        $sformatf("[TLBOP_DECODE][RESET_DROP] kind=%0s start=%0d grant=%0d l2_cmplt=%0d done=%0d grant_cnt=%0d l2cmplt_cnt=%0d",
+          active_txn.kind.name(), active_txn.start_cycle,
+          active_txn.grant_cycle, active_txn.l2_cmplt_cycle, active_txn.done_cycle,
+          active_txn.grant_count, active_txn.l2_cmplt_count),
+        UVM_LOW)
+      return;
+    end
 
     // ── G2: Verify 1:1 correspondence ───────────────────────────────────
     case (active_txn.kind)
@@ -445,10 +462,10 @@ class mmu_l2tlb_tlbop_decode extends uvm_component;
 
   // ── Summary report ──────────────────────────────────────────────────────
   function string summary();
-    return $sformatf("TLBOP_DECODE tlbp=%0d(hit=%0d miss=%0d mult=%0d) tlbr=%0d tlbwi=%0d tlbwr=%0d shadow_upd=%0d corr_err=%0d hitidx_mis=%0d tlbr_field_mis=%0d",
+    return $sformatf("TLBOP_DECODE tlbp=%0d(hit=%0d miss=%0d mult=%0d) tlbr=%0d tlbwi=%0d tlbwr=%0d shadow_upd=%0d reset_drop=%0d corr_err=%0d hitidx_mis=%0d tlbr_field_mis=%0d",
       m_txn_tlbp_total, m_txn_tlbp_hit, m_txn_tlbp_miss, m_txn_tlbp_multihit,
       m_txn_tlbr_total, m_txn_tlbwi_total, m_txn_tlbwr_total,
-      m_shadow_update_seen, m_correspondence_err,
+      m_shadow_update_seen, m_reset_drop_seen, m_correspondence_err,
       m_hitindex_mismatch, m_tlbr_field_mismatch);
   endfunction
 

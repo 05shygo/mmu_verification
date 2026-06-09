@@ -278,10 +278,12 @@ module mmu_pde_cache_sva #(
     cp_pde_l2_pmp_hit_hits++;
   end
 
-  // PTW-SVA-PDE-013/014: L2 tag hit deny creates direct accerr and no xbar hit.
-  a_pde_l2_tag_deny_no_xbar_hit: assert property (@(posedge pde_cache_clk)
+  // PTW-SVA-PDE-013/014: L2 tag hit deny suppresses xbar request and creates direct accerr.
+  // Hit sidebands may still reflect combinational cache lookup state while the
+  // request valid is blocked by direct accerr arbitration.
+  a_pde_l2_tag_deny_no_xbar_req: assert property (@(posedge pde_cache_clk)
     disable iff (!cpurst_b)
-    ptw_req && (|l2_deny_vec) |-> (!L2PDE_xbar_hit_vld && !L1PDE_xbar_hit_vld));
+    ptw_req && (|l2_deny_vec) |-> !PDE_xbar_req);
 
   a_pde_l2_tag_deny_direct_accerr: assert property (@(posedge pde_cache_clk)
     disable iff (!cpurst_b)

@@ -443,6 +443,10 @@ class phase9_generated_test_base extends test_base;
         cp0_tlbp_seq seq = cp0_tlbp_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
       end
+      "cp0_l2tlb_tlbp_reset_target_seq": begin
+        cp0_l2tlb_tlbp_reset_target_seq seq = cp0_l2tlb_tlbp_reset_target_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
       "cp0_l2tlb_tlbp_hit_exact_seq": begin
         cp0_l2tlb_tlbp_hit_exact_seq seq = cp0_l2tlb_tlbp_hit_exact_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
@@ -453,6 +457,10 @@ class phase9_generated_test_base extends test_base;
       end
       "cp0_tlbr_seq": begin
         cp0_tlbr_seq seq = cp0_tlbr_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbr_reset_target_seq": begin
+        cp0_l2tlb_tlbr_reset_target_seq seq = cp0_l2tlb_tlbr_reset_target_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
       end
       "cp0_l2tlb_tlbr_read_exact_seq": begin
@@ -467,6 +475,10 @@ class phase9_generated_test_base extends test_base;
         cp0_tlbwi_seq seq = cp0_tlbwi_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
       end
+      "cp0_l2tlb_tlbwi_reset_target_seq": begin
+        cp0_l2tlb_tlbwi_reset_target_seq seq = cp0_l2tlb_tlbwi_reset_target_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
       "cp0_l2tlb_tlbwi_write_exact_seq": begin
         cp0_l2tlb_tlbwi_write_exact_seq seq = cp0_l2tlb_tlbwi_write_exact_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
@@ -477,6 +489,10 @@ class phase9_generated_test_base extends test_base;
       end
       "cp0_tlbwr_seq": begin
         cp0_tlbwr_seq seq = cp0_tlbwr_seq::type_id::create(seq_name);
+        seq.start(m_env.m_cp0.m_sequencer);
+      end
+      "cp0_l2tlb_tlbwr_reset_target_seq": begin
+        cp0_l2tlb_tlbwr_reset_target_seq seq = cp0_l2tlb_tlbwr_reset_target_seq::type_id::create(seq_name);
         seq.start(m_env.m_cp0.m_sequencer);
       end
       "cp0_l2tlb_tlbwr_visible_exact_seq": begin

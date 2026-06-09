@@ -408,6 +408,9 @@ interface mmu_dut_probes_if (
   wire [7:0]   tlbop_l2_tlboper_sel;
   wire         tlbop_l2_va_hit;
   wire         tlbop_l2_asid_hit;
+  logic        tlbop_reset_inject_active;
+  logic        tlbop_reset_inject_hit;
+  logic        tlbop_reset_inject_done;
 
   // Monitor clocking
   clocking mon_cb @(posedge clk_i);
@@ -521,6 +524,7 @@ interface mmu_dut_probes_if (
     input tlbop_l2_tlbr_ppn, tlbop_l2_tlbr_flg, tlbop_l2_tlbr_g;
     input tlbop_l2_tlboper_cmplt, tlbop_l2_tlboper_sel;
     input tlbop_l2_va_hit, tlbop_l2_asid_hit;
+    input tlbop_reset_inject_active, tlbop_reset_inject_hit, tlbop_reset_inject_done;
   endclocking
 
 endinterface : mmu_dut_probes_if

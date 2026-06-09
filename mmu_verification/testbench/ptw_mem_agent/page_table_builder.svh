@@ -491,7 +491,7 @@ class page_table_builder extends uvm_object;
 
     `uvm_info("PAGE_TABLE_BUILDER",
       $sformatf("map_4k: va=0x%010h → pa=0x%010h ppn=0x%07h pte=0x%016h",
-        va, pa, leaf_ppn, pte0), UVM_MEDIUM)
+        va, pa, leaf_ppn, pte0), UVM_HIGH)
   endfunction
 
   // Map a 2M huge page: VA → PA.

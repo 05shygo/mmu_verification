@@ -57,6 +57,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     logic        hit_vld;
     logic        miss_vld;
     logic        mb_hit;
+    logic        flush;
     logic        expt_match;
     logic [27:0] pa;
     logic [2:0]  hit_pgs;
@@ -418,6 +419,10 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   string m_l1dtlb_tc_id;
   string m_l1dtlb_scenario_id;
   bit    m_l1dtlb_gate_en;
+  int unsigned m_stale_hit_diag_limit;
+  bit    m_flush_alloc_diag_en;
+  int unsigned m_flush_alloc_diag_limit;
+  int unsigned m_flush_alloc_diag_count;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -425,6 +430,13 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
+    m_stale_hit_diag_limit = 64;
+    void'($value$plusargs("L1DTLB_STALE_HIT_DIAG_LIMIT=%0d", m_stale_hit_diag_limit));
+    m_flush_alloc_diag_en = $test$plusargs("L1DTLB_FLUSH_ALLOC_DIAG")
+                         || $test$plusargs("L1DTLB_WFG_RACE_ONLY");
+    m_flush_alloc_diag_limit = 32;
+    m_flush_alloc_diag_count = 0;
+    void'($value$plusargs("L1DTLB_FLUSH_ALLOC_DIAG_LIMIT=%0d", m_flush_alloc_diag_limit));
     if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe))
       `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not found - L1DTLB spec SB idle", UVM_LOW)
     if (!uvm_config_db#(virtual lsu_if)::get(this, "", "LSU_VIF", lsu_vif))
@@ -783,6 +795,67 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         n++;
     end
     return n;
+  endfunction
+
+  protected function logic [7:0] mb_alloc_transition_mask_from(input logic [7:0] base_vld);
+    logic [7:0] mask;
+    mask = 8'h00;
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (mb_alloc_transition_from(base_vld, i))
+        mask[i] = 1'b1;
+    end
+    return mask;
+  endfunction
+
+  protected function string flush_alloc_diag_s(input logic [7:0] base_vld,
+                                               input logic [7:0] trans_mask);
+    string s;
+    mb_shadow_t ent;
+    s = $sformatf(
+      " diag{cycle=%0d flush=%0b base_vld=0x%02h prev_vld=0x%02h cur_vld=0x%02h trans_mask=0x%02h ready=0x%02h issued=0x%02h wfc=0x%02h wfi=0x%02h l2_req={vld:%0b eid:%0d vpn:0x%07h is_load:%0b} ptw_ref={cmplt:%0b pavld:%0b eid:%0d vpn:0x%07h pgflt:%0b acflt:%0b} l2_ref={cmplt:%0b pavld:%0b eid:%0d vpn:0x%07h pgflt:%0b}",
+      m_cycles,
+      v_probe.mon_cb.rtu_yy_xx_flush,
+      base_vld,
+      m_prev_mb_vld,
+      v_probe.mon_cb.l1d_mb_vld,
+      trans_mask,
+      v_probe.mon_cb.l1d_mb_ready,
+      v_probe.mon_cb.l1d_mb_issued,
+      v_probe.mon_cb.l1d_mb_wfc,
+      v_probe.mon_cb.l1d_mb_wfi,
+      v_probe.mon_cb.l1d_l2_req_vld,
+      v_probe.mon_cb.l1d_l2_req_eid,
+      v_probe.mon_cb.l1d_l2_req_vpn,
+      v_probe.mon_cb.l1d_l2_req_is_load,
+      v_probe.mon_cb.l1d_ptw_ref_cmplt,
+      v_probe.mon_cb.l1d_ptw_ref_pavld,
+      v_probe.mon_cb.l1d_ptw_ref_id,
+      v_probe.mon_cb.l1d_ptw_ref_vpn,
+      v_probe.mon_cb.l1d_ptw_ref_pgflt,
+      v_probe.mon_cb.l1d_ptw_ref_acflt,
+      v_probe.mon_cb.l1d_l2_ref_cmplt,
+      v_probe.mon_cb.l1d_l2_ref_pavld,
+      v_probe.mon_cb.l1d_l2_ref_eid,
+      v_probe.mon_cb.l1d_l2_ref_vpn,
+      v_probe.mon_cb.l1d_l2_ref_pgflt);
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (trans_mask[i] || base_vld[i] || m_prev_mb_vld[i] || v_probe.mon_cb.l1d_mb_vld[i]) begin
+        ent = probe_mb_entry(i);
+        s = {s, $sformatf(" mb%0d{%s}", i, mb_shadow_s(ent))};
+      end
+    end
+    s = {s, "}"};
+    return s;
+  endfunction
+
+  protected function string flush_alloc_diag_limited_s(input logic [7:0] base_vld,
+                                                       input logic [7:0] trans_mask);
+    if (!m_flush_alloc_diag_en)
+      return "";
+    if (m_flush_alloc_diag_count >= m_flush_alloc_diag_limit)
+      return "";
+    m_flush_alloc_diag_count++;
+    return flush_alloc_diag_s(base_vld, trans_mask);
   endfunction
 
   protected function bit mb_base_release_overlap(input logic [7:0] base_vld);
@@ -1464,6 +1537,9 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     int unsigned got_idx;
     bit overlap_extra_alloc;
     bit overlap_base_release;
+    bit flush_drop_due;
+    logic [7:0] alloc_transition_mask;
+    string flush_diag;
     mb_alloc_expect_t exp;
 
     if ($isunknown(v_probe.mon_cb.l1d_mb_vld))
@@ -1477,7 +1553,31 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       new_count = mb_alloc_transition_count_from(exp.base_vld);
       overlap_extra_alloc = (new_count > exp.exp_count);
       overlap_base_release = mb_base_release_overlap(exp.base_vld);
+      flush_drop_due = v_probe.mon_cb.rtu_yy_xx_flush;
       m_phase6d_alloc_expect_check++;
+
+      if (flush_drop_due) begin
+        if (exp.exp_count != 0)
+          m_phase6d_alloc_flush_drop++;
+        if (new_count != 0) begin
+          alloc_transition_mask = mb_alloc_transition_mask_from(exp.base_vld);
+          flush_diag = flush_alloc_diag_limited_s(exp.base_vld, alloc_transition_mask);
+          sb_error("P6D_ALLOC_FLUSH_SIDE_EFFECT",
+            $sformatf("flush due cycle allocated MB entry reason=%s issue_cycle=%0d due_cycle=%0d exp=%0d got=%0d base_vld=0x%02h cur_vld=0x%02h trans_mask=0x%02h p0{%s} p1{%s}%s",
+              exp.reason, exp.issue_cycle, exp.due_cycle, exp.exp_count, new_count,
+              exp.base_vld, v_probe.mon_cb.l1d_mb_vld, alloc_transition_mask,
+              token_s(exp.p0), token_s(exp.p1), flush_diag));
+        end
+        `uvm_info({get_type_name(), "::PHASE6D_MB_ALLOC_FLUSH_DROP"},
+          $sformatf("drop pending allocation under flush slot=%0d reason=%s issue_cycle=%0d due_cycle=%0d exp_count=%0d got_count=%0d base_vld=0x%02h cur_vld=0x%02h",
+            i, exp.reason, exp.issue_cycle, exp.due_cycle, exp.exp_count,
+            new_count, exp.base_vld, v_probe.mon_cb.l1d_mb_vld),
+          UVM_HIGH)
+        m_mb_alloc_expect_q[i] = '{default: '0};
+        if (m_mb_alloc_expect_count != 0)
+          m_mb_alloc_expect_count--;
+        continue;
+      end
 
       if (new_count < exp.exp_count) begin
         sb_error("P6D_ALLOC_COUNT",
@@ -1582,6 +1682,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     tok.mxr      = v_probe.mon_cb.l1d_cp0_mxr;
     tok.sum      = v_probe.mon_cb.l1d_cp0_sum;
     tok.maee     = v_probe.mon_cb.l1d_cp0_maee;
+    tok.flush    = v_probe.mon_cb.rtu_yy_xx_flush;
     tok.asid     = v_probe.mon_cb.l1d_regs_cur_asid;
     tok.satp_ppn = v_probe.mon_cb.l1d_regs_satp_ppn;
     tok.direct_map = (lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0);
@@ -1644,10 +1745,10 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
   endfunction
 
   protected function string token_s(input lsu_pipe_token_t tok);
-    return $sformatf("valid=%0b cycle=%0d pipe=%0d iid=%0d vpn=0x%07h va=0x%016h abort=%0b store=%0b req_type=%0d pa_vld=%0b pa=0x%07h pf=%0b af=%0b hit=%0b hit_pgs=0x%0h miss=%0b mb_hit=%0b expt=%0b pre_sel=%0b path=%s direct=%0b stamo=%0b priv=%0d mprv=%0b mpp=%0d mxr=%0b sum=%0b pmp=0x%0h sysmap_hit=0x%02h",
+    return $sformatf("valid=%0b cycle=%0d pipe=%0d iid=%0d vpn=0x%07h va=0x%016h abort=%0b store=%0b req_type=%0d pa_vld=%0b pa=0x%07h pf=%0b af=%0b hit=%0b hit_pgs=0x%0h miss=%0b mb_hit=%0b flush=%0b expt=%0b pre_sel=%0b path=%s direct=%0b stamo=%0b priv=%0d mprv=%0b mpp=%0d mxr=%0b sum=%0b pmp=0x%0h sysmap_hit=0x%02h",
       tok.vld, tok.cycle, tok.pipe, tok.iid, tok.vpn, tok.va, tok.abort,
       tok.store, tok.req_type, tok.pa_vld, tok.pa, tok.page_fault, tok.access_fault,
-      tok.hit_vld, tok.hit_pgs, tok.miss_vld, tok.mb_hit, tok.expt_match,
+      tok.hit_vld, tok.hit_pgs, tok.miss_vld, tok.mb_hit, tok.flush, tok.expt_match,
       tok.pre_sel, token_path_s(tok.path_class), tok.direct_map, tok.stamo_bypass,
       tok.eff_priv, tok.mprv, tok.mpp, tok.mxr, tok.sum, tok.pmp_flg,
       tok.sysmap_hit);
@@ -1939,21 +2040,26 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
       && (tok.fin_pa === v_probe.mon_cb.l1d_entry_ppn[idx]);
     if (shadow_hit_mismatch) begin
       m_phase6c_shadow_stale_hit_diag++;
-      $display("[PHASE6C_HIT_STALE_SHADOW_DIAG] pipe=%0d idx=%0d cycle=%0d self_consistent=%0b entry_upd=0x%04h refill(vld=%0b idx=%0d vpn=0x%07h ppn=0x%07h pgs=0x%0h) cur_entry{vld=%0b vpn=0x%07h ppn=0x%07h pgs=0x%0h flg=0x%04h} hit(vpn=0x%07h ppn=0x%07h pgs=0x%0h entry_pa=0x%07h) shadow{%s} token{%s}",
-        tok.pipe, idx, m_cycles, current_entry_self_consistent,
-        v_probe.mon_cb.l1d_entry_upd,
-        v_probe.mon_cb.l1d_refill_vld,
-        v_probe.mon_cb.l1d_refill_idx,
-        v_probe.mon_cb.l1d_refill_vpn,
-        v_probe.mon_cb.l1d_refill_ppn,
-        v_probe.mon_cb.l1d_refill_pgs,
-        v_probe.mon_cb.l1d_entry_vld[idx],
-        v_probe.mon_cb.l1d_entry_vpn[idx],
-        v_probe.mon_cb.l1d_entry_ppn[idx],
-        v_probe.mon_cb.l1d_entry_pgs[idx],
-        v_probe.mon_cb.l1d_entry_flg[idx],
-        hit_vpn, hit_ppn, hit_pgs, dut_entry_pa,
-        l1_shadow_s(ent), token_s(tok));
+      if (m_phase6c_shadow_stale_hit_diag <= m_stale_hit_diag_limit) begin
+        $display("[PHASE6C_HIT_STALE_SHADOW_DIAG] pipe=%0d idx=%0d cycle=%0d self_consistent=%0b entry_upd=0x%04h refill(vld=%0b idx=%0d vpn=0x%07h ppn=0x%07h pgs=0x%0h) cur_entry{vld=%0b vpn=0x%07h ppn=0x%07h pgs=0x%0h flg=0x%04h} hit(vpn=0x%07h ppn=0x%07h pgs=0x%0h entry_pa=0x%07h) shadow{%s} token{%s}",
+          tok.pipe, idx, m_cycles, current_entry_self_consistent,
+          v_probe.mon_cb.l1d_entry_upd,
+          v_probe.mon_cb.l1d_refill_vld,
+          v_probe.mon_cb.l1d_refill_idx,
+          v_probe.mon_cb.l1d_refill_vpn,
+          v_probe.mon_cb.l1d_refill_ppn,
+          v_probe.mon_cb.l1d_refill_pgs,
+          v_probe.mon_cb.l1d_entry_vld[idx],
+          v_probe.mon_cb.l1d_entry_vpn[idx],
+          v_probe.mon_cb.l1d_entry_ppn[idx],
+          v_probe.mon_cb.l1d_entry_pgs[idx],
+          v_probe.mon_cb.l1d_entry_flg[idx],
+          hit_vpn, hit_ppn, hit_pgs, dut_entry_pa,
+          l1_shadow_s(ent), token_s(tok));
+      end else if (m_phase6c_shadow_stale_hit_diag == m_stale_hit_diag_limit + 1) begin
+        $display("[PHASE6C_HIT_STALE_SHADOW_DIAG_SUPPRESS] suppressing further stale-shadow diagnostics after %0d entries; counter remains in Phase6C summary",
+          m_stale_hit_diag_limit);
+      end
       if (current_entry_self_consistent) begin
         ent.valid = v_probe.mon_cb.l1d_entry_vld[idx];
         ent.vpn   = v_probe.mon_cb.l1d_entry_vpn[idx];
@@ -2107,6 +2213,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     bit wakeup_sidefx;
     bit prev_owner_match;
     string diag_token;
+    string alloc_diag;
 
     new_entries = mb_new_entry_count();
     new_entry_mask = mb_new_entry_mask();
@@ -2127,24 +2234,18 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     alloc_sidefx = 1'b0;
     if (!check_token) begin
-      if (reason == "flush_kill") begin
-        // A flush can share a cycle with a legal T1 MB allocation from a
-        // miss observed before the flush.  The allocator oracle records
-        // those expected entries, so only unexpected new entries are
-        // treated as no-response side effects here.
-        unexpected_new_entry_mask = new_entry_mask & ~m_phase6d_alloc_match_mask;
-      end
       alloc_sidefx = (unexpected_new_entry_mask != 8'h00);
     end else if (mb_new_entry_matches(tok.vpn, tok.iid, tok.store, sidefx_idx)) begin
       alloc_sidefx = 1'b1;
     end
 
     if (alloc_sidefx) begin
+      alloc_diag = flush_alloc_diag_limited_s(m_prev_mb_vld, unexpected_new_entry_mask);
       sb_error("P6D_NR_ALLOC_SIDE_EFFECT",
-        $sformatf("legal no-response reason=%s allocated a matching MB side effect new_entries=%0d new_mask=0x%02h expected_mask=0x%02h unexpected_mask=0x%02h prev_vld=0x%02h cur_vld=0x%02h token{%s}",
+        $sformatf("legal no-response reason=%s allocated a matching MB side effect new_entries=%0d new_mask=0x%02h expected_mask=0x%02h unexpected_mask=0x%02h prev_vld=0x%02h cur_vld=0x%02h token{%s}%s",
           reason, new_entries, new_entry_mask, m_phase6d_alloc_match_mask,
           unexpected_new_entry_mask, m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld,
-          diag_token));
+          diag_token, alloc_diag));
     end else begin
       m_phase6d_no_rsp_no_alloc++;
     end
@@ -2834,8 +2935,10 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     // previous MB shadow can lag legal same-cycle allocation/refill windows.
     p0_cam = t1_p0.vld && t1_p0.mb_hit;
     p1_cam = t1_p1.vld && t1_p1.mb_hit;
-    p0_req = t1_p0.vld && !t1_p0.abort && t1_p0.miss_vld && !p0_cam;
-    p1_req = t1_p1.vld && !t1_p1.abort && t1_p1.miss_vld && !p1_cam;
+    p0_req = !v_probe.mon_cb.rtu_yy_xx_flush && !t1_p0.flush
+          && t1_p0.vld && !t1_p0.abort && t1_p0.miss_vld && !p0_cam;
+    p1_req = !v_probe.mon_cb.rtu_yy_xx_flush && !t1_p1.flush
+          && t1_p1.vld && !t1_p1.abort && t1_p1.miss_vld && !p1_cam;
     same_4k = p0_req && p1_req && (t1_p0.vpn == t1_p1.vpn);
     free0 = mb_first_free(m_prev_mb_vld);
     free1 = mb_second_free(m_prev_mb_vld, free0);

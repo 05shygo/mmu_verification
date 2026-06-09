@@ -37,7 +37,13 @@ module mmu_tlbop_lifecycle_sva (
     input logic       tlb_lsu_oper_flop
 );
 
-  localparam [1:0] IDLE = 2'b00;
+  localparam [1:0] IDLE      = 2'b00;
+  localparam [1:0] TLBOP_WFG = 2'b01;
+  localparam [1:0] TLBWR_WFG = 2'b10;
+
+  localparam [2:0] IASID_WT  = 3'b011;
+  localparam [3:0] IVA_RD    = 4'b0010;
+  localparam [3:0] IVA_WR    = 4'b0100;
 
   // ── Helper: FSM active (not IDLE) ──────────────────────────────────────
   logic tlbp_active, tlbr_active, tlbwi_active, tlbwr_active;
@@ -145,6 +151,90 @@ module mmu_tlbop_lifecycle_sva (
   a_reset_clears_tlbop_fsm: assert property (@(posedge forever_cpuclk)
     !cpurst_b |-> (tlbp_cur_st == IDLE && tlbr_cur_st == IDLE
                 && tlbwi_cur_st == IDLE && tlbwr_cur_st == IDLE));
+
+  // VCS T-2022.06 does not count these asynchronous reset arcs as FSM hits in
+  // the XML bitstring, so keep explicit protocol evidence for waiver review.
+  logic       prev_cpurst_b;
+  logic [1:0] prev_tlbp_cur_st;
+  logic [1:0] prev_tlbr_cur_st;
+  logic [1:0] prev_tlbwi_cur_st;
+  logic [1:0] prev_tlbwr_cur_st;
+  logic [2:0] prev_tlbiasid_cur_st;
+  logic [3:0] prev_tlbiva_cur_st;
+
+  int unsigned reset_tlbp_wfg_seen;
+  int unsigned reset_tlbr_wfg_seen;
+  int unsigned reset_tlbwi_wfg_seen;
+  int unsigned reset_tlbwr_wfg_seen;
+  int unsigned reset_invasid_wt_seen;
+  int unsigned reset_invva_rd_seen;
+  int unsigned reset_invva_wr_seen;
+
+  wire reset_fell_on_clk = !cpurst_b && prev_cpurst_b;
+
+  always_ff @(posedge forever_cpuclk) begin
+    if (reset_fell_on_clk) begin
+      if ((prev_tlbp_cur_st == TLBOP_WFG) && (tlbp_cur_st == IDLE))
+        reset_tlbp_wfg_seen++;
+      if ((prev_tlbr_cur_st == TLBOP_WFG) && (tlbr_cur_st == IDLE))
+        reset_tlbr_wfg_seen++;
+      if ((prev_tlbwi_cur_st == TLBOP_WFG) && (tlbwi_cur_st == IDLE))
+        reset_tlbwi_wfg_seen++;
+      if ((prev_tlbwr_cur_st == TLBWR_WFG) && (tlbwr_cur_st == IDLE))
+        reset_tlbwr_wfg_seen++;
+      if ((prev_tlbiasid_cur_st == IASID_WT) && (tlbiasid_cur_st == 3'b000))
+        reset_invasid_wt_seen++;
+      if ((prev_tlbiva_cur_st == IVA_RD) && (tlbiva_cur_st == 4'b0000))
+        reset_invva_rd_seen++;
+      if ((prev_tlbiva_cur_st == IVA_WR) && (tlbiva_cur_st == 4'b0000))
+        reset_invva_wr_seen++;
+    end
+
+    prev_cpurst_b        <= cpurst_b;
+    prev_tlbp_cur_st     <= tlbp_cur_st;
+    prev_tlbr_cur_st     <= tlbr_cur_st;
+    prev_tlbwi_cur_st    <= tlbwi_cur_st;
+    prev_tlbwr_cur_st    <= tlbwr_cur_st;
+    prev_tlbiasid_cur_st <= tlbiasid_cur_st;
+    prev_tlbiva_cur_st   <= tlbiva_cur_st;
+  end
+
+  a_reset_from_tlbp_wfg_clears: assert property (@(posedge forever_cpuclk)
+    (reset_fell_on_clk && (prev_tlbp_cur_st == TLBOP_WFG)) |-> (tlbp_cur_st == IDLE));
+  a_reset_from_tlbr_wfg_clears: assert property (@(posedge forever_cpuclk)
+    (reset_fell_on_clk && (prev_tlbr_cur_st == TLBOP_WFG)) |-> (tlbr_cur_st == IDLE));
+  a_reset_from_tlbwi_wfg_clears: assert property (@(posedge forever_cpuclk)
+    (reset_fell_on_clk && (prev_tlbwi_cur_st == TLBOP_WFG)) |-> (tlbwi_cur_st == IDLE));
+  a_reset_from_tlbwr_wfg_clears: assert property (@(posedge forever_cpuclk)
+    (reset_fell_on_clk && (prev_tlbwr_cur_st == TLBWR_WFG)) |-> (tlbwr_cur_st == IDLE));
+  a_reset_from_invasid_wt_clears: assert property (@(posedge forever_cpuclk)
+    (reset_fell_on_clk && (prev_tlbiasid_cur_st == IASID_WT)) |-> (tlbiasid_cur_st == 3'b000));
+  a_reset_from_invva_rd_clears: assert property (@(posedge forever_cpuclk)
+    (reset_fell_on_clk && (prev_tlbiva_cur_st == IVA_RD)) |-> (tlbiva_cur_st == 4'b0000));
+  a_reset_from_invva_wr_clears: assert property (@(posedge forever_cpuclk)
+    (reset_fell_on_clk && (prev_tlbiva_cur_st == IVA_WR)) |-> (tlbiva_cur_st == 4'b0000));
+
+  c_reset_from_tlbp_wfg: cover property (@(posedge forever_cpuclk)
+    reset_fell_on_clk && (prev_tlbp_cur_st == TLBOP_WFG) && (tlbp_cur_st == IDLE));
+  c_reset_from_tlbr_wfg: cover property (@(posedge forever_cpuclk)
+    reset_fell_on_clk && (prev_tlbr_cur_st == TLBOP_WFG) && (tlbr_cur_st == IDLE));
+  c_reset_from_tlbwi_wfg: cover property (@(posedge forever_cpuclk)
+    reset_fell_on_clk && (prev_tlbwi_cur_st == TLBOP_WFG) && (tlbwi_cur_st == IDLE));
+  c_reset_from_tlbwr_wfg: cover property (@(posedge forever_cpuclk)
+    reset_fell_on_clk && (prev_tlbwr_cur_st == TLBWR_WFG) && (tlbwr_cur_st == IDLE));
+  c_reset_from_invasid_wt: cover property (@(posedge forever_cpuclk)
+    reset_fell_on_clk && (prev_tlbiasid_cur_st == IASID_WT) && (tlbiasid_cur_st == 3'b000));
+  c_reset_from_invva_rd: cover property (@(posedge forever_cpuclk)
+    reset_fell_on_clk && (prev_tlbiva_cur_st == IVA_RD) && (tlbiva_cur_st == 4'b0000));
+  c_reset_from_invva_wr: cover property (@(posedge forever_cpuclk)
+    reset_fell_on_clk && (prev_tlbiva_cur_st == IVA_WR) && (tlbiva_cur_st == 4'b0000));
+
+  final begin
+    $display("[TLBOP_RESET_SVA_COVER] tlbp_wfg=%0d tlbr_wfg=%0d tlbwi_wfg=%0d tlbwr_wfg=%0d invasid_wt=%0d invva_rd=%0d invva_wr=%0d",
+      reset_tlbp_wfg_seen, reset_tlbr_wfg_seen, reset_tlbwi_wfg_seen,
+      reset_tlbwr_wfg_seen, reset_invasid_wt_seen, reset_invva_rd_seen,
+      reset_invva_wr_seen);
+  end
 
   // ── TP_043: reset must not leave stale done/grant ──────────────────────
   a_reset_no_stale_done: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)

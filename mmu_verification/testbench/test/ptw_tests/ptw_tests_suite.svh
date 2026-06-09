@@ -69,6 +69,7 @@
 `include "test_mmu_mbuf_ready_gate_no_early_vld.svh"
 `include "test_mmu_mbuf_have_no_resend.svh"
 `include "test_mmu_mbuf_multi_twu_independent_ready.svh"
+`include "test_mmu_twu_four_lane_slow_miss_pressure.svh"
 `include "test_mmu_arb_grant_onehot_check.svh"
 `include "test_mmu_arb_refill_except_priority.svh"
 `include "test_mmu_arb_multi_twu_fairness.svh"

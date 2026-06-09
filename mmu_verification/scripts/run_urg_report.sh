@@ -11,11 +11,12 @@ URG_MERGED_DB="${URG_MERGED_DB:?URG_MERGED_DB is required}"
 URG_LOG="${URG_LOG:-${COV_DIR}/urg_report.log}"
 URG_VDB_GLOB="${URG_VDB_GLOB:-}"
 URG_ALLOW_CONTEXTLESS_MERGE="${URG_ALLOW_CONTEXTLESS_MERGE:-1}"
+URG_XML_FALLBACK="${URG_XML_FALLBACK:-auto}"
 COV_BASE_DB_DIR="${COV_BASE_DB_DIR:-}"
 if [[ -z "${COV_BASE_DB_DIR}" && "${COV_DB_DIR}" == *.vdb ]]; then
   COV_BASE_DB_DIR="${COV_DB_DIR%.vdb}.compile.vdb"
 fi
-RUN_URG_REPORT_VERSION="2026-05-02-aggregate-vdb-context-fallback-v12"
+RUN_URG_REPORT_VERSION="2026-06-09-aggregate-vdb-xml-fallback-v13"
 
 die() {
   echo "ERROR: $*" >&2
@@ -187,6 +188,25 @@ try_context_two_step_report_repeated_dir() {
   report_is_ready
 }
 
+try_xml_fallback_report() {
+  [[ "${URG_XML_FALLBACK}" == "auto" ]] || return 1
+
+  local fallback_script
+  local python_bin
+  fallback_script="${PROJECT_DIR:-$(pwd)}/scripts/phase14_aggregate_xml_fallback.py"
+  python_bin="${PYTHON:-python3}"
+
+  [[ -f "${fallback_script}" ]] || return 1
+  remove_artifact "${URG_REPORT_DIR}"
+  "${python_bin}" "${fallback_script}" \
+    --vdb "${COV_DB_DIR}" \
+    --report-dir "${URG_REPORT_DIR}" \
+    --merged-db "${URG_MERGED_DB}" \
+    --log "${URG_LOG}" \
+    --stage "aggregate VDB URG" \
+    --rc 1
+}
+
 main() {
   prepare_output
   validate_aggregate_vdb
@@ -206,6 +226,7 @@ main() {
       echo "WARNING: URG_VDB_GLOB='${URG_VDB_GLOB}' is ignored by aggregate-VDB flow."
     fi
     echo "Allow contextless URG merge fallback: ${URG_ALLOW_CONTEXTLESS_MERGE}"
+    echo "XML fallback: ${URG_XML_FALLBACK}"
     echo "URG report dir: ${URG_REPORT_DIR}"
     echo "URG merged DB: ${URG_MERGED_DB}"
     echo "URG log: ${URG_LOG}"
@@ -250,6 +271,11 @@ main() {
       echo "URG report generated from aggregate merged coverage VDB: ${URG_REPORT_DIR}"
       return 0
     fi
+  fi
+
+  if try_xml_fallback_report; then
+    echo "XML fallback coverage report generated from aggregate coverage VDB: ${URG_REPORT_DIR}"
+    return 0
   fi
 
   echo

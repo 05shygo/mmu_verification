@@ -804,6 +804,75 @@ class cp0_l2tlb_tlbop_exact_base_seq extends cp0_base_seq;
 
 endclass : cp0_l2tlb_tlbop_exact_base_seq
 
+class cp0_l2tlb_tlbp_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbp_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbp_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent;
+    ent = make_entry(27'h000923, 16'h0077, 28'h00abc, pgs_4k(), 3'd0, 1'b0,
+                     make_flags());
+    set_cskyee(1'b1);
+    write_meh(ent, "tlbp_reset_target.meh");
+    issue_mcir(mcir_tlbp(), "tlbp_reset_target.tlbp");
+    $display("[L2TLB_TLBOP_RESET_TARGET] seq=%s op=TLBP vpn=0x%07h asid=0x%04h status=ISSUED",
+      get_name(), ent.vpn, ent.asid);
+  endtask
+
+endclass : cp0_l2tlb_tlbp_reset_target_seq
+
+class cp0_l2tlb_tlbr_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbr_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbr_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    set_cskyee(1'b1);
+    write_mir(11'h123, "tlbr_reset_target.mir");
+    issue_mcir(mcir_tlbr(), "tlbr_reset_target.tlbr");
+    $display("[L2TLB_TLBOP_RESET_TARGET] seq=%s op=TLBR index=0x%03h status=ISSUED",
+      get_name(), 11'h123);
+  endtask
+
+endclass : cp0_l2tlb_tlbr_reset_target_seq
+
+class cp0_l2tlb_tlbwi_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbwi_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbwi_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent;
+    ent = make_entry(27'h000a23, 16'h0088, 28'h00bcd, pgs_4k(), 3'd4, 1'b0,
+                     make_flags(.u(1'b1), .rsw(2'b01)));
+    tlbwi_entry(ent, "tlbwi_reset_target");
+  endtask
+
+endclass : cp0_l2tlb_tlbwi_reset_target_seq
+
+class cp0_l2tlb_tlbwr_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbwr_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbwr_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent;
+    ent = make_entry(27'h000b24, 16'h0099, 28'h00cde, pgs_4k(), 3'd1, 1'b0,
+                     make_flags(.w(1'b0), .u(1'b1), .rsw(2'b10)));
+    tlbwr_entry(ent, "tlbwr_reset_target");
+  endtask
+
+endclass : cp0_l2tlb_tlbwr_reset_target_seq
+
 class cp0_l2tlb_tlbp_hit_exact_seq extends cp0_l2tlb_tlbop_exact_base_seq;
   `uvm_object_utils(cp0_l2tlb_tlbp_hit_exact_seq)
 

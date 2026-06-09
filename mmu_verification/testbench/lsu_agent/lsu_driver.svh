@@ -707,27 +707,46 @@ class lsu_driver extends uvm_driver #(lsu_txn);
 
       // Wait for DUT completion with timeout.
       tr.inv_done = 1'b0;
-      fork
-        begin : wait_inv_done
-          @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
+      begin
+        bit reset_seen;
+        reset_seen = 1'b0;
+        fork
+          begin : wait_inv_done
+            @(vif.driver_cb iff vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
+            tr.inv_done = 1'b1;
+            `uvm_info(get_type_name(),
+              $sformatf("TLB INV done observed: kind=%s va=0x%07h asid=0x%04h",
+                tr.inv_kind.name(), tr.inv_va, tr.inv_asid),
+              UVM_HIGH)
+          end
+          begin : wait_inv_reset
+            @(vif.driver_cb iff vif.rst_ni !== 1'b1);
+            reset_seen = 1'b1;
+          end
+          begin : wait_inv_timeout
+            repeat (m_inv_done_watchdog_cycles) @(vif.driver_cb);
+          end
+        join_any
+        disable fork;
+        if (!tr.inv_done && (vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1))
           tr.inv_done = 1'b1;
-          `uvm_info(get_type_name(),
-            $sformatf("TLB INV done observed: kind=%s va=0x%07h asid=0x%04h",
-              tr.inv_kind.name(), tr.inv_va, tr.inv_asid),
-            UVM_HIGH)
-        end
-        begin : wait_inv_timeout
-          repeat (m_inv_done_watchdog_cycles) @(vif.driver_cb);
-        end
-      join_any
-      disable fork;
-      if (!tr.inv_done && (vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1))
-        tr.inv_done = 1'b1;
 
-      vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
-      vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
+        vif.driver_cb.lsu_mmu_tlb_all_inv      <= 1'b0;
+        vif.driver_cb.lsu_mmu_tlb_va_all_inv   <= 1'b0;
+        vif.driver_cb.lsu_mmu_tlb_asid_all_inv <= 1'b0;
+        vif.driver_cb.lsu_mmu_tlb_va_asid_inv  <= 1'b0;
+
+        if (reset_seen) begin
+          `uvm_info(get_type_name(),
+            $sformatf("TLB INV dropped by reset: kind=%s va=0x%07h asid=0x%04h",
+              tr.inv_kind.name(), tr.inv_va, tr.inv_asid),
+            UVM_MEDIUM)
+          wait (vif.rst_ni === 1'b1);
+          @(vif.driver_cb);
+          m_inv_busy = 1'b0;
+          continue;
+        end
+      end
 
       if (!tr.inv_done) begin
         print_timeout_debug("tlb inv done timeout");

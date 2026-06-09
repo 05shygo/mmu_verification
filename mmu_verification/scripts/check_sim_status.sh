@@ -48,6 +48,36 @@ count_error_hits() {
   ' "$log"
 }
 
+count_hard_failure_hits() {
+  local log="$1"
+  awk '
+    /^UVM_ERROR[[:space:]]*:/ { next }
+    /^UVM_FATAL[[:space:]]*:/ { next }
+    # Skip SVA coverage statistics lines: "<path>", N: <hierarchy>, N attempts, N match
+    /^".*", [0-9]+: .*, [0-9]+ attempts, [0-9]+ match/ { next }
+    /^".*", [0-9]+: .*: started at [0-9]+ps failed at [0-9]+ps/ ||
+    /^[[:space:]]*Offending / ||
+    /Assertion failed/ ||
+    /assertion failed/ ||
+    /assert property.*failed/ ||
+    /UVM_FATAL[[:space:]]+@/ ||
+    /UVM_ERROR[[:space:]]+@/ ||
+    /TEST FAILED/ ||
+    /FAILED:/ ||
+    /CovErrorException/ ||
+    /unexpected termination/ ||
+    /signal: Aborted/ ||
+    /During dumping of toggle coverage data/ ||
+    /error while loading shared libraries/ ||
+    /cannot open shared object file/ {
+      count++;
+    }
+    END {
+      print count + 0;
+    }
+  ' "$log"
+}
+
 print_error_hits() {
   local log="$1"
   local limit="$2"
@@ -56,6 +86,37 @@ print_error_hits() {
     /^UVM_FATAL[[:space:]]*:/ { next }
     /^".*", [0-9]+: .*, [0-9]+ attempts, [0-9]+ match/ { next }
     /UVM_ERROR / || /UVM_FATAL / || /Error-/ || /Error:/ || /Fatal:/ || /ASSERT/ || /SVA/ || /TEST FAILED/ || /FAILED:/ || /CovErrorException/ || /unexpected termination/ || /signal: Aborted/ || /During dumping of toggle coverage data/ || /error while loading shared libraries/ || /cannot open shared object file/ {
+      printf("    %d:%s\n", NR, $0);
+      shown++;
+      if (shown >= limit) {
+        exit;
+      }
+    }
+  ' "$log"
+}
+
+print_hard_failure_hits() {
+  local log="$1"
+  local limit="$2"
+  awk -v limit="$limit" '
+    /^UVM_ERROR[[:space:]]*:/ { next }
+    /^UVM_FATAL[[:space:]]*:/ { next }
+    /^".*", [0-9]+: .*, [0-9]+ attempts, [0-9]+ match/ { next }
+    /^".*", [0-9]+: .*: started at [0-9]+ps failed at [0-9]+ps/ ||
+    /^[[:space:]]*Offending / ||
+    /Assertion failed/ ||
+    /assertion failed/ ||
+    /assert property.*failed/ ||
+    /UVM_FATAL[[:space:]]+@/ ||
+    /UVM_ERROR[[:space:]]+@/ ||
+    /TEST FAILED/ ||
+    /FAILED:/ ||
+    /CovErrorException/ ||
+    /unexpected termination/ ||
+    /signal: Aborted/ ||
+    /During dumping of toggle coverage data/ ||
+    /error while loading shared libraries/ ||
+    /cannot open shared object file/ {
       printf("    %d:%s\n", NR, $0);
       shown++;
       if (shown >= limit) {
@@ -268,6 +329,7 @@ check_log() {
   local uvm_error
   local uvm_fatal
   local hit_count
+  local hard_hit_count
   local status="PASS"
   local reason="UVM summary clean"
 
@@ -282,8 +344,12 @@ check_log() {
   uvm_error=$(extract_uvm_count "UVM_ERROR" "$log")
   uvm_fatal=$(extract_uvm_count "UVM_FATAL" "$log")
   hit_count=$(count_error_hits "$log")
+  hard_hit_count=$(count_hard_failure_hits "$log")
 
-  if [ -n "$uvm_error" ] && [ -n "$uvm_fatal" ]; then
+  if [ "$hard_hit_count" -ne 0 ]; then
+    status="FAIL"
+    reason="log contains hard failure patterns"
+  elif [ -n "$uvm_error" ] && [ -n "$uvm_fatal" ]; then
     if [ "$uvm_error" -ne 0 ] || [ "$uvm_fatal" -ne 0 ]; then
       status="FAIL"
       reason="UVM summary reports UVM_ERROR=$uvm_error UVM_FATAL=$uvm_fatal"
@@ -297,8 +363,16 @@ check_log() {
   fi
 
   echo "[$status] $log"
-  echo "  summary: UVM_ERROR=${uvm_error:-N/A} UVM_FATAL=${uvm_fatal:-N/A} error_hits=$hit_count"
+  echo "  summary: UVM_ERROR=${uvm_error:-N/A} UVM_FATAL=${uvm_fatal:-N/A} hard_failures=$hard_hit_count error_hits=$hit_count"
   echo "  reason : $reason"
+
+  if [ "$status" = "FAIL" ] && [ "$hard_hit_count" -ne 0 ]; then
+    echo "  hard failure snippets:"
+    print_hard_failure_hits "$log" "$MAX_MATCHES"
+    if [ "$hard_hit_count" -gt "$MAX_MATCHES" ]; then
+      echo "    ... truncated, total matched hard failures: $hard_hit_count"
+    fi
+  fi
 
   if [ "$status" = "FAIL" ] && [ "$hit_count" -ne 0 ]; then
     echo "  error snippets:"

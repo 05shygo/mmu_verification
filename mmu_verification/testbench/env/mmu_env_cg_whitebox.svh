@@ -71,6 +71,12 @@ class mmu_env_cg_whitebox extends uvm_component;
   logic [2:0]  wb_maee_leaf_vec;
   logic [1:0]  wb_maee_path;
   logic [3:0]  wb_tlbiva;
+  logic [1:0]  wb_tlbop_tlbp;
+  logic [1:0]  wb_tlbop_tlbr;
+  logic [1:0]  wb_tlbop_tlbwi;
+  logic [1:0]  wb_tlbop_tlbwr;
+  logic [2:0]  wb_tlbop_tlbiasid;
+  bit          wb_tlbop_tlbiall;
   int unsigned wb_sample_cycles;
 
   // --- §10.2: cg_ptw_walk ----------------------------------------------------
@@ -181,7 +187,54 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- cg_tlboper_fsm -------------------------------------------------------
   covergroup cg_tlboper_fsm;
     option.per_instance = 1;
-    cp_fsm_state: coverpoint wb_tlbiva { bins s[] = {[0:15]}; }
+    // Current ct_mmu_tlboper implements a compact INVVA FSM:
+    // IDLE/RD/CMP/WR/WT/CMPLT.  The old per-page-size 2M/1G states are
+    // commented out in RTL and must not be counted as stimulus holes.
+    cp_invva_state: coverpoint wb_tlbiva {
+      bins idle  = {4'd0};
+      bins rd    = {4'd2};
+      bins cmp   = {4'd3};
+      bins wr    = {4'd4};
+      bins wt    = {4'd5};
+      bins cmplt = {4'd14};
+      ignore_bins reserved_or_legacy = {4'd1, [4'd6:4'd13], 4'd15};
+    }
+    cp_tlbp_state: coverpoint wb_tlbop_tlbp {
+      bins idle = {2'd0};
+      bins wfg  = {2'd1};
+      bins wfc  = {2'd3};
+      ignore_bins reserved = {2'd2};
+    }
+    cp_tlbr_state: coverpoint wb_tlbop_tlbr {
+      bins idle = {2'd0};
+      bins wfg  = {2'd1};
+      bins wfc  = {2'd3};
+      ignore_bins reserved = {2'd2};
+    }
+    cp_tlbwi_state: coverpoint wb_tlbop_tlbwi {
+      bins idle = {2'd0};
+      bins wfg  = {2'd1};
+      bins wfc  = {2'd3};
+      ignore_bins reserved = {2'd2};
+    }
+    cp_tlbwr_state: coverpoint wb_tlbop_tlbwr {
+      bins idle = {2'd0};
+      bins wfg  = {2'd2};
+      bins tag  = {2'd1};
+      bins wfc  = {2'd3};
+    }
+    cp_invasid_state: coverpoint wb_tlbop_tlbiasid {
+      bins idle = {3'd0};
+      bins rd   = {3'd1};
+      bins wfc  = {3'd2};
+      bins wt   = {3'd3};
+      bins nwt  = {3'd4};
+      ignore_bins reserved = {[3'd5:3'd7]};
+    }
+    cp_invall_state: coverpoint wb_tlbop_tlbiall {
+      bins idle = {1'b0};
+      bins wfc  = {1'b1};
+    }
   endgroup
 
   // --- Phase 12: cg_ptw_ready_transition -------------------------------------
@@ -878,6 +931,12 @@ class mmu_env_cg_whitebox extends uvm_component;
                             || (wb_mbuf_lvl != 0)
                             || (wb_twu_idle_cnt != 4);
     wb_tlbiva               = v_probe.tlbiva_cur_st;
+    wb_tlbop_tlbp           = v_probe.tlbop_tlbp_fsm;
+    wb_tlbop_tlbr           = v_probe.tlbop_tlbr_fsm;
+    wb_tlbop_tlbwi          = v_probe.tlbop_tlbwi_fsm;
+    wb_tlbop_tlbwr          = v_probe.tlbop_tlbwr_fsm;
+    wb_tlbop_tlbiasid       = v_probe.tlbop_tlbiasid_fsm;
+    wb_tlbop_tlbiall        = v_probe.tlbop_tlbiall_fsm;
   endfunction
 
   function logic [2:0] f_first_onehot3(input logic [7:0] oh);

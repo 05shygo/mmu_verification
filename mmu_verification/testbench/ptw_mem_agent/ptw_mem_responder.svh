@@ -68,6 +68,7 @@ class ptw_mem_responder extends uvm_component;
   protected time         m_last_buserr_time;
   protected bit [39:0]   m_last_buserr_addr;
   protected bit          m_last_buserr_size;
+  protected bit          m_trace_enabled;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -77,6 +78,7 @@ class ptw_mem_responder extends uvm_component;
     super.build_phase(phase);
     if (!uvm_config_db #(virtual ptw_mem_if)::get(this, "", "PTW_MEM_VIF", vif))
       `uvm_fatal(get_type_name(), "Cannot get PTW_MEM_VIF from config_db")
+    m_trace_enabled = $test$plusargs("PTW_RESP_TRACE");
   endfunction
 
   // Called by env.build_phase to connect the shared page table
@@ -279,10 +281,12 @@ class ptw_mem_responder extends uvm_component;
     m_last_accept_addr = addr;
     m_last_accept_size = req_size;
     m_last_accept_ctx  = ctx;
-    $display("[PTW_RESP_TRACE][ACCEPT] t=%0t ctx=%s cnt=%0d addr=0x%010h size=%0b req=%0b accept=%0b",
-      $time, ctx, m_accept_count, addr, req_size,
-      vif.driver_cb.mmu_lsu_data_req,
-      vif.driver_cb.mmu_lsu_data_req_accept);
+    if (m_trace_enabled) begin
+      $display("[PTW_RESP_TRACE][ACCEPT] t=%0t ctx=%s cnt=%0d addr=0x%010h size=%0b req=%0b accept=%0b",
+        $time, ctx, m_accept_count, addr, req_size,
+        vif.driver_cb.mmu_lsu_data_req,
+        vif.driver_cb.mmu_lsu_data_req_accept);
+    end
   endfunction
 
   protected task _drive_idle_outputs();
@@ -365,6 +369,9 @@ class ptw_mem_responder extends uvm_component;
     int        delay;
     bit        inject_err;
     int unsigned accept_idx;
+    longint unsigned addr_key;
+    bit        buserr_forced_by_count;
+    bit        buserr_forced_by_addr;
     bit        logged_req_drop;
     bit        logged_req_replace;
 
@@ -380,6 +387,9 @@ class ptw_mem_responder extends uvm_component;
     pte_ppn = pte[37:10];
 
     accept_idx = m_accept_count;
+    addr_key = longint'(addr);
+    buserr_forced_by_count = m_forced_bus_error_by_count.exists(accept_idx);
+    buserr_forced_by_addr  = m_forced_bus_error_by_addr.exists(addr_key);
     delay      = _select_delay(addr, accept_idx);
     inject_err = _select_bus_error(addr, accept_idx);
     logged_req_drop = 1'b0;
@@ -390,10 +400,17 @@ class ptw_mem_responder extends uvm_component;
     m_active_size       = req_size;
     m_active_pte        = pte;
     m_active_delay      = delay;
-    $display("[PTW_RESP_TRACE][START] t=%0t accept_cnt=%0d addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d bus_err=%0b same_cycle_abort_data=%0b same_cycle_abort_buserr=%0b",
-      $time, accept_idx, addr, req_size, pte, pte_ppn, delay, inject_err,
-      m_same_cycle_abort_data_by_count.exists(accept_idx),
-      m_same_cycle_abort_bus_error_by_count.exists(accept_idx));
+    if (m_trace_enabled) begin
+      $display("[PTW_RESP_TRACE][START] t=%0t accept_cnt=%0d addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d bus_err=%0b buserr_forced_count=%0b buserr_forced_addr=%0b buserr_permille=%0d buserr_tables={addr:%0d,count:%0d} same_cycle_abort_data=%0b same_cycle_abort_buserr=%0b",
+        $time, accept_idx, addr, req_size, pte, pte_ppn, delay, inject_err,
+        buserr_forced_by_count,
+        buserr_forced_by_addr,
+        m_bus_error_rate_permille,
+        m_forced_bus_error_by_addr.num(),
+        m_forced_bus_error_by_count.num(),
+        m_same_cycle_abort_data_by_count.exists(accept_idx),
+        m_same_cycle_abort_bus_error_by_count.exists(accept_idx));
+    end
     repeat (delay) begin
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
@@ -404,8 +421,10 @@ class ptw_mem_responder extends uvm_component;
       end
       if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
         if (!logged_req_drop) begin
-          $display("[PTW_RESP_TRACE][REQ_DROP_BEFORE_RSP] t=%0t addr=0x%010h size=%0b delay=%0d",
-            $time, addr, req_size, delay);
+          if (m_trace_enabled) begin
+            $display("[PTW_RESP_TRACE][REQ_DROP_BEFORE_RSP] t=%0t addr=0x%010h size=%0b delay=%0d",
+              $time, addr, req_size, delay);
+          end
           `uvm_info(get_type_name(),
             $sformatf(
               "[PTW_REQ_ABORT_LATE_RSP] req dropped before rsp; keep accepted response pending: addr=0x%010h size=%0b",
@@ -416,9 +435,11 @@ class ptw_mem_responder extends uvm_component;
       end else if ((vif.driver_cb.mmu_lsu_data_req_addr !== addr) ||
                    (vif.driver_cb.mmu_lsu_data_req_size !== req_size)) begin
         if (!logged_req_replace) begin
-          $display("[PTW_RESP_TRACE][REQ_REPLACE_BEFORE_RSP] t=%0t exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b delay=%0d",
-            $time, addr, vif.driver_cb.mmu_lsu_data_req_addr, req_size,
-            vif.driver_cb.mmu_lsu_data_req_size, delay);
+          if (m_trace_enabled) begin
+            $display("[PTW_RESP_TRACE][REQ_REPLACE_BEFORE_RSP] t=%0t exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b delay=%0d",
+              $time, addr, vif.driver_cb.mmu_lsu_data_req_addr, req_size,
+              vif.driver_cb.mmu_lsu_data_req_size, delay);
+          end
           `uvm_info(get_type_name(),
             $sformatf(
               "[PTW_REQ_REPLACE_LATE_RSP] req changed before rsp; keep accepted response pending: exp_addr=0x%010h cur_addr=0x%010h exp_size=%0b cur_size=%0b",
@@ -439,8 +460,10 @@ class ptw_mem_responder extends uvm_component;
       m_last_buserr_time = $time;
       m_last_buserr_addr = addr;
       m_last_buserr_size = req_size;
-      $display("[PTW_RESP_TRACE][BUS_ERR] t=%0t cnt=%0d addr=0x%010h size=%0b delay=%0d",
-        $time, m_buserr_count, addr, req_size, delay);
+      if (m_trace_enabled) begin
+        $display("[PTW_RESP_TRACE][BUS_ERR] t=%0t cnt=%0d addr=0x%010h size=%0b delay=%0d",
+          $time, m_buserr_count, addr, req_size, delay);
+      end
       `uvm_info(get_type_name(),
         $sformatf("PTW BUS_ERR: addr=0x%010h delay=%0d", addr, delay), UVM_MEDIUM)
       @(vif.driver_cb);
@@ -465,8 +488,10 @@ class ptw_mem_responder extends uvm_component;
       m_last_rsp_size  = req_size;
       m_last_rsp_pte   = pte;
       m_last_rsp_delay = delay;
-      $display("[PTW_RESP_TRACE][RSP] t=%0t cnt=%0d addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d",
-        $time, m_rsp_count, addr, req_size, pte, pte_ppn, delay);
+      if (m_trace_enabled) begin
+        $display("[PTW_RESP_TRACE][RSP] t=%0t cnt=%0d addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d",
+          $time, m_rsp_count, addr, req_size, pte, pte_ppn, delay);
+      end
       `uvm_info(get_type_name(),
         $sformatf("PTW RSP: addr=0x%010h pte=0x%016h pte_ppn=0x%07h delay=%0d", addr, pte, pte_ppn, delay),
         UVM_MEDIUM)

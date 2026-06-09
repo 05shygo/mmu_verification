@@ -103,7 +103,7 @@ endif
 RUN_COMPAT_ENTRY_GOALS := run run_check run_cov run_batch run_gui debug fast_check
 RUN_COMPAT_KNOWN_GOALS := all help setup check_env env comp comp_all comp_fast comp_rtl comp_tb elab \
         run run_check fast fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
-        cov_quick cov_l1l2 cov_all covp cov_gen_list \
+        cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -120,6 +120,7 @@ RUN_COMPAT_KNOWN_GOALS := all help setup check_env env comp comp_all comp_fast c
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         print-l1dtlb-audit l1dtlb_audit_check l1dtlb_audit_run l1dtlb_audit_run_cov \
         l1dtlb_phase6g_check l1dtlb_phase6g_smoke l1dtlb_phase6g_targeted l1dtlb_phase6g_replay l1dtlb_phase6g_closure \
+        l2tlb_phase6g_check l2tlb_phase6g_replay l2tlb_phase6g_closure \
         phase12_exit_check phase12_pgflt_urg_probe
 RUN_COMPAT_POSITIONAL_TEST := $(firstword $(filter-out $(RUN_COMPAT_KNOWN_GOALS),$(MAKECMDGOALS)))
 ifneq ($(RUN_COMPAT_POSITIONAL_TEST),)
@@ -434,8 +435,12 @@ PHASE14_RUN_PARALLEL_SHARDS ?= $(PROJECT_DIR)/scripts/phase14_run_parallel_shard
 PHASE14_MERGE_PARALLEL_SUMMARIES ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_summaries.py
 PHASE14_MERGE_PARALLEL_COVERAGE ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_coverage.py
 PHASE14_SHOW_PARALLEL_FAILURES ?= $(PROJECT_DIR)/scripts/phase14_show_parallel_failures.py
-PHASE14_ISSUE_TRACKER     ?= $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md
-PHASE14_SIGNOFF_MATRIX    ?= $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md
+SCOPE_COVERAGE_GATE     ?= $(PROJECT_DIR)/scripts/scope_coverage_gate.py
+PTW_COV_SIGNOFF_CHECK   ?= $(PROJECT_DIR)/scripts/check_ptw_code_cov_signoff.py
+PHASE14_ISSUE_TRACKER_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_IssueTracker.md))
+PHASE14_SIGNOFF_MATRIX_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_SignoffMatrix.md))
+PHASE14_ISSUE_TRACKER     ?= $(PHASE14_ISSUE_TRACKER_DEFAULT)
+PHASE14_SIGNOFF_MATRIX    ?= $(PHASE14_SIGNOFF_MATRIX_DEFAULT)
 PHASE14_EXCLUDE_V4        ?= $(SIMU_DIR)/exclude_v4.do
 PHASE14_URG_REPORT_DIR    ?= $(COV_DIR)/phase14_urgReport
 PHASE14_URG_MERGED_DB     ?= $(COV_DIR)/phase14_merged.vdb
@@ -476,6 +481,13 @@ PHASE14_TOGGLE_THRESHOLD  ?= 98.0
 PHASE14_FSM_THRESHOLD     ?= 99.0
 PHASE14_FUNC_THRESHOLD    ?= 100.0
 PHASE14_ASSERT_THRESHOLD  ?= 100.0
+COVP_L1TLB_URG_REPORT_DIR ?= $(COV_DIR)/l1tlb_urgReport
+COVP_L2TLB_URG_REPORT_DIR ?= $(COV_DIR)/l2tlb_urgReport
+COVP_L1TLB_URG_LOG        ?= $(COV_DIR)/l1tlb_urg.log
+COVP_L2TLB_URG_LOG        ?= $(COV_DIR)/l2tlb_urg.log
+COVP_RUN_SCOPE_GATES      ?= 1
+COVP_RUN_L1L2_SPECIAL_GATES ?= 1
+COVP_RUN_PTW_SIGNOFF      ?= 1
 L1DTLB_AUDIT_DIR          ?= $(PROJECT_DIR)/../doc/l1dtlb_uvm_audit
 L1DTLB_FUNC_DESC          ?= $(L1DTLB_AUDIT_DIR)/l1dtlb_function_description.md
 L1DTLB_TESTPOINT_AUDIT    ?= $(L1DTLB_AUDIT_DIR)/l1dtlb_testpoint_audit.md
@@ -493,6 +505,14 @@ L1DTLB_PHASE6G_SMOKE_SUMMARY ?= $(REGRESS_DIR)/l1dtlb_phase6g_smoke/summary.txt
 L1DTLB_PHASE6G_TARGETED_SUMMARY ?= $(REGRESS_DIR)/l1dtlb_phase6g_targeted/summary.txt
 L1DTLB_PHASE6G_REPLAY_SUMMARY ?= $(REGRESS_DIR)/l1dtlb_phase6g_replay/summary.txt
 L1DTLB_PHASE6G_CLOSURE_REPORT ?= $(REGRESS_DIR)/l1dtlb_phase6g_closure/closure_report.md
+L2TLB_AUDIT_DIR          ?= $(PROJECT_DIR)/../doc/l2tlb_uvm_audit
+L2TLB_FUNC_DESC          ?= $(L2TLB_AUDIT_DIR)/l2tlb_function_description.md
+L2TLB_TESTPLAN_XLSX      ?= $(L2TLB_AUDIT_DIR)/L2TLB_TRISTAN_IP_Hardware_tp_V1.xlsx
+L2TLB_PHASE6G_EVIDENCE_MANIFEST ?= $(SIMU_DIR)/l2tlb_phase6g_evidence_manifest.tsv
+L2TLB_PHASE6G_CLOSURE    ?= $(PROJECT_DIR)/scripts/l2tlb_phase6g_closure.py
+L2TLB_PHASE6G_REPLAY     ?= $(PROJECT_DIR)/scripts/l2tlb_phase6g_replay.py
+L2TLB_PHASE6G_REPLAY_SUMMARY ?= $(REGRESS_DIR)/l2tlb_phase6g_replay/summary.txt
+L2TLB_PHASE6G_CLOSURE_REPORT ?= $(REGRESS_DIR)/l2tlb_phase6g_closure/closure_report.md
 
 #===============================================================================
 # Phase 7 — Covergroup + SVA 联跑与覆盖率 HTML（doc/MMU_Progress M7 / TaskDivision §7）
@@ -710,6 +730,30 @@ l1dtlb_phase6g_closure: l1dtlb_phase6g_check
 		--compile-log "$(LOG_DIR)/comp_fast.log" \
 		--report "$(L1DTLB_PHASE6G_CLOSURE_REPORT)"
 
+l2tlb_phase6g_check:
+	@test -f "$(L2TLB_FUNC_DESC)" || (echo "ERROR: missing $(L2TLB_FUNC_DESC)"; exit 2)
+	@test -f "$(L2TLB_TESTPLAN_XLSX)" || (echo "ERROR: missing $(L2TLB_TESTPLAN_XLSX)"; exit 2)
+	@test -f "$(L2TLB_PHASE6G_EVIDENCE_MANIFEST)" || (echo "ERROR: missing $(L2TLB_PHASE6G_EVIDENCE_MANIFEST)"; exit 2)
+	@test -f "$(L2TLB_PHASE6G_CLOSURE)" || (echo "ERROR: missing $(L2TLB_PHASE6G_CLOSURE)"; exit 2)
+	@test -f "$(L2TLB_PHASE6G_REPLAY)" || (echo "ERROR: missing $(L2TLB_PHASE6G_REPLAY)"; exit 2)
+	@echo "L2TLB Phase6G closure assets present."
+
+l2tlb_phase6g_replay: comp_fast l2tlb_phase6g_check
+	$(PYTHON) "$(L2TLB_PHASE6G_REPLAY)" \
+		--manifest "$(L2TLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--summary "$(L2TLB_PHASE6G_REPLAY_SUMMARY)" \
+		--mode run_check \
+		--uvm-err-only 1 \
+		--uvm-config-db-trace 0 \
+		--fail-fast
+
+l2tlb_phase6g_closure: l2tlb_phase6g_check
+	$(PYTHON) "$(L2TLB_PHASE6G_CLOSURE)" \
+		--manifest "$(L2TLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--log-dir "$(LOG_DIR)" \
+		--compile-log "$(LOG_DIR)/comp_fast.log" \
+		--report "$(L2TLB_PHASE6G_CLOSURE_REPORT)"
+
 # Large TIMEOUT: long PTW settle for thrash/perf
 phase8_run_matrix: comp
 	@set -e; for v in $(PHASE8_VSEQS); do \
@@ -819,7 +863,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
 
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
-        cov_quick cov_l1l2 cov_all covp cov_gen_list \
+        cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -836,6 +880,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         print-l1dtlb-audit l1dtlb_audit_check l1dtlb_audit_run l1dtlb_audit_run_cov \
         l1dtlb_phase6g_check l1dtlb_phase6g_smoke l1dtlb_phase6g_targeted l1dtlb_phase6g_replay l1dtlb_phase6g_closure \
+        l2tlb_phase6g_check l2tlb_phase6g_replay l2tlb_phase6g_closure \
         phase12_exit_check phase12_pgflt_urg_probe
 
 all: comp run
@@ -1808,6 +1853,8 @@ help:
 	@echo "  make phase14_gate_parallel                           # gate-only check for high-parallel artifacts"
 	@echo "  make phase14_exit_check_sharded                      # sharded regression + merge + gate"
 	@echo "  make phase14_exit_check_parallel                     # high-parallel regression + merge + gate"
+	@echo "  make covp                                            # full MMU coverage + L1/L2/PTW signoff gates"
+	@echo "  make covp COVP_RUN_PTW_SIGNOFF=0                     # debug only: skip PTW signoff gate"
 	@echo "  make phase14_clean_parallel                          # remove high-parallel shard/log/VDB artifacts"
 	@echo "  make phase14_coverage_merge                           # generate Phase14 URG artifacts"
 	@echo "  make phase14_exit_check                               # default Phase14 closure gate, uses high-parallel VDBs"
@@ -2290,8 +2337,83 @@ cov_all: comp
 	@$(cov_run) LIST=$(COV_ALL_LIST)
 	@$(MAKE) cov
 
-# --- 并行覆盖率（Phase14 框架，12 线程 5 seed）--------------------------------
-#   make covp    — 全量 416 test × 5 seed 并行跑 + 全 MMU 报告 + L1+L2 报告
+covp_scope_reports:
+	@test -d "$(PHASE14_URG_MERGED_DB)" || (echo "ERROR: missing merged Phase14 VDB: $(PHASE14_URG_MERGED_DB)"; exit 2)
+	@mkdir -p "$(COV_DIR)"
+	@echo "=== Generating L1TLB filtered report ==="
+	@rm -rf "$(COVP_L1TLB_URG_REPORT_DIR)"
+	@$(URG) -full64 -dir "$(PHASE14_URG_MERGED_DB)" \
+	  -metric $(COV_METRICS) \
+	  -hier u_dut.u_mmu_l1dtlb \
+	  -hier u_dut.u_mmu_l1itlb \
+	  -format both \
+	  -report "$(COVP_L1TLB_URG_REPORT_DIR)" \
+	  > "$(COVP_L1TLB_URG_LOG)" 2>&1
+	@test -d "$(COVP_L1TLB_URG_REPORT_DIR)" && find "$(COVP_L1TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L1TLB URG report: $(COVP_L1TLB_URG_REPORT_DIR)"; exit 1)
+	@echo "=== Generating L2TLB filtered report ==="
+	@rm -rf "$(COVP_L2TLB_URG_REPORT_DIR)"
+	@$(URG) -full64 -dir "$(PHASE14_URG_MERGED_DB)" \
+	  -metric $(COV_METRICS) \
+	  -hier u_dut.x_mmu_l2tlb \
+	  -format both \
+	  -report "$(COVP_L2TLB_URG_REPORT_DIR)" \
+	  > "$(COVP_L2TLB_URG_LOG)" 2>&1
+	@test -d "$(COVP_L2TLB_URG_REPORT_DIR)" && find "$(COVP_L2TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L2TLB URG report: $(COVP_L2TLB_URG_REPORT_DIR)"; exit 1)
+
+covp_scope_gates:
+	@test -f "$(SCOPE_COVERAGE_GATE)" || (echo "ERROR: scope coverage gate missing: $(SCOPE_COVERAGE_GATE)"; exit 2)
+	$(PYTHON) "$(SCOPE_COVERAGE_GATE)" \
+		--scope-name L1TLB \
+		--urg-report-dir "$(COVP_L1TLB_URG_REPORT_DIR)" \
+		--line-threshold "$(PHASE14_LINE_THRESHOLD)" \
+		--branch-threshold "$(PHASE14_BRANCH_THRESHOLD)" \
+		--toggle-threshold "$(PHASE14_TOGGLE_THRESHOLD)" \
+		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
+		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
+		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"
+	$(PYTHON) "$(SCOPE_COVERAGE_GATE)" \
+		--scope-name L2TLB \
+		--urg-report-dir "$(COVP_L2TLB_URG_REPORT_DIR)" \
+		--line-threshold "$(PHASE14_LINE_THRESHOLD)" \
+		--branch-threshold "$(PHASE14_BRANCH_THRESHOLD)" \
+		--toggle-threshold "$(PHASE14_TOGGLE_THRESHOLD)" \
+		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
+		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
+		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"
+
+covp_l1l2_special_gates: comp_fast l1dtlb_phase6g_check l2tlb_phase6g_check
+	$(PYTHON) "$(L1DTLB_PHASE6G_REPLAY)" \
+		--manifest "$(L1DTLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--summary "$(L1DTLB_PHASE6G_REPLAY_SUMMARY)" \
+		--mode run_check \
+		--uvm-err-only 0 \
+		--uvm-config-db-trace 0 \
+		--fail-fast
+	$(PYTHON) "$(L1DTLB_PHASE6G_CLOSURE)" \
+		--manifest "$(L1DTLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--log-dir "$(LOG_DIR)" \
+		--compile-log "$(LOG_DIR)/comp_fast.log" \
+		--report "$(L1DTLB_PHASE6G_CLOSURE_REPORT)"
+	$(PYTHON) "$(L2TLB_PHASE6G_REPLAY)" \
+		--manifest "$(L2TLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--summary "$(L2TLB_PHASE6G_REPLAY_SUMMARY)" \
+		--mode run_check \
+		--uvm-err-only 1 \
+		--uvm-config-db-trace 0 \
+		--fail-fast
+	$(PYTHON) "$(L2TLB_PHASE6G_CLOSURE)" \
+		--manifest "$(L2TLB_PHASE6G_EVIDENCE_MANIFEST)" \
+		--log-dir "$(LOG_DIR)" \
+		--compile-log "$(LOG_DIR)/comp_fast.log" \
+		--report "$(L2TLB_PHASE6G_CLOSURE_REPORT)"
+
+ptw_code_cov_signoff_gate:
+	@test -f "$(PTW_COV_SIGNOFF_CHECK)" || (echo "ERROR: PTW signoff checker missing: $(PTW_COV_SIGNOFF_CHECK)"; exit 2)
+	@$(MAKE) ptw_code_cov PTW_COV_PROFILE=signoff PTW_COV_FUNCTIONAL_GATE_MODE=run PTW_COV_EXTRA_ARGS=
+	$(PYTHON) "$(PTW_COV_SIGNOFF_CHECK)" --summary-json "$(PTW_COV_ROOT)/ptw_code_coverage_summary.json"
+
+# --- 并行覆盖率 + signoff gates（Phase14 框架，12 线程 5 seed）-------------------
+#   make covp    — 全 MMU coverage + L1/L2/PTW signoff gates
 covp: comp
 	@if [ ! -f "$(COV_ALL_LIST)" ]; then $(MAKE) cov_gen_list; fi
 	@echo "=== covp: $$(wc -l < $(COV_ALL_LIST)) tests × $(words $(COV_PARALLEL_SEEDS)) seeds, $(COV_PARALLEL_JOBS) jobs ==="
@@ -2301,29 +2423,32 @@ covp: comp
 	  PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS)
 	@echo "=== Merging parallel VDBs → full MMU report ==="
 	@$(MAKE) phase14_coverage_merge_parallel
-	@echo "=== Generating L1+L2 filtered report ==="
-	@mkdir -p "$(COV_DIR)/l1l2_urgReport"
-	@$(URG) -full64 -dir "$(PHASE14_PARALLEL_VDB_DIR)" \
-	  -metric $(COV_METRICS) \
-	  -hier u_dut.u_mmu_l1dtlb \
-	  -hier u_dut.x_mmu_l2tlb \
-	  -hier u_dut.u_mmu_l1itlb \
-	  -format both \
-	  -report "$(COV_DIR)/l1l2_urgReport" \
-	  > "$(COV_DIR)/l1l2_urg.log" 2>&1 || true
-	@echo "=== Generating PTW filtered report ==="
-	@mkdir -p "$(COV_DIR)/ptw_urgReport"
-	@$(URG) -full64 -dir "$(PHASE14_PARALLEL_VDB_DIR)" \
-	  -metric $(COV_METRICS) \
-	  -hier u_dut.x_ct_mmu_ptw \
-	  -format both \
-	  -report "$(COV_DIR)/ptw_urgReport" \
-	  > "$(COV_DIR)/ptw_urg.log" 2>&1 || true
+	@$(MAKE) covp_scope_reports
+	@echo "=== Running full MMU Phase14 gate ==="
+	@$(MAKE) phase14_gate_parallel \
+	  PHASE14_LIST=$(COV_ALL_LIST) \
+	  PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)"
+	@if [ "$(COVP_RUN_SCOPE_GATES)" = "1" ]; then \
+		$(MAKE) covp_scope_gates; \
+	else \
+		echo "=== Skipping covp_scope_gates because COVP_RUN_SCOPE_GATES=$(COVP_RUN_SCOPE_GATES) ==="; \
+	fi
+	@if [ "$(COVP_RUN_L1L2_SPECIAL_GATES)" = "1" ]; then \
+		$(MAKE) covp_l1l2_special_gates; \
+	else \
+		echo "=== Skipping covp_l1l2_special_gates because COVP_RUN_L1L2_SPECIAL_GATES=$(COVP_RUN_L1L2_SPECIAL_GATES) ==="; \
+	fi
+	@if [ "$(COVP_RUN_PTW_SIGNOFF)" = "1" ]; then \
+		$(MAKE) ptw_code_cov_signoff_gate; \
+	else \
+		echo "=== Skipping ptw_code_cov_signoff_gate because COVP_RUN_PTW_SIGNOFF=$(COVP_RUN_PTW_SIGNOFF) ==="; \
+	fi
 	@echo ""
-	@echo "=== Done ==="
-	@echo "Full MMU:  $(PHASE14_URG_REPORT_DIR)"
-	@echo "L1+L2:     $(COV_DIR)/l1l2_urgReport"
-	@echo "PTW:       $(COV_DIR)/ptw_urgReport"
+	@echo "=== covp signoff gates done ==="
+	@echo "Full MMU: $(PHASE14_URG_REPORT_DIR)"
+	@echo "L1TLB:    $(COVP_L1TLB_URG_REPORT_DIR)"
+	@echo "L2TLB:    $(COVP_L2TLB_URG_REPORT_DIR)"
+	@echo "PTW:      $(PTW_COV_ROOT)/urgReport"
 
 cov_gen_list:
 	@echo "=== Generating all-tests coverage list ==="

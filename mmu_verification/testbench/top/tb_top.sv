@@ -332,6 +332,14 @@ module tb_top;
     .rtu_yy_xx_flush          (misc_if_inst.rtu_yy_xx_flush)
   );
 
+  // The refactored PTW MBUF carries a memory response ID and external grant,
+  // but ct_mmu_top has not yet exposed those ports.  Connect them in TB only.
+  assign ptw_mem_if_inst.mmu_lsu_data_req_id = u_dut.x_ct_mmu_ptw.mmu_lsu_data_req_id;
+  initial begin
+    force u_dut.x_ct_mmu_ptw.lsu_mmu_data_req_grant = ptw_mem_if_inst.lsu_mmu_data_req_grant;
+    force u_dut.x_ct_mmu_ptw.lsu_mmu_data_id = ptw_mem_if_inst.lsu_mmu_data_id;
+  end
+
   logic [1:0]  tb_l1d_refill_src;
   logic [3:0]  tb_l1d_p0_hit_idx;
   logic [26:0] tb_l1d_p0_hit_vpn;
@@ -735,7 +743,10 @@ module tb_top;
   assign dut_probes_if.ptw_lsu_data_req   = u_dut.mmu_lsu_data_req;
   assign dut_probes_if.ptw_lsu_data_req_addr = u_dut.mmu_lsu_data_req_addr;
   assign dut_probes_if.ptw_lsu_data_req_size = u_dut.mmu_lsu_data_req_size;
-  assign dut_probes_if.ptw_lsu_data_req_grant = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant;
+  assign dut_probes_if.ptw_lsu_data_req_raw_grant = u_dut.x_ct_mmu_ptw.lsu_mmu_data_req_grant;
+  assign dut_probes_if.ptw_lsu_data_req_accept = u_dut.mmu_lsu_data_req
+                                               & u_dut.x_ct_mmu_ptw.lsu_mmu_data_req_grant;
+  assign dut_probes_if.ptw_lsu_data_req_grant = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_req_grant;
   assign dut_probes_if.ptw_lsu_data_vld   = ptw_mem_if_inst.lsu_mmu_data_vld;
   assign dut_probes_if.ptw_lsu_bus_error  = ptw_mem_if_inst.lsu_mmu_bus_error;
   assign dut_probes_if.ptw_lsu_data       = ptw_mem_if_inst.lsu_mmu_data;
@@ -1185,7 +1196,6 @@ module tb_top;
   assign dut_probes_if.p13_csr_refill_req_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_req, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_req};
   assign dut_probes_if.p13_csr_refill_pgs_vec  = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_pgs, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_pgs};
   assign dut_probes_if.p13_csr_refill_data_vec = {u_dut.x_ct_mmu_ptw.twu_four.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_three.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_two.csr_refill_data, u_dut.x_ct_mmu_ptw.twu_one.csr_refill_data};
-  assign ptw_mem_if_inst.mmu_lsu_data_req_accept = |u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant;
   assign dut_probes_if.tlbiva_cur_st     = u_dut.x_ct_mmu_tlboper.tlbiva_cur_st;
   assign dut_probes_if.rtu_yy_xx_flush   = misc_if_inst.rtu_yy_xx_flush;
   assign dut_probes_if.tlboper_utlb_clr  = u_dut.tlboper_utlb_clr;
@@ -1279,7 +1289,7 @@ module tb_top;
           ptw_mem_if_inst.lsu_mmu_data,
           u_dut.x_ct_mmu_ptw.mmu_lsu_data_req,
           u_dut.x_ct_mmu_ptw.mmu_lsu_data_req_addr,
-          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant,
+          u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_req_grant,
           u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld,
           u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_on,
           u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_get,
@@ -1450,7 +1460,7 @@ module tb_top;
       u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_on,
       u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_get,
       u_dut.x_ct_mmu_ptw.mmu_lsu_data_req,
-      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mmu_lsu_data_req_grant,
+      u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_req_grant,
       u_dut.x_ct_mmu_ptw.mmu_lsu_data_req_addr,
       u_dut.tlboper_ptw_abort,
       u_dut.x_ct_mmu_ptw.u_ptw_mbuf.tlboper_ptw_abort_reg);
@@ -1697,7 +1707,7 @@ module tb_top;
   task automatic mmu_diag_print(input string tag);
     $display({"[MMU_DIAG] tag=\"%s\" cyc=%0d t=%0t rst=%0b ",
               "lsu_inv={all:%0b va_all:%0b asid_all:%0b va_asid:%0b done:%0b busy:%0b wakeup:0x%03h va:0x%07h asid:0x%04h} ",
-              "ptw_lsu={req:%0b grant:0x%03h vld:%0b buserr:%0b addr:0x%010h size:%0b data:0x%016h} ",
+              "ptw_lsu={req:%0b raw_grant:%0b accept:%0b entry_grant:0x%03h vld:%0b buserr:%0b addr:0x%010h size:%0b data:0x%016h} ",
               "ptw={abort:%0b abort_flop:%0b jtlb_ready:%0b mbuf_vld:0x%03h mbuf_have:0x%0h ",
               "twu_idle:0x%0h twu_mask:0x%0h twu_ref:0x%0h twu_mbuf_req:0x%0h pgflt:0x%0h acc:0x%0h ",
               "l2ptw_req:%0b/id:0x%02h/type:0x%0h/vpn:0x%07h cmplt:%0b data_vld:%0b} ",
@@ -1722,6 +1732,8 @@ module tb_top;
       lsu_if_inst.lsu_mmu_tlb_va,
       lsu_if_inst.lsu_mmu_tlb_asid,
       dut_probes_if.ptw_lsu_data_req,
+      dut_probes_if.ptw_lsu_data_req_raw_grant,
+      dut_probes_if.ptw_lsu_data_req_accept,
       dut_probes_if.ptw_lsu_data_req_grant,
       dut_probes_if.ptw_lsu_data_vld,
       dut_probes_if.ptw_lsu_bus_error,
@@ -1818,6 +1830,7 @@ module tb_top;
         || (dut_probes_if.ptw_twu_mbuf_req !== mmu_diag_ptw_twu_mbuf_req_q)
         || mmu_diag_inv_active()
         || dut_probes_if.ptw_lsu_data_req
+        || dut_probes_if.ptw_lsu_data_req_raw_grant
         || dut_probes_if.ptw_lsu_data_vld
         || (dut_probes_if.ptw_lsu_data_req_grant != 9'h000)
         || dut_probes_if.l2_reqq_issue_valid
@@ -2126,6 +2139,27 @@ bind twu          mmu_twu_chk_sva     u_twu_chk_sva (.*);
 bind twu          mmu_maee_twu_sva    u_maee_twu_sva (.*);
 bind twu          mmu_pmp_twu_sva     u_pmp_twu_sva (.*);
 bind twu          mmu_sysmap_sva      u_sysmap_sva (.*);
-bind ptw_mbuf     mmu_ptw_lsu_protocol_sva u_ptw_lsu_protocol_sva (.*);
+bind ptw_mbuf     mmu_ptw_lsu_protocol_sva u_ptw_lsu_protocol_sva (
+  .mbuf_clk(mbuf_clk),
+  .cpurst_b(cpurst_b),
+  .mmu_lsu_data_req(mmu_lsu_data_req),
+  .mmu_lsu_data_req_addr(mmu_lsu_data_req_addr),
+  .mmu_lsu_data_req_size(mmu_lsu_data_req_size),
+  .lsu_mmu_data_vld(lsu_mmu_data_vld),
+  .lsu_mmu_bus_error(lsu_mmu_bus_error),
+  .tlboper_ptw_abort(tlboper_ptw_abort),
+  .mbuf_grant(mbuf_grant),
+  .mbuf_entry_on(mbuf_entry_on),
+  .mbuf_entry_upd(mbuf_entry_upd),
+  .mmu_lsu_data_req_grant(mbuf_entry_req_grant),
+  .mbuf_entry_padder(mbuf_entry_padder),
+  .mbuf_twu_data_vld(mbuf_twu_data_vld),
+  .mbuf_cache_upd(mbuf_cache_upd),
+  .mbuf_bus_error(mbuf_bus_error),
+  .write_back_grant(write_back_grant),
+  .write_back_req(write_back_req),
+  .mbuf_bus_error_grant(mbuf_bus_error_grant),
+  .bus_err_write_back_req(bus_err_write_back_req)
+);
 bind ct_mmu_iplru mmu_plru_sva        u_iplru_sva (.*);
 bind ct_mmu_dplru mmu_dplru_sva       u_dplru_sva (.*);

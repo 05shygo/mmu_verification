@@ -30,6 +30,7 @@ class ptw_mem_monitor extends uvm_monitor;
   // level may stay high across abort/repoint windows; the RTL grant pulse is
   // the real external accept event and is used for credit accounting.
   protected bit [39:0]  m_pending_addr;
+  protected bit [3:0]   m_pending_id;
   protected bit         m_pending_size;
   protected bit         m_has_pending;
   protected bit         m_pending_req_dropped;
@@ -69,6 +70,7 @@ class ptw_mem_monitor extends uvm_monitor;
       bit         accept_seen;
       bit         rsp_seen;
       bit [39:0]  cur_addr;
+      bit [3:0]   cur_id;
       bit         cur_size;
       ptw_mem_txn tr;
       ptw_mem_txn drop_tr;
@@ -79,6 +81,7 @@ class ptw_mem_monitor extends uvm_monitor;
         if (m_has_pending) begin
           drop_tr          = ptw_mem_txn::type_id::create("ptw_reset_drop");
           drop_tr.addr     = m_pending_addr;
+          drop_tr.id       = m_pending_id;
           drop_tr.req_size = m_pending_size;
           `uvm_info(get_type_name(),
             $sformatf(
@@ -98,14 +101,17 @@ class ptw_mem_monitor extends uvm_monitor;
       rsp_seen = (vif.monitor_cb.lsu_mmu_data_vld  === 1'b1) ||
                  (vif.monitor_cb.lsu_mmu_bus_error === 1'b1);
       cur_addr = vif.monitor_cb.mmu_lsu_data_req_addr;
+      cur_id = vif.monitor_cb.mmu_lsu_data_req_id;
       cur_size = vif.monitor_cb.mmu_lsu_data_req_size;
 
       if (rsp_seen) begin
         tr           = ptw_mem_txn::type_id::create("ptw_rsp");
         tr.pte_data  = vif.monitor_cb.lsu_mmu_data;
+        tr.id        = vif.monitor_cb.lsu_mmu_data_id;
         tr.bus_error = vif.monitor_cb.lsu_mmu_bus_error;
         if (m_has_pending) begin
           tr.addr     = m_pending_addr;
+          tr.id       = m_pending_id;
           tr.req_size = m_pending_size;
           m_has_pending = 1'b0;
           m_pending_req_dropped = 1'b0;
@@ -152,14 +158,16 @@ class ptw_mem_monitor extends uvm_monitor;
         end
         tr          = ptw_mem_txn::type_id::create("ptw_req");
         tr.addr     = cur_addr;
+        tr.id       = cur_id;
         tr.req_size = cur_size;
         m_pending_addr = cur_addr;
+        m_pending_id = cur_id;
         m_pending_size = cur_size;
         m_has_pending = 1'b1;
         m_pending_req_dropped = 1'b0;
         m_pending_req_replaced = 1'b0;
         `uvm_info(get_type_name(),
-          $sformatf("PTW REQ ACCEPT: addr=0x%010h size=%0b", tr.addr, tr.req_size),
+          $sformatf("PTW REQ ACCEPT: addr=0x%010h id=0x%0h size=%0b", tr.addr, tr.id, tr.req_size),
           UVM_HIGH)
         ap_req.write(tr);
       end

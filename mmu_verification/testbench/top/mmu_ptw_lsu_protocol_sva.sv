@@ -38,7 +38,11 @@ module mmu_ptw_lsu_protocol_sva (
   logic       req_prev;
   logic       response_event;
   logic       accept_event;
+  logic       req_drop_event;
+  logic       unaccepted_req_drop_event;
   logic       request_abort;
+  logic       abort_prev;
+  logic       abort_qualifier;
 
   int unsigned cp_mbuf_grant_onehot_hits;
   int unsigned cp_lsu_req_accept_hits;
@@ -54,8 +58,10 @@ module mmu_ptw_lsu_protocol_sva (
 
   assign response_event = lsu_mmu_data_vld || lsu_mmu_bus_error;
   assign accept_event   = |mmu_lsu_data_req_grant;
-  assign request_abort  = pending_req && !pending_aborted
-                         && req_prev && !mmu_lsu_data_req && !response_event;
+  assign req_drop_event = pending_req && req_prev && !mmu_lsu_data_req && !response_event;
+  assign unaccepted_req_drop_event = !pending_req && req_prev && !mmu_lsu_data_req && !response_event;
+  assign abort_qualifier = tlboper_ptw_abort || abort_prev || pending_aborted;
+  assign request_abort  = req_drop_event && abort_qualifier;
 
   always_comb begin
     accept_addr = 40'b0;
@@ -82,9 +88,11 @@ module mmu_ptw_lsu_protocol_sva (
       pending_addr   <= 40'b0;
       pending_size   <= 1'b0;
       req_prev       <= 1'b0;
+      abort_prev     <= 1'b0;
     end else begin
       past_valid <= 1'b1;
       req_prev <= mmu_lsu_data_req;
+      abort_prev <= tlboper_ptw_abort;
 
       if (pending_req && tlboper_ptw_abort)
         pending_aborted <= 1'b1;
@@ -92,7 +100,7 @@ module mmu_ptw_lsu_protocol_sva (
       case ({accept_event, response_event})
         2'b10: begin
           pending_req     <= 1'b1;
-          pending_aborted <= 1'b0;
+          pending_aborted <= tlboper_ptw_abort;
           pending_grant   <= mmu_lsu_data_req_grant;
           pending_addr    <= accept_addr;
           pending_size    <= mmu_lsu_data_req_size;
@@ -106,7 +114,7 @@ module mmu_ptw_lsu_protocol_sva (
         end
         2'b11: begin
           pending_req     <= 1'b1;
-          pending_aborted <= 1'b0;
+          pending_aborted <= tlboper_ptw_abort;
           pending_grant   <= mmu_lsu_data_req_grant;
           pending_addr    <= accept_addr;
           pending_size    <= mmu_lsu_data_req_size;
@@ -204,8 +212,12 @@ module mmu_ptw_lsu_protocol_sva (
     cp_lsu_abort_no_create_hits++;
   end
 
-  a_abort_drop_only_when_outstanding: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
-    request_abort |-> tlboper_ptw_abort);
+  // After req/grant fire, the visible request may drop or repoint while the
+  // accepted read is tracked by mbuf_entry_on and response ID.  A request that
+  // has not fired yet may only disappear because it was accepted or aborted in
+  // the same handshake window.
+  a_unaccepted_req_drop_only_on_accept_or_abort: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+    unaccepted_req_drop_event |-> (accept_event || abort_qualifier));
 
   cp_lsu_abort_drop: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
     request_abort && tlboper_ptw_abort) begin

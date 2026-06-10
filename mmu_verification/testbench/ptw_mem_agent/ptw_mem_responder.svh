@@ -6,13 +6,13 @@
 //   · DUT asserts mmu_lsu_data_req=1 and normally holds addr stable until TB
 //     responds; invalidate/abort may drop the visible request after the memory
 //     read was accepted, but the response still returns to retire PTW cleanup
-//   · mmu_lsu_data_req_accept is the TB whitebox view of the RTL grant pulse;
-//     the responder services exactly one accepted read per pulse.
+//   · lsu_mmu_data_req_grant is driven by this responder.  The responder
+//     services exactly one req/grant accepted read per pulse.
 //   · TB drives lsu_mmu_data_vld=1 for exactly one cycle, then deasserts.
 //     lsu_mmu_bus_error qualifies that same response beat: data_vld=1 and
 //     bus_error=0 is a normal PTE response; data_vld=1 and bus_error=1 is a
 //     bus-error response.
-//   · At most 1 outstanding request at any time (no tag/ID)
+//   · At most 1 outstanding request at any time; response carries request ID.
 //   · m_rsp_delay_min/max: random per-request delay in clock cycles
 //   · m_bus_error_rate_permille: probability (‰) of injecting bus_error
 //
@@ -46,6 +46,7 @@ class ptw_mem_responder extends uvm_component;
   protected int unsigned m_chk_not_ready_slow_cycles;
   protected bit        m_has_accepted_req;
   protected bit [39:0] m_accepted_addr;
+  protected bit [3:0]  m_accepted_id;
   protected bit        m_accepted_size;
   protected int unsigned m_accept_count;
   protected int unsigned m_rsp_count;
@@ -275,23 +276,26 @@ class ptw_mem_responder extends uvm_component;
       (m_pt != null));
   endfunction
 
-  protected function void _record_accept(bit [39:0] addr, bit req_size, string ctx);
+  protected function void _record_accept(bit [39:0] addr, bit [3:0] id, bit req_size, string ctx);
     m_accept_count++;
     m_last_accept_time = $time;
     m_last_accept_addr = addr;
     m_last_accept_size = req_size;
     m_last_accept_ctx  = ctx;
     if (m_trace_enabled) begin
-      $display("[PTW_RESP_TRACE][ACCEPT] t=%0t ctx=%s cnt=%0d addr=0x%010h size=%0b req=%0b accept=%0b",
-        $time, ctx, m_accept_count, addr, req_size,
+      $display("[PTW_RESP_TRACE][ACCEPT] t=%0t ctx=%s cnt=%0d addr=0x%010h id=0x%0h size=%0b req=%0b grant=%0b accept=%0b",
+        $time, ctx, m_accept_count, addr, id, req_size,
         vif.driver_cb.mmu_lsu_data_req,
+        vif.lsu_mmu_data_req_grant,
         vif.driver_cb.mmu_lsu_data_req_accept);
     end
   endfunction
 
   protected task _drive_idle_outputs();
+    vif.driver_cb.lsu_mmu_data_req_grant <= 1'b0;
     vif.driver_cb.lsu_mmu_data_vld  <= 1'b0;
     vif.driver_cb.lsu_mmu_data      <= 64'b0;
+    vif.driver_cb.lsu_mmu_data_id   <= 4'b0;
     vif.driver_cb.lsu_mmu_bus_error <= 1'b0;
   endtask
 
@@ -303,12 +307,13 @@ class ptw_mem_responder extends uvm_component;
             ctx, m_accepted_addr, vif.driver_cb.mmu_lsu_data_req_addr))
       end
       m_accepted_addr    = vif.driver_cb.mmu_lsu_data_req_addr;
+      m_accepted_id      = vif.driver_cb.mmu_lsu_data_req_id;
       m_accepted_size    = vif.driver_cb.mmu_lsu_data_req_size;
       m_has_accepted_req = 1'b1;
-      _record_accept(m_accepted_addr, m_accepted_size, ctx);
+      _record_accept(m_accepted_addr, m_accepted_id, m_accepted_size, ctx);
       `uvm_info(get_type_name(),
-        $sformatf("%s: stashed back-to-back PTW accept addr=0x%010h size=%0b",
-          ctx, m_accepted_addr, m_accepted_size),
+        $sformatf("%s: stashed back-to-back PTW accept addr=0x%010h id=0x%0h size=%0b",
+          ctx, m_accepted_addr, m_accepted_id, m_accepted_size),
         UVM_HIGH)
     end
   endfunction
@@ -332,13 +337,15 @@ class ptw_mem_responder extends uvm_component;
     // from the tail of an already-serviced request.
     forever begin
       bit [39:0] req_addr;
+      bit [3:0]  req_id;
       bit        req_size;
 
       if (m_has_accepted_req) begin
         req_addr = m_accepted_addr;
+        req_id = m_accepted_id;
         req_size = m_accepted_size;
         m_has_accepted_req = 1'b0;
-        handle_request(req_addr, req_size);
+        handle_request(req_addr, req_id, req_size);
         continue;
       end
 
@@ -351,19 +358,23 @@ class ptw_mem_responder extends uvm_component;
         continue;
       end
 
-      if (vif.driver_cb.mmu_lsu_data_req_accept !== 1'b1)
+      if (vif.driver_cb.mmu_lsu_data_req_accept === 1'b1) begin
+        req_addr = vif.driver_cb.mmu_lsu_data_req_addr;
+        req_id = vif.driver_cb.mmu_lsu_data_req_id;
+        req_size = vif.driver_cb.mmu_lsu_data_req_size;
+        vif.driver_cb.lsu_mmu_data_req_grant <= 1'b0;
+        _record_accept(req_addr, req_id, req_size, "main");
+        handle_request(req_addr, req_id, req_size);
         continue;
+      end
 
-      req_addr = vif.driver_cb.mmu_lsu_data_req_addr;
-      req_size = vif.driver_cb.mmu_lsu_data_req_size;
-      _record_accept(req_addr, req_size, "main");
-      handle_request(req_addr, req_size);
+      vif.driver_cb.lsu_mmu_data_req_grant <= (vif.driver_cb.mmu_lsu_data_req === 1'b1);
     end
   endtask
 
   // ── Handle a single PTW memory request ───────────────────────────────────
   // addr: the 40-bit physical address of the PTE to read
-  virtual task handle_request(bit [39:0] addr, bit req_size);
+  virtual task handle_request(bit [39:0] addr, bit [3:0] id, bit req_size);
     bit [63:0] pte;
     bit [27:0] pte_ppn;
     int        delay;
@@ -401,8 +412,8 @@ class ptw_mem_responder extends uvm_component;
     m_active_pte        = pte;
     m_active_delay      = delay;
     if (m_trace_enabled) begin
-      $display("[PTW_RESP_TRACE][START] t=%0t accept_cnt=%0d addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d bus_err=%0b buserr_forced_count=%0b buserr_forced_addr=%0b buserr_permille=%0d buserr_tables={addr:%0d,count:%0d} same_cycle_abort_data=%0b same_cycle_abort_buserr=%0b",
-        $time, accept_idx, addr, req_size, pte, pte_ppn, delay, inject_err,
+      $display("[PTW_RESP_TRACE][START] t=%0t accept_cnt=%0d addr=0x%010h id=0x%0h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d bus_err=%0b buserr_forced_count=%0b buserr_forced_addr=%0b buserr_permille=%0d buserr_tables={addr:%0d,count:%0d} same_cycle_abort_data=%0b same_cycle_abort_buserr=%0b",
+        $time, accept_idx, addr, id, req_size, pte, pte_ppn, delay, inject_err,
         buserr_forced_by_count,
         buserr_forced_by_addr,
         m_bus_error_rate_permille,
@@ -419,6 +430,7 @@ class ptw_mem_responder extends uvm_component;
         m_active_req = 1'b0;
         return;
       end
+      vif.driver_cb.lsu_mmu_data_req_grant <= 1'b0;
       if (vif.driver_cb.mmu_lsu_data_req !== 1'b1) begin
         if (!logged_req_drop) begin
           if (m_trace_enabled) begin
@@ -455,17 +467,18 @@ class ptw_mem_responder extends uvm_component;
       // ── Bus error response ─────────────────────────────────────────────
       vif.driver_cb.lsu_mmu_data_vld  <= 1'b1;
       vif.driver_cb.lsu_mmu_data      <= pte;
+      vif.driver_cb.lsu_mmu_data_id   <= id;
       vif.driver_cb.lsu_mmu_bus_error <= 1'b1;
       m_buserr_count++;
       m_last_buserr_time = $time;
       m_last_buserr_addr = addr;
       m_last_buserr_size = req_size;
       if (m_trace_enabled) begin
-        $display("[PTW_RESP_TRACE][BUS_ERR] t=%0t cnt=%0d addr=0x%010h size=%0b delay=%0d",
-          $time, m_buserr_count, addr, req_size, delay);
+        $display("[PTW_RESP_TRACE][BUS_ERR] t=%0t cnt=%0d addr=0x%010h id=0x%0h size=%0b delay=%0d",
+          $time, m_buserr_count, addr, id, req_size, delay);
       end
       `uvm_info(get_type_name(),
-        $sformatf("PTW BUS_ERR: addr=0x%010h delay=%0d", addr, delay), UVM_MEDIUM)
+        $sformatf("PTW BUS_ERR: addr=0x%010h id=0x%0h delay=%0d", addr, id, delay), UVM_MEDIUM)
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
         _drive_idle_outputs();
@@ -475,6 +488,7 @@ class ptw_mem_responder extends uvm_component;
       end
       vif.driver_cb.lsu_mmu_data_vld  <= 1'b0;
       vif.driver_cb.lsu_mmu_data      <= 64'b0;
+      vif.driver_cb.lsu_mmu_data_id   <= 4'b0;
       vif.driver_cb.lsu_mmu_bus_error <= 1'b0;
       m_active_req = 1'b0;
       _stash_accept_if_seen("PTW_BUS_ERR_DONE");
@@ -482,6 +496,7 @@ class ptw_mem_responder extends uvm_component;
       // ── Normal data response ───────────────────────────────────────────
       vif.driver_cb.lsu_mmu_data_vld <= 1'b1;
       vif.driver_cb.lsu_mmu_data     <= pte;
+      vif.driver_cb.lsu_mmu_data_id  <= id;
       m_rsp_count++;
       m_last_rsp_time  = $time;
       m_last_rsp_addr  = addr;
@@ -489,11 +504,11 @@ class ptw_mem_responder extends uvm_component;
       m_last_rsp_pte   = pte;
       m_last_rsp_delay = delay;
       if (m_trace_enabled) begin
-        $display("[PTW_RESP_TRACE][RSP] t=%0t cnt=%0d addr=0x%010h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d",
-          $time, m_rsp_count, addr, req_size, pte, pte_ppn, delay);
+        $display("[PTW_RESP_TRACE][RSP] t=%0t cnt=%0d addr=0x%010h id=0x%0h size=%0b pte=0x%016h pte_ppn=0x%07h delay=%0d",
+          $time, m_rsp_count, addr, id, req_size, pte, pte_ppn, delay);
       end
       `uvm_info(get_type_name(),
-        $sformatf("PTW RSP: addr=0x%010h pte=0x%016h pte_ppn=0x%07h delay=%0d", addr, pte, pte_ppn, delay),
+        $sformatf("PTW RSP: addr=0x%010h id=0x%0h pte=0x%016h pte_ppn=0x%07h delay=%0d", addr, id, pte, pte_ppn, delay),
         UVM_MEDIUM)
       @(vif.driver_cb);
       if (vif.rst_ni !== 1'b1) begin
@@ -504,6 +519,7 @@ class ptw_mem_responder extends uvm_component;
       end
       vif.driver_cb.lsu_mmu_data_vld <= 1'b0;
       vif.driver_cb.lsu_mmu_data     <= 64'b0;
+      vif.driver_cb.lsu_mmu_data_id  <= 4'b0;
       m_active_req = 1'b0;
       _stash_accept_if_seen("PTW_RSP_DONE");
     end

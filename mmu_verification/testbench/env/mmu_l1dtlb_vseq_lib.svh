@@ -2405,10 +2405,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     fill_page(0);
     set_satp_mode(1'b0);
     send_lsu_item(LSU_PIPE0, va_page(4), 7'd8, 1'b0);
+    send_lsu_item(LSU_PIPE1, va_page(4), 7'd18, 1'b1);
     wait_lsu_cycles(12);
     set_satp_mode(1'b1);
     set_priv(2'b11);
     send_lsu_item(LSU_PIPE0, va_page(5), 7'd9, 1'b0);
+    send_lsu_item(LSU_PIPE1, va_page(5), 7'd19, 1'b1);
     wait_lsu_cycles(12);
     set_mprv_mpp(1'b1, 2'b01);
     send_lsu_item(LSU_PIPE0, va_page(6), 7'd10, 1'b0);
@@ -3536,6 +3538,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   protected task scenario_hit_rd_perm_mode_matrix();
     bit sum1_pass_ok;
+    bit acflt_seen;
 
     do_bringup(128, 39'h10_0000);
     fill_page(0);
@@ -3578,10 +3581,26 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(24);
     set_pmp_allow_all();
 
+    force_ptw_bus_error_for_leaf_pte("l1dtlb_hit_rd_matrix_p0_acflt", 100, 1'b1);
+    configure_ptw_delay(8, 8);
+    raw_pipe0(va_page(100), 7'd30, 1'b0, 1'b0);
+    wait_l1d_access_expt_write("l1dtlb_hit_rd_matrix_p0_acflt_entry", acflt_seen, 8192);
+    force_ptw_bus_error_for_leaf_pte("l1dtlb_hit_rd_matrix_p0_acflt", 100, 1'b0);
+    reset_ptw_responder_controls(1, 4);
+    if (acflt_seen) begin
+      raw_pipe0(va_page(100), 7'd30, 1'b0, 1'b0);
+      wait_lsu_cycles(24);
+    end else begin
+      raw_rtu_flush();
+      wait_lsu_cycles(16);
+    end
+
     scenario_direct_map();
     scenario_stamo();
     scenario_one_free_dual_diff_cov();
     scenario_huge();
+    scenario_dual_exception_write();
+    scenario_expt_hit_with_tlb_hit();
     m_env_h.wait_for_quiescent_midtest("l1dtlb_hit_rd_perm_mode_matrix", 524288, 16);
   endtask
 

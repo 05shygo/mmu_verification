@@ -12,11 +12,10 @@
 //     · mmu_lsu_data_req stable until lsu_mmu_data_vld or bus_error, except
 //       abort may withdraw req after the read was accepted; the late response
 //       still returns to retire PTW abort cleanup
-//     · mmu_lsu_data_req_accept is a TB-only whitebox pulse derived from
-//       ptw_mbuf.mmu_lsu_data_req_grant; it marks the real external accept
-//       event for counters, monitor pending state, and responder lookup.
-//     · At most 1 outstanding request at any cycle
-//     · No tag/ID field; responses in-order
+//     · lsu_mmu_data_req_grant is the TB memory-side accept.
+//     · mmu_lsu_data_req_accept is the derived req/grant fire event.
+//     · At most 1 outstanding request at any cycle.
+//     · The request ID is returned on the response for PTW MBUF routing.
 // =============================================================================
 `ifndef PTW_MEM_IF_SV
 `define PTW_MEM_IF_SV
@@ -31,14 +30,17 @@ interface ptw_mem_if (
   // =========================================================================
   logic        mmu_lsu_data_req;
   logic [39:0] mmu_lsu_data_req_addr;
+  logic [3:0]  mmu_lsu_data_req_id;
   logic        mmu_lsu_data_req_size; // 0=4B, 1=8B (PTE fetch is always 8B)
-  wire         mmu_lsu_data_req_accept;
+  logic        lsu_mmu_data_req_grant;
+  wire         mmu_lsu_data_req_accept = mmu_lsu_data_req & lsu_mmu_data_req_grant;
 
   // =========================================================================
   // PTW Response (driven by ptw_mem_responder)
   // =========================================================================
   logic        lsu_mmu_data_vld;
   logic [63:0] lsu_mmu_data;
+  logic [3:0]  lsu_mmu_data_id;
   logic        lsu_mmu_bus_error;
 
   // =========================================================================
@@ -48,10 +50,13 @@ interface ptw_mem_if (
     default input #1step output #1step;
     input  mmu_lsu_data_req;
     input  mmu_lsu_data_req_addr;
+    input  mmu_lsu_data_req_id;
     input  mmu_lsu_data_req_size;
     input  mmu_lsu_data_req_accept;
+    output lsu_mmu_data_req_grant;
     output lsu_mmu_data_vld;
     output lsu_mmu_data;
+    output lsu_mmu_data_id;
     output lsu_mmu_bus_error;
   endclocking
 
@@ -62,10 +67,13 @@ interface ptw_mem_if (
     default input #1step;
     input mmu_lsu_data_req;
     input mmu_lsu_data_req_addr;
+    input mmu_lsu_data_req_id;
     input mmu_lsu_data_req_size;
+    input lsu_mmu_data_req_grant;
     input mmu_lsu_data_req_accept;
     input lsu_mmu_data_vld;
     input lsu_mmu_data;
+    input lsu_mmu_data_id;
     input lsu_mmu_bus_error;
   endclocking
 

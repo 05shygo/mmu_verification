@@ -275,6 +275,8 @@ interface mmu_dut_probes_if (
   wire         ptw_lsu_data_req;
   wire [39:0]  ptw_lsu_data_req_addr;
   wire         ptw_lsu_data_req_size;
+  wire         ptw_lsu_data_req_raw_grant;
+  wire         ptw_lsu_data_req_accept;
   wire [8:0]   ptw_lsu_data_req_grant;
   wire         ptw_lsu_data_vld;
   wire         ptw_lsu_bus_error;
@@ -504,7 +506,8 @@ interface mmu_dut_probes_if (
     input ptw_pgflt_vld, ptw_acc_err_vld, ptw_l2tlb_ref_pgflt, ptw_l2tlb_ref_acc_err;
     input l2tlb_ptw_req, l2tlb_ptw_id, l2tlb_ptw_type, l2tlb_ptw_vpn;
     input ptw_lsu_data_req, ptw_lsu_data_req_addr, ptw_lsu_data_req_size;
-    input ptw_lsu_data_req_grant, ptw_lsu_data_vld, ptw_lsu_bus_error, ptw_lsu_data;
+    input ptw_lsu_data_req_raw_grant, ptw_lsu_data_req_accept, ptw_lsu_data_req_grant;
+    input ptw_lsu_data_vld, ptw_lsu_bus_error, ptw_lsu_data;
     input ptw_l2tlb_cmplt, ptw_l2tlb_ref_data_vld, ptw_l2tlb_id, ptw_l2tlb_type;
     input ptw_l2tlb_flg, ptw_l1i_ref_cmplt;
     input ptw_arb_req, arb_ptw_grant, arb_pfu_grant, arb_l2tlb_req;

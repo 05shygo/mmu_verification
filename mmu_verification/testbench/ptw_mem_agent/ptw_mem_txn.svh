@@ -19,6 +19,7 @@ class ptw_mem_txn extends uvm_sequence_item;
 
   `uvm_object_utils_begin(ptw_mem_txn)
     `uvm_field_int (addr,       UVM_ALL_ON)
+    `uvm_field_int (id,         UVM_ALL_ON)
     `uvm_field_int (req_size,   UVM_ALL_ON)
     `uvm_field_enum(ptw_rsp_kind_e, rsp_kind, UVM_ALL_ON)
     `uvm_field_int (rsp_delay,  UVM_ALL_ON)
@@ -28,6 +29,7 @@ class ptw_mem_txn extends uvm_sequence_item;
 
   // ── Request fields (filled by monitor from DUT) ──────────────────────────
   bit [39:0] addr;          // PTW request address (PA to read PTE from)
+  bit [3:0]  id;            // PTW MBUF entry id returned with the response
   bit        req_size;      // 0=4B, 1=8B  (always 8B for PTE fetch)
 
   // ── Response control fields (randomizable; used by responder) ────────────
@@ -48,8 +50,8 @@ class ptw_mem_txn extends uvm_sequence_item;
 
   virtual function string convert2string();
     return $sformatf(
-      "addr=0x%010h size=%0b rsp_kind=%-12s delay=%0d pte=0x%016h bus_err=%0b",
-      addr, req_size, rsp_kind.name(), rsp_delay, pte_data, bus_error);
+      "addr=0x%010h id=0x%0h size=%0b rsp_kind=%-12s delay=%0d pte=0x%016h bus_err=%0b",
+      addr, id, req_size, rsp_kind.name(), rsp_delay, pte_data, bus_error);
   endfunction
 
 endclass : ptw_mem_txn

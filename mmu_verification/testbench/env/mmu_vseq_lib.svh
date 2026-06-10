@@ -56,6 +56,34 @@ class mmu_vseq_ifu_rr_seq extends ifu_base_seq;
   endtask
 endclass
 
+class mmu_vseq_ifu_fixed_seq extends ifu_base_seq;
+  `uvm_object_utils(mmu_vseq_ifu_fixed_seq)
+  va_t m_va;
+  bit  m_abort;
+  bit  m_zero_idle;
+
+  function new(string name = "mmu_vseq_ifu_fixed_seq");
+    super.new(name);
+    m_va = '0;
+    m_abort = 1'b0;
+    m_zero_idle = 1'b1;
+  endfunction
+
+  virtual task body();
+    ifu_txn tr;
+    for (int i = 0; i < int'(num_txn); i++) begin
+      `uvm_create(tr)
+      tr.c_no_abort.constraint_mode(0);
+      assert(tr.randomize() with {
+        va[38:0] == m_va;
+        abort == m_abort;
+        idle_cycles == (m_zero_idle ? 0 : (i % 3));
+      }) else `uvm_fatal(get_full_name(), "fixed IFU randomize failed")
+      `uvm_send(tr)
+    end
+  endtask
+endclass
+
 class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
   `uvm_object_utils(mmu_vseq_lsu_rr_seq)
   va_t       m_va_table[];
@@ -1117,6 +1145,510 @@ class mmu_l2tlb_hash_directed_vseq extends mmu_base_vseq;
     ifq.start(p_sequencer.ifu_sqr);
 
     #80000ns;
+  endtask
+endclass
+
+// ---------------------------------------------------------------------------
+// 8c) L1ITLB state/fault/mode mix for structural closure
+// ---------------------------------------------------------------------------
+class mmu_l1itlb_state_mix_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_l1itlb_state_mix_vseq)
+
+  localparam logic [2:0] L1I_REF_IDLE  = 3'b000;
+  localparam logic [2:0] L1I_REF_WFC   = 3'b010;
+  localparam logic [2:0] L1I_REF_ABT   = 3'b011;
+
+  function new(string name = "mmu_l1itlb_state_mix_vseq");
+    super.new(name);
+  endfunction
+
+  protected task start_ifu_fixed(
+    input string name,
+    input va_t   va,
+    input bit    abort,
+    input int unsigned count
+  );
+    mmu_vseq_ifu_fixed_seq seq;
+    seq = mmu_vseq_ifu_fixed_seq::type_id::create(name);
+    seq.m_va = va;
+    seq.m_abort = abort;
+    seq.m_zero_idle = 1'b1;
+    seq.num_txn = count;
+    seq.start(p_sequencer.ifu_sqr);
+  endtask
+
+  protected task wait_l1itlb_ref_state(
+    input mmu_env env,
+    input string  ctx,
+    input logic [2:0] state,
+    output bit seen,
+    input int unsigned max_cycles = 1024
+  );
+    seen = 1'b0;
+    if ((env == null) || (env.m_ifu == null) || (env.m_ifu.vif == null)) begin
+      `uvm_warning(get_type_name(), {ctx, ": IFU vif unavailable; cannot observe L1ITLB ref state"})
+      return;
+    end
+
+    for (int unsigned cyc = 0; (cyc < max_cycles) && !seen; cyc++) begin
+      @(env.m_ifu.vif.driver_cb);
+      if (env.m_ifu.vif.driver_cb.dbg_iutlb_ref_cur_st === state)
+        seen = 1'b1;
+    end
+  endtask
+
+  protected task drive_ifu_cold_miss_abort(
+    input mmu_env env,
+    input va_t    va
+  );
+    virtual ifu_if vif;
+    bit [63:0] va64;
+    bit wfc_seen;
+    bit abt_seen;
+    bit idle_seen;
+
+    if ((env == null) || (env.m_ifu == null) || (env.m_ifu.vif == null)) begin
+      `uvm_error(get_type_name(), "drive_ifu_cold_miss_abort cannot run without IFU vif")
+      return;
+    end
+
+    vif = env.m_ifu.vif;
+    va64 = mmu_vseq_va64(va);
+    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
+    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
+    vif.driver_cb.ifu_mmu_va     <= 63'h0;
+    repeat (2) @(vif.driver_cb);
+
+    vif.driver_cb.ifu_mmu_va_vld <= 1'b1;
+    vif.driver_cb.ifu_mmu_va     <= va64[63:1];
+    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
+
+    wait_l1itlb_ref_state(env, "l1itlb_cold_abort_wait_wfc",
+                          L1I_REF_WFC, wfc_seen, 1024);
+    if (!wfc_seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("L1ITLB cold-miss abort did not reach WFC before abort: va=0x%010h st=0x%0h pavld=%0b miss=%0b req=%0b",
+          {1'b0, va[38:0]}, vif.driver_cb.dbg_iutlb_ref_cur_st,
+          vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.dbg_iutlb_miss_vld,
+          vif.driver_cb.dbg_iutlb_l2tlb_req))
+    end
+
+    vif.driver_cb.ifu_mmu_abort <= 1'b1;
+    wait_l1itlb_ref_state(env, "l1itlb_cold_abort_wait_abt",
+                          L1I_REF_ABT, abt_seen, 256);
+    if (!abt_seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("L1ITLB cold-miss abort did not reach ABT: va=0x%010h st=0x%0h pavld=%0b refill_on=%0b cmplt=%0b",
+          {1'b0, va[38:0]}, vif.driver_cb.dbg_iutlb_ref_cur_st,
+          vif.driver_cb.mmu_ifu_pavld, vif.driver_cb.dbg_iutlb_refill_on,
+          vif.driver_cb.dbg_l1itlb_ref_cmplt))
+    end
+
+    @(vif.driver_cb);
+    vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
+    vif.driver_cb.ifu_mmu_abort  <= 1'b0;
+    wait_l1itlb_ref_state(env, "l1itlb_cold_abort_wait_idle",
+                          L1I_REF_IDLE, idle_seen, 4096);
+    if (!idle_seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("L1ITLB cold-miss abort did not drain to IDLE: va=0x%010h st=0x%0h refill_on=%0b cmplt=%0b",
+          {1'b0, va[38:0]}, vif.driver_cb.dbg_iutlb_ref_cur_st,
+          vif.driver_cb.dbg_iutlb_refill_on, vif.driver_cb.dbg_l1itlb_ref_cmplt))
+    end
+  endtask
+
+  virtual task body();
+    mmu_env env = get_env();
+    cp0_tlb_allinv_seq cp0_inv;
+    mmu_vseq_ifu_rr_seq ifq;
+    va_t va_tbl[$];
+    int unsigned cold_fill_txn;
+    int unsigned post_inv_txn;
+
+    cold_fill_txn = 128;
+    post_inv_txn = 96;
+    void'($value$plusargs("L1ITLB_STATE_MIX_COLD_FILL_TXN=%0d", cold_fill_txn));
+    void'($value$plusargs("L1ITLB_STATE_MIX_POST_INV_TXN=%0d", post_inv_txn));
+
+    vseq_bringup_sv39_4k(env, 28'h0, 16'h0, 64, 39'h10_0000, 28'h200);
+    for (int unsigned i = 0; i < 64; i++)
+      va_tbl.push_back(va_t'(39'h10_0000) + va_t'(i << 12));
+    env.m_pt_mem.m_builder.map_4k(
+      .va(39'h0_3000_0000), .pa(40'h0300_0000),
+      .v(1), .r(1), .w(1), .x(0), .u(0), .g(0), .a(1), .d(1));
+    env.m_pt_mem.m_builder.map_4k(
+      .va(39'h0_3000_1000), .pa(40'h0300_1000),
+      .v(0), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    env.m_pt_mem.m_builder.map_2m(
+      .va(39'h0_3200_0000), .pa(40'h0320_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    env.m_pt_mem.m_builder.map_1g(
+      .va(39'h0_4000_0000), .pa(40'h4000_0000),
+      .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    if (env.m_ref != null)
+      env.m_ref.sync_shadow_state();
+
+    if ((env.m_ptw_mem != null) && (env.m_ptw_mem.m_responder != null))
+      env.m_ptw_mem.m_responder.set_delay_range(160, 240);
+    drive_ifu_cold_miss_abort(env, 39'h10_5000);
+    if ((env.m_ptw_mem != null) && (env.m_ptw_mem.m_responder != null))
+      env.m_ptw_mem.m_responder.set_delay_range(1, 8);
+
+    start_ifu_fixed("l1itlb_matrix_4k_cold", 39'h10_0000, 1'b0, 8);
+    start_ifu_fixed("l1itlb_matrix_4k_abort", 39'h10_0000, 1'b1, 4);
+    start_ifu_fixed("l1itlb_matrix_4k_hit", 39'h10_0000, 1'b0, 8);
+    ifq = mmu_vseq_ifu_rr_seq::type_id::create("l1itlb_matrix_4k_full_rr_fill");
+    ifq.m_va_table = new[va_tbl.size()];
+    ifq.m_table_size = va_tbl.size();
+    ifq.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) ifq.m_va_table[i] = va_tbl[i];
+    ifq.num_txn = cold_fill_txn;
+    ifq.start(p_sequencer.ifu_sqr);
+    start_ifu_fixed("l1itlb_matrix_high_entry_abort", va_tbl[va_tbl.size() - 1], 1'b1, 4);
+    start_ifu_fixed("l1itlb_matrix_exec_deny", 39'h0_3000_0000, 1'b0, 2);
+    start_ifu_fixed("l1itlb_matrix_invalid_pte", 39'h0_3000_1000, 1'b0, 2);
+    start_ifu_fixed("l1itlb_matrix_2m", 39'h0_3200_1000, 1'b0, 6);
+    start_ifu_fixed("l1itlb_matrix_1g", 39'h0_4000_2000, 1'b0, 6);
+
+    cp0_inv = cp0_tlb_allinv_seq::type_id::create("l1itlb_matrix_cp0_invall");
+    cp0_inv.start(p_sequencer.cp0_sqr);
+    #1000ns;
+    start_ifu_fixed("l1itlb_matrix_post_inv_refill", 39'h10_1000, 1'b0, 8);
+    ifq = mmu_vseq_ifu_rr_seq::type_id::create("l1itlb_matrix_post_inv_full_rr_refill");
+    ifq.m_va_table = new[va_tbl.size()];
+    ifq.m_table_size = va_tbl.size();
+    ifq.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) ifq.m_va_table[i] = va_tbl[i];
+    ifq.num_txn = post_inv_txn;
+    ifq.start(p_sequencer.ifu_sqr);
+    #80000ns;
+  endtask
+endclass
+
+// ---------------------------------------------------------------------------
+// 8d) L2TLB bank/page-size matrix for cg_l2tlb_bank auto gaps
+// ---------------------------------------------------------------------------
+class mmu_l2tlb_bank_page_size_matrix_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_l2tlb_bank_page_size_matrix_vseq)
+
+  function new(string name = "mmu_l2tlb_bank_page_size_matrix_vseq");
+    super.new(name);
+  endfunction
+
+  protected function va_t make_matrix_va(
+    input logic [1:0] selector,
+    input int unsigned serial
+  );
+    vpn_t vpn;
+    vpn = '0;
+    vpn[26:20] = 7'(7'h08 + serial[6:0]);
+    vpn[19:18] = selector;
+    vpn[17:16] = serial[1:0];
+    vpn[15:8]  = 8'(8'h31 + (serial * 8'h17));
+    vpn[7:0]   = 8'(8'h55 + (serial * 8'h23));
+    return va_t'({vpn, 12'h000});
+  endfunction
+
+  protected function va_t align_matrix_va(
+    input va_t va,
+    input logic [2:0] pgs
+  );
+    unique case (pgs)
+      PGS_2M: return va_t'((va >> 21) << 21);
+      PGS_1G: return va_t'((va >> 30) << 30);
+      default: return va;
+    endcase
+  endfunction
+
+  protected task map_matrix_page(
+    input mmu_env env,
+    input va_t    va,
+    input ppn_t   ppn_seed,
+    input logic [2:0] pgs
+  );
+    ppn_t ppn;
+    ppn = ppn_seed;
+    unique case (pgs)
+      PGS_2M: begin
+        ppn[8:0] = '0;
+        env.m_pt_mem.m_builder.map_2m(
+          .va(va), .pa(pa_t'({ppn, 12'h000})),
+          .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+      end
+      PGS_1G: begin
+        ppn[17:0] = '0;
+        env.m_pt_mem.m_builder.map_1g(
+          .va(va), .pa(pa_t'({ppn, 12'h000})),
+          .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+      end
+      default: begin
+        env.m_pt_mem.m_builder.map_4k(
+          .va(va), .pa(pa_t'({ppn, 12'h000})),
+          .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+      end
+    endcase
+  endtask
+
+  virtual task body();
+    mmu_env env = get_env();
+    cp0_tlb_allinv_seq cp0_inv;
+    pmp_flg_normal_seq pmp;
+    sysmap_region_setup_seq smap;
+    cp0_reg_rw_seq cpr;
+    cp0_l2tlb_tlbwi_high_way_hit_seq high_way;
+    mmu_vseq_lsu_rr_seq p0;
+    mmu_vseq_lsu_rr_seq p1;
+    mmu_vseq_ifu_rr_seq ifq;
+    va_t va_tbl[$];
+    logic [2:0] pgs_tbl[3];
+    int unsigned serial;
+    int unsigned p0_txn;
+    int unsigned p1_txn;
+    int unsigned ifu_txn;
+    int unsigned ptw_delay_min;
+    int unsigned ptw_delay_max;
+
+    cp0_inv = cp0_tlb_allinv_seq::type_id::create("l2bank_matrix_cp0_inv");
+    cp0_inv.start(p_sequencer.cp0_sqr);
+    pmp = pmp_flg_normal_seq::type_id::create("l2bank_matrix_pmp");
+    pmp.start(p_sequencer.pmp_sqr);
+    smap = sysmap_region_setup_seq::type_id::create("l2bank_matrix_smap");
+    smap.start(p_sequencer.sysmap_sqr);
+    cpr = cp0_reg_rw_seq::type_id::create("l2bank_matrix_cpr");
+    if (!cpr.randomize() with {
+          satp_val  == {4'h8, 16'h0, 44'h0};
+          priv_mode == 2'b01;
+          ptw_en    == 1'b1;
+          icg_en    == 1'b1;
+        })
+      `uvm_fatal(get_type_name(), "l2bank matrix cp0_reg_rw failed")
+    cpr.start(p_sequencer.cp0_sqr);
+
+    env.m_pt_mem.m_builder.set_root(28'h0, 16'h0);
+    pgs_tbl[0] = PGS_4K;
+    pgs_tbl[1] = PGS_2M;
+    pgs_tbl[2] = PGS_1G;
+    serial = 0;
+    for (int unsigned selector = 0; selector < 4; selector++) begin
+      foreach (pgs_tbl[pgs_idx]) begin
+        va_t va;
+        vpn_t vpn;
+        va = align_matrix_va(make_matrix_va(selector[1:0], serial), pgs_tbl[pgs_idx]);
+        vpn = vpn_t'(va >> 12);
+        map_matrix_page(env, va, ppn_t'(28'h14000 + (serial * 28'h400)), pgs_tbl[pgs_idx]);
+        va_tbl.push_back(va);
+        `uvm_info(get_type_name(),
+          $sformatf("[L2TLB_BANK_MATRIX] serial=%0d va=0x%010h vpn=0x%07h selector=0x%0h pgs=0x%0h bank_mask=0x%02h idx_bus=0x%016h size_bus=0x%06h",
+            serial, va, vpn, selector[1:0], pgs_tbl[pgs_idx],
+            l2tlb_page_bank_mask(selector[1:0], pgs_tbl[pgs_idx]),
+            l2tlb_skew_index_bus(vpn), l2tlb_size_bus(vpn)),
+          UVM_NONE)
+        serial++;
+      end
+    end
+    if (env.m_ref != null)
+      env.m_ref.sync_shadow_state();
+    #500ns;
+
+    high_way = cp0_l2tlb_tlbwi_high_way_hit_seq::type_id::create("l2bank_matrix_high_way");
+    high_way.start(p_sequencer.cp0_sqr);
+    #500ns;
+
+    p0_txn = (num_txn < 72) ? 72 : num_txn;
+    p1_txn = 48;
+    ifu_txn = 48;
+    ptw_delay_min = 48;
+    ptw_delay_max = 128;
+    void'($value$plusargs("L2TLB_BANK_MATRIX_P0_TXN=%0d", p0_txn));
+    void'($value$plusargs("L2TLB_BANK_MATRIX_P1_TXN=%0d", p1_txn));
+    void'($value$plusargs("L2TLB_BANK_MATRIX_IFU_TXN=%0d", ifu_txn));
+    void'($value$plusargs("L2TLB_BANK_MATRIX_PTW_DELAY_MIN=%0d", ptw_delay_min));
+    void'($value$plusargs("L2TLB_BANK_MATRIX_PTW_DELAY_MAX=%0d", ptw_delay_max));
+    if ((env.m_ptw_mem != null) && (env.m_ptw_mem.m_responder != null)) begin
+      env.m_ptw_mem.m_responder.clear_directed_controls();
+      env.m_ptw_mem.m_responder.set_delay_range(ptw_delay_min, ptw_delay_max);
+    end
+
+    p0 = mmu_vseq_lsu_rr_seq::type_id::create("l2bank_matrix_p0");
+    p0.m_va_table = new[va_tbl.size()];
+    p0.m_table_size = va_tbl.size();
+    p0.m_kind = LSU_PIPE0;
+    p0.m_st_inst = 1'b0;
+    p0.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) p0.m_va_table[i] = va_tbl[i];
+    p0.num_txn = p0_txn;
+
+    p1 = mmu_vseq_lsu_rr_seq::type_id::create("l2bank_matrix_p1_store");
+    p1.m_va_table = new[va_tbl.size()];
+    p1.m_table_size = va_tbl.size();
+    p1.m_kind = LSU_PIPE1;
+    p1.m_st_inst = 1'b1;
+    p1.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) p1.m_va_table[i] = va_tbl[i];
+    p1.num_txn = p1_txn;
+
+    ifq = mmu_vseq_ifu_rr_seq::type_id::create("l2bank_matrix_ifq");
+    ifq.m_va_table = new[va_tbl.size()];
+    ifq.m_table_size = va_tbl.size();
+    ifq.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) ifq.m_va_table[i] = va_tbl[i];
+    ifq.num_txn = ifu_txn;
+
+    fork
+      p0.start(p_sequencer.lsu_sqr);
+      p1.start(p_sequencer.lsu_sqr);
+      ifq.start(p_sequencer.ifu_sqr);
+    join
+    #120000ns;
+    if ((env.m_ptw_mem != null) && (env.m_ptw_mem.m_responder != null))
+      env.m_ptw_mem.m_responder.set_delay_range(1, 8);
+  endtask
+endclass
+
+// ---------------------------------------------------------------------------
+// 8e) L2TLB tag array, TLBOP write/read and invalidate mix
+// ---------------------------------------------------------------------------
+class mmu_l2tlb_tag_write_read_inv_mix_vseq extends mmu_base_vseq;
+  `uvm_object_utils(mmu_l2tlb_tag_write_read_inv_mix_vseq)
+
+  function new(string name = "mmu_l2tlb_tag_write_read_inv_mix_vseq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    mmu_env env = get_env();
+    mmu_vseq_l2tlb_fine_lsu_mix_seq lsu_mix;
+    mmu_vseq_ifu_rr_seq ifq;
+    cp0_l2tlb_tlbwi_write_exact_seq tlbwi_write;
+    cp0_l2tlb_tlbwi_overwrite_exact_seq tlbwi_overwrite;
+    cp0_l2tlb_tlbwr_visible_exact_seq tlbwr_visible;
+    cp0_l2tlb_tlbp_hit_exact_seq tlbp_hit;
+    cp0_l2tlb_tlbp_miss_exact_seq tlbp_miss;
+    cp0_l2tlb_tlbr_all_fields_exact_seq tlbr_all;
+    cp0_tlb_allinv_seq cp0_inv;
+    mmu_vseq_lsu_fixed_inv_va_seq inv_va;
+    mmu_vseq_lsu_fixed_inv_asid_seq inv_asid;
+    va_t va_tbl[$];
+    int unsigned nmap;
+    int unsigned pre_lsu_txn;
+    int unsigned ifu_txn;
+    int unsigned post_lsu_txn;
+    int unsigned post_inv_limit;
+    int unsigned settle_cycles;
+    bit fast_cov;
+    bit run_tlbwr_visible;
+
+    nmap = 96;
+    pre_lsu_txn = 48;
+    ifu_txn = 16;
+    post_lsu_txn = 16;
+    post_inv_limit = 2;
+    settle_cycles = 256;
+    run_tlbwr_visible = 1'b1;
+    fast_cov = $test$plusargs("L2TLB_TAG_MIX_FAST_COV")
+            || $test$plusargs("L2TLB_TAG_MIX_FAST_SETTLE");
+    if (fast_cov) begin
+      nmap = 32;
+      pre_lsu_txn = 16;
+      ifu_txn = 8;
+      post_lsu_txn = 8;
+      post_inv_limit = 2;
+      settle_cycles = 4096;
+      run_tlbwr_visible = 1'b0;
+    end
+    if ($test$plusargs("L2TLB_TAG_MIX_KEEP_TLBWR_VISIBLE"))
+      run_tlbwr_visible = 1'b1;
+    if ($test$plusargs("L2TLB_TAG_MIX_SKIP_TLBWR_VISIBLE"))
+      run_tlbwr_visible = 1'b0;
+    void'($value$plusargs("L2TLB_TAG_MIX_NMAP=%0d", nmap));
+    void'($value$plusargs("L2TLB_TAG_MIX_PRE_LSU_TXN=%0d", pre_lsu_txn));
+    void'($value$plusargs("L2TLB_TAG_MIX_IFU_TXN=%0d", ifu_txn));
+    void'($value$plusargs("L2TLB_TAG_MIX_POST_LSU_TXN=%0d", post_lsu_txn));
+    void'($value$plusargs("L2TLB_TAG_MIX_POST_INV_LIMIT=%0d", post_inv_limit));
+    void'($value$plusargs("L2TLB_TAG_MIX_SETTLE_CYCLES=%0d", settle_cycles));
+    $display("[L2TLB_TAG_MIX] phase=bringup nmap=%0d pre_lsu_txn=%0d ifu_txn=%0d post_lsu_txn=%0d post_inv_limit=%0d settle_cycles=%0d run_tlbwr_visible=%0b",
+      nmap, pre_lsu_txn, ifu_txn, post_lsu_txn, post_inv_limit, settle_cycles,
+      run_tlbwr_visible);
+    vseq_bringup_sv39_4k(env, 28'h0, 16'h0, nmap, 39'h0_D000_0000, 28'hD000);
+    for (int unsigned i = 0; i < nmap; i++)
+      va_tbl.push_back(va_t'(39'h0_D000_0000) + va_t'(i << 12));
+
+    lsu_mix = mmu_vseq_l2tlb_fine_lsu_mix_seq::type_id::create("l2tag_pre_lsu_mix");
+    lsu_mix.m_va_table = new[nmap];
+    lsu_mix.m_table_size = nmap;
+    foreach (va_tbl[i]) lsu_mix.m_va_table[i] = va_tbl[i];
+    lsu_mix.num_txn = pre_lsu_txn;
+    lsu_mix.m_enable_busy_inv = 1'b0;
+    $display("[L2TLB_TAG_MIX] phase=pre_lsu start txns=%0d", pre_lsu_txn);
+    lsu_mix.start(p_sequencer.lsu_sqr);
+    $display("[L2TLB_TAG_MIX] phase=pre_lsu done");
+
+    $display("[L2TLB_TAG_MIX] phase=cp0_tlbop start");
+    tlbwi_write = cp0_l2tlb_tlbwi_write_exact_seq::type_id::create("l2tag_tlbwi_write");
+    tlbwi_write.start(p_sequencer.cp0_sqr);
+    tlbwi_overwrite = cp0_l2tlb_tlbwi_overwrite_exact_seq::type_id::create("l2tag_tlbwi_overwrite");
+    tlbwi_overwrite.start(p_sequencer.cp0_sqr);
+    if (run_tlbwr_visible) begin
+      tlbwr_visible = cp0_l2tlb_tlbwr_visible_exact_seq::type_id::create("l2tag_tlbwr_visible");
+      tlbwr_visible.num_writes = 4;
+      tlbwr_visible.start(p_sequencer.cp0_sqr);
+    end
+    tlbp_hit = cp0_l2tlb_tlbp_hit_exact_seq::type_id::create("l2tag_tlbp_hit");
+    tlbp_hit.start(p_sequencer.cp0_sqr);
+    tlbp_miss = cp0_l2tlb_tlbp_miss_exact_seq::type_id::create("l2tag_tlbp_miss");
+    tlbp_miss.start(p_sequencer.cp0_sqr);
+    tlbr_all = cp0_l2tlb_tlbr_all_fields_exact_seq::type_id::create("l2tag_tlbr_all");
+    tlbr_all.start(p_sequencer.cp0_sqr);
+    $display("[L2TLB_TAG_MIX] phase=cp0_tlbop done");
+
+    $display("[L2TLB_TAG_MIX] phase=invalidate start");
+    inv_va = mmu_vseq_lsu_fixed_inv_va_seq::type_id::create("l2tag_inv_va");
+    inv_va.m_inv_va = (39'h0_D000_0000 >> 12);
+    inv_va.m_inv_asid = 16'h0;
+    inv_va.m_allow_busy = 1'b0;
+    inv_va.start(p_sequencer.lsu_sqr);
+    $display("[L2TLB_TAG_MIX] phase=invalidate inv_va_quiesce start");
+    env.wait_for_quiescent_midtest("l2tag_inv_va_quiesce", 4096, 8);
+    $display("[L2TLB_TAG_MIX] phase=invalidate inv_va_quiesce done");
+    inv_asid = mmu_vseq_lsu_fixed_inv_asid_seq::type_id::create("l2tag_inv_asid");
+    inv_asid.m_inv_asid = 16'h0;
+    inv_asid.m_allow_busy = 1'b0;
+    inv_asid.start(p_sequencer.lsu_sqr);
+    $display("[L2TLB_TAG_MIX] phase=invalidate inv_asid_quiesce start");
+    env.wait_for_quiescent_midtest("l2tag_inv_asid_quiesce", 4096, 8);
+    $display("[L2TLB_TAG_MIX] phase=invalidate inv_asid_quiesce done");
+    cp0_inv = cp0_tlb_allinv_seq::type_id::create("l2tag_cp0_invall");
+    cp0_inv.start(p_sequencer.cp0_sqr);
+    $display("[L2TLB_TAG_MIX] phase=invalidate cp0_invall_quiesce start");
+    env.wait_for_quiescent_midtest("l2tag_cp0_invall_quiesce", 4096, 8);
+    $display("[L2TLB_TAG_MIX] phase=invalidate cp0_invall_quiesce done");
+    $display("[L2TLB_TAG_MIX] phase=invalidate done");
+
+    ifq = mmu_vseq_ifu_rr_seq::type_id::create("l2tag_post_inv_ifq");
+    ifq.m_va_table = new[nmap];
+    ifq.m_table_size = nmap;
+    ifq.m_zero_idle = 1'b1;
+    foreach (va_tbl[i]) ifq.m_va_table[i] = va_tbl[i];
+    ifq.num_txn = ifu_txn;
+    $display("[L2TLB_TAG_MIX] phase=post_inv_ifu start txns=%0d", ifu_txn);
+    ifq.start(p_sequencer.ifu_sqr);
+    $display("[L2TLB_TAG_MIX] phase=post_inv_ifu done");
+
+    lsu_mix = mmu_vseq_l2tlb_fine_lsu_mix_seq::type_id::create("l2tag_post_inv_lsu_mix");
+    lsu_mix.m_va_table = new[nmap];
+    lsu_mix.m_table_size = nmap;
+    foreach (va_tbl[i]) lsu_mix.m_va_table[i] = va_tbl[i];
+    lsu_mix.num_txn = post_lsu_txn;
+    lsu_mix.m_enable_busy_inv = 1'b1;
+    lsu_mix.m_inv_period = 6;
+    lsu_mix.m_inv_limit = post_inv_limit;
+    $display("[L2TLB_TAG_MIX] phase=post_inv_lsu start txns=%0d inv_limit=%0d",
+      post_lsu_txn, post_inv_limit);
+    lsu_mix.start(p_sequencer.lsu_sqr);
+    $display("[L2TLB_TAG_MIX] phase=post_inv_lsu done");
+    $display("[L2TLB_TAG_MIX] phase=settle start cycles=%0d", settle_cycles);
+    repeat (settle_cycles) @(posedge env.m_lsu.vif.clk_i);
+    $display("[L2TLB_TAG_MIX] phase=complete");
   endtask
 endclass
 

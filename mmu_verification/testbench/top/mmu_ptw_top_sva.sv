@@ -78,6 +78,7 @@ module mmu_ptw_top_sva #(
   localparam logic [2:0] PTW_TYPE_STORE = 3'b110;
 
   int unsigned cp_req_ready_hold_hits;
+  int unsigned cp_req_reselect_under_backpressure_hits;
   int unsigned cp_req_accept_type_hits;
   int unsigned cp_class_onehot_hits;
   int unsigned cp_class_priority_hits;
@@ -91,6 +92,18 @@ module mmu_ptw_top_sva #(
   int unsigned cp_pde_accerr_priority_hits;
   int unsigned cp_pde_accerr_class_hits;
   int unsigned cp_pde_accerr_no_dup_hits;
+  logic tlboper_ptw_abort_q;
+  logic ptw_sva_past_valid;
+
+  always_ff @(posedge ptw_clk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+      tlboper_ptw_abort_q <= 1'b0;
+      ptw_sva_past_valid <= 1'b0;
+    end else begin
+      tlboper_ptw_abort_q <= tlboper_ptw_abort;
+      ptw_sva_past_valid <= 1'b1;
+    end
+  end
 
   function automatic bit legal_ptw_type(input logic [TYPE_WIDTH-1:0] typ);
     legal_ptw_type = (typ == PTW_TYPE_LOAD)
@@ -103,20 +116,28 @@ module mmu_ptw_top_sva #(
     is_data_type = (typ == PTW_TYPE_LOAD) || (typ == PTW_TYPE_STORE);
   endfunction
 
-  // PTW-SVA-REQ-001/002: backpressured source request payload must hold.
+  // PTW-SVA-REQ-001/002: a backpressured source request must keep the same
+  // payload while the same request id remains selected.
   a_ptw_req_hold_until_ready: assert property (@(posedge ptw_clk)
-    disable iff (!cpurst_b)
-    (l2tlb_ptw_req && !ptw_jtlb_ready && !tlboper_ptw_abort)
-    |=> (tlboper_ptw_abort
-      || (l2tlb_ptw_req
-       && $stable(l2tlb_ptw_vpn)
-       && $stable(l2tlb_ptw_type)
-       && $stable(l2tlb_ptw_id))));
+    disable iff (!cpurst_b || !ptw_sva_past_valid || abort_flop
+              || tlboper_ptw_abort || tlboper_ptw_abort_q)
+    (l2tlb_ptw_req && !ptw_jtlb_ready
+     && $past(l2tlb_ptw_req && !ptw_jtlb_ready)
+     && (l2tlb_ptw_id == $past(l2tlb_ptw_id)))
+    |-> ($stable(l2tlb_ptw_vpn) && $stable(l2tlb_ptw_type)));
 
   cp_ptw_req_ready_hold: cover property (@(posedge ptw_clk)
     disable iff (!cpurst_b)
     l2tlb_ptw_req && !ptw_jtlb_ready ##1 l2tlb_ptw_req && ptw_jtlb_ready) begin
     cp_req_ready_hold_hits++;
+  end
+
+  cp_ptw_req_reselect_under_backpressure: cover property (@(posedge ptw_clk)
+    disable iff (!cpurst_b || !ptw_sva_past_valid)
+    l2tlb_ptw_req && !ptw_jtlb_ready
+    && $past(l2tlb_ptw_req && !ptw_jtlb_ready)
+    && (l2tlb_ptw_id != $past(l2tlb_ptw_id))) begin
+    cp_req_reselect_under_backpressure_hits++;
   end
 
   // PTW-SVA-REQ-002: ready is the PDE/xbar ready gated by outstanding abort.
@@ -313,6 +334,7 @@ module mmu_ptw_top_sva #(
 
   final begin
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_req_ready_hold req=PTW-SVA-REQ-001 hits=%0d", cp_req_ready_hold_hits);
+    $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_req_reselect_under_backpressure req=PTW-SVA-REQ-001 hits=%0d", cp_req_reselect_under_backpressure_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_req_accept_type req=PTW-SVA-REQ-003,PTW-SVA-REQ-004 hits=%0d", cp_req_accept_type_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_completion_class_onehot req=PTW-SVA-ARB-001 hits=%0d", cp_class_onehot_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_class_priority req=PTW-SVA-ARB-002 hits=%0d", cp_class_priority_hits);

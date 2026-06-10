@@ -45,6 +45,7 @@ module mmu_l2tlb_rrpv_sva (
     input logic l2tlb_reqq_fb_miss_alloc,
     input logic l2tlb_reqq_fb_miss_retry,
     input logic ptw_ready,
+    input logic tlboper_ptw_abort,
     input logic l2tlb_ptw_req,
     input logic [6:0] l2tlb_ptw_id,
     input logic [2:0] l2tlb_ptw_type,
@@ -81,6 +82,19 @@ module mmu_l2tlb_rrpv_sva (
     input logic [7:0] l2tlb_tlboper_sel,
     input logic l2tlb_tlboper_va_hit
 );
+
+  logic tlboper_ptw_abort_q;
+  logic l2tlb_sva_past_valid;
+
+  always_ff @(posedge forever_cpuclk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+      tlboper_ptw_abort_q <= 1'b0;
+      l2tlb_sva_past_valid <= 1'b0;
+    end else begin
+      tlboper_ptw_abort_q <= tlboper_ptw_abort;
+      l2tlb_sva_past_valid <= 1'b1;
+    end
+  end
 
   function automatic logic is_reqq_type(input logic [2:0] acc_type);
     is_reqq_type = (acc_type == 3'b010) || (acc_type == 3'b110) || (acc_type == 3'b011);
@@ -147,15 +161,26 @@ module mmu_l2tlb_rrpv_sva (
     (arb_l2tlb_req && arb_l2tlb_write && (arb_l2tlb_acc_type == 3'b101))
       |=> !raw_vld);
 
-  // L2TLB_SVA_011: PTW request payload must remain stable while ready is low.
+  // L2TLB_SVA_011: PTW request payload must remain stable while ready is low
+  // if the same source id remains selected. Abort/TLBOP retry can legally
+  // reselect a different miss-buffer entry under PTW backpressure.
   a_l2tlb_ptw_req_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_ptw_req |-> (!$isunknown(l2tlb_ptw_id) && !$isunknown(l2tlb_ptw_type)
                     && !$isunknown(l2tlb_ptw_vpn) && is_valid_type(l2tlb_ptw_type)));
 
-  a_l2tlb_ptw_req_stable_under_backpressure: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-      (l2tlb_ptw_req && !ptw_ready)
-        |=> (l2tlb_ptw_req && $stable(l2tlb_ptw_id)
-          && $stable(l2tlb_ptw_type) && $stable(l2tlb_ptw_vpn)));
+  a_l2tlb_ptw_req_stable_under_backpressure: assert property (@(posedge forever_cpuclk)
+    disable iff (!cpurst_b || !l2tlb_sva_past_valid
+              || tlboper_ptw_abort || tlboper_ptw_abort_q)
+      (l2tlb_ptw_req && !ptw_ready
+       && $past(l2tlb_ptw_req && !ptw_ready)
+       && (l2tlb_ptw_id == $past(l2tlb_ptw_id)))
+        |-> ($stable(l2tlb_ptw_type) && $stable(l2tlb_ptw_vpn)));
+
+  c_l2tlb_ptw_reselect_under_backpressure: cover property (@(posedge forever_cpuclk)
+    disable iff (!cpurst_b || !l2tlb_sva_past_valid)
+      l2tlb_ptw_req && !ptw_ready
+      && $past(l2tlb_ptw_req && !ptw_ready)
+      && (l2tlb_ptw_id != $past(l2tlb_ptw_id)));
 
   // L2TLB_SVA_012/018: PTW completion result class is legal and known.
   a_ptw_completion_matches_result_or: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)

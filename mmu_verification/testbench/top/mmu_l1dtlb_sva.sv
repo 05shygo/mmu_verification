@@ -1062,8 +1062,10 @@ module mmu_l1dtlb_expt_cam_sva #(
   a_no_dual_write_same_eid: assert property (@(posedge clk) disable iff (!rst_b)
     (expt_wr0_vld && expt_wr1_vld) |-> (expt_wr0_eid != expt_wr1_eid));
 
-  a_no_dual_consume_same_entry: assert property (@(posedge clk) disable iff (!rst_b)
-    $onehot0(expt_hit_vec));
+  // Dual LSU ports may replay two independent exception entries in the same
+  // cycle.  The spec scoreboard enforces the same two-entry upper bound.
+  a_expt_consume_at_most_two_entries: assert property (@(posedge clk) disable iff (!rst_b)
+    !$isunknown(expt_hit_vec) |-> ($countones(expt_hit_vec) <= 2));
 
   a_abort_does_not_consume0: assert property (@(posedge clk) disable iff (!rst_b)
     (lsu_mmu_va0_vld && lsu_mmu_abort0) |-> !expt_match0);

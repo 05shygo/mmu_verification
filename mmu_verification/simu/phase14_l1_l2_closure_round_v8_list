@@ -1,0 +1,11 @@
+# Phase14 L1/L2 95% closure focused round v8.
+# Baseline: round_v7 six-test set, plus L2 ReqQ depth matrix added for
+# cg_l2_reqq and l2tlb_reqq_entry condition/toggle gaps.
+
+test_mmu_l1dtlb_dtlb_hit_rd_perm_mode_matrix_001
+test_mmu_l1dtlb_dtlb_mb_entry2_state_matrix_001
+test_mmu_l1dtlb_dtlb_mb_high_entry_matrix_001
+test_mmu_l1itlb_itlb_state_mix_001
+test_mmu_l2tlb_bank_page_size_matrix_001
+test_mmu_l2tlb_tag_write_read_inv_mix_001
+test_mmu_l2tlb_reqq_depth_matrix_001

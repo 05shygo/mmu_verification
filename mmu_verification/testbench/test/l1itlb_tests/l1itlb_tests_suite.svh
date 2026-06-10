@@ -19,3 +19,4 @@
 `include "test_mmu_l1itlb_itlb_probe_001.svh"
 `include "test_mmu_l1itlb_itlb_refill_001.svh"
 `include "test_mmu_l1itlb_itlb_refill_002.svh"
+`include "test_mmu_l1itlb_itlb_state_mix_001.svh"

@@ -30,6 +30,8 @@ typedef enum int {
   L1DTLB_SCN_FLUSH_RACE,
   L1DTLB_SCN_RESET_ONLY,
   L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX,
+  L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX,
+  L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX,
   L1DTLB_SCN_L2_REQQ_DEPTH,
   L1DTLB_SCN_GENERIC_AUDIT
 } l1dtlb_scn_e;
@@ -288,6 +290,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       end
       "DTLB_MB_STATE_SIGNAL_001",
       "DTLB_MB_HIGH_ENTRY_MATRIX_001",
+      "DTLB_MB_ENTRY2_STATE_MATRIX_001",
+      "DTLB_HIT_RD_PERM_MODE_MATRIX_001",
       "DTLB_PLRU_001",
       "DTLB_PLRU_WHITEBOX_ONLY_001",
       "DTLB_RESP_NO_IID_T01_001",
@@ -297,6 +301,14 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
           scn = L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX;
           sid = "L1DTLB_TS_MB_HIGH_ENTRY_STATE_MATRIX";
           intent = "high miss-buffer entries exercise WFG/ABT/PGFLT/ACFLT with checked DUT behavior";
+        end else if (id == "DTLB_MB_ENTRY2_STATE_MATRIX_001") begin
+          scn = L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX;
+          sid = "L1DTLB_TS_MB_ENTRY2_STATE_MATRIX";
+          intent = "entry2-focused WFG/WFC/ABT/PGFLT/ACFLT/WFI state closure";
+        end else if (id == "DTLB_HIT_RD_PERM_MODE_MATRIX_001") begin
+          scn = L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX;
+          sid = "L1DTLB_TS_HIT_RD_PERM_MODE_MATRIX";
+          intent = "hit_rd port condition/toggle matrix across hit, fault, mode, stamo and huge-page paths";
         end else begin
           scn = L1DTLB_SCN_GENERIC_AUDIT;
           sid = "L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY";
@@ -311,6 +323,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   protected function va_t va_page(int unsigned idx);
     return va_t'(m_va_base) + va_t'(idx << 12);
+  endfunction
+
+  protected function bit [27:0] pa_page(int unsigned idx);
+    ppn_t ppn;
+    ppn = m_leaf_ppn0 + ppn_t'(idx);
+    return ppn[27:0];
   endfunction
 
   protected function bit [63:0] canon_va(va_t va);
@@ -1323,6 +1341,47 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         $sformatf("%s: failed to observe L2 REQQ target depth/qids max_depth=%0d qid_seen=0x%03h target_depth=%0d target_qid=0x%03h issue_count=%0d %s",
           ctx, max_depth, qid_seen_mask, target_depth, target_qid_mask,
           issue_count, l2_reqq_probe_snapshot()))
+  endtask
+
+  protected task wait_l1d_direct_l2_req(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 4096
+  );
+    seen = 1'b0;
+    if ((m_probe_vif == null) || (m_lsu_vif == null)) begin
+      `uvm_warning(get_type_name(), {ctx, ": probe/lsu vif unavailable; cannot observe direct+l2_req condition"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+
+    for (int unsigned cyc = 0; (cyc < max_cycles) && !seen; cyc++) begin
+      bit p0_req;
+      bit p1_req;
+
+      @(m_probe_vif.mon_cb);
+      p0_req = m_lsu_vif.monitor_cb.lsu_mmu_va0_vld
+            && !m_lsu_vif.monitor_cb.lsu_mmu_abort0;
+      p1_req = m_lsu_vif.monitor_cb.lsu_mmu_va1_vld
+            && !m_lsu_vif.monitor_cb.lsu_mmu_abort1;
+      if ((m_lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0)
+          && (p0_req || p1_req)
+          && (m_probe_vif.mon_cb.l1d_l2_req_vld
+              || (m_probe_vif.mon_cb.l1d_mb_vld != 8'h00)
+              || m_probe_vif.mon_cb.l1d_refill_vld))
+        seen = 1'b1;
+    end
+
+    if (seen) begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: observed MMU-off LSU request overlapping L1D internal activity %s",
+          ctx, l2_reqq_probe_snapshot()),
+        UVM_LOW)
+    end else begin
+      `uvm_warning(get_type_name(),
+        $sformatf("%s: did not observe MMU-off LSU request overlapping L1D internal activity %s",
+          ctx, l2_reqq_probe_snapshot()))
+    end
   endtask
 
   protected task wait_l1d_tlboper_clr(
@@ -2339,6 +2398,9 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   endtask
 
   protected task scenario_direct_map();
+    bit direct_l2_seen;
+    bit overlap_occ_seen;
+
     do_bringup(16, 39'h10_0000);
     fill_page(0);
     set_satp_mode(1'b0);
@@ -2354,6 +2416,30 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     set_mprv_mpp(1'b0, 2'b11);
     set_priv(2'b01);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_direct_map", 262144, 8);
+
+    do_bringup(256, 39'h10_0000);
+    configure_ptw_delay(96, 192);
+    raw_inv_pulse(INV_ASID_ALL, va_page(0), m_asid, 1'b0, 1'b1);
+    raw_pipe01_contiguous_burst(132, 4, 7'd40);
+    wait_l1d_mb_occupancy_at_least("l1dtlb_direct_map_overlap_prefill",
+                                   2, overlap_occ_seen, 8192, 1'b1);
+    set_priv(2'b11);
+    fork
+      begin
+        wait_l1d_direct_l2_req("l1dtlb_direct_map_mmu_off_l2_overlap",
+                               direct_l2_seen, 4096);
+      end
+      begin
+        for (int unsigned i = 0; i < 16; i++) begin
+          raw_pipe0(va_page(4 + (i % 8)), 7'((7'd64 + i[6:0]) % 96), 1'b0);
+          wait_lsu_cycles(1);
+        end
+      end
+    join
+    set_priv(2'b01);
+    raw_inv(INV_ALL);
+    reset_ptw_responder_controls(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_direct_map_overlap", 524288, 16);
   endtask
 
   protected task scenario_invalidate();
@@ -2859,21 +2945,46 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     fill_page(0);
     fill_page(1, 1'b1, 1'b1);
     if (tc_id == "DTLB_STAMO_PIPE1_BYPASS_001") begin
-      raw_pipe1_with_stamo(va_page(1), 7'd2, 28'h12345);
+      raw_pipe1_with_stamo(va_page(1), 7'd2, pa_page(1));
       wait_lsu_cycles(24);
       fill_page(2, 1'b1, 1'b1);
-      raw_pipe1_with_stamo(va_page(2), 7'd3, 28'h23456);
+      raw_pipe1_with_stamo(va_page(2), 7'd3, pa_page(2));
     end else if (tc_id == "DTLB_STAMO_PIPE0_NEG_001") begin
-      raw_pipe0_with_stamo_negative(va_page(0), 7'd4, 28'h34567);
+      raw_pipe0_with_stamo_negative(va_page(0), 7'd4, pa_page(0) ^ 28'h1);
       wait_lsu_cycles(24);
       raw_pipe01(va_page(0), va_page(1), 7'd5, 7'd6, 1'b0, 1'b1);
     end else begin
-      raw_stamo(28'h12345);
+      raw_stamo(pa_page(0));
       raw_pipe01(va_page(0), va_page(1), 7'd1, 7'd2, 1'b0, 1'b1);
       wait_lsu_cycles(30);
-      raw_pipe1_with_stamo(va_page(2), 7'd3, 28'h23456);
+      fill_page(2, 1'b1, 1'b1);
+      raw_pipe1_with_stamo(va_page(2), 7'd3, pa_page(2));
+      wait_lsu_cycles(12);
+      raw_pipe0_with_stamo_negative(va_page(0), 7'd4, pa_page(0) ^ 28'h1);
     end
     m_env_h.wait_for_quiescent_midtest("l1dtlb_stamo", 262144, 8);
+  endtask
+
+  protected task scenario_one_free_dual_diff_cov();
+    bit occ_seen;
+    bit mb_empty;
+
+    do_bringup(256, 39'h10_0000);
+    configure_ptw_delay(512, 512);
+    for (int unsigned i = 0; i < 7; i++) begin
+      raw_pipe0(va_page(112 + i), 7'((7'd24 + i[6:0]) % 96), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    wait_l1d_mb_occupancy_at_least("l1dtlb_one_free_prefill7", 7, occ_seen, 8192, 1'b1);
+    if (occ_seen) begin
+      raw_pipe01(va_page(120), va_page(121), 7'd52, 7'd53, 1'b0, 1'b1);
+      wait_lsu_cycles(32);
+    end
+    reset_ptw_responder_controls(1, 4);
+    wait_l1d_mb_empty("l1dtlb_one_free_dual_diff_drain", mb_empty, 16384);
+    if (!mb_empty)
+      raw_rtu_flush();
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_one_free_dual_diff", 524288, 16);
   endtask
 
   protected task scenario_flush_race();
@@ -3336,6 +3447,144 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     end
   endtask
 
+  protected task scenario_mb_entry2_state_matrix();
+    bit hit;
+    bit mb_empty;
+    bit wfi_done;
+
+    reset_ptw_responder_controls(1, 4);
+    do_bringup(512, 39'h10_0000);
+
+    for (int unsigned flush_delay = 0; flush_delay < 8; flush_delay++) begin
+      try_l1d_wfg_flush_with_grant(
+        $sformatf("l1dtlb_entry2_matrix_wfg_abt_delay%0d", flush_delay),
+        2, 9000 + (flush_delay * 8), flush_delay, hit);
+      if (hit)
+        break;
+    end
+
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_wfc_abt_pre");
+    configure_ptw_delay(256, 256);
+    prefill_l1d_mb_low_slots("l1dtlb_entry2_matrix_wfc_prefill", 2, 300, 7'd16);
+    raw_pipe0(va_page(310), 7'd32, 1'b0, 1'b0);
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_wfc", 2, L1D_MB_STATE_WFC, 4096);
+    raw_rtu_flush();
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_abt", 2, L1D_MB_STATE_ABT, 1024);
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_wfc_abt");
+
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_pgflt_pre");
+    map_special_page(320, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    configure_ptw_delay(64, 64);
+    prefill_l1d_mb_low_slots("l1dtlb_entry2_matrix_pgflt_prefill", 2, 324, 7'd24);
+    raw_pipe0(va_page(320), 7'd40, 1'b0, 1'b0);
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_pgflt", 2, L1D_MB_STATE_PGFLT, 8192);
+    raw_pipe0(va_page(320), 7'd40, 1'b0, 1'b0);
+    wait_lsu_cycles(16);
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_pgflt");
+
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_acflt_pre");
+    configure_ptw_delay(64, 64);
+    prefill_l1d_mb_low_slots("l1dtlb_entry2_matrix_acflt_prefill", 2, 336, 7'd32);
+    force_ptw_bus_error_for_leaf_pte("l1dtlb_entry2_matrix_acflt", 340, 1'b1);
+    raw_pipe0(va_page(340), 7'd48, 1'b0, 1'b0);
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_acflt", 2, L1D_MB_STATE_ACFLT, 8192);
+    force_ptw_bus_error_for_leaf_pte("l1dtlb_entry2_matrix_acflt", 340, 1'b0);
+    raw_pipe0(va_page(340), 7'd48, 1'b0, 1'b0);
+    wait_lsu_cycles(16);
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_acflt");
+
+    wfi_done = 1'b0;
+    for (int unsigned trial = 0; (trial < 64) && !wfi_done; trial++) begin
+      int unsigned low_page_base;
+      int unsigned ptw_page;
+      int unsigned l2_page;
+      bit wfi_seen;
+
+      recover_l1d_high_matrix_phase(
+        $sformatf("l1dtlb_entry2_matrix_wfi_trial%0d_pre", trial));
+      low_page_base = 1024 + (trial * 4);
+      ptw_page      = 2048 + trial;
+      l2_page       = 3072 + trial;
+      prefill_l1d_mb_low_slots_pgflt(
+        $sformatf("l1dtlb_entry2_matrix_wfi_prefill%0d", trial),
+        1, low_page_base, 7'd56);
+      map_normal_page(ptw_page);
+      map_normal_page(l2_page);
+      cp0_tlbwr_entry(va_page(l2_page),
+        ppn_t'(m_leaf_ppn0 + ppn_t'(l2_page + 16)),
+        ((va_page(l2_page) >> 12) & 'hff), 1'b1, 1'b1);
+      configure_ptw_delay(12, 12);
+      raw_pipe0(va_page(ptw_page), 7'd60, 1'b0, 1'b0);
+      wait_lsu_cycles(trial);
+      raw_pipe0(va_page(l2_page), 7'd61, 1'b0, 1'b0);
+      wait_l1d_mb_entry_wfi_with_diag(
+        $sformatf("l1dtlb_entry2_matrix_wfi_trial%0d", trial),
+        2, wfi_seen, 512, (trial == 63), 1'b0);
+      if (wfi_seen) begin
+        wfi_done = 1'b1;
+        wait_lsu_cycles(24);
+      end
+    end
+    if (!wfi_done)
+      `uvm_warning(get_type_name(), "entry2 state matrix did not observe targeted WFI")
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_wfi");
+    wait_l1d_mb_empty("l1dtlb_entry2_matrix_final_empty", mb_empty, 4096);
+    if (!mb_empty)
+      raw_rtu_flush();
+    reset_ptw_responder_controls(1, 4);
+  endtask
+
+  protected task scenario_hit_rd_perm_mode_matrix();
+    bit sum1_pass_ok;
+
+    do_bringup(128, 39'h10_0000);
+    fill_page(0);
+    fill_page(1, 1'b1, 1'b1);
+    raw_pipe01(va_page(0), va_page(1), 7'd4, 7'd5, 1'b0, 1'b1);
+    wait_lsu_cycles(12);
+    raw_pipe01(va_page(0), va_page(0), 7'd6, 7'd7, 1'b0, 1'b0);
+    wait_lsu_cycles(12);
+
+    configure_ptw_delay(32, 64);
+    raw_pipe01(va_page(80), va_page(81), 7'd8, 7'd9, 1'b0, 1'b1);
+    wait_lsu_cycles(96);
+    raw_pipe0(va_page(80), 7'd10, 1'b0, 1'b1);
+    raw_pipe1(va_page(81), 7'd11, 1'b1, 1'b1);
+    wait_lsu_cycles(32);
+    configure_ptw_delay(1, 4);
+
+    map_special_page(96, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    map_special_page(97, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0);
+    raw_pipe0(va_page(96), 7'd12, 1'b0, 1'b0);
+    wait_l1d_expt_write("l1dtlb_hit_rd_matrix_pf_entry");
+    raw_pipe1(va_page(97), 7'd13, 1'b1, 1'b0);
+    wait_l1d_expt_write("l1dtlb_hit_rd_matrix_ad_entry");
+    raw_pipe01(va_page(96), va_page(97), 7'd12, 7'd13, 1'b0, 1'b1);
+    wait_lsu_cycles(24);
+
+    map_special_page(98, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b1);
+    set_priv(2'b01);
+    set_mxr_sum(1'b0, 1'b1);
+    send_lsu_item(LSU_PIPE0, va_page(98), 7'd14, 1'b0);
+    wait_pipe0_terminal("l1dtlb_hit_rd_matrix_sum_hit_fill", 1'b1, sum1_pass_ok);
+    if (sum1_pass_ok)
+      raw_pipe0(va_page(98), 7'd14, 1'b0);
+    set_mxr_sum(1'b0, 1'b0);
+
+    fill_page(2);
+    fill_page(3, 1'b1, 1'b1);
+    set_pmp_deny_rw();
+    raw_pipe01(va_page(2), va_page(3), 7'd15, 7'd16, 1'b0, 1'b1);
+    wait_lsu_cycles(24);
+    set_pmp_allow_all();
+
+    scenario_direct_map();
+    scenario_stamo();
+    scenario_one_free_dual_diff_cov();
+    scenario_huge();
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_hit_rd_perm_mode_matrix", 524288, 16);
+  endtask
+
   protected task scenario_reset_only();
     do_bringup(8, 39'h10_0000);
     raw_inv(INV_ALL);
@@ -3509,6 +3758,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_FLUSH_RACE:       scenario_flush_race();
       L1DTLB_SCN_RESET_ONLY:       scenario_reset_only();
       L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX: scenario_mb_high_entry_matrix();
+      L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX: scenario_mb_entry2_state_matrix();
+      L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX: scenario_hit_rd_perm_mode_matrix();
       L1DTLB_SCN_L2_REQQ_DEPTH:    scenario_l2_reqq_depth();
       default: begin
         if (tc_id == "DTLB_SYSMAP_001")

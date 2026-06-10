@@ -11,6 +11,8 @@ import html
 import json
 import sys
 import time
+import xml.etree.ElementTree as ET
+from collections import Counter
 from pathlib import Path
 from typing import Dict, Iterable, List, Sequence
 
@@ -20,10 +22,14 @@ from phase14_merge_parallel_coverage import (
     INSTANCE_DATA_RE,
     AssertionAccumulator,
     BitMetricAccumulator,
+    FunctionalAccumulator,
     iter_testdata_dirs,
+    int_attr,
+    int_text,
     open_maybe_gzip_text,
     parse_xml_attrs,
     pct_text,
+    xml_tag,
 )
 
 
@@ -33,7 +39,13 @@ DEFAULT_SCOPES = {
     "PTW": ["tb_top.u_dut.x_ct_mmu_ptw"],
 }
 
-ORDERED_METRICS = ("line", "branch", "cond", "tgl", "fsm", "assertion")
+DEFAULT_FUNCTIONAL_GROUPS = {
+    "L1TLB": ["cg_l1dtlb", "cg_l1itlb"],
+    "L2TLB": ["cg_l2tlb_bank", "cg_l2_reqq"],
+    "PTW": ["cg_ptw_walk", "cg_ptw_ready_transition", "cg_twu"],
+}
+
+ORDERED_METRICS = ("line", "branch", "cond", "tgl", "fsm", "functional", "assertion")
 
 
 def matches_scope(name: str, prefixes: Sequence[str]) -> bool:
@@ -43,8 +55,30 @@ def matches_scope(name: str, prefixes: Sequence[str]) -> bool:
     return False
 
 
+def matches_functional_group(group_name: str, patterns: Sequence[str]) -> bool:
+    lower = group_name.lower()
+    leaf = lower.rsplit(".", 1)[-1].rsplit("::", 1)[-1]
+    for pattern in patterns:
+        token = pattern.lower()
+        if leaf == token or lower.endswith("." + token) or lower.endswith("::" + token):
+            return True
+    return False
+
+
 def iter_vdbs(root: Path) -> List[Path]:
     return sorted(path for path in root.glob("phase14_parallel_*.vdb") if path.is_dir())
+
+
+def is_vdb(path: Path) -> bool:
+    return (path / "snps" / "coverage" / "db").is_dir()
+
+
+def resolve_vdbs(vdbs: Sequence[Path], root: Path) -> List[Path]:
+    if vdbs:
+        return sorted(path for path in vdbs if path.is_dir())
+    if is_vdb(root):
+        return [root]
+    return iter_vdbs(root)
 
 
 def parse_bit_metric_file(path: Path, accumulators: Dict[str, BitMetricAccumulator], scopes: Dict[str, List[str]]) -> None:
@@ -80,13 +114,133 @@ def parse_assertion_file(path: Path, accumulators: Dict[str, AssertionAccumulato
                     accumulators[scope_name].add_value(name, value)
 
 
-def collect_scope_coverage(vdbs: Sequence[Path], scopes: Dict[str, List[str]]) -> Dict[str, object]:
+def parse_functional_file(
+    path: Path,
+    accumulators: Dict[str, FunctionalAccumulator],
+    functional_groups: Dict[str, List[str]],
+) -> None:
+    for accumulator in accumulators.values():
+        accumulator.files_seen += 1
+    group_stack: List[str] = []
+    parent_stack: List[Dict[str, object]] = []
+    try:
+        with open_maybe_gzip_text(path) as stream:
+            for event, elem in ET.iterparse(stream, events=("start", "end")):
+                tag = xml_tag(elem)
+                if event == "start":
+                    if tag in {"cg_inst", "cg_src", "cg_covdef"}:
+                        group_name = elem.attrib.get("name") or elem.attrib.get("scope") or tag
+                        group_stack.append(group_name)
+                        if tag in {"cg_inst", "cg_src"}:
+                            current_group = "::".join(group_stack)
+                            for scope_name, patterns in functional_groups.items():
+                                if matches_functional_group(current_group, patterns):
+                                    accumulators[scope_name].groups_seen += 1
+                    elif tag == "cp":
+                        group_name = "::".join(group_stack) if group_stack else "<unknown_group>"
+                        matched_scopes = [
+                            scope_name
+                            for scope_name, patterns in functional_groups.items()
+                            if matches_functional_group(group_name, patterns)
+                        ]
+                        parent_stack.append(
+                            {
+                                "kind": "cp",
+                                "group": group_name,
+                                "id": elem.attrib.get("id", ""),
+                                "name": elem.attrib.get("name") or elem.attrib.get("exprname") or elem.attrib.get("id", ""),
+                                "type": elem.attrib.get("type", ""),
+                                "width": int_attr(elem, "width", 0),
+                                "auto_max": 0,
+                                "scopes": matched_scopes,
+                            }
+                        )
+                    elif tag == "cc":
+                        group_name = "::".join(group_stack) if group_stack else "<unknown_group>"
+                        matched_scopes = [
+                            scope_name
+                            for scope_name, patterns in functional_groups.items()
+                            if matches_functional_group(group_name, patterns)
+                        ]
+                        parent_stack.append(
+                            {
+                                "kind": "cc",
+                                "group": group_name,
+                                "id": elem.attrib.get("id", ""),
+                                "name": elem.attrib.get("name") or elem.attrib.get("id", ""),
+                                "type": "cross",
+                                "width": 0,
+                                "auto_max": 0,
+                                "scopes": matched_scopes,
+                            }
+                        )
+                    elif tag == "cp_option" and parent_stack and parent_stack[-1]["kind"] == "cp":
+                        parent = parent_stack[-1]
+                        auto_max = int_attr(elem, "auto_bin_max", 0)
+                        parent["auto_max"] = auto_max
+                        if parent.get("type") == "auto_c":
+                            auto_key = (str(parent["group"]), str(parent["id"]) or str(parent["name"]))
+                            width = int(parent.get("width", 0) or 0)
+                            if auto_max <= 0 and 0 < width <= 12:
+                                auto_max = 1 << width
+                            for scope_name in parent.get("scopes", []):
+                                accumulators[str(scope_name)].add_auto_cp(auto_key, auto_max)
+                    elif tag == "cc_option" and parent_stack and parent_stack[-1]["kind"] == "cc":
+                        parent_stack[-1]["auto_max"] = int_attr(elem, "cross_auto_bin_max", 0)
+                    elif tag == "bn" and parent_stack:
+                        parent = parent_stack[-1]
+                        if (
+                            elem.attrib.get("excl", "0") == "1"
+                            or elem.attrib.get("unreachable", "0") == "1"
+                            or elem.attrib.get("illegal", "0") == "1"
+                        ):
+                            continue
+                        bin_id = elem.attrib.get("id", "")
+                        bin_name = elem.attrib.get("name", "") or bin_id
+                        key = (
+                            str(parent["group"]),
+                            f"{parent['kind']}:{parent.get('id', '')}:{parent.get('name', '')}",
+                            bin_id,
+                            bin_name,
+                        )
+                        for scope_name in parent.get("scopes", []):
+                            accumulators[str(scope_name)].add_explicit_bin(key, int_attr(elem, "data", 0) > 0)
+                    elif tag == "data" and parent_stack and parent_stack[-1]["kind"] == "cp":
+                        parent = parent_stack[-1]
+                        if parent.get("type") != "auto_c":
+                            continue
+                        auto_key = (str(parent["group"]), str(parent["id"]) or str(parent["name"]))
+                        indexes = [int_text(item, -1) for item in elem.attrib.get("index", "").split()]
+                        values = [int_text(item, 0) for item in elem.attrib.get("vals", "").split()]
+                        for scope_name in parent.get("scopes", []):
+                            accumulator = accumulators[str(scope_name)]
+                            for index, value in zip(indexes, values):
+                                accumulator.add_auto_hit(auto_key, index, value)
+                    elif tag == "covered_auto_crosses" and parent_stack:
+                        for scope_name in parent_stack[-1].get("scopes", []):
+                            accumulators[str(scope_name)].auto_crosses_seen += 1
+                else:
+                    if tag in {"cp", "cc"} and parent_stack:
+                        parent_stack.pop()
+                    elif tag in {"cg_inst", "cg_src", "cg_covdef"} and group_stack:
+                        group_stack.pop()
+                    elem.clear()
+    except ET.ParseError:
+        return
+
+
+def collect_scope_coverage(
+    vdbs: Sequence[Path],
+    scopes: Dict[str, List[str]],
+    functional_groups: Dict[str, List[str]],
+) -> Dict[str, object]:
     started = time.time()
     bit_accumulators = {
         scope: {metric: BitMetricAccumulator(metric) for metric in BIT_METRICS}
         for scope in scopes
     }
     assertion_accumulators = {scope: AssertionAccumulator() for scope in scopes}
+    functional_accumulators = {scope: FunctionalAccumulator() for scope in scopes}
     missing_testdata = 0
 
     for index, vdb in enumerate(vdbs, start=1):
@@ -106,6 +260,11 @@ def collect_scope_coverage(vdbs: Sequence[Path], scopes: Dict[str, List[str]]) -
             assertion_path = testdata / "assert.verilog.data.xml"
             if assertion_path.is_file():
                 parse_assertion_file(assertion_path, assertion_accumulators, scopes)
+            functional_path = testdata / "testbench.inst.xml"
+            if not functional_path.is_file():
+                functional_path = testdata / "testbench.cumulative.xml"
+            if functional_path.is_file():
+                parse_functional_file(functional_path, functional_accumulators, functional_groups)
         if index == 1 or index == len(vdbs) or index % 250 == 0:
             print(f"scope XML fallback progress: {index}/{len(vdbs)} VDBs scanned")
 
@@ -114,10 +273,13 @@ def collect_scope_coverage(vdbs: Sequence[Path], scopes: Dict[str, List[str]]) -
         metrics: Dict[str, object] = {}
         for metric, accumulator in bit_accumulators[scope_name].items():
             metrics[metric] = accumulator.summary()
+        metrics["functional"] = functional_accumulators[scope_name].summary()
         metrics["assertion"] = assertion_accumulators[scope_name].summary()
         scope_summaries[scope_name] = {
             "prefixes": prefixes,
+            "functional_groups": functional_groups.get(scope_name, []),
             "metrics": metrics,
+            "functional_hotspots": functional_hotspots(functional_accumulators[scope_name]),
         }
 
     return {
@@ -127,6 +289,53 @@ def collect_scope_coverage(vdbs: Sequence[Path], scopes: Dict[str, List[str]]) -
         "missing_testdata_vdbs": missing_testdata,
         "elapsed_s": round(time.time() - started, 2),
         "scopes": scope_summaries,
+    }
+
+
+def functional_hotspots(accumulator: FunctionalAccumulator, limit: int = 20) -> Dict[str, object]:
+    missed_explicit = [
+        key for key, hit in accumulator.explicit_bins.items()
+        if not hit
+    ]
+    group_counts = Counter(group for group, _cp, _bin_id, _bin_name in missed_explicit)
+    cp_counts = Counter((group, cp) for group, cp, _bin_id, _bin_name in missed_explicit)
+
+    auto_rows = []
+    for key, denom in accumulator.auto_denoms.items():
+        hits = accumulator.auto_hits.get(key, set())
+        covered = sum(1 for index in hits if 0 <= index < denom)
+        missing = denom - covered
+        if missing > 0:
+            group, cp = key
+            auto_rows.append({
+                "group": group,
+                "coverpoint": cp,
+                "missing": missing,
+                "covered": covered,
+                "total": denom,
+                "percent": pct_text((100.0 * covered / denom) if denom else None),
+            })
+    auto_rows.sort(key=lambda item: (int(item["missing"]), int(item["total"]), item["group"], item["coverpoint"]), reverse=True)
+
+    return {
+        "uncovered_explicit_by_group": [
+            {"group": group, "uncovered": count}
+            for group, count in group_counts.most_common(limit)
+        ],
+        "uncovered_explicit_by_coverpoint": [
+            {"group": group, "coverpoint": cp, "uncovered": count}
+            for (group, cp), count in cp_counts.most_common(limit)
+        ],
+        "uncovered_explicit_samples": [
+            {
+                "group": group,
+                "coverpoint": cp,
+                "bin_id": bin_id,
+                "bin_name": bin_name,
+            }
+            for group, cp, bin_id, bin_name in missed_explicit[:limit]
+        ],
+        "auto_coverpoint_gaps": auto_rows[:limit],
     }
 
 
@@ -161,15 +370,45 @@ def write_text(path: Path, summary: Dict[str, object]) -> None:
         scope = scopes[scope_name]
         assert isinstance(scope, dict)
         prefixes = scope.get("prefixes", [])
+        functional_groups = scope.get("functional_groups", [])
         lines.append("")
         lines.append(f"{scope_name}:")
         lines.append("  prefixes: " + ", ".join(str(prefix) for prefix in prefixes))
+        lines.append("  functional_groups: " + ", ".join(str(group) for group in functional_groups))
         metrics = scope.get("metrics", {})
         assert isinstance(metrics, dict)
         for metric_key in ORDERED_METRICS:
             metric = metrics.get(metric_key, {})
             if isinstance(metric, dict):
                 lines.append("  " + metric_row(scope_name, metric_key, metric).strip())
+        hotspots = scope.get("functional_hotspots", {})
+        if isinstance(hotspots, dict):
+            auto_rows = hotspots.get("auto_coverpoint_gaps", [])
+            group_rows = hotspots.get("uncovered_explicit_by_group", [])
+            cp_rows = hotspots.get("uncovered_explicit_by_coverpoint", [])
+            if group_rows or cp_rows or auto_rows:
+                lines.append("  functional_hotspots:")
+            if isinstance(group_rows, list) and group_rows:
+                lines.append("    uncovered_explicit_by_group:")
+                for row in group_rows[:10]:
+                    if isinstance(row, dict):
+                        lines.append(f"      {row.get('uncovered', 0)}  {row.get('group', '')}")
+            if isinstance(cp_rows, list) and cp_rows:
+                lines.append("    uncovered_explicit_by_coverpoint:")
+                for row in cp_rows[:10]:
+                    if isinstance(row, dict):
+                        lines.append(
+                            f"      {row.get('uncovered', 0)}  {row.get('group', '')} :: {row.get('coverpoint', '')}"
+                        )
+            if isinstance(auto_rows, list) and auto_rows:
+                lines.append("    auto_coverpoint_gaps:")
+                for row in auto_rows[:10]:
+                    if isinstance(row, dict):
+                        lines.append(
+                            "      "
+                            f"missing={row.get('missing', 0)} covered={row.get('covered', 0)}/{row.get('total', 0)} "
+                            f"{row.get('percent', 'N/A')} {row.get('group', '')} :: {row.get('coverpoint', '')}"
+                        )
     path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -289,16 +528,26 @@ def write_html(path: Path, summary: Dict[str, object]) -> None:
 
 def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(description="Generate scope-specific XML fallback coverage report")
+    parser.add_argument("--vdb", type=Path, action="append", default=[], help="Aggregate or shard VDB; may be repeated")
     parser.add_argument("--vdb-root", type=Path, default=Path("output/phase14_parallel_vdb"))
     parser.add_argument("--report-dir", type=Path, default=Path("output/coverage/phase14_urgReport"))
+    parser.add_argument("--scope", action="append", choices=sorted(DEFAULT_SCOPES), help="Scope to emit; may be repeated")
     args = parser.parse_args(argv)
 
-    vdbs = iter_vdbs(args.vdb_root)
+    selected_scopes = set(args.scope or DEFAULT_SCOPES.keys())
+    scopes = {name: prefixes for name, prefixes in DEFAULT_SCOPES.items() if name in selected_scopes}
+    functional_groups = {
+        name: groups for name, groups in DEFAULT_FUNCTIONAL_GROUPS.items() if name in selected_scopes
+    }
+    vdbs = resolve_vdbs(args.vdb, args.vdb_root)
     if not vdbs:
-        print(f"ERROR: no phase14_parallel_*.vdb directories under {args.vdb_root}", file=sys.stderr)
+        print(
+            f"ERROR: no VDB directories from --vdb or phase14_parallel_*.vdb under {args.vdb_root}",
+            file=sys.stderr,
+        )
         return 2
     args.report_dir.mkdir(parents=True, exist_ok=True)
-    summary = collect_scope_coverage(vdbs, DEFAULT_SCOPES)
+    summary = collect_scope_coverage(vdbs, scopes, functional_groups)
     write_text(args.report_dir / "scope_coverage_summary.txt", summary)
     (args.report_dir / "scope_coverage_summary.json").write_text(
         json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8"

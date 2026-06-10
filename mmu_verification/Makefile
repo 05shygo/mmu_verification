@@ -110,6 +110,7 @@ RUN_COMPAT_ENTRY_GOALS := run run_check run_cov run_batch run_gui debug fast_che
 RUN_COMPAT_KNOWN_GOALS := all help setup check_env env comp comp_all comp_fast comp_rtl comp_tb elab \
         run run_check fast fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
+        covp_scope_gates_95 covp_l1l2_95_signoff \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -444,6 +445,8 @@ PHASE14_MERGE_PARALLEL_COVERAGE ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel
 PHASE14_SHOW_PARALLEL_FAILURES ?= $(PROJECT_DIR)/scripts/phase14_show_parallel_failures.py
 PHASE14_COVERAGE_HOTSPOTS ?= $(PROJECT_DIR)/scripts/phase14_coverage_hotspots.py
 SCOPE_COVERAGE_GATE     ?= $(PROJECT_DIR)/scripts/scope_coverage_gate.py
+SCOPE_URG_REPORT        ?= $(PROJECT_DIR)/scripts/run_scope_urg_report.sh
+SCOPE_XML_FALLBACK_REPORT ?= $(PROJECT_DIR)/scripts/generate_scope_fallback_report.py
 PTW_COV_SIGNOFF_CHECK   ?= $(PROJECT_DIR)/scripts/check_ptw_code_cov_signoff.py
 PHASE14_ISSUE_TRACKER_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_IssueTracker.md))
 PHASE14_SIGNOFF_MATRIX_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_SignoffMatrix.md))
@@ -506,6 +509,8 @@ COVP_L1TLB_URG_REPORT_DIR ?= $(COV_DIR)/l1tlb_urgReport
 COVP_L2TLB_URG_REPORT_DIR ?= $(COV_DIR)/l2tlb_urgReport
 COVP_L1TLB_URG_LOG        ?= $(COV_DIR)/l1tlb_urg.log
 COVP_L2TLB_URG_LOG        ?= $(COV_DIR)/l2tlb_urg.log
+COVP_L1L2_95_THRESHOLD    ?= 95.0
+SCOPE_XML_FALLBACK        ?= auto
 COVP_RUN_SCOPE_GATES      ?= 1
 COVP_RUN_L1L2_SPECIAL_GATES ?= 1
 COVP_RUN_PTW_SIGNOFF      ?= 1
@@ -899,6 +904,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
+        covp_scope_gates_95 covp_l1l2_95_signoff \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -2450,7 +2456,7 @@ cov_l1l2: comp
 	  -metric $(COV_METRICS) \
 	  -hier u_dut.u_mmu_l1dtlb \
 	  -hier u_dut.x_mmu_l2tlb \
-	  -hier u_dut.u_mmu_l1itlb \
+	  -hier u_dut.x_mmu_l1itlb \
 	  -format both \
 	  -report "$(COV_DIR)/l1l2_urgReport" \
 	  > "$(COV_DIR)/l1l2_urg.log" 2>&1 || true
@@ -2465,25 +2471,32 @@ cov_all: comp
 
 covp_scope_reports:
 	@test -d "$(PHASE14_URG_MERGED_DB)" || (echo "ERROR: missing merged Phase14 VDB: $(PHASE14_URG_MERGED_DB)"; exit 2)
+	@test -f "$(SCOPE_URG_REPORT)" || (echo "ERROR: scoped URG report helper missing: $(SCOPE_URG_REPORT)"; exit 2)
 	@mkdir -p "$(COV_DIR)"
 	@echo "=== Generating L1TLB filtered report ==="
-	@rm -rf "$(COVP_L1TLB_URG_REPORT_DIR)"
-	@$(URG) -full64 -dir "$(PHASE14_URG_MERGED_DB)" \
-	  -metric $(COV_METRICS) \
-	  -hier u_dut.u_mmu_l1dtlb \
-	  -hier u_dut.u_mmu_l1itlb \
-	  -format both \
-	  -report "$(COVP_L1TLB_URG_REPORT_DIR)" \
-	  > "$(COVP_L1TLB_URG_LOG)" 2>&1
+	@SCOPE_XML_FALLBACK="$(SCOPE_XML_FALLBACK)" bash "$(SCOPE_URG_REPORT)" \
+	  --urg "$(URG)" \
+	  --input-vdb "$(PHASE14_URG_MERGED_DB)" \
+	  --base-vdb "$(COV_BASE_DB_DIR)" \
+	  --metrics "$(COV_METRICS)" \
+	  --report-dir "$(COVP_L1TLB_URG_REPORT_DIR)" \
+	  --log "$(COVP_L1TLB_URG_LOG)" \
+	  --hier u_dut.u_mmu_l1dtlb \
+	  --hier u_dut.x_mmu_l1itlb \
+	  --fallback-script "$(SCOPE_XML_FALLBACK_REPORT)" \
+	  --fallback-scope L1TLB
 	@test -d "$(COVP_L1TLB_URG_REPORT_DIR)" && find "$(COVP_L1TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L1TLB URG report: $(COVP_L1TLB_URG_REPORT_DIR)"; exit 1)
 	@echo "=== Generating L2TLB filtered report ==="
-	@rm -rf "$(COVP_L2TLB_URG_REPORT_DIR)"
-	@$(URG) -full64 -dir "$(PHASE14_URG_MERGED_DB)" \
-	  -metric $(COV_METRICS) \
-	  -hier u_dut.x_mmu_l2tlb \
-	  -format both \
-	  -report "$(COVP_L2TLB_URG_REPORT_DIR)" \
-	  > "$(COVP_L2TLB_URG_LOG)" 2>&1
+	@SCOPE_XML_FALLBACK="$(SCOPE_XML_FALLBACK)" bash "$(SCOPE_URG_REPORT)" \
+	  --urg "$(URG)" \
+	  --input-vdb "$(PHASE14_URG_MERGED_DB)" \
+	  --base-vdb "$(COV_BASE_DB_DIR)" \
+	  --metrics "$(COV_METRICS)" \
+	  --report-dir "$(COVP_L2TLB_URG_REPORT_DIR)" \
+	  --log "$(COVP_L2TLB_URG_LOG)" \
+	  --hier u_dut.x_mmu_l2tlb \
+	  --fallback-script "$(SCOPE_XML_FALLBACK_REPORT)" \
+	  --fallback-scope L2TLB
 	@test -d "$(COVP_L2TLB_URG_REPORT_DIR)" && find "$(COVP_L2TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L2TLB URG report: $(COVP_L2TLB_URG_REPORT_DIR)"; exit 1)
 
 covp_scope_gates:
@@ -2506,6 +2519,29 @@ covp_scope_gates:
 		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
 		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
 		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"
+
+covp_scope_gates_95:
+	@test -f "$(SCOPE_COVERAGE_GATE)" || (echo "ERROR: scope coverage gate missing: $(SCOPE_COVERAGE_GATE)"; exit 2)
+	@rc=0; \
+	$(PYTHON) "$(SCOPE_COVERAGE_GATE)" \
+		--scope-name L1TLB \
+		--urg-report-dir "$(COVP_L1TLB_URG_REPORT_DIR)" \
+		--metrics functional,fsm,toggle,condition \
+		--functional-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--fsm-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--toggle-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--condition-threshold "$(COVP_L1L2_95_THRESHOLD)" || rc=1; \
+	$(PYTHON) "$(SCOPE_COVERAGE_GATE)" \
+		--scope-name L2TLB \
+		--urg-report-dir "$(COVP_L2TLB_URG_REPORT_DIR)" \
+		--metrics functional,fsm,toggle,condition \
+		--functional-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--fsm-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--toggle-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--condition-threshold "$(COVP_L1L2_95_THRESHOLD)" || rc=1; \
+	exit $$rc
+
+covp_l1l2_95_signoff: covp_scope_reports covp_scope_gates_95
 
 covp_l1l2_special_gates: comp_fast l1dtlb_phase6g_check l2tlb_phase6g_check
 	$(PYTHON) "$(L1DTLB_PHASE6G_REPLAY)" \

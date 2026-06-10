@@ -111,6 +111,69 @@ def bit_hotspots(
     return rows[:limit]
 
 
+def collapse_indexes(indexes: List[int], max_items: int = 32) -> str:
+    if not indexes:
+        return ""
+    ranges: List[str] = []
+    start = indexes[0]
+    prev = indexes[0]
+    for index in indexes[1:]:
+        if index == prev + 1:
+            prev = index
+            continue
+        ranges.append(str(start) if start == prev else f"{start}-{prev}")
+        start = index
+        prev = index
+    ranges.append(str(start) if start == prev else f"{start}-{prev}")
+    text = ", ".join(ranges[:max_items])
+    if len(ranges) > max_items:
+        text += f", ... (+{len(ranges) - max_items} ranges)"
+    return text
+
+
+def bit_gap_detail_rows(
+    accumulator: BitMetricAccumulator,
+    limit: int,
+    scope_filter: Sequence[str],
+) -> List[Tuple[str, int, int, int, float, str, str]]:
+    rows: List[Tuple[int, int, str, int, int, int, float, str, str]] = []
+    selected_scopes = set(scope_filter)
+    for (name, chksum, width), bits in accumulator._bits.items():
+        scope = scope_of(name)
+        if selected_scopes and scope not in selected_scopes:
+            continue
+        missing_indexes = [index for index, value in enumerate(bits) if value != ord("1")]
+        if not missing_indexes:
+            continue
+        covered = len(bits) - len(missing_indexes)
+        rows.append((
+            len(missing_indexes),
+            len(bits),
+            name,
+            covered,
+            width,
+            len(missing_indexes),
+            pct(covered, len(bits)),
+            scope,
+            chksum,
+        ))
+    rows.sort(key=lambda item: (item[0], item[1], item[2]), reverse=True)
+    detail_rows: List[Tuple[str, int, int, int, float, str, str]] = []
+    for _missing, _total, name, covered, width, missing, percent_value, scope, chksum in rows[:limit]:
+        bits = accumulator._bits[(name, chksum, width)]
+        missing_indexes = [index for index, value in enumerate(bits) if value != ord("1")]
+        detail_rows.append((
+            scope,
+            missing,
+            covered,
+            width,
+            percent_value,
+            f"{name} [chksum={chksum}]",
+            collapse_indexes(missing_indexes),
+        ))
+    return detail_rows
+
+
 def functional_hotspots(accumulator: FunctionalAccumulator, limit: int) -> Dict[str, object]:
     missed_explicit = [
         key for key, hit in accumulator.explicit_bins.items()
@@ -190,6 +253,20 @@ def write_markdown(
         lines.append(table_row(("---", "---:", "---:", "---:", "---:", "---")))
         for missing, total, covered, percent_value, scope, name in bit_hotspots(bit_accumulators[metric], limit):
             lines.append(table_row((scope, missing, covered, total, f"{percent_value:.2f}%", f"`{name}`")))
+        lines.append("")
+
+    lines.append("## L1/L2 Missing Bit Index Samples")
+    lines.append("")
+    lines.append("These rows expose diagnostic bit indexes from VDB XML for scoped L1TLB/L2TLB objects. They identify which object bits remain unhit, but official transition/expression names still require URG.")
+    lines.append("")
+    for metric in BIT_METRICS:
+        lines.append(f"### {METRIC_LABELS[metric]}")
+        lines.append("")
+        lines.append(table_row(("Scope", "Missing", "Covered", "Width", "Coverage", "Object", "Missing Indexes")))
+        lines.append(table_row(("---", "---:", "---:", "---:", "---:", "---", "---")))
+        for scope, missing, covered, width, percent_value, name, indexes in bit_gap_detail_rows(
+                bit_accumulators[metric], limit, ("L1TLB", "L2TLB")):
+            lines.append(table_row((scope, missing, covered, width, f"{percent_value:.2f}%", f"`{name}`", f"`{indexes}`")))
         lines.append("")
 
     lines.append("## Functional Uncovered Explicit Bins By Group")

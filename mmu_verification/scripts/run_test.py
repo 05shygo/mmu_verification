@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+import os
 import re
 import shlex
 import subprocess
@@ -372,6 +373,12 @@ def run_regression(
     jobs: int = 1,
     fail_fast: bool = False,
 ) -> int:
+    if mode == "run_cov" and os.environ.get("COV_TAG"):
+        raise ValueError(
+            "COV_TAG must not be fixed for run_cov regression; "
+            "unset COV_TAG so each test gets its own cm_name/log, or run make run_cov per test"
+        )
+
     entries = load_regression_list(list_path)
     runs: List[Tuple[int, RegressionEntry, str, str]] = []
     results_by_index: List[Optional[RegressionResult]] = []

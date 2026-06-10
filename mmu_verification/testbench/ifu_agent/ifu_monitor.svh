@@ -203,7 +203,18 @@ class ifu_monitor extends uvm_monitor;
       end
 
       // Protocol sanity: VA should stay stable while request is outstanding
-      // and before response returns.
+      // and before response returns.  A same-VA abort assertion during a held
+      // miss is legal and drives the L1ITLB refill FSM into ABT.
+      if (m_has_pending && req_seen && !rsp_seen &&
+          (cur_va === m_pending_req.va) &&
+          (m_pending_req.abort === 1'b0) && (cur_abort === 1'b1)) begin
+        m_pending_req.abort = 1'b1;
+        `uvm_info(get_type_name(),
+          $sformatf("[IFU_ABORT_UPDATE] pending miss marked aborted: va=0x%010h",
+            {1'b0, cur_va[38:0]}),
+          UVM_MEDIUM)
+      end
+
       if (m_has_pending && req_seen && !rsp_seen &&
           ((cur_va !== m_pending_req.va) || (cur_abort !== m_pending_req.abort))) begin
         `uvm_error(get_type_name(),

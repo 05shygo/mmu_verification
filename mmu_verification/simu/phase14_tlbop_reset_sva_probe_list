@@ -1,0 +1,14 @@
+# Phase14 TLBOP reset-arc SVA evidence probe.
+#
+# These seven modes correspond to the remaining ct_mmu_tlboper structural FSM
+# reset/default-to-idle bins in the XML hotspot report. VCS T-2022.06 does not
+# count the asynchronous reset arcs as FSM hits, so this list verifies the DUT
+# reset behavior with explicit SVA/procedural evidence.
+
+test_mmu_tlbop_reset_tlbp_wfg +MMU_TLBOP_RESET_MODE=tlbp_wfg
+test_mmu_tlbop_reset_tlbr_wfg +MMU_TLBOP_RESET_MODE=tlbr_wfg
+test_mmu_tlbop_reset_tlbwi_wfg +MMU_TLBOP_RESET_MODE=tlbwi_wfg
+test_mmu_tlbop_reset_tlbwr_wfg +MMU_TLBOP_RESET_MODE=tlbwr_wfg
+test_mmu_tlbop_reset_invasid_wt +MMU_TLBOP_RESET_MODE=invasid_wt
+test_mmu_tlbop_reset_invva_rd +MMU_TLBOP_RESET_MODE=invva_rd
+test_mmu_tlbop_reset_invva_wr +MMU_TLBOP_RESET_MODE=invva_wr

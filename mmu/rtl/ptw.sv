@@ -1211,22 +1211,27 @@ end
 assign mmu_hpcp_jtlb_miss = l2tlb_miss;
 
 
+`ifndef SYNTHESIS
 logic                   ptw_lsu_req_dbg_q ;
 logic [PADDR_WIDTH-1:0] ptw_lsu_addr_dbg_q;
 logic [MBUF_ID_WIDTH-1:0] ptw_lsu_id_dbg_q;
+logic                   ptw_lsu_req_trace_en;
 
-// PTW->LSU request trace for run_check log parsing.
-// 打印 addr/id/size/grant，方便检查握手是否稳定：
-//   - grant=0 时，如果 req 持续为 1，addr/id 应保持不变；
-//   - grant=1 后，下一笔 request 才允许切换到其它 entry id。
-// Emit once per new request (req rising edge or address/id change while req high).
+initial begin
+	ptw_lsu_req_trace_en = $test$plusargs("PTW_LSU_REQ_TRACE");
+end
+
+// PTW->LSU request trace for targeted log parsing.
+// Runtime-gated and synthesis-excluded; includes id/grant so request stability
+// can be checked while req waits for grant.
 always_ff @(posedge ptw_clk or negedge cpurst_b) begin
 	if(!cpurst_b) begin
 		ptw_lsu_req_dbg_q  <= 1'b0;
-		ptw_lsu_addr_dbg_q <= 40'b0;
+		ptw_lsu_addr_dbg_q <= {PADDR_WIDTH{1'b0}};
         ptw_lsu_id_dbg_q   <= {MBUF_ID_WIDTH{1'b0}};
 	end else begin
-		if(mmu_lsu_data_req
+		if(ptw_lsu_req_trace_en
+		   && mmu_lsu_data_req
 		   && (!ptw_lsu_req_dbg_q
                || (mmu_lsu_data_req_addr != ptw_lsu_addr_dbg_q)
                || (mmu_lsu_data_req_id != ptw_lsu_id_dbg_q))) begin
@@ -1241,6 +1246,7 @@ always_ff @(posedge ptw_clk or negedge cpurst_b) begin
         end
 	end
 end
+`endif
 
 // synopsys translate_off
 logic mmu_itlb_dbg_en;
@@ -1361,5 +1367,4 @@ end
 //
 
 endmodule
-
 

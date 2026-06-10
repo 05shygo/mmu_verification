@@ -48,6 +48,100 @@ module tb_top;
   l2tlb_negative_inject_if l2tlb_neg_inject_if_inst (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   mmu_dut_probes_if dut_probes_if   (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
 
+  function automatic bit mmu_tlbop_reset_mode_known(input string mode);
+    case (mode)
+      "tlbp_wfg",
+      "tlbr_wfg",
+      "tlbwi_wfg",
+      "tlbwr_wfg",
+      "tlbwr_wrtag",
+      "invasid_rd",
+      "invasid_wfc",
+      "invasid_wt",
+      "invva_rd",
+      "invva_cmp",
+      "invva_wr",
+      "invva_wt": return 1'b1;
+      default: return 1'b0;
+    endcase
+  endfunction
+
+  function automatic bit mmu_tlbop_reset_mode_hit(input string mode);
+    case (mode)
+      "tlbp_wfg":    return (dut_probes_if.tlbop_tlbp_fsm == 2'd1);
+      "tlbr_wfg":    return (dut_probes_if.tlbop_tlbr_fsm == 2'd1);
+      "tlbwi_wfg":   return (dut_probes_if.tlbop_tlbwi_fsm == 2'd1);
+      "tlbwr_wfg":   return (dut_probes_if.tlbop_tlbwr_fsm == 2'd2);
+      "tlbwr_wrtag": return (dut_probes_if.tlbop_tlbwr_fsm == 2'd1);
+      "invasid_rd":  return (dut_probes_if.tlbop_tlbiasid_fsm == 3'd1);
+      "invasid_wfc": return (dut_probes_if.tlbop_tlbiasid_fsm == 3'd2);
+      "invasid_wt":  return (dut_probes_if.tlbop_tlbiasid_fsm == 3'd3);
+      "invva_rd":    return (dut_probes_if.tlbiva_cur_st == 4'd2);
+      "invva_cmp":   return (dut_probes_if.tlbiva_cur_st == 4'd3);
+      "invva_wr":    return (dut_probes_if.tlbiva_cur_st == 4'd4);
+      "invva_wt":    return (dut_probes_if.tlbiva_cur_st == 4'd5);
+      default:        return 1'b0;
+    endcase
+  endfunction
+
+  initial begin : tlbop_reset_arc_injector
+    string mode;
+    int unsigned timeout_cycles;
+    int unsigned hold_cycles;
+    bit hit;
+
+    dut_probes_if.tlbop_reset_inject_active = 1'b0;
+    dut_probes_if.tlbop_reset_inject_hit = 1'b0;
+    dut_probes_if.tlbop_reset_inject_done = 1'b0;
+
+    if ($value$plusargs("MMU_TLBOP_RESET_MODE=%s", mode)) begin
+      dut_probes_if.tlbop_reset_inject_active = 1'b1;
+      timeout_cycles = 200000;
+      hold_cycles = 3;
+      void'($value$plusargs("MMU_TLBOP_RESET_TIMEOUT_CYCLES=%0d", timeout_cycles));
+      void'($value$plusargs("MMU_TLBOP_RESET_HOLD_CYCLES=%0d", hold_cycles));
+      if (timeout_cycles == 0)
+        timeout_cycles = 1;
+      if (hold_cycles == 0)
+        hold_cycles = 1;
+      if (!mmu_tlbop_reset_mode_known(mode))
+        $fatal(1, "[TLBOP_RESET_ARC] unknown mode=%s", mode);
+
+      wait (cpurst_b === 1'b1);
+      hit = 1'b0;
+      for (int unsigned cyc = 0; cyc < timeout_cycles; cyc++) begin
+        @(posedge forever_cpuclk);
+        if ((cpurst_b === 1'b1) && mmu_tlbop_reset_mode_hit(mode)) begin
+          hit = 1'b1;
+          dut_probes_if.tlbop_reset_inject_hit = 1'b1;
+          $display("[TLBOP_RESET_ARC] mode=%s hit cyc=%0d tlbp=%0d tlbr=%0d tlbwi=%0d tlbwr=%0d invasid=%0d invva=%0d",
+            mode, cyc,
+            dut_probes_if.tlbop_tlbp_fsm,
+            dut_probes_if.tlbop_tlbr_fsm,
+            dut_probes_if.tlbop_tlbwi_fsm,
+            dut_probes_if.tlbop_tlbwr_fsm,
+            dut_probes_if.tlbop_tlbiasid_fsm,
+            dut_probes_if.tlbiva_cur_st);
+          #1ps;
+          cpurst_b = 1'b0;
+          repeat (hold_cycles) @(posedge forever_cpuclk);
+          @(negedge forever_cpuclk);
+          cpurst_b = 1'b1;
+          dut_probes_if.tlbop_reset_inject_active = 1'b0;
+          dut_probes_if.tlbop_reset_inject_done = 1'b1;
+          $display("[TLBOP_RESET_ARC] mode=%s reset_release hold_cycles=%0d", mode, hold_cycles);
+          break;
+        end
+      end
+
+      if (!hit) begin
+        dut_probes_if.tlbop_reset_inject_active = 1'b0;
+        dut_probes_if.tlbop_reset_inject_done = 1'b1;
+        $fatal(1, "[TLBOP_RESET_ARC] timeout mode=%s timeout_cycles=%0d", mode, timeout_cycles);
+      end
+    end
+  end
+
   // cv_dv_utils shared library: elaborate xrtl_reset_vif, generic_if,
   // memory_response_if, axi_if (avoids UII-L when those sources are compiled)
   cv_dv_utils_unref_if_instances u_cv_dv_utils_unref_if (
@@ -346,9 +440,9 @@ module tb_top;
   assign dut_probes_if.l1d_refill_flg    = u_dut.u_mmu_l1dtlb.utlb_refill_flg;
   assign dut_probes_if.l1d_entry_upd     = u_dut.u_mmu_l1dtlb.entry_upd;
   assign dut_probes_if.l1d_refill_gnt_bus = u_dut.u_mmu_l1dtlb.refill_gnt_bus;
-  assign dut_probes_if.l1d_refill_iid0   = u_dut.u_mmu_l1dtlb.refill_id_flop0;
-  assign dut_probes_if.l1d_refill_iid1   = u_dut.u_mmu_l1dtlb.refill_id_flop1;
-  assign dut_probes_if.l1d_refill_iid_sel = u_dut.u_mmu_l1dtlb.refill_id_flop;
+  assign dut_probes_if.l1d_refill_iid0   = 7'b0;
+  assign dut_probes_if.l1d_refill_iid1   = 7'b0;
+  assign dut_probes_if.l1d_refill_iid_sel = 7'b0;
   assign dut_probes_if.l1d_p0_hit_vec    = u_dut.u_mmu_l1dtlb.entry_hit0;
   assign dut_probes_if.l1d_p0_hit_idx    = tb_l1d_p0_hit_idx;
   assign dut_probes_if.l1d_p0_hit_vpn    = tb_l1d_p0_hit_vpn;
@@ -379,6 +473,35 @@ module tb_top;
   assign dut_probes_if.l1d_l2_ref_flg    = u_dut.l2tlb_l1tlb_ref_flg;
   assign dut_probes_if.l1d_l2_ref_pgs    = u_dut.l2tlb_l1tlb_ref_pgs;
   assign dut_probes_if.l1d_l2_ref_pgflt  = u_dut.l2tlb_l1dtlb_pgflt;
+  assign dut_probes_if.l1d_miss0_vld_q      = u_dut.u_mmu_l1dtlb.miss0_vld_q;
+  assign dut_probes_if.l1d_miss1_vld_q      = u_dut.u_mmu_l1dtlb.miss1_vld_q;
+  assign dut_probes_if.l1d_miss0_abort_q    = u_dut.u_mmu_l1dtlb.miss0_abort_q;
+  assign dut_probes_if.l1d_miss1_abort_q    = u_dut.u_mmu_l1dtlb.miss1_abort_q;
+  assign dut_probes_if.l1d_miss0_vpn_q      = u_dut.u_mmu_l1dtlb.miss0_vpn_q;
+  assign dut_probes_if.l1d_miss1_vpn_q      = u_dut.u_mmu_l1dtlb.miss1_vpn_q;
+  assign dut_probes_if.l1d_miss0_iid_q      = u_dut.u_mmu_l1dtlb.miss0_iid_q;
+  assign dut_probes_if.l1d_miss1_iid_q      = u_dut.u_mmu_l1dtlb.miss1_iid_q;
+  assign dut_probes_if.l1d_miss0_store_q    = u_dut.u_mmu_l1dtlb.miss0_is_store;
+  assign dut_probes_if.l1d_miss1_store_q    = u_dut.u_mmu_l1dtlb.miss1_is_store;
+  assign dut_probes_if.l1d_alloc_req0_vld   = u_dut.u_mmu_l1dtlb.miss0_vld_q
+                                            && !u_dut.u_mmu_l1dtlb.miss0_abort_q
+                                            && !u_dut.u_mmu_l1dtlb.mb_hit0
+                                            && !misc_if_inst.rtu_yy_xx_flush;
+  assign dut_probes_if.l1d_alloc_req1_vld   = u_dut.u_mmu_l1dtlb.miss1_vld_q
+                                            && !u_dut.u_mmu_l1dtlb.miss1_abort_q
+                                            && !u_dut.u_mmu_l1dtlb.mb_hit1
+                                            && !u_dut.u_mmu_l1dtlb.same_4k_miss01
+                                            && !misc_if_inst.rtu_yy_xx_flush;
+  assign dut_probes_if.l1d_alloc_gnt0_raw   = u_dut.u_mmu_l1dtlb.alloc_gnt0;
+  assign dut_probes_if.l1d_alloc_gnt1_raw   = u_dut.u_mmu_l1dtlb.alloc_gnt1;
+  assign dut_probes_if.l1d_alloc_gnt0_safe  = u_dut.u_mmu_l1dtlb.alloc_gnt0_safe;
+  assign dut_probes_if.l1d_alloc_gnt1_safe  = u_dut.u_mmu_l1dtlb.alloc_gnt1_safe;
+  assign dut_probes_if.l1d_alloc_sel0       = u_dut.u_mmu_l1dtlb.alloc_sel0;
+  assign dut_probes_if.l1d_alloc_sel1       = u_dut.u_mmu_l1dtlb.alloc_sel1;
+  assign dut_probes_if.l1d_mb_alloc_we_raw  = u_dut.u_mmu_l1dtlb.mb_alloc_we;
+  assign dut_probes_if.l1d_mb_alloc_we_safe = u_dut.u_mmu_l1dtlb.mb_alloc_we_safe;
+  assign dut_probes_if.l1d_mb_issue_sel     = u_dut.u_mmu_l1dtlb.mb_issue_sel;
+  assign dut_probes_if.l1d_mb_issue_grant   = u_dut.u_mmu_l1dtlb.mb_issue_grant;
   assign dut_probes_if.l1d_install_req_ptw = u_dut.u_mmu_l1dtlb.x_install.req_ptw_vld;
   assign dut_probes_if.l1d_install_req_l2  = u_dut.u_mmu_l1dtlb.x_install.req_jtlb_vld;
   assign dut_probes_if.l1d_install_req_wfi = u_dut.u_mmu_l1dtlb.x_install.req_wfi_vld;

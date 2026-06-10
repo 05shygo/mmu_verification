@@ -29,6 +29,10 @@ typedef enum int {
   L1DTLB_SCN_STAMO,
   L1DTLB_SCN_FLUSH_RACE,
   L1DTLB_SCN_RESET_ONLY,
+  L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX,
+  L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX,
+  L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX,
+  L1DTLB_SCN_L2_REQQ_DEPTH,
   L1DTLB_SCN_GENERIC_AUDIT
 } l1dtlb_scn_e;
 
@@ -36,8 +40,13 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   `uvm_object_utils(l1dtlb_directed_vseq)
 
-  localparam logic [2:0] L1D_MB_STATE_WFC = 3'b010;
-  localparam logic [2:0] L1D_MB_STATE_ABT = 3'b101;
+  localparam logic [2:0] L1D_MB_STATE_IDLE  = 3'b000;
+  localparam logic [2:0] L1D_MB_STATE_WFG   = 3'b001;
+  localparam logic [2:0] L1D_MB_STATE_WFC   = 3'b010;
+  localparam logic [2:0] L1D_MB_STATE_PGFLT = 3'b011;
+  localparam logic [2:0] L1D_MB_STATE_ACFLT = 3'b100;
+  localparam logic [2:0] L1D_MB_STATE_ABT   = 3'b101;
+  localparam logic [2:0] L1D_MB_STATE_WFI   = 3'b110;
 
   string        tc_id;
   string        scenario_id;
@@ -274,16 +283,38 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         sid = "L1DTLB_TS_CTRL_RESET_STATE";
         intent = "post-reset L1DTLB visible state";
       end
+      "DTLB_L2_REQQ_DEPTH_001": begin
+        scn = L1DTLB_SCN_L2_REQQ_DEPTH;
+        sid = "L2TLB_TS_REQQ_DEPTH_QID";
+        intent = "L1 DTLB miss burst under INVASID arb block fills L2 REQQ depth and high queue ids";
+      end
       "DTLB_MB_STATE_SIGNAL_001",
+      "DTLB_MB_HIGH_ENTRY_MATRIX_001",
+      "DTLB_MB_ENTRY2_STATE_MATRIX_001",
+      "DTLB_HIT_RD_PERM_MODE_MATRIX_001",
       "DTLB_PLRU_001",
       "DTLB_PLRU_WHITEBOX_ONLY_001",
       "DTLB_RESP_NO_IID_T01_001",
       "DTLB_REF_MODEL_OBSERVABILITY_001",
       "DTLB_SYSMAP_001": begin
-        scn = L1DTLB_SCN_GENERIC_AUDIT;
-        sid = "L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY";
-        intent = "traceability shell/generic observability path";
-        shell = 1'b1;
+        if (id == "DTLB_MB_HIGH_ENTRY_MATRIX_001") begin
+          scn = L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX;
+          sid = "L1DTLB_TS_MB_HIGH_ENTRY_STATE_MATRIX";
+          intent = "high miss-buffer entries exercise WFG/ABT/PGFLT/ACFLT with checked DUT behavior";
+        end else if (id == "DTLB_MB_ENTRY2_STATE_MATRIX_001") begin
+          scn = L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX;
+          sid = "L1DTLB_TS_MB_ENTRY2_STATE_MATRIX";
+          intent = "entry2-focused WFG/WFC/ABT/PGFLT/ACFLT/WFI state closure";
+        end else if (id == "DTLB_HIT_RD_PERM_MODE_MATRIX_001") begin
+          scn = L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX;
+          sid = "L1DTLB_TS_HIT_RD_PERM_MODE_MATRIX";
+          intent = "hit_rd port condition/toggle matrix across hit, fault, mode, stamo and huge-page paths";
+        end else begin
+          scn = L1DTLB_SCN_GENERIC_AUDIT;
+          sid = "L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY";
+          intent = "traceability shell/generic observability path";
+          shell = 1'b1;
+        end
       end
       default: return 1'b0;
     endcase
@@ -292,6 +323,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
 
   protected function va_t va_page(int unsigned idx);
     return va_t'(m_va_base) + va_t'(idx << 12);
+  endfunction
+
+  protected function bit [27:0] pa_page(int unsigned idx);
+    ppn_t ppn;
+    ppn = m_leaf_ppn0 + ppn_t'(idx);
+    return ppn[27:0];
   endfunction
 
   protected function bit [63:0] canon_va(va_t va);
@@ -650,6 +687,542 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     disable fork;
   endtask
 
+  protected task wait_l1d_mb_occupancy_at_least(
+    string ctx,
+    int unsigned target_count,
+    output bit seen,
+    input int unsigned max_cycles = 2048,
+    input bit warn_on_timeout = 1'b1
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe MB occupancy"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if ($countones(m_probe_vif.mon_cb.l1d_mb_vld) >= target_count)
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for L1DTLB MB occupancy >= %0d, mb_vld=0x%02h",
+              ctx, target_count, m_probe_vif.mon_cb.l1d_mb_vld))
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task wait_l1d_high_mb_state(
+    string ctx,
+    logic [2:0] state,
+    output bit seen,
+    output int unsigned seen_idx,
+    input int unsigned max_cycles = 2048,
+    input bit warn_on_timeout = 1'b1
+  );
+    seen = 1'b0;
+    seen_idx = 0;
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe high MB state"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          for (int unsigned i = 3; i < 8; i++) begin
+            if (m_probe_vif.mon_cb.l1d_mb_vld[i]
+                && (m_probe_vif.mon_cb.l1d_mb_state[i] == state)) begin
+              seen = 1'b1;
+              seen_idx = i;
+            end
+          end
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for high L1DTLB MB state 0x%0h, mb_vld=0x%02h",
+              ctx, state, m_probe_vif.mon_cb.l1d_mb_vld))
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task wait_l1d_mb_entry_state(
+    string ctx,
+    int unsigned entry_idx,
+    logic [2:0] state,
+    output bit seen,
+    input int unsigned max_cycles = 2048,
+    input bit warn_on_timeout = 1'b1
+  );
+    seen = 1'b0;
+    if (entry_idx >= 8) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: invalid L1DTLB MB entry index %0d", ctx, entry_idx))
+      return;
+    end
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe MB state"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (m_probe_vif.mon_cb.l1d_mb_vld[entry_idx]
+              && (m_probe_vif.mon_cb.l1d_mb_state[entry_idx] == state))
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for L1DTLB MB entry[%0d] state 0x%0h, mb_vld=0x%02h",
+              ctx, entry_idx, state, m_probe_vif.mon_cb.l1d_mb_vld))
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task require_l1d_high_mb_state(
+    string ctx,
+    logic [2:0] state,
+    input int unsigned max_cycles = 2048
+  );
+    bit seen;
+    int unsigned seen_idx;
+    wait_l1d_high_mb_state(ctx, state, seen, seen_idx, max_cycles, 1'b1);
+    if (!seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: did not observe required high L1DTLB MB state 0x%0h", ctx, state))
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: observed high L1DTLB MB state 0x%0h at entry[%0d]",
+          ctx, state, seen_idx),
+        UVM_LOW)
+    end
+  endtask
+
+  protected task require_l1d_mb_entry_state(
+    string ctx,
+    int unsigned entry_idx,
+    logic [2:0] state,
+    input int unsigned max_cycles = 2048
+  );
+    bit seen;
+    wait_l1d_mb_entry_state(ctx, entry_idx, state, seen, max_cycles, 1'b1);
+    if (!seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: did not observe L1DTLB MB entry[%0d] state 0x%0h",
+          ctx, entry_idx, state))
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: observed L1DTLB MB entry[%0d] state 0x%0h",
+          ctx, entry_idx, state),
+        UVM_LOW)
+    end
+  endtask
+
+  protected task wait_l1d_mb_entry_transition(
+    string ctx,
+    int unsigned entry_idx,
+    logic [2:0] from_state,
+    logic [2:0] to_state,
+    output bit seen,
+    input int unsigned max_cycles = 2048,
+    input bit warn_on_timeout = 1'b1
+  );
+    bit prev_valid;
+    logic [2:0] prev_state;
+
+    seen = 1'b0;
+    prev_valid = 1'b0;
+    prev_state = '0;
+    if (entry_idx >= 8) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: invalid L1DTLB MB entry index %0d", ctx, entry_idx))
+      return;
+    end
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe MB transition"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          if (prev_valid
+              && (prev_state == from_state)
+              && (m_probe_vif.mon_cb.l1d_mb_state[entry_idx] == to_state))
+            seen = 1'b1;
+          prev_valid = m_probe_vif.mon_cb.l1d_mb_vld[entry_idx];
+          prev_state = m_probe_vif.mon_cb.l1d_mb_state[entry_idx];
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for L1DTLB MB entry[%0d] transition 0x%0h->0x%0h, %s",
+              ctx, entry_idx, from_state, to_state, l1d_mb_probe_snapshot()))
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected function string l1d_mb_probe_snapshot();
+    string snapshot;
+
+    if (m_probe_vif == null)
+      return "MMU_DUT_PROBES_VIF unavailable";
+
+    snapshot = $sformatf("mb_vld=0x%02h states={", m_probe_vif.mon_cb.l1d_mb_vld);
+    for (int unsigned i = 0; i < 8; i++) begin
+      snapshot = {snapshot,
+        $sformatf("%0d:0x%0h%s",
+          i, m_probe_vif.mon_cb.l1d_mb_state[i], (i == 7) ? "}" : ",")};
+    end
+    snapshot = {snapshot, " vpn={"};
+    for (int unsigned i = 0; i < 8; i++) begin
+      snapshot = {snapshot,
+        $sformatf("%0d:0x%0h%s",
+          i, m_probe_vif.mon_cb.l1d_mb_vpn[i], (i == 7) ? "}" : ",")};
+    end
+    snapshot = {snapshot, " iid={"};
+    for (int unsigned i = 0; i < 8; i++) begin
+      snapshot = {snapshot,
+        $sformatf("%0d:%0d%s",
+          i, m_probe_vif.mon_cb.l1d_mb_iid[i], (i == 7) ? "}" : ",")};
+    end
+    return snapshot;
+  endfunction
+
+  protected function string l1d_refill_probe_snapshot();
+    if (m_probe_vif == null)
+      return "MMU_DUT_PROBES_VIF unavailable";
+
+    return $sformatf(
+      {"ptw{cmplt=%0b pavld=%0b id=%0d pgflt=%0b acflt=%0b} ",
+       "l2{cmplt=%0b pavld=%0b eid=%0d pgflt=%0b} ",
+       "pde{acc_vld=%0b type=%0d id=0x%0h grant=%0b l2_acc_vec=0x%04h clear=%0b} ",
+       "install{req_wfi/ptw/l2=%0b/%0b/%0b sel_wfi/ptw/l2=%0b/%0b/%0b ",
+       "id_wfi/ptw/l2=%0d/%0d/%0d} refill{vld=%0b src=%0d idx=%0d gnt=0x%02h}"},
+      m_probe_vif.mon_cb.l1d_ptw_ref_cmplt,
+      m_probe_vif.mon_cb.l1d_ptw_ref_pavld,
+      m_probe_vif.mon_cb.l1d_ptw_ref_id,
+      m_probe_vif.mon_cb.l1d_ptw_ref_pgflt,
+      m_probe_vif.mon_cb.l1d_ptw_ref_acflt,
+      m_probe_vif.mon_cb.l1d_l2_ref_cmplt,
+      m_probe_vif.mon_cb.l1d_l2_ref_pavld,
+      m_probe_vif.mon_cb.l1d_l2_ref_eid,
+      m_probe_vif.mon_cb.l1d_l2_ref_pgflt,
+      m_probe_vif.mon_cb.pde_cache_acc_err_vld,
+      m_probe_vif.mon_cb.pde_cache_acc_err_type,
+      m_probe_vif.mon_cb.pde_cache_acc_err_id,
+      m_probe_vif.mon_cb.pde_cache_acc_err_grant,
+      m_probe_vif.mon_cb.pde_l2_entry_acc_err_vec,
+      m_probe_vif.mon_cb.pde_cache_clear,
+      m_probe_vif.mon_cb.l1d_install_req_wfi,
+      m_probe_vif.mon_cb.l1d_install_req_ptw,
+      m_probe_vif.mon_cb.l1d_install_req_l2,
+      m_probe_vif.mon_cb.l1d_install_sel_wfi,
+      m_probe_vif.mon_cb.l1d_install_sel_ptw,
+      m_probe_vif.mon_cb.l1d_install_sel_l2,
+      m_probe_vif.mon_cb.l1d_install_id_wfi,
+      m_probe_vif.mon_cb.l1d_install_id_ptw,
+      m_probe_vif.mon_cb.l1d_install_id_l2,
+      m_probe_vif.mon_cb.l1d_refill_vld,
+      m_probe_vif.mon_cb.l1d_refill_src,
+      m_probe_vif.mon_cb.l1d_refill_idx,
+      m_probe_vif.mon_cb.l1d_refill_gnt_bus);
+  endfunction
+
+  protected task wait_l1d_mb_entry_wfi_with_diag(
+    string ctx,
+    int unsigned entry_idx,
+    output bit seen,
+    input int unsigned max_cycles = 512,
+    input bit warn_on_timeout = 1'b1,
+    input bit error_on_timeout = 1'b0
+  );
+    logic [2:0] target_eid;
+    int unsigned target_l2_cmplt;
+    int unsigned target_l2_success_wfc;
+    int unsigned target_l2_no_gnt;
+    int unsigned target_l2_ptw_overlap;
+    int unsigned ptw_success_cmplt;
+    int unsigned install_ptw_sel;
+    int unsigned install_l2_sel;
+    int unsigned install_wfi_sel;
+    int unsigned target_gnt;
+    int unsigned target_wfi_cycles;
+
+    seen = 1'b0;
+    target_l2_cmplt = 0;
+    target_l2_success_wfc = 0;
+    target_l2_no_gnt = 0;
+    target_l2_ptw_overlap = 0;
+    ptw_success_cmplt = 0;
+    install_ptw_sel = 0;
+    install_l2_sel = 0;
+    install_wfi_sel = 0;
+    target_gnt = 0;
+    target_wfi_cycles = 0;
+
+    if (entry_idx >= 8) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: invalid L1DTLB MB entry index %0d", ctx, entry_idx))
+      return;
+    end
+
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe WFI diagnostics"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+
+    target_eid = entry_idx[2:0];
+
+    for (int unsigned cycle = 0; (cycle < max_cycles) && !seen; cycle++) begin
+      bit target_l2;
+      bit target_l2_success;
+
+      @(m_probe_vif.mon_cb);
+
+      target_l2 = m_probe_vif.mon_cb.l1d_l2_ref_cmplt
+               && (m_probe_vif.mon_cb.l1d_l2_ref_eid == target_eid);
+      target_l2_success = target_l2
+                       && m_probe_vif.mon_cb.l1d_l2_ref_pavld
+                       && !m_probe_vif.mon_cb.l1d_l2_ref_pgflt
+                       && m_probe_vif.mon_cb.l1d_mb_vld[entry_idx]
+                       && (m_probe_vif.mon_cb.l1d_mb_state[entry_idx] == L1D_MB_STATE_WFC);
+
+      if (target_l2)
+        target_l2_cmplt++;
+      if (target_l2_success)
+        target_l2_success_wfc++;
+      if (target_l2_success && !m_probe_vif.mon_cb.l1d_refill_gnt_bus[entry_idx])
+        target_l2_no_gnt++;
+      if (target_l2_success
+          && m_probe_vif.mon_cb.l1d_ptw_ref_cmplt
+          && m_probe_vif.mon_cb.l1d_ptw_ref_pavld
+          && !m_probe_vif.mon_cb.l1d_ptw_ref_pgflt
+          && !m_probe_vif.mon_cb.l1d_ptw_ref_acflt)
+        target_l2_ptw_overlap++;
+      if (m_probe_vif.mon_cb.l1d_ptw_ref_cmplt
+          && m_probe_vif.mon_cb.l1d_ptw_ref_pavld
+          && !m_probe_vif.mon_cb.l1d_ptw_ref_pgflt
+          && !m_probe_vif.mon_cb.l1d_ptw_ref_acflt)
+        ptw_success_cmplt++;
+      if (m_probe_vif.mon_cb.l1d_install_sel_ptw)
+        install_ptw_sel++;
+      if (m_probe_vif.mon_cb.l1d_install_sel_l2)
+        install_l2_sel++;
+      if (m_probe_vif.mon_cb.l1d_install_sel_wfi)
+        install_wfi_sel++;
+      if (m_probe_vif.mon_cb.l1d_refill_gnt_bus[entry_idx])
+        target_gnt++;
+      if (m_probe_vif.mon_cb.l1d_mb_vld[entry_idx]
+          && (m_probe_vif.mon_cb.l1d_mb_state[entry_idx] == L1D_MB_STATE_WFI)) begin
+        target_wfi_cycles++;
+        seen = 1'b1;
+      end
+    end
+
+    if (!seen && (warn_on_timeout || error_on_timeout)) begin
+      if (error_on_timeout) begin
+        `uvm_error(get_type_name(),
+          $sformatf("%s: no WFI on entry[%0d] after %0d cycles, l2_cmplt=%0d l2_success_wfc=%0d l2_no_gnt=%0d l2_ptw_overlap=%0d ptw_success=%0d sel_ptw/l2/wfi=%0d/%0d/%0d target_gnt=%0d target_wfi_cycles=%0d %s %s",
+            ctx, entry_idx, max_cycles, target_l2_cmplt, target_l2_success_wfc,
+            target_l2_no_gnt, target_l2_ptw_overlap, ptw_success_cmplt,
+            install_ptw_sel, install_l2_sel, install_wfi_sel, target_gnt,
+            target_wfi_cycles, l1d_refill_probe_snapshot(), l1d_mb_probe_snapshot()))
+      end else begin
+        `uvm_warning(get_type_name(),
+          $sformatf("%s: no WFI on entry[%0d] after %0d cycles, l2_cmplt=%0d l2_success_wfc=%0d l2_no_gnt=%0d l2_ptw_overlap=%0d ptw_success=%0d sel_ptw/l2/wfi=%0d/%0d/%0d target_gnt=%0d target_wfi_cycles=%0d %s %s",
+            ctx, entry_idx, max_cycles, target_l2_cmplt, target_l2_success_wfc,
+            target_l2_no_gnt, target_l2_ptw_overlap, ptw_success_cmplt,
+            install_ptw_sel, install_l2_sel, install_wfi_sel, target_gnt,
+            target_wfi_cycles, l1d_refill_probe_snapshot(), l1d_mb_probe_snapshot()))
+      end
+    end else if (seen) begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: observed WFI on entry[%0d], l2_cmplt=%0d l2_success_wfc=%0d l2_no_gnt=%0d l2_ptw_overlap=%0d ptw_success=%0d sel_ptw/l2/wfi=%0d/%0d/%0d target_gnt=%0d",
+          ctx, entry_idx, target_l2_cmplt, target_l2_success_wfc,
+          target_l2_no_gnt, target_l2_ptw_overlap, ptw_success_cmplt,
+          install_ptw_sel, install_l2_sel, install_wfi_sel, target_gnt),
+        UVM_LOW)
+    end
+  endtask
+
+  protected task wait_l1d_mb_low_slots_state_seen(
+    string ctx,
+    int unsigned count,
+    logic [2:0] state,
+    output bit seen,
+    output logic [7:0] seen_mask,
+    input int unsigned max_cycles = 4096,
+    input bit warn_on_timeout = 1'b1
+  );
+    logic [7:0] target_mask;
+
+    seen      = 1'b0;
+    seen_mask = '0;
+    target_mask = '0;
+
+    if (count == 0) begin
+      seen = 1'b1;
+      return;
+    end
+
+    if (count > 8) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: invalid L1DTLB MB low-slot count %0d", ctx, count))
+      return;
+    end
+
+    if (m_probe_vif == null) begin
+      if (warn_on_timeout)
+        `uvm_warning(get_type_name(),
+          {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot observe MB low-slot states"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+
+    for (int unsigned i = 0; i < count; i++)
+      target_mask[i] = 1'b1;
+
+    fork
+      begin
+        while (!seen) begin
+          @(m_probe_vif.mon_cb);
+          for (int unsigned i = 0; i < count; i++) begin
+            if (m_probe_vif.mon_cb.l1d_mb_vld[i]
+                && (m_probe_vif.mon_cb.l1d_mb_state[i] == state))
+              seen_mask[i] = 1'b1;
+          end
+          if ((seen_mask & target_mask) == target_mask)
+            seen = 1'b1;
+        end
+      end
+      begin
+        repeat (max_cycles) @(m_probe_vif.mon_cb);
+        if (!seen && warn_on_timeout)
+          `uvm_warning(get_type_name(),
+            $sformatf("%s: timed out waiting for low L1DTLB MB entries [0:%0d] to visit state 0x%0h, seen_mask=0x%02h target_mask=0x%02h %s",
+              ctx, count - 1, state, seen_mask, target_mask, l1d_mb_probe_snapshot()))
+      end
+    join_any
+    disable fork;
+  endtask
+
+  protected task prefill_l1d_mb_low_slots(
+    string ctx,
+    int unsigned count,
+    int unsigned page_base,
+    int unsigned iid_base
+  );
+    bit occ_seen;
+    bit wfc_seen;
+    logic [7:0] wfc_seen_mask;
+
+    if (count == 0)
+      return;
+
+    for (int unsigned i = 0; i < count; i++) begin
+      raw_pipe0(va_page(page_base + i),
+        7'((iid_base + i) % 96), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+
+    wait_l1d_mb_occupancy_at_least(ctx, count, occ_seen, 2048, 1'b1);
+    if (!occ_seen)
+      `uvm_error(get_type_name(),
+        $sformatf("%s: failed to prefill %0d L1DTLB MB entries", ctx, count))
+
+    wait_l1d_mb_low_slots_state_seen(
+      $sformatf("%s_low_entries_wfc", ctx),
+      count, L1D_MB_STATE_WFC, wfc_seen, wfc_seen_mask, 4096, 1'b1);
+    if (!wfc_seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: low entries did not all visit WFC, seen_mask=0x%02h %s",
+          ctx, wfc_seen_mask, l1d_mb_probe_snapshot()))
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: low entries [0:%0d] visited WFC, seen_mask=0x%02h",
+          ctx, count - 1, wfc_seen_mask),
+        UVM_LOW)
+    end
+  endtask
+
+  protected task prefill_l1d_mb_low_slots_pgflt(
+    string ctx,
+    int unsigned count,
+    int unsigned page_base,
+    int unsigned iid_base
+  );
+    bit occ_seen;
+    bit pgflt_seen;
+    logic [7:0] pgflt_seen_mask;
+
+    if (count == 0)
+      return;
+
+    for (int unsigned i = 0; i < count; i++) begin
+      map_special_page(page_base + i, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    end
+
+    configure_ptw_delay(4, 4);
+    for (int unsigned i = 0; i < count; i++) begin
+      raw_pipe0(va_page(page_base + i),
+        7'((iid_base + i) % 96), 1'b0, 1'b0);
+      wait_lsu_cycles(1);
+    end
+
+    wait_l1d_mb_occupancy_at_least(ctx, count, occ_seen, 2048, 1'b1);
+    if (!occ_seen)
+      `uvm_error(get_type_name(),
+        $sformatf("%s: failed to prefill %0d L1DTLB MB fault-holding entries", ctx, count))
+
+    wait_l1d_mb_low_slots_state_seen(
+      $sformatf("%s_low_entries_pgflt", ctx),
+      count, L1D_MB_STATE_PGFLT, pgflt_seen, pgflt_seen_mask, 4096, 1'b1);
+    if (!pgflt_seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: low entries did not all visit PGFLT, seen_mask=0x%02h %s",
+          ctx, pgflt_seen_mask, l1d_mb_probe_snapshot()))
+    end else begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: low entries [0:%0d] reached PGFLT hold, seen_mask=0x%02h",
+          ctx, count - 1, pgflt_seen_mask),
+        UVM_LOW)
+    end
+  endtask
+
+  protected task map_normal_page(int unsigned idx);
+    map_special_page(idx, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+  endtask
+
   protected task wait_l1d_inv_install_conflict(
     string ctx,
     output bit seen,
@@ -679,6 +1252,136 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     join
     if (!seen && warn_on_timeout)
       `uvm_warning(get_type_name(), {ctx, ": did not observe same-cycle invalidate/install conflict"})
+  endtask
+
+  protected function string l2_reqq_probe_snapshot();
+    if (m_probe_vif == null)
+      return "l2_reqq_probe=null";
+    return $sformatf(
+      "l2_reqq={vld:0x%03h rdy:0x%03h qid:%0d issue:%0b type:0x%0h} arb={l2_req:%0b tlbop_req:%0b tlbop_grant:%0b} l1={credit:%0d l2_req:%0b}",
+      m_probe_vif.mon_cb.l2_reqq_vld_vec,
+      m_probe_vif.mon_cb.l2_reqq_rdy_vec,
+      m_probe_vif.mon_cb.l2_reqq_qid,
+      m_probe_vif.mon_cb.l2_reqq_issue_valid,
+      m_probe_vif.mon_cb.l2_reqq_issue_type,
+      m_probe_vif.mon_cb.l2_arb_req,
+      m_probe_vif.mon_cb.tlbop_arb_req,
+      m_probe_vif.mon_cb.tlbop_arb_grant,
+      m_probe_vif.mon_cb.l1d_sched_credit_cnt,
+      m_probe_vif.mon_cb.l1d_l2_req_vld);
+  endfunction
+
+  protected task wait_tlbop_arb_activity(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 8192
+  );
+    seen = 1'b0;
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; using fixed wait for TLBOP arb activity"})
+      wait_lsu_cycles(128);
+      return;
+    end
+    for (int unsigned cyc = 0; (cyc < max_cycles) && !seen; cyc++) begin
+      @(m_probe_vif.mon_cb);
+      if (m_probe_vif.mon_cb.tlbop_arb_req || m_probe_vif.mon_cb.tlbop_arb_grant)
+        seen = 1'b1;
+    end
+    if (!seen)
+      `uvm_warning(get_type_name(),
+        $sformatf("%s: timed out waiting for TLBOP arb activity %s",
+          ctx, l2_reqq_probe_snapshot()))
+  endtask
+
+  protected task wait_l2_reqq_depth_and_qids(
+    string ctx,
+    input int unsigned target_depth,
+    input logic [8:0] target_qid_mask,
+    output bit closed,
+    input int unsigned max_cycles = 262144
+  );
+    int unsigned max_depth;
+    int unsigned issue_count;
+    logic [8:0] qid_seen_mask;
+
+    closed = 1'b0;
+    max_depth = 0;
+    issue_count = 0;
+    qid_seen_mask = 9'h000;
+    if (m_probe_vif == null) begin
+      `uvm_error(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable; cannot check L2 REQQ depth/qids"})
+      return;
+    end
+
+    for (int unsigned cyc = 0; (cyc < max_cycles) && !closed; cyc++) begin
+      int unsigned depth;
+      int unsigned qid;
+
+      @(m_probe_vif.mon_cb);
+      depth = $countones(m_probe_vif.mon_cb.l2_reqq_vld_vec);
+      qid = int'(m_probe_vif.mon_cb.l2_reqq_qid);
+      if (depth > max_depth)
+        max_depth = depth;
+      if (qid < 9)
+        qid_seen_mask[qid] = 1'b1;
+      if (m_probe_vif.mon_cb.l2_reqq_issue_valid)
+        issue_count++;
+      if ((max_depth >= target_depth)
+       && ((qid_seen_mask & target_qid_mask) == target_qid_mask))
+        closed = 1'b1;
+    end
+
+    `uvm_info(get_type_name(),
+      $sformatf("%s: L2 REQQ depth/qid observation closed=%0b max_depth=%0d qid_seen=0x%03h target_depth=%0d target_qid=0x%03h issue_count=%0d %s",
+        ctx, closed, max_depth, qid_seen_mask, target_depth, target_qid_mask,
+        issue_count, l2_reqq_probe_snapshot()),
+      UVM_LOW)
+    if (!closed)
+      `uvm_error(get_type_name(),
+        $sformatf("%s: failed to observe L2 REQQ target depth/qids max_depth=%0d qid_seen=0x%03h target_depth=%0d target_qid=0x%03h issue_count=%0d %s",
+          ctx, max_depth, qid_seen_mask, target_depth, target_qid_mask,
+          issue_count, l2_reqq_probe_snapshot()))
+  endtask
+
+  protected task wait_l1d_direct_l2_req(
+    string ctx,
+    output bit seen,
+    input int unsigned max_cycles = 4096
+  );
+    seen = 1'b0;
+    if ((m_probe_vif == null) || (m_lsu_vif == null)) begin
+      `uvm_warning(get_type_name(), {ctx, ": probe/lsu vif unavailable; cannot observe direct+l2_req condition"})
+      wait_lsu_cycles(max_cycles);
+      return;
+    end
+
+    for (int unsigned cyc = 0; (cyc < max_cycles) && !seen; cyc++) begin
+      bit p0_req;
+      bit p1_req;
+
+      @(m_probe_vif.mon_cb);
+      p0_req = m_lsu_vif.monitor_cb.lsu_mmu_va0_vld
+            && !m_lsu_vif.monitor_cb.lsu_mmu_abort0;
+      p1_req = m_lsu_vif.monitor_cb.lsu_mmu_va1_vld
+            && !m_lsu_vif.monitor_cb.lsu_mmu_abort1;
+      if ((m_lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0)
+          && (p0_req || p1_req)
+          && (m_probe_vif.mon_cb.l1d_l2_req_vld
+              || (m_probe_vif.mon_cb.l1d_mb_vld != 8'h00)
+              || m_probe_vif.mon_cb.l1d_refill_vld))
+        seen = 1'b1;
+    end
+
+    if (seen) begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: observed MMU-off LSU request overlapping L1D internal activity %s",
+          ctx, l2_reqq_probe_snapshot()),
+        UVM_LOW)
+    end else begin
+      `uvm_warning(get_type_name(),
+        $sformatf("%s: did not observe MMU-off LSU request overlapping L1D internal activity %s",
+          ctx, l2_reqq_probe_snapshot()))
+    end
   endtask
 
   protected task wait_l1d_tlboper_clr(
@@ -852,9 +1555,44 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     end
   endtask
 
+  protected task reset_ptw_responder_controls(int unsigned min_delay = 1, int unsigned max_delay = 4);
+    if ((m_env_h != null) && (m_env_h.m_ptw_mem != null) && (m_env_h.m_ptw_mem.m_responder != null)) begin
+      m_env_h.m_ptw_mem.m_responder.clear_directed_controls();
+      m_env_h.m_ptw_mem.m_responder.set_delay_range(min_delay, max_delay);
+    end
+  endtask
+
   protected task force_ptw_bus_error_by_count(int unsigned accept_count, bit enable = 1'b1);
     if ((m_env_h != null) && (m_env_h.m_ptw_mem != null) && (m_env_h.m_ptw_mem.m_responder != null))
       m_env_h.m_ptw_mem.m_responder.set_bus_error_for_count(accept_count, enable);
+  endtask
+
+  protected task force_ptw_bus_error_for_leaf_pte(
+    string ctx,
+    int unsigned page_idx,
+    bit enable = 1'b1
+  );
+    pa_t pte_addr;
+    bit got_addr;
+
+    got_addr = 1'b0;
+    pte_addr = '0;
+    if ((m_env_h != null) && (m_env_h.m_pt_mem != null) && (m_env_h.m_pt_mem.m_builder != null))
+      got_addr = m_env_h.m_pt_mem.m_builder.get_pte_addr_for_level(va_page(page_idx), 0, pte_addr);
+
+    if (!got_addr) begin
+      `uvm_error(get_type_name(),
+        $sformatf("%s: cannot resolve leaf PTE address for VA page %0d", ctx, page_idx))
+      return;
+    end
+
+    if ((m_env_h != null) && (m_env_h.m_ptw_mem != null) && (m_env_h.m_ptw_mem.m_responder != null)) begin
+      m_env_h.m_ptw_mem.m_responder.set_bus_error_for_addr(pte_addr, enable);
+      `uvm_info(get_type_name(),
+        $sformatf("%s: PTW leaf-PTE bus-error %s for page %0d pte_addr=0x%010h",
+          ctx, enable ? "enabled" : "disabled", page_idx, pte_addr),
+        UVM_LOW)
+    end
   endtask
 
   protected task force_ptw_delay_by_count(int unsigned accept_count, int unsigned delay);
@@ -1207,6 +1945,89 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_lsu_vif.driver_cb.lsu_mmu_abort1 <= 1'b0;
   endtask
 
+  protected task raw_pipe01_contiguous_burst(
+    int unsigned base_idx,
+    int unsigned num_pairs,
+    bit [6:0] iid_base = 7'd24
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    for (int unsigned pair = 0; pair < num_pairs; pair++) begin
+      va_t va0;
+      va_t va1;
+
+      va0 = va_page(base_idx + (pair * 2));
+      va1 = va_page(base_idx + (pair * 2) + 1);
+      m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+      m_lsu_vif.driver_cb.lsu_mmu_va0      <= canon_va(va0);
+      m_lsu_vif.driver_cb.lsu_mmu_id0      <= 7'(iid_base + pair[6:0] * 2);
+      m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= pair[0];
+      m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
+      m_lsu_vif.driver_cb.lsu_mmu_vabuf0   <= vabuf_for(va0);
+      m_lsu_vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
+      m_lsu_vif.driver_cb.lsu_mmu_va1      <= canon_va(va1);
+      m_lsu_vif.driver_cb.lsu_mmu_id1      <= 7'(iid_base + pair[6:0] * 2 + 1);
+      m_lsu_vif.driver_cb.lsu_mmu_st_inst1 <= ~pair[0];
+      m_lsu_vif.driver_cb.lsu_mmu_abort1   <= 1'b0;
+      m_lsu_vif.driver_cb.lsu_mmu_vabuf1   <= vabuf_for(va1);
+      @(m_lsu_vif.driver_cb);
+    end
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0 <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1 <= 1'b0;
+  endtask
+
+  protected task raw_pipe01_two_cycles(
+    va_t va0_a,
+    va_t va1_a,
+    va_t va0_b,
+    va_t va1_b,
+    bit [6:0] iid0_a,
+    bit [6:0] iid1_a,
+    bit [6:0] iid0_b,
+    bit [6:0] iid1_b,
+    bit st0_a = 1'b0,
+    bit st1_a = 1'b0,
+    bit st0_b = 1'b0,
+    bit st1_b = 1'b0
+  );
+    raw_idle();
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va0      <= canon_va(va0_a);
+    m_lsu_vif.driver_cb.lsu_mmu_id0      <= iid0_a;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= st0_a;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf0   <= vabuf_for(va0_a);
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va1      <= canon_va(va1_a);
+    m_lsu_vif.driver_cb.lsu_mmu_id1      <= iid1_a;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst1 <= st1_a;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf1   <= vabuf_for(va1_a);
+
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va0      <= canon_va(va0_b);
+    m_lsu_vif.driver_cb.lsu_mmu_id0      <= iid0_b;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst0 <= st0_b;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf0   <= vabuf_for(va0_b);
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld  <= 1'b1;
+    m_lsu_vif.driver_cb.lsu_mmu_va1      <= canon_va(va1_b);
+    m_lsu_vif.driver_cb.lsu_mmu_id1      <= iid1_b;
+    m_lsu_vif.driver_cb.lsu_mmu_st_inst1 <= st1_b;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1   <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_vabuf1   <= vabuf_for(va1_b);
+
+    @(m_lsu_vif.driver_cb);
+    m_lsu_vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_va1_vld <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort0 <= 1'b0;
+    m_lsu_vif.driver_cb.lsu_mmu_abort1 <= 1'b0;
+  endtask
+
   protected task raw_pipe0_with_inv(
     va_t va,
     bit [6:0] iid,
@@ -1360,6 +2181,18 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     @(m_misc_vif.driver_cb);
     m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
     wait_lsu_cycles(4);
+  endtask
+
+  protected task raw_rtu_flush_after_cycles(int unsigned delay_cycles);
+    if (m_misc_vif == null) begin
+      wait_lsu_cycles(delay_cycles);
+      send_rtu_flush();
+      return;
+    end
+    repeat (delay_cycles) @(m_misc_vif.driver_cb);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+    @(m_misc_vif.driver_cb);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
   endtask
 
   protected task scenario_smoke_p0();
@@ -1565,6 +2398,9 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
   endtask
 
   protected task scenario_direct_map();
+    bit direct_l2_seen;
+    bit overlap_occ_seen;
+
     do_bringup(16, 39'h10_0000);
     fill_page(0);
     set_satp_mode(1'b0);
@@ -1580,6 +2416,30 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     set_mprv_mpp(1'b0, 2'b11);
     set_priv(2'b01);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_direct_map", 262144, 8);
+
+    do_bringup(256, 39'h10_0000);
+    configure_ptw_delay(96, 192);
+    raw_inv_pulse(INV_ASID_ALL, va_page(0), m_asid, 1'b0, 1'b1);
+    raw_pipe01_contiguous_burst(132, 4, 7'd40);
+    wait_l1d_mb_occupancy_at_least("l1dtlb_direct_map_overlap_prefill",
+                                   2, overlap_occ_seen, 8192, 1'b1);
+    set_priv(2'b11);
+    fork
+      begin
+        wait_l1d_direct_l2_req("l1dtlb_direct_map_mmu_off_l2_overlap",
+                               direct_l2_seen, 4096);
+      end
+      begin
+        for (int unsigned i = 0; i < 16; i++) begin
+          raw_pipe0(va_page(4 + (i % 8)), 7'((7'd64 + i[6:0]) % 96), 1'b0);
+          wait_lsu_cycles(1);
+        end
+      end
+    join
+    set_priv(2'b01);
+    raw_inv(INV_ALL);
+    reset_ptw_responder_controls(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_direct_map_overlap", 524288, 16);
   endtask
 
   protected task scenario_invalidate();
@@ -2085,21 +2945,46 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     fill_page(0);
     fill_page(1, 1'b1, 1'b1);
     if (tc_id == "DTLB_STAMO_PIPE1_BYPASS_001") begin
-      raw_pipe1_with_stamo(va_page(1), 7'd2, 28'h12345);
+      raw_pipe1_with_stamo(va_page(1), 7'd2, pa_page(1));
       wait_lsu_cycles(24);
       fill_page(2, 1'b1, 1'b1);
-      raw_pipe1_with_stamo(va_page(2), 7'd3, 28'h23456);
+      raw_pipe1_with_stamo(va_page(2), 7'd3, pa_page(2));
     end else if (tc_id == "DTLB_STAMO_PIPE0_NEG_001") begin
-      raw_pipe0_with_stamo_negative(va_page(0), 7'd4, 28'h34567);
+      raw_pipe0_with_stamo_negative(va_page(0), 7'd4, pa_page(0) ^ 28'h1);
       wait_lsu_cycles(24);
       raw_pipe01(va_page(0), va_page(1), 7'd5, 7'd6, 1'b0, 1'b1);
     end else begin
-      raw_stamo(28'h12345);
+      raw_stamo(pa_page(0));
       raw_pipe01(va_page(0), va_page(1), 7'd1, 7'd2, 1'b0, 1'b1);
       wait_lsu_cycles(30);
-      raw_pipe1_with_stamo(va_page(2), 7'd3, 28'h23456);
+      fill_page(2, 1'b1, 1'b1);
+      raw_pipe1_with_stamo(va_page(2), 7'd3, pa_page(2));
+      wait_lsu_cycles(12);
+      raw_pipe0_with_stamo_negative(va_page(0), 7'd4, pa_page(0) ^ 28'h1);
     end
     m_env_h.wait_for_quiescent_midtest("l1dtlb_stamo", 262144, 8);
+  endtask
+
+  protected task scenario_one_free_dual_diff_cov();
+    bit occ_seen;
+    bit mb_empty;
+
+    do_bringup(256, 39'h10_0000);
+    configure_ptw_delay(512, 512);
+    for (int unsigned i = 0; i < 7; i++) begin
+      raw_pipe0(va_page(112 + i), 7'((7'd24 + i[6:0]) % 96), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    wait_l1d_mb_occupancy_at_least("l1dtlb_one_free_prefill7", 7, occ_seen, 8192, 1'b1);
+    if (occ_seen) begin
+      raw_pipe01(va_page(120), va_page(121), 7'd52, 7'd53, 1'b0, 1'b1);
+      wait_lsu_cycles(32);
+    end
+    reset_ptw_responder_controls(1, 4);
+    wait_l1d_mb_empty("l1dtlb_one_free_dual_diff_drain", mb_empty, 16384);
+    if (!mb_empty)
+      raw_rtu_flush();
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_one_free_dual_diff", 524288, 16);
   endtask
 
   protected task scenario_flush_race();
@@ -2130,6 +3015,576 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     configure_ptw_delay(1, 4);
   endtask
 
+  protected task recover_l1d_high_matrix_phase(string ctx);
+    bit mb_empty;
+    bit fast_recover;
+    int unsigned empty_cycles;
+    int unsigned flush_empty_cycles;
+    int unsigned quiesce_cycles;
+    int unsigned stable_cycles;
+
+    fast_recover = $test$plusargs("L1DTLB_HIGH_MATRIX_FAST_RECOVER")
+                || $test$plusargs("L1DTLB_WFG_RACE_ONLY");
+    empty_cycles = fast_recover ? 1024 : 8192;
+    flush_empty_cycles = fast_recover ? 1024 : 4096;
+    quiesce_cycles = fast_recover ? 4096 : 1048576;
+    stable_cycles = fast_recover ? 8 : 16;
+    configure_ptw_delay(1, 4);
+    wait_l1d_mb_empty({ctx, "_mb_empty"}, mb_empty, empty_cycles);
+    if (!mb_empty) begin
+      raw_rtu_flush();
+      wait_l1d_mb_empty({ctx, "_flush_empty"}, mb_empty, flush_empty_cycles);
+    end
+    m_env_h.wait_for_quiescent_midtest({ctx, "_quiescent"}, quiesce_cycles, stable_cycles);
+    raw_inv(INV_ALL);
+    m_env_h.wait_for_quiescent_midtest({ctx, "_post_inv_quiescent"}, quiesce_cycles, stable_cycles);
+    reset_ptw_responder_controls(1, 4);
+    wait_lsu_cycles(16);
+  endtask
+
+  protected task try_l1d_wfg_flush_with_grant(
+    string ctx,
+    int unsigned entry_idx,
+    int unsigned page_base,
+    int unsigned flush_delay,
+    output bit hit
+  );
+    bit occ_seen;
+    bit trans_seen;
+    int unsigned prefill_count;
+
+    hit = 1'b0;
+    if (entry_idx == 0) begin
+      `uvm_info(get_type_name(),
+        {ctx, ": entry[0] WFG with-grant is not attempted because bypass normally grants the oldest empty allocation"},
+        UVM_LOW)
+      return;
+    end
+
+    recover_l1d_high_matrix_phase({ctx, "_pre"});
+    prefill_count = entry_idx - 1;
+    for (int unsigned i = 0; i <= entry_idx; i++)
+      map_normal_page(page_base + i);
+
+    configure_ptw_delay(512, 512);
+    for (int unsigned i = 0; i < prefill_count; i++) begin
+      raw_pipe0(va_page(page_base + i), 7'(7'd12 + i[6:0]), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    wait_l1d_mb_occupancy_at_least(
+      {ctx, "_prefill"},
+      prefill_count, occ_seen, 1024, 1'b0);
+
+    trans_seen = 1'b0;
+    fork
+      wait_l1d_mb_entry_transition(
+        {ctx, "_wfg_to_abt"},
+        entry_idx, L1D_MB_STATE_WFG, L1D_MB_STATE_ABT,
+        trans_seen, 256, 1'b0);
+      begin
+        fork
+          raw_rtu_flush_after_cycles(flush_delay);
+          raw_pipe01(
+            va_page(page_base + prefill_count),
+            va_page(page_base + prefill_count + 1),
+            7'(7'd40 + entry_idx[6:0]),
+            7'(7'd48 + entry_idx[6:0]),
+            1'b0, 1'b1);
+        join
+        wait_lsu_cycles(48);
+      end
+    join
+
+    hit = trans_seen;
+    if (hit)
+      `uvm_info(get_type_name(),
+        $sformatf("%s: observed entry[%0d] WFG->ABT with flush_delay=%0d",
+          ctx, entry_idx, flush_delay),
+        UVM_LOW)
+    recover_l1d_high_matrix_phase({ctx, "_post"});
+  endtask
+
+  protected task try_l1d_wfg_flush_no_grant(
+    string ctx,
+    int unsigned entry_idx,
+    int unsigned page_base,
+    int unsigned flush_delay,
+    output bit hit
+  );
+    bit occ_seen;
+    bit trans_seen;
+    int unsigned prefill_count;
+
+    hit = 1'b0;
+    if (entry_idx < 3) begin
+      `uvm_info(get_type_name(),
+        $sformatf("%s: entry[%0d] WFG no-grant is not attempted; it needs a lower WFG entry to hold scheduler priority",
+          ctx, entry_idx),
+        UVM_LOW)
+      return;
+    end
+
+    recover_l1d_high_matrix_phase({ctx, "_pre"});
+    prefill_count = entry_idx - 3;
+    for (int unsigned i = 0; i <= entry_idx; i++)
+      map_normal_page(page_base + i);
+
+    configure_ptw_delay(512, 512);
+    for (int unsigned i = 0; i < prefill_count; i++) begin
+      raw_pipe0(va_page(page_base + i), 7'(7'd20 + i[6:0]), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    wait_l1d_mb_occupancy_at_least(
+      {ctx, "_prefill"},
+      prefill_count, occ_seen, 1024, 1'b0);
+
+    trans_seen = 1'b0;
+    fork
+      wait_l1d_mb_entry_transition(
+        {ctx, "_wfg_to_idle"},
+        entry_idx, L1D_MB_STATE_WFG, L1D_MB_STATE_IDLE,
+        trans_seen, 256, 1'b0);
+      begin
+        fork
+          raw_rtu_flush_after_cycles(flush_delay);
+          raw_pipe01_two_cycles(
+            va_page(page_base + prefill_count),
+            va_page(page_base + prefill_count + 1),
+            va_page(page_base + prefill_count + 2),
+            va_page(page_base + prefill_count + 3),
+            7'(7'd56 + entry_idx[6:0]),
+            7'(7'd64 + entry_idx[6:0]),
+            7'(7'd72 + entry_idx[6:0]),
+            7'(7'd80 + entry_idx[6:0]),
+            1'b0, 1'b1, 1'b0, 1'b1);
+        join
+        wait_lsu_cycles(48);
+      end
+    join
+
+    hit = trans_seen;
+    if (hit)
+      `uvm_info(get_type_name(),
+        $sformatf("%s: observed entry[%0d] WFG->IDLE with flush_delay=%0d",
+          ctx, entry_idx, flush_delay),
+        UVM_LOW)
+    recover_l1d_high_matrix_phase({ctx, "_post"});
+  endtask
+
+  protected task run_l1d_high_matrix_wfg_race_probe();
+    for (int unsigned wfg_abt_entry = 1; wfg_abt_entry < 8; wfg_abt_entry++) begin
+      bit done;
+      done = 1'b0;
+      for (int unsigned flush_delay = 0; (flush_delay < 8) && !done; flush_delay++) begin
+        bit hit;
+        try_l1d_wfg_flush_with_grant(
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfg_abt_delay%0d",
+            wfg_abt_entry, flush_delay),
+          wfg_abt_entry,
+          7000 + (wfg_abt_entry * 32) + (flush_delay * 4),
+          flush_delay,
+          hit);
+        if (hit)
+          done = 1'b1;
+      end
+      if (!done)
+        `uvm_info(get_type_name(),
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfg_abt: no calibrated hit in delay scan",
+            wfg_abt_entry),
+          UVM_LOW)
+    end
+
+    for (int unsigned wfg_idle_entry = 3; wfg_idle_entry < 8; wfg_idle_entry++) begin
+      bit done;
+      done = 1'b0;
+      for (int unsigned flush_delay = 0; (flush_delay < 8) && !done; flush_delay++) begin
+        bit hit;
+        try_l1d_wfg_flush_no_grant(
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfg_idle_delay%0d",
+            wfg_idle_entry, flush_delay),
+          wfg_idle_entry,
+          8000 + (wfg_idle_entry * 32) + (flush_delay * 4),
+          flush_delay,
+          hit);
+        if (hit)
+          done = 1'b1;
+      end
+      if (!done)
+        `uvm_info(get_type_name(),
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfg_idle: no calibrated hit in delay scan",
+            wfg_idle_entry),
+          UVM_LOW)
+    end
+  endtask
+
+  protected task scenario_mb_high_entry_matrix();
+    bit occ_seen;
+    bit target_seen;
+    bit wfg_race_probe;
+    bit wfg_race_only;
+    bit skip_wfi_phase;
+    int unsigned phase_base;
+    int unsigned target_idx;
+
+    reset_ptw_responder_controls(1, 4);
+    do_bringup(512, 39'h10_0000);
+    wfg_race_probe = $test$plusargs("L1DTLB_WFG_RACE_PROBE");
+    wfg_race_only = $test$plusargs("L1DTLB_WFG_RACE_ONLY");
+    skip_wfi_phase = $test$plusargs("L1DTLB_HIGH_MATRIX_SKIP_WFI");
+
+    if (wfg_race_only) begin
+      `uvm_info(get_type_name(),
+        "running L1DTLB high-entry WFG race probe only; default full matrix is unchanged",
+        UVM_LOW)
+      run_l1d_high_matrix_wfg_race_probe();
+      return;
+    end
+
+    // Phase A: all eight entries become WFC, then a real RTU flush moves high
+    // entries through ABT and late-refill cleanup.
+    configure_ptw_delay(512, 512);
+    for (int unsigned i = 0; i < 8; i++) begin
+      raw_pipe0(va_page(96 + i), 7'(7'd8 + i[6:0]), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    wait_l1d_mb_occupancy_at_least("l1dtlb_high_matrix_fill8", 8, occ_seen, 2048, 1'b1);
+    if (!occ_seen)
+      `uvm_error(get_type_name(), "high-entry matrix failed to fill all eight L1DTLB MB entries")
+    raw_rtu_flush();
+    require_l1d_high_mb_state("l1dtlb_high_matrix_abt", L1D_MB_STATE_ABT, 1024);
+    recover_l1d_high_matrix_phase("l1dtlb_high_matrix_abt");
+
+    // Phase B: for each high slot, keep the preceding entries resident and
+    // issue a same-cycle dual miss.  The scheduler bypasses only one allocate,
+    // so the second allocate must enter WFG at the target entry.
+    for (int unsigned prefill = 2; prefill <= 6; prefill++) begin
+      phase_base = 112 + ((prefill - 2) * 8);
+      target_idx = prefill + 1;
+      configure_ptw_delay(512, 512);
+      for (int unsigned i = 0; i < prefill; i++) begin
+        raw_pipe0(va_page(phase_base + i), 7'(7'd24 + i[6:0] + prefill[6:0]), i[0], 1'b0);
+        wait_lsu_cycles(1);
+      end
+      wait_l1d_mb_occupancy_at_least(
+        $sformatf("l1dtlb_high_matrix_prefill%0d", prefill),
+        prefill, occ_seen, 2048, 1'b1);
+      if (!occ_seen)
+        `uvm_error(get_type_name(),
+          $sformatf("high-entry matrix failed to prefill %0d L1DTLB MB entries", prefill))
+      raw_pipe01(va_page(phase_base + prefill),
+                 va_page(phase_base + prefill + 1),
+                 7'(7'd50 + prefill[6:0]),
+                 7'(7'd60 + prefill[6:0]),
+                 1'b0, 1'b1);
+      wait_l1d_mb_entry_state(
+        $sformatf("l1dtlb_high_matrix_entry%0d_wfg", target_idx),
+        target_idx, L1D_MB_STATE_WFG, target_seen, 256, 1'b1);
+      if (!target_seen)
+        `uvm_error(get_type_name(),
+          $sformatf("high-entry matrix did not observe entry[%0d] in WFG after dual-tail miss", target_idx))
+      raw_rtu_flush();
+      recover_l1d_high_matrix_phase($sformatf("l1dtlb_high_matrix_entry%0d_wfg", target_idx));
+    end
+
+    // Phase B2: scan RTU flush phase against real WFG cycles.  This probe is
+    // opt-in because current refactored RTL can generate same-cycle L2 side
+    // effects under flush; keep the default high-entry closure regression
+    // strictly passing while preserving the failing reproducer for DUT review.
+    if (wfg_race_probe) begin
+      run_l1d_high_matrix_wfg_race_probe();
+    end else begin
+      `uvm_info(get_type_name(),
+        "skipping L1DTLB WFG race probe; enable +L1DTLB_WFG_RACE_PROBE for DUT/refactor issue reproduction",
+        UVM_LOW)
+    end
+
+    // Phase C: first occupy low slots, then allocate page-faulting leaves into
+    // high entries and replay the fault to prove exception state cleanup.
+    for (int unsigned i = 0; i < 5; i++)
+      map_special_page(184 + i, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    configure_ptw_delay(32, 32);
+    for (int unsigned i = 0; i < 3; i++) begin
+      raw_pipe0(va_page(176 + i), 7'(7'd70 + i[6:0]), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    for (int unsigned i = 0; i < 5; i++) begin
+      raw_pipe0(va_page(184 + i), 7'(7'd80 + i[6:0]), 1'b0, 1'b0);
+      wait_lsu_cycles(1);
+    end
+    require_l1d_high_mb_state("l1dtlb_high_matrix_pgflt", L1D_MB_STATE_PGFLT, 4096);
+    for (int unsigned i = 0; i < 5; i++) begin
+      raw_pipe0(va_page(184 + i), 7'(7'd80 + i[6:0]), 1'b0, 1'b0);
+      wait_lsu_cycles(2);
+    end
+    recover_l1d_high_matrix_phase("l1dtlb_high_matrix_pgflt");
+
+    // Phase D: repeat the high-entry shape with PTW bus errors so ACFLT state
+    // is exercised through the same checked exception replay path.
+    configure_ptw_delay(24, 24, 1000);
+    for (int unsigned i = 0; i < 3; i++) begin
+      raw_pipe0(va_page(200 + i), 7'(7'd96 + i[6:0]), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    for (int unsigned i = 0; i < 5; i++) begin
+      raw_pipe0(va_page(208 + i), 7'(7'd104 + i[6:0]), i[0], 1'b0);
+      wait_lsu_cycles(1);
+    end
+    require_l1d_high_mb_state("l1dtlb_high_matrix_acflt", L1D_MB_STATE_ACFLT, 4096);
+    for (int unsigned i = 0; i < 5; i++) begin
+      raw_pipe0(va_page(208 + i), 7'(7'd104 + i[6:0]), i[0], 1'b0);
+      wait_lsu_cycles(2);
+    end
+    configure_ptw_delay(1, 4);
+    recover_l1d_high_matrix_phase("l1dtlb_high_matrix_acflt");
+
+    // Phase E: target the still-missing entry[2] PGFLT structural bins with a
+    // real page-faulting walk while low entries hold normal WFC requests.
+    map_special_page(216, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    configure_ptw_delay(256, 256);
+    prefill_l1d_mb_low_slots("l1dtlb_high_matrix_entry2_pgflt_prefill", 2, 220, 7'd20);
+    raw_pipe0(va_page(216), 7'd88, 1'b0, 1'b0);
+    require_l1d_mb_entry_state("l1dtlb_high_matrix_entry2_pgflt",
+      2, L1D_MB_STATE_PGFLT, 8192);
+    raw_pipe0(va_page(216), 7'd88, 1'b0, 1'b0);
+    wait_lsu_cycles(8);
+    recover_l1d_high_matrix_phase("l1dtlb_high_matrix_entry2_pgflt");
+
+    // Phase F: force ACFLT into high entries [5..7] one at a time using a
+    // target leaf-PTE bus-error.  A global bus-error rate is intentionally not
+    // used here because low-slot walks may still be accepted after prefill.
+    for (int unsigned ac_entry = 5; ac_entry < 8; ac_entry++) begin
+      int unsigned target_page;
+      target_page = 240 + ac_entry;
+      configure_ptw_delay(256, 256);
+      prefill_l1d_mb_low_slots(
+        $sformatf("l1dtlb_high_matrix_entry%0d_acflt_prefill", ac_entry),
+        ac_entry, 248 + (ac_entry * 8), 7'd32 + ac_entry[6:0]);
+      configure_ptw_delay(32, 32);
+      force_ptw_bus_error_for_leaf_pte(
+        $sformatf("l1dtlb_high_matrix_entry%0d_acflt", ac_entry),
+        target_page, 1'b1);
+      raw_pipe0(va_page(target_page), 7'(7'd96 + ac_entry[6:0]), ac_entry[0], 1'b0);
+      require_l1d_mb_entry_state(
+        $sformatf("l1dtlb_high_matrix_entry%0d_acflt", ac_entry),
+        ac_entry, L1D_MB_STATE_ACFLT, 8192);
+      force_ptw_bus_error_for_leaf_pte(
+        $sformatf("l1dtlb_high_matrix_entry%0d_acflt", ac_entry),
+        target_page, 1'b0);
+      raw_pipe0(va_page(target_page), 7'(7'd96 + ac_entry[6:0]), ac_entry[0], 1'b0);
+      wait_lsu_cycles(8);
+      configure_ptw_delay(1, 4);
+      recover_l1d_high_matrix_phase(
+        $sformatf("l1dtlb_high_matrix_entry%0d_acflt", ac_entry));
+    end
+
+    // Phase G: create targeted PTW/L2 refill collisions so entries [2..7] lose
+    // install arbitration and wait in WFI before the normal WFI install path
+    // drains them.  Low entries are held in completed PGFLT state, not WFC, so
+    // they occupy allocator indices without consuming PTW service during the
+    // actual PTW/L2 collision window.
+    if (skip_wfi_phase) begin
+      `uvm_info(get_type_name(),
+        "skipping L1DTLB high-entry WFI collision phase by +L1DTLB_HIGH_MATRIX_SKIP_WFI",
+        UVM_LOW)
+      return;
+    end
+    for (int unsigned wfi_entry = 2; wfi_entry < 8; wfi_entry++) begin
+      bit wfi_done;
+      wfi_done = 1'b0;
+
+      for (int unsigned trial = 0; (trial < 96) && !wfi_done; trial++) begin
+        int unsigned low_page_base;
+        int unsigned ptw_page;
+        int unsigned l2_page;
+        bit wfi_seen;
+        bit wfi_emit_diag;
+
+        recover_l1d_high_matrix_phase(
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfi_trial%0d_pre",
+            wfi_entry, trial));
+
+        low_page_base = 2048 + (wfi_entry * 128) + (trial * 8);
+        ptw_page      = 4096 + (wfi_entry * 128) + trial;
+        l2_page       = 6144 + (wfi_entry * 128) + trial;
+
+        prefill_l1d_mb_low_slots_pgflt(
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfi_prefill%0d",
+            wfi_entry, trial),
+          wfi_entry - 1, low_page_base, 7'd48 + wfi_entry[6:0]);
+
+        map_normal_page(ptw_page);
+        map_normal_page(l2_page);
+        cp0_tlbwr_entry(va_page(l2_page),
+          ppn_t'(m_leaf_ppn0 + ppn_t'(l2_page + 16)),
+          ((va_page(l2_page) >> 12) & 'hff), 1'b1, 1'b1);
+
+        configure_ptw_delay(12, 12);
+        raw_pipe0(va_page(ptw_page), 7'(7'd64 + wfi_entry[6:0]), 1'b0, 1'b0);
+        wait_lsu_cycles(trial);
+        raw_pipe0(va_page(l2_page), 7'(7'd72 + wfi_entry[6:0]), 1'b0, 1'b0);
+        wfi_emit_diag = (trial == 95);
+        wait_l1d_mb_entry_wfi_with_diag(
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfi_trial%0d",
+            wfi_entry, trial),
+          wfi_entry, wfi_seen, 512, wfi_emit_diag, wfi_emit_diag);
+        if (wfi_seen) begin
+          wfi_done = 1'b1;
+          `uvm_info(get_type_name(),
+            $sformatf("l1dtlb_high_matrix_entry%0d_wfi: observed WFI on trial %0d",
+              wfi_entry, trial),
+            UVM_LOW)
+          wait_lsu_cycles(24);
+        end
+      end
+
+      if (!wfi_done)
+        `uvm_info(get_type_name(),
+          $sformatf("l1dtlb_high_matrix_entry%0d_wfi: did not observe targeted WFI; final trial emitted diagnostic error",
+            wfi_entry),
+          UVM_LOW)
+      recover_l1d_high_matrix_phase(
+        $sformatf("l1dtlb_high_matrix_entry%0d_wfi", wfi_entry));
+    end
+  endtask
+
+  protected task scenario_mb_entry2_state_matrix();
+    bit hit;
+    bit mb_empty;
+    bit wfi_done;
+
+    reset_ptw_responder_controls(1, 4);
+    do_bringup(512, 39'h10_0000);
+
+    for (int unsigned flush_delay = 0; flush_delay < 8; flush_delay++) begin
+      try_l1d_wfg_flush_with_grant(
+        $sformatf("l1dtlb_entry2_matrix_wfg_abt_delay%0d", flush_delay),
+        2, 9000 + (flush_delay * 8), flush_delay, hit);
+      if (hit)
+        break;
+    end
+
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_wfc_abt_pre");
+    configure_ptw_delay(256, 256);
+    prefill_l1d_mb_low_slots("l1dtlb_entry2_matrix_wfc_prefill", 2, 300, 7'd16);
+    raw_pipe0(va_page(310), 7'd32, 1'b0, 1'b0);
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_wfc", 2, L1D_MB_STATE_WFC, 4096);
+    raw_rtu_flush();
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_abt", 2, L1D_MB_STATE_ABT, 1024);
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_wfc_abt");
+
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_pgflt_pre");
+    map_special_page(320, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    configure_ptw_delay(64, 64);
+    prefill_l1d_mb_low_slots("l1dtlb_entry2_matrix_pgflt_prefill", 2, 324, 7'd24);
+    raw_pipe0(va_page(320), 7'd40, 1'b0, 1'b0);
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_pgflt", 2, L1D_MB_STATE_PGFLT, 8192);
+    raw_pipe0(va_page(320), 7'd40, 1'b0, 1'b0);
+    wait_lsu_cycles(16);
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_pgflt");
+
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_acflt_pre");
+    configure_ptw_delay(64, 64);
+    prefill_l1d_mb_low_slots("l1dtlb_entry2_matrix_acflt_prefill", 2, 336, 7'd32);
+    force_ptw_bus_error_for_leaf_pte("l1dtlb_entry2_matrix_acflt", 340, 1'b1);
+    raw_pipe0(va_page(340), 7'd48, 1'b0, 1'b0);
+    require_l1d_mb_entry_state("l1dtlb_entry2_matrix_acflt", 2, L1D_MB_STATE_ACFLT, 8192);
+    force_ptw_bus_error_for_leaf_pte("l1dtlb_entry2_matrix_acflt", 340, 1'b0);
+    raw_pipe0(va_page(340), 7'd48, 1'b0, 1'b0);
+    wait_lsu_cycles(16);
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_acflt");
+
+    wfi_done = 1'b0;
+    for (int unsigned trial = 0; (trial < 64) && !wfi_done; trial++) begin
+      int unsigned low_page_base;
+      int unsigned ptw_page;
+      int unsigned l2_page;
+      bit wfi_seen;
+
+      recover_l1d_high_matrix_phase(
+        $sformatf("l1dtlb_entry2_matrix_wfi_trial%0d_pre", trial));
+      low_page_base = 1024 + (trial * 4);
+      ptw_page      = 2048 + trial;
+      l2_page       = 3072 + trial;
+      prefill_l1d_mb_low_slots_pgflt(
+        $sformatf("l1dtlb_entry2_matrix_wfi_prefill%0d", trial),
+        1, low_page_base, 7'd56);
+      map_normal_page(ptw_page);
+      map_normal_page(l2_page);
+      cp0_tlbwr_entry(va_page(l2_page),
+        ppn_t'(m_leaf_ppn0 + ppn_t'(l2_page + 16)),
+        ((va_page(l2_page) >> 12) & 'hff), 1'b1, 1'b1);
+      configure_ptw_delay(12, 12);
+      raw_pipe0(va_page(ptw_page), 7'd60, 1'b0, 1'b0);
+      wait_lsu_cycles(trial);
+      raw_pipe0(va_page(l2_page), 7'd61, 1'b0, 1'b0);
+      wait_l1d_mb_entry_wfi_with_diag(
+        $sformatf("l1dtlb_entry2_matrix_wfi_trial%0d", trial),
+        2, wfi_seen, 512, (trial == 63), 1'b0);
+      if (wfi_seen) begin
+        wfi_done = 1'b1;
+        wait_lsu_cycles(24);
+      end
+    end
+    if (!wfi_done)
+      `uvm_warning(get_type_name(), "entry2 state matrix did not observe targeted WFI")
+    recover_l1d_high_matrix_phase("l1dtlb_entry2_matrix_wfi");
+    wait_l1d_mb_empty("l1dtlb_entry2_matrix_final_empty", mb_empty, 4096);
+    if (!mb_empty)
+      raw_rtu_flush();
+    reset_ptw_responder_controls(1, 4);
+  endtask
+
+  protected task scenario_hit_rd_perm_mode_matrix();
+    bit sum1_pass_ok;
+
+    do_bringup(128, 39'h10_0000);
+    fill_page(0);
+    fill_page(1, 1'b1, 1'b1);
+    raw_pipe01(va_page(0), va_page(1), 7'd4, 7'd5, 1'b0, 1'b1);
+    wait_lsu_cycles(12);
+    raw_pipe01(va_page(0), va_page(0), 7'd6, 7'd7, 1'b0, 1'b0);
+    wait_lsu_cycles(12);
+
+    configure_ptw_delay(32, 64);
+    raw_pipe01(va_page(80), va_page(81), 7'd8, 7'd9, 1'b0, 1'b1);
+    wait_lsu_cycles(96);
+    raw_pipe0(va_page(80), 7'd10, 1'b0, 1'b1);
+    raw_pipe1(va_page(81), 7'd11, 1'b1, 1'b1);
+    wait_lsu_cycles(32);
+    configure_ptw_delay(1, 4);
+
+    map_special_page(96, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    map_special_page(97, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1, 1'b0);
+    raw_pipe0(va_page(96), 7'd12, 1'b0, 1'b0);
+    wait_l1d_expt_write("l1dtlb_hit_rd_matrix_pf_entry");
+    raw_pipe1(va_page(97), 7'd13, 1'b1, 1'b0);
+    wait_l1d_expt_write("l1dtlb_hit_rd_matrix_ad_entry");
+    raw_pipe01(va_page(96), va_page(97), 7'd12, 7'd13, 1'b0, 1'b1);
+    wait_lsu_cycles(24);
+
+    map_special_page(98, 1'b1, 1'b1, 1'b0, 1'b1, 1'b1, 1'b1);
+    set_priv(2'b01);
+    set_mxr_sum(1'b0, 1'b1);
+    send_lsu_item(LSU_PIPE0, va_page(98), 7'd14, 1'b0);
+    wait_pipe0_terminal("l1dtlb_hit_rd_matrix_sum_hit_fill", 1'b1, sum1_pass_ok);
+    if (sum1_pass_ok)
+      raw_pipe0(va_page(98), 7'd14, 1'b0);
+    set_mxr_sum(1'b0, 1'b0);
+
+    fill_page(2);
+    fill_page(3, 1'b1, 1'b1);
+    set_pmp_deny_rw();
+    raw_pipe01(va_page(2), va_page(3), 7'd15, 7'd16, 1'b0, 1'b1);
+    wait_lsu_cycles(24);
+    set_pmp_allow_all();
+
+    scenario_direct_map();
+    scenario_stamo();
+    scenario_one_free_dual_diff_cov();
+    scenario_huge();
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_hit_rd_perm_mode_matrix", 524288, 16);
+  endtask
+
   protected task scenario_reset_only();
     do_bringup(8, 39'h10_0000);
     raw_inv(INV_ALL);
@@ -2147,6 +3602,41 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(80);
     configure_ptw_delay(1, 4);
     m_env_h.wait_for_quiescent_midtest("l1dtlb_mb_state_signal", 524288, 16);
+  endtask
+
+  protected task scenario_l2_reqq_depth();
+    bit tlbop_seen;
+    bit reqq_closed;
+    int unsigned burst_base;
+
+    burst_base = 160;
+    do_bringup(256, 39'h10_0000);
+    configure_ptw_delay(96, 192);
+    raw_idle();
+    wait_lsu_cycles(16);
+
+    fork
+      begin
+        raw_inv_pulse(INV_ASID_ALL, va_page(0), m_asid, 1'b1, 1'b1);
+      end
+      begin
+        wait_tlbop_arb_activity("l1dtlb_l2_reqq_depth_invasid_window", tlbop_seen, 16384);
+        if (!tlbop_seen)
+          wait_lsu_cycles(16);
+        raw_pipe01_contiguous_burst(burst_base, 4, 7'd24);
+      end
+      begin
+        wait_l2_reqq_depth_and_qids(
+          "l1dtlb_l2_reqq_depth",
+          5,
+          9'h1fe,
+          reqq_closed,
+          65536);
+      end
+    join
+
+    reset_ptw_responder_controls(1, 4);
+    wait_lsu_cycles(128);
   endtask
 
   protected task scenario_plru_pressure();
@@ -2192,6 +3682,9 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     string decoded_sid;
     string decoded_intent;
     bit decoded_shell;
+    bit fast_final_quiesce;
+    int unsigned final_quiesce_cycles;
+    int unsigned final_stable_cycles;
     m_env_h = get_env();
     m_lsu_vif = m_env_h.m_lsu.vif;
     m_misc_vif = m_env_h.m_misc.vif;
@@ -2264,6 +3757,10 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_STAMO:            scenario_stamo();
       L1DTLB_SCN_FLUSH_RACE:       scenario_flush_race();
       L1DTLB_SCN_RESET_ONLY:       scenario_reset_only();
+      L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX: scenario_mb_high_entry_matrix();
+      L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX: scenario_mb_entry2_state_matrix();
+      L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX: scenario_hit_rd_perm_mode_matrix();
+      L1DTLB_SCN_L2_REQQ_DEPTH:    scenario_l2_reqq_depth();
       default: begin
         if (tc_id == "DTLB_SYSMAP_001")
           scenario_direct_map();
@@ -2279,9 +3776,14 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     endcase
 
     raw_idle();
-    configure_ptw_delay(1, 4);
+    reset_ptw_responder_controls(1, 4);
+    fast_final_quiesce = $test$plusargs("L1DTLB_FAST_FINAL_QUIESCE")
+                       || $test$plusargs("L1DTLB_WFG_RACE_ONLY");
+    final_quiesce_cycles = fast_final_quiesce ? 4096 : 524288;
+    final_stable_cycles = fast_final_quiesce ? 8 : 16;
     if (!m_terminal_timeout_seen) begin
-      m_env_h.wait_for_quiescent_midtest({tc_id, "_l1dtlb_final"}, 524288, 16);
+      m_env_h.wait_for_quiescent_midtest(
+        {tc_id, "_l1dtlb_final"}, final_quiesce_cycles, final_stable_cycles);
     end else begin
       `uvm_info(get_type_name(),
         $sformatf("%s: final quiesce skipped after terminal timeout; root failure already reported", tc_id),

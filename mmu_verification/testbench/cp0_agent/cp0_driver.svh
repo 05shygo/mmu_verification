@@ -123,12 +123,14 @@ class cp0_driver extends uvm_driver #(cp0_txn);
 	    if (tr.reg_num == 2'd3) begin  // MCIR — RTL generates cmplt
 	      bit done;
 	      bit lsu_blocked;
+	      bit reset_seen;
 
 	      // Advance one cycle so the clocking block reflects post-write state.
 	      @(vif.driver_cb);
 	      lsu_blocked = vif.driver_cb.mmu_cp0_lsu_oper_flop;
 
 	      done = 1'b0;
+	      reset_seen = 1'b0;
 	      if (!lsu_blocked) begin
 	        // Fast path: no LSU TLB operation in flight — cmplt should
 	        // arrive quickly via tlboper_regs_cmplt.
@@ -138,10 +140,26 @@ class cp0_driver extends uvm_driver #(cp0_txn);
 	            done = 1'b1;
 	          end
 	          begin
+	            @(vif.driver_cb iff vif.rst_ni !== 1'b1);
+	            reset_seen = 1'b1;
+	          end
+	          begin
 	            repeat (CP0_MCIR_CMPLT_TIMEOUT_CYCLES) @(vif.driver_cb);
 	          end
 	        join_any
 	        disable fork;
+	      end
+
+	      if (reset_seen) begin
+	        _drive_idle();
+	        `uvm_info("CP0_MCIR_RESET_DROP",
+	          $sformatf("MCIR write dropped by reset before completion: wdata=0x%016h", tr.wdata),
+	          UVM_MEDIUM)
+	        wait (vif.rst_ni === 1'b1);
+	        @(vif.driver_cb);
+	        tr.cmplt = 1'b0;
+	        tr.rdata = 64'h0;
+	        return;
 	      end
 
 	      if (!done) begin
@@ -159,6 +177,10 @@ class cp0_driver extends uvm_driver #(cp0_txn);
 	          int unsigned poll_cnt;
 	          done = 1'b0;
 	          for (retry_cnt = 0; !done && retry_cnt < 512; retry_cnt++) begin
+	            if (vif.rst_ni !== 1'b1) begin
+	              reset_seen = 1'b1;
+	              break;
+	            end
 	            // Issue a no-op — completes immediately via mcir_no_op.
 	            @(vif.driver_cb);
 	            vif.driver_cb.cp0_mmu_wreg    <= 1'b1;
@@ -172,19 +194,42 @@ class cp0_driver extends uvm_driver #(cp0_txn);
 	                @(vif.driver_cb iff vif.driver_cb.mmu_cp0_cmplt);
 	              end
 	              begin
+	                @(vif.driver_cb iff vif.rst_ni !== 1'b1);
+	                reset_seen = 1'b1;
+	              end
+	              begin
 	                repeat (1024) @(vif.driver_cb);
 	              end
 	            join_any
 	            disable fork;
+	            if (reset_seen)
+	              break;
 	            // Poll: real cmplt clears the mcir bits → data drops to 0.
 	            for (poll_cnt = 0; poll_cnt < 1024; poll_cnt++) begin
 	              @(vif.driver_cb);
+	              if (vif.rst_ni !== 1'b1) begin
+	                reset_seen = 1'b1;
+	                break;
+	              end
 	              if (vif.driver_cb.mmu_cp0_data == 64'h0) begin
 	                done = 1'b1;
 	                break;
 	              end
 	            end
+	            if (reset_seen)
+	              break;
 	          end
+	        end
+	        if (reset_seen) begin
+	          _drive_idle();
+	          `uvm_info("CP0_MCIR_RESET_DROP",
+	            $sformatf("MCIR write dropped by reset during no-op polling: wdata=0x%016h", tr.wdata),
+	            UVM_MEDIUM)
+	          wait (vif.rst_ni === 1'b1);
+	          @(vif.driver_cb);
+	          tr.cmplt = 1'b0;
+	          tr.rdata = 64'h0;
+	          return;
 	        end
 	        if (!done) begin
 	          `uvm_error("CP0_MCIR_CMPLT_TIMEOUT",

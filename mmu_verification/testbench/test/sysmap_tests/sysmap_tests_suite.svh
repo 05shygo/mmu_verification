@@ -16,6 +16,7 @@
 `include "test_sysmap_multi_region_coverage.svh"
 `include "test_sysmap_no_walk_required.svh"
 `include "test_sysmap_vs_ptw_priority.svh"
+`include "test_sysmap_cfg_coverage_sweep.svh"
 `include "test_sysmap_phase13_flg_refill_region0.svh"
 `include "test_sysmap_phase13_flg_refill_region7.svh"
 `include "test_sysmap_phase13_cross_1g_degrade.svh"

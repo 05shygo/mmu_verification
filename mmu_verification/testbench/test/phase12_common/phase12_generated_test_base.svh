@@ -316,15 +316,15 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     pa_t pa_base;
     effective_rounds = (rounds > 3) ? 3 : rounds;
     for (r = 0; r < effective_rounds; r++) begin
-      // Keep recovery traffic away from the pressure windows below.  Reusing
-      // a pressure VA can leave a valid DUT TLB/PDE-cache translation from the
-      // first map while the reference model has observed the later PTE rewrite.
+      // Keep recovery and pulse-pressure traffic away from standalone pressure
+      // windows. Reusing a VA can leave a valid DUT TLB/PDE-cache translation
+      // from the first map while a later remap creates a different PTW result.
       b_ifu    = 39'h0_5000_0000 + va_t'(r << 25);
       b_lsu    = 39'h0_5800_0000 + va_t'(r << 25);
       // Each pressure call spans two 256MB bursts plus four per-TWU windows.
       // Keep outer rounds 512MB apart so late PTW/TLB completions can never be
       // compared against a freshly remapped copy of the same VA.
-      four_base = 39'h0_9000_0000 + (va_t'(r) << 29);
+      four_base = 39'h1_9000_0000 + (va_t'(r) << 29);
       pa_base  = 40'h0_3000_0000 + pa_t'(r << 24);
 
       phase12_concurrent_four_twus_slow_miss_pressure(

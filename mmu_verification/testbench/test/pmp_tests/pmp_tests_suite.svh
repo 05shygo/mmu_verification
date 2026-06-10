@@ -13,4 +13,5 @@
 `include "test_mmu_pmp_port_config_independence.svh"
 `include "test_mmu_pmp_port_independence.svh"
 `include "test_mmu_pmp_port_saturation.svh"
+`include "test_mmu_pmp_cfg_coverage_sweep.svh"
 `include "test_pmp_deny_walk_abort.svh"

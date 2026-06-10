@@ -78,6 +78,12 @@ TIMEOUT         ?= 10000000
 # 1 = quiet console: only UVM_ERROR / UVM_FATAL (+UVM_ERR_ONLY, see test_base.svh)
 UVM_ERR_ONLY    ?= 0
 UVM_CONFIG_DB_TRACE ?= 1
+MMU_EXPT_TRACE  ?= 0
+ifeq ($(MMU_EXPT_TRACE),1)
+MMU_EXPT_TRACE_DEFINE := +define+MMU_EXPT_TRACE_ONCE_EN
+else
+MMU_EXPT_TRACE_DEFINE :=
+endif
 PLUS_ARGS       ?=
 LOG_STATUS_MAX_HITS ?= 20
 LOG_CHECKER     ?= bash $(PROJECT_DIR)/scripts/check_sim_status.sh
@@ -104,6 +110,7 @@ RUN_COMPAT_ENTRY_GOALS := run run_check run_cov run_batch run_gui debug fast_che
 RUN_COMPAT_KNOWN_GOALS := all help setup check_env env comp comp_all comp_fast comp_rtl comp_tb elab \
         run run_check fast fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
+        covp_scope_gates_95 covp_l1l2_95_signoff \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -117,6 +124,7 @@ RUN_COMPAT_KNOWN_GOALS := all help setup check_env env comp comp_all comp_fast c
         print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
         regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
         phase14_make_parallel_shards regress_v4_full_parallel phase14_show_parallel_failures phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
+        phase14_dut_quality_closure phase14_dut_quality_coverage_merge phase14_dut_quality_hotspots phase14_coverage_hotspots \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         print-l1dtlb-audit l1dtlb_audit_check l1dtlb_audit_run l1dtlb_audit_run_cov \
         l1dtlb_phase6g_check l1dtlb_phase6g_smoke l1dtlb_phase6g_targeted l1dtlb_phase6g_replay l1dtlb_phase6g_closure \
@@ -234,7 +242,7 @@ VCS_ELAB_OPTS   := -full64 \
                    -debug_region+cell+encrypt \
                    +vcs+fsdbon \
                    +define+PA_WIDTH=40 \
-                   +define+MMU_EXPT_TRACE_ONCE_EN \
+                   $(MMU_EXPT_TRACE_DEFINE) \
                    -Mdir=$(OUTPUT_DIR)/csrc \
                    -o $(OUTPUT_DIR)/simv
 
@@ -251,7 +259,7 @@ VCS_FAST_OPTS   := -full64 \
                    -ntb_opts uvm-$(UVM_VERSION) \
                    -lca \
                    +define+PA_WIDTH=40 \
-                   +define+MMU_EXPT_TRACE_ONCE_EN \
+                   $(MMU_EXPT_TRACE_DEFINE) \
                    -Mdir=$(OUTPUT_DIR)/csrc \
                    -o $(OUTPUT_DIR)/simv
 
@@ -435,7 +443,10 @@ PHASE14_RUN_PARALLEL_SHARDS ?= $(PROJECT_DIR)/scripts/phase14_run_parallel_shard
 PHASE14_MERGE_PARALLEL_SUMMARIES ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_summaries.py
 PHASE14_MERGE_PARALLEL_COVERAGE ?= $(PROJECT_DIR)/scripts/phase14_merge_parallel_coverage.py
 PHASE14_SHOW_PARALLEL_FAILURES ?= $(PROJECT_DIR)/scripts/phase14_show_parallel_failures.py
+PHASE14_COVERAGE_HOTSPOTS ?= $(PROJECT_DIR)/scripts/phase14_coverage_hotspots.py
 SCOPE_COVERAGE_GATE     ?= $(PROJECT_DIR)/scripts/scope_coverage_gate.py
+SCOPE_URG_REPORT        ?= $(PROJECT_DIR)/scripts/run_scope_urg_report.sh
+SCOPE_XML_FALLBACK_REPORT ?= $(PROJECT_DIR)/scripts/generate_scope_fallback_report.py
 PTW_COV_SIGNOFF_CHECK   ?= $(PROJECT_DIR)/scripts/check_ptw_code_cov_signoff.py
 PHASE14_ISSUE_TRACKER_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_IssueTracker.md))
 PHASE14_SIGNOFF_MATRIX_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_SignoffMatrix.md))
@@ -446,6 +457,19 @@ PHASE14_URG_REPORT_DIR    ?= $(COV_DIR)/phase14_urgReport
 PHASE14_URG_MERGED_DB     ?= $(COV_DIR)/phase14_merged.vdb
 PHASE14_URG_LOG           ?= $(COV_DIR)/phase14_urg.log
 PHASE14_COVERAGE_SUMMARY  ?= $(COV_DIR)/phase14_coverage_merge_summary.txt
+PHASE14_DUT_QUALITY_LIST  ?= $(SIMU_DIR)/phase14_dut_quality_closure_list
+PHASE14_DUT_QUALITY_SEEDS ?= $(PHASE14_SEEDS)
+PHASE14_DUT_QUALITY_SUMMARY ?= $(REGRESS_DIR)/phase14_dut_quality_closure/summary.txt
+PHASE14_DUT_QUALITY_JOBS  ?= $(PHASE14_REGRESS_JOBS)
+PHASE14_DUT_QUALITY_CLEAN ?= 1
+PHASE14_DUT_QUALITY_COV_DB ?= $(COV_DIR)/phase14_dut_quality_closure.vdb
+PHASE14_DUT_QUALITY_URG_REPORT_DIR ?= $(COV_DIR)/phase14_dut_quality_urgReport
+PHASE14_DUT_QUALITY_URG_MERGED_DB ?= $(COV_DIR)/phase14_dut_quality_merged.vdb
+PHASE14_DUT_QUALITY_URG_LOG ?= $(COV_DIR)/phase14_dut_quality_urg.log
+PHASE14_DUT_QUALITY_COVERAGE_SUMMARY ?= $(COV_DIR)/phase14_dut_quality_coverage_merge_summary.txt
+PHASE14_DUT_QUALITY_HOTSPOT_REPORT ?= $(PHASE14_DUT_QUALITY_URG_REPORT_DIR)/coverage_hotspots.md
+PHASE14_HOTSPOT_VDB_ROOT  ?= $(PHASE14_PARALLEL_VDB_DIR)
+PHASE14_HOTSPOT_REPORT    ?= $(PHASE14_URG_REPORT_DIR)/coverage_hotspots.md
 PHASE14_SHARD_DIR         ?= $(REGRESS_DIR)/phase14_v4_full_shards
 PHASE14_SHARD_COV_PREFIX  ?= $(OUTPUT_DIR)/phase14_shard
 PHASE14_SHARD_LOG_DIR     ?= $(OUTPUT_DIR)/phase14_shard_logs
@@ -485,6 +509,8 @@ COVP_L1TLB_URG_REPORT_DIR ?= $(COV_DIR)/l1tlb_urgReport
 COVP_L2TLB_URG_REPORT_DIR ?= $(COV_DIR)/l2tlb_urgReport
 COVP_L1TLB_URG_LOG        ?= $(COV_DIR)/l1tlb_urg.log
 COVP_L2TLB_URG_LOG        ?= $(COV_DIR)/l2tlb_urg.log
+COVP_L1L2_95_THRESHOLD    ?= 95.0
+SCOPE_XML_FALLBACK        ?= auto
 COVP_RUN_SCOPE_GATES      ?= 1
 COVP_RUN_L1L2_SPECIAL_GATES ?= 1
 COVP_RUN_PTW_SIGNOFF      ?= 1
@@ -604,6 +630,7 @@ print-phase14:
 	@echo "PHASE14_MERGE_PARALLEL_SUMMARIES = $(PHASE14_MERGE_PARALLEL_SUMMARIES)"
 	@echo "PHASE14_MERGE_PARALLEL_COVERAGE = $(PHASE14_MERGE_PARALLEL_COVERAGE)"
 	@echo "PHASE14_SHOW_PARALLEL_FAILURES = $(PHASE14_SHOW_PARALLEL_FAILURES)"
+	@echo "PHASE14_COVERAGE_HOTSPOTS = $(PHASE14_COVERAGE_HOTSPOTS)"
 	@echo "PHASE14_ISSUE_TRACKER  = $(PHASE14_ISSUE_TRACKER)"
 	@echo "PHASE14_SIGNOFF_MATRIX = $(PHASE14_SIGNOFF_MATRIX)"
 	@echo "PHASE14_EXCLUDE_V4     = $(PHASE14_EXCLUDE_V4)"
@@ -611,6 +638,19 @@ print-phase14:
 	@echo "PHASE14_URG_MERGED_DB  = $(PHASE14_URG_MERGED_DB)"
 	@echo "PHASE14_URG_LOG        = $(PHASE14_URG_LOG)"
 	@echo "PHASE14_COVERAGE_SUMMARY = $(PHASE14_COVERAGE_SUMMARY)"
+	@echo "PHASE14_DUT_QUALITY_LIST = $(PHASE14_DUT_QUALITY_LIST)"
+	@echo "PHASE14_DUT_QUALITY_SEEDS = $(PHASE14_DUT_QUALITY_SEEDS)"
+	@echo "PHASE14_DUT_QUALITY_SUMMARY = $(PHASE14_DUT_QUALITY_SUMMARY)"
+	@echo "PHASE14_DUT_QUALITY_JOBS = $(PHASE14_DUT_QUALITY_JOBS)"
+	@echo "PHASE14_DUT_QUALITY_CLEAN = $(PHASE14_DUT_QUALITY_CLEAN)"
+	@echo "PHASE14_DUT_QUALITY_COV_DB = $(PHASE14_DUT_QUALITY_COV_DB)"
+	@echo "PHASE14_DUT_QUALITY_URG_REPORT_DIR = $(PHASE14_DUT_QUALITY_URG_REPORT_DIR)"
+	@echo "PHASE14_DUT_QUALITY_URG_MERGED_DB = $(PHASE14_DUT_QUALITY_URG_MERGED_DB)"
+	@echo "PHASE14_DUT_QUALITY_URG_LOG = $(PHASE14_DUT_QUALITY_URG_LOG)"
+	@echo "PHASE14_DUT_QUALITY_COVERAGE_SUMMARY = $(PHASE14_DUT_QUALITY_COVERAGE_SUMMARY)"
+	@echo "PHASE14_DUT_QUALITY_HOTSPOT_REPORT = $(PHASE14_DUT_QUALITY_HOTSPOT_REPORT)"
+	@echo "PHASE14_HOTSPOT_VDB_ROOT = $(PHASE14_HOTSPOT_VDB_ROOT)"
+	@echo "PHASE14_HOTSPOT_REPORT = $(PHASE14_HOTSPOT_REPORT)"
 	@echo "PHASE14_SHARD_DIR      = $(PHASE14_SHARD_DIR)"
 	@echo "PHASE14_SHARD_COV_PREFIX = $(PHASE14_SHARD_COV_PREFIX)"
 	@echo "PHASE14_SHARD_LOG_DIR  = $(PHASE14_SHARD_LOG_DIR)"
@@ -864,6 +904,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
         run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
         cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
+        covp_scope_gates_95 covp_l1l2_95_signoff \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
         phase5 phase5_fast phase5_run_5seed phase5_run_3seed phase5_check \
         phase5_scan_logs phase5_ptw4k phase5_fullgate print-phase5 \
@@ -877,6 +918,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
         print-phase11 print-phase12 print-phase13 print-phase14 regress_v3_gap regress_v4_maee_ptw regress_v4_sysmap_pmp regress_v4_full \
         regress_v4_full_sharded phase14_coverage_merge_sharded phase14_gate_sharded phase14_exit_check_sharded \
         phase14_make_parallel_shards regress_v4_full_parallel phase14_show_parallel_failures phase14_coverage_merge_parallel phase14_gate_parallel phase14_exit_check_parallel phase14_clean_parallel \
+        phase14_dut_quality_closure phase14_dut_quality_coverage_merge phase14_dut_quality_hotspots phase14_coverage_hotspots \
         phase13_exit_check phase14_coverage_merge phase14_exit_check phase11_exit_check phase11_show_failures \
         print-l1dtlb-audit l1dtlb_audit_check l1dtlb_audit_run l1dtlb_audit_run_cov \
         l1dtlb_phase6g_check l1dtlb_phase6g_smoke l1dtlb_phase6g_targeted l1dtlb_phase6g_replay l1dtlb_phase6g_closure \
@@ -1171,6 +1213,84 @@ regress_v4_full: comp
 	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
 		exit 1; \
 	fi
+
+phase14_dut_quality_closure: comp
+	@test -f "$(PHASE14_DUT_QUALITY_LIST)" || (echo "ERROR: Phase14 DUT-quality closure list missing: $(PHASE14_DUT_QUALITY_LIST)"; exit 2)
+	@if [ "$(PHASE14_DUT_QUALITY_CLEAN)" = "1" ]; then \
+		case "$(PHASE14_DUT_QUALITY_COV_DB)" in \
+			""|"/"|".") echo "ERROR: unsafe PHASE14_DUT_QUALITY_COV_DB='$(PHASE14_DUT_QUALITY_COV_DB)'"; exit 2 ;; \
+			*) rm -rf "$(PHASE14_DUT_QUALITY_COV_DB)" ;; \
+		esac; \
+		rm -f "$(PHASE14_DUT_QUALITY_SUMMARY)" \
+			"$(PHASE14_DUT_QUALITY_COVERAGE_SUMMARY)" \
+			"$(PHASE14_DUT_QUALITY_HOTSPOT_REPORT)" \
+			"$(PHASE14_DUT_QUALITY_URG_LOG)"; \
+		rm -rf "$(PHASE14_DUT_QUALITY_URG_REPORT_DIR)" "$(PHASE14_DUT_QUALITY_URG_MERGED_DB)"; \
+	fi
+	@set +e; \
+	$(MAKE) regress \
+		LIST="$(PHASE14_DUT_QUALITY_LIST)" \
+		REGRESS_MODE=run_cov \
+		REGRESS_NAME=phase14_dut_quality_closure \
+		REGRESS_SUMMARY="$(PHASE14_DUT_QUALITY_SUMMARY)" \
+		REGRESS_SEEDS="$(PHASE14_DUT_QUALITY_SEEDS)" \
+		REGRESS_JOBS="$(PHASE14_DUT_QUALITY_JOBS)" \
+		REGRESS_FAIL_FAST="$(PHASE14_FAIL_FAST)" \
+		REGRESS_MIN_PASS_RATE=1.0 \
+		COV_DB_DIR="$(PHASE14_DUT_QUALITY_COV_DB)" \
+		VERBOSITY="$(VERBOSITY)" \
+		TIMEOUT="$(TIMEOUT)" \
+		UVM_ERR_ONLY="$(UVM_ERR_ONLY)" \
+		UVM_CONFIG_DB_TRACE="$(UVM_CONFIG_DB_TRACE)"; \
+	reg_rc=$$?; \
+	set -e; \
+	set +e; \
+	bash $(PROJECT_DIR)/scripts/phase11_scan_regression_logs.sh "$(PHASE14_DUT_QUALITY_LIST)" "$(PHASE14_DUT_QUALITY_SEEDS)" "$(LOG_DIR)" cov; \
+	scan_rc=$$?; \
+	set -e; \
+	if [ $$reg_rc -ne 0 ]; then \
+		echo "phase14_dut_quality_closure: underlying regression returned $$reg_rc"; \
+	fi; \
+	if [ $$scan_rc -ne 0 ]; then \
+		echo "phase14_dut_quality_closure: scan_logs/check_sim_status returned $$scan_rc"; \
+	fi; \
+	if [ $$reg_rc -ne 0 ] || [ $$scan_rc -ne 0 ]; then \
+		exit 1; \
+	fi
+
+phase14_dut_quality_coverage_merge:
+	@test -f "$(PHASE14_COVERAGE_MERGE)" || (echo "ERROR: Phase14 coverage merge missing: $(PHASE14_COVERAGE_MERGE)"; exit 2)
+	@test -d "$(PHASE14_DUT_QUALITY_COV_DB)" || (echo "ERROR: missing DUT-quality coverage VDB: $(PHASE14_DUT_QUALITY_COV_DB). Run make phase14_dut_quality_closure first."; exit 2)
+	@PROJECT_DIR="$(PROJECT_DIR)" \
+	COV_DB_DIR="$(PHASE14_DUT_QUALITY_COV_DB)" \
+	COV_BASE_DB_DIR="$(COV_BASE_DB_DIR)" \
+	COV_DIR="$(COV_DIR)" \
+	LOG_DIR="$(LOG_DIR)" \
+	URG="$(URG)" \
+	URG_REPORT_DIR="$(PHASE14_DUT_QUALITY_URG_REPORT_DIR)" \
+	URG_MERGED_DB="$(PHASE14_DUT_QUALITY_URG_MERGED_DB)" \
+	URG_LOG="$(PHASE14_DUT_QUALITY_URG_LOG)" \
+	URG_ALLOW_CONTEXTLESS_MERGE="$(URG_ALLOW_CONTEXTLESS_MERGE)" \
+	PHASE14_COVERAGE_SUMMARY="$(PHASE14_DUT_QUALITY_COVERAGE_SUMMARY)" \
+	PHASE14_ISSUE_TRACKER="$(PHASE14_ISSUE_TRACKER)" \
+	PHASE14_EXCLUDE_V4="$(PHASE14_EXCLUDE_V4)" \
+	bash "$(PHASE14_COVERAGE_MERGE)"
+
+phase14_dut_quality_hotspots:
+	@test -f "$(PHASE14_COVERAGE_HOTSPOTS)" || (echo "ERROR: Phase14 coverage hotspot script missing: $(PHASE14_COVERAGE_HOTSPOTS)"; exit 2)
+	@test -d "$(PHASE14_DUT_QUALITY_COV_DB)" || (echo "ERROR: missing DUT-quality coverage VDB: $(PHASE14_DUT_QUALITY_COV_DB). Run make phase14_dut_quality_closure first."; exit 2)
+	@$(PYTHON) "$(PHASE14_COVERAGE_HOTSPOTS)" \
+		--vdb-root "$(PHASE14_DUT_QUALITY_COV_DB)" \
+		--report-dir "$(PHASE14_DUT_QUALITY_URG_REPORT_DIR)" \
+		--out "$(PHASE14_DUT_QUALITY_HOTSPOT_REPORT)"
+
+phase14_coverage_hotspots:
+	@test -f "$(PHASE14_COVERAGE_HOTSPOTS)" || (echo "ERROR: Phase14 coverage hotspot script missing: $(PHASE14_COVERAGE_HOTSPOTS)"; exit 2)
+	@test -d "$(PHASE14_HOTSPOT_VDB_ROOT)" || (echo "ERROR: Phase14 hotspot VDB root missing: $(PHASE14_HOTSPOT_VDB_ROOT)"; exit 2)
+	@$(PYTHON) "$(PHASE14_COVERAGE_HOTSPOTS)" \
+		--vdb-root "$(PHASE14_HOTSPOT_VDB_ROOT)" \
+		--report-dir "$(PHASE14_URG_REPORT_DIR)" \
+		--out "$(PHASE14_HOTSPOT_REPORT)"
 
 regress_v4_full_sharded: comp
 	@test -f "$(PHASE14_LIST)" || (echo "ERROR: Phase14 list missing: $(PHASE14_LIST)"; exit 2)
@@ -1980,6 +2100,10 @@ comp_all: setup check_env
 		echo "       Check $(LOG_DIR)/comp_all.log for VCS coverage compile errors."; \
 		exit 1; \
 	fi
+	@$(PYTHON) "$(PROJECT_DIR)/scripts/check_vdb_coverage_context.py" \
+		--vdb "$(COV_DB_DIR)" \
+		--metrics "$(COV_METRICS)" \
+		--label "compiled coverage design VDB"
 	@rm -rf "$(COV_BASE_DB_DIR)"
 	@cp -a "$(COV_DB_DIR)" "$(COV_BASE_DB_DIR)"
 	@touch "$(COV_BASELINE_STAMP)"
@@ -2150,6 +2274,14 @@ run_cov: setup
 			echo "       Re-run 'make comp' before 'make run_cov'."; \
 			exit 1; \
 		fi; \
+		$(PYTHON) "$(PROJECT_DIR)/scripts/check_vdb_coverage_context.py" \
+			--vdb "$(OUTPUT_DIR)/simv.vdb" \
+			--metrics "$(COV_METRICS)" \
+			--label "current simv coverage context" || exit 1; \
+		$(PYTHON) "$(PROJECT_DIR)/scripts/check_vdb_coverage_context.py" \
+			--vdb "$(COV_BASE_DB_DIR)" \
+			--metrics "$(COV_METRICS)" \
+			--label "clean compile-time coverage baseline VDB" || exit 1; \
 		if [ "$(COV_HARDLINK_GUARD)" = "1" ] && [ -d "$(COV_DB_DIR)" ]; then \
 			shared_file=$$(find "$(COV_DB_DIR)" -type f -print 2>/dev/null | while IFS= read -r cov_file; do \
 				rel="$${cov_file#$(COV_DB_DIR)/}"; \
@@ -2324,7 +2456,7 @@ cov_l1l2: comp
 	  -metric $(COV_METRICS) \
 	  -hier u_dut.u_mmu_l1dtlb \
 	  -hier u_dut.x_mmu_l2tlb \
-	  -hier u_dut.u_mmu_l1itlb \
+	  -hier u_dut.x_mmu_l1itlb \
 	  -format both \
 	  -report "$(COV_DIR)/l1l2_urgReport" \
 	  > "$(COV_DIR)/l1l2_urg.log" 2>&1 || true
@@ -2339,25 +2471,32 @@ cov_all: comp
 
 covp_scope_reports:
 	@test -d "$(PHASE14_URG_MERGED_DB)" || (echo "ERROR: missing merged Phase14 VDB: $(PHASE14_URG_MERGED_DB)"; exit 2)
+	@test -f "$(SCOPE_URG_REPORT)" || (echo "ERROR: scoped URG report helper missing: $(SCOPE_URG_REPORT)"; exit 2)
 	@mkdir -p "$(COV_DIR)"
 	@echo "=== Generating L1TLB filtered report ==="
-	@rm -rf "$(COVP_L1TLB_URG_REPORT_DIR)"
-	@$(URG) -full64 -dir "$(PHASE14_URG_MERGED_DB)" \
-	  -metric $(COV_METRICS) \
-	  -hier u_dut.u_mmu_l1dtlb \
-	  -hier u_dut.u_mmu_l1itlb \
-	  -format both \
-	  -report "$(COVP_L1TLB_URG_REPORT_DIR)" \
-	  > "$(COVP_L1TLB_URG_LOG)" 2>&1
+	@SCOPE_XML_FALLBACK="$(SCOPE_XML_FALLBACK)" bash "$(SCOPE_URG_REPORT)" \
+	  --urg "$(URG)" \
+	  --input-vdb "$(PHASE14_URG_MERGED_DB)" \
+	  --base-vdb "$(COV_BASE_DB_DIR)" \
+	  --metrics "$(COV_METRICS)" \
+	  --report-dir "$(COVP_L1TLB_URG_REPORT_DIR)" \
+	  --log "$(COVP_L1TLB_URG_LOG)" \
+	  --hier u_dut.u_mmu_l1dtlb \
+	  --hier u_dut.x_mmu_l1itlb \
+	  --fallback-script "$(SCOPE_XML_FALLBACK_REPORT)" \
+	  --fallback-scope L1TLB
 	@test -d "$(COVP_L1TLB_URG_REPORT_DIR)" && find "$(COVP_L1TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L1TLB URG report: $(COVP_L1TLB_URG_REPORT_DIR)"; exit 1)
 	@echo "=== Generating L2TLB filtered report ==="
-	@rm -rf "$(COVP_L2TLB_URG_REPORT_DIR)"
-	@$(URG) -full64 -dir "$(PHASE14_URG_MERGED_DB)" \
-	  -metric $(COV_METRICS) \
-	  -hier u_dut.x_mmu_l2tlb \
-	  -format both \
-	  -report "$(COVP_L2TLB_URG_REPORT_DIR)" \
-	  > "$(COVP_L2TLB_URG_LOG)" 2>&1
+	@SCOPE_XML_FALLBACK="$(SCOPE_XML_FALLBACK)" bash "$(SCOPE_URG_REPORT)" \
+	  --urg "$(URG)" \
+	  --input-vdb "$(PHASE14_URG_MERGED_DB)" \
+	  --base-vdb "$(COV_BASE_DB_DIR)" \
+	  --metrics "$(COV_METRICS)" \
+	  --report-dir "$(COVP_L2TLB_URG_REPORT_DIR)" \
+	  --log "$(COVP_L2TLB_URG_LOG)" \
+	  --hier u_dut.x_mmu_l2tlb \
+	  --fallback-script "$(SCOPE_XML_FALLBACK_REPORT)" \
+	  --fallback-scope L2TLB
 	@test -d "$(COVP_L2TLB_URG_REPORT_DIR)" && find "$(COVP_L2TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L2TLB URG report: $(COVP_L2TLB_URG_REPORT_DIR)"; exit 1)
 
 covp_scope_gates:
@@ -2380,6 +2519,29 @@ covp_scope_gates:
 		--fsm-threshold "$(PHASE14_FSM_THRESHOLD)" \
 		--functional-threshold "$(PHASE14_FUNC_THRESHOLD)" \
 		--assertion-threshold "$(PHASE14_ASSERT_THRESHOLD)"
+
+covp_scope_gates_95:
+	@test -f "$(SCOPE_COVERAGE_GATE)" || (echo "ERROR: scope coverage gate missing: $(SCOPE_COVERAGE_GATE)"; exit 2)
+	@rc=0; \
+	$(PYTHON) "$(SCOPE_COVERAGE_GATE)" \
+		--scope-name L1TLB \
+		--urg-report-dir "$(COVP_L1TLB_URG_REPORT_DIR)" \
+		--metrics functional,fsm,toggle,condition \
+		--functional-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--fsm-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--toggle-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--condition-threshold "$(COVP_L1L2_95_THRESHOLD)" || rc=1; \
+	$(PYTHON) "$(SCOPE_COVERAGE_GATE)" \
+		--scope-name L2TLB \
+		--urg-report-dir "$(COVP_L2TLB_URG_REPORT_DIR)" \
+		--metrics functional,fsm,toggle,condition \
+		--functional-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--fsm-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--toggle-threshold "$(COVP_L1L2_95_THRESHOLD)" \
+		--condition-threshold "$(COVP_L1L2_95_THRESHOLD)" || rc=1; \
+	exit $$rc
+
+covp_l1l2_95_signoff: covp_scope_reports covp_scope_gates_95
 
 covp_l1l2_special_gates: comp_fast l1dtlb_phase6g_check l2tlb_phase6g_check
 	$(PYTHON) "$(L1DTLB_PHASE6G_REPLAY)" \

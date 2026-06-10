@@ -46,6 +46,19 @@ module mmu_l2tlb_mb_sva #(
     input logic [PTW_TYPE_WIDTH-1:0] entry_out_type [TOTAL_DEPTH-1:0]
 );
 
+  logic tlboper_ptw_abort_q;
+  logic l2mb_sva_past_valid;
+
+  always_ff @(posedge reqq_clk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+      tlboper_ptw_abort_q <= 1'b0;
+      l2mb_sva_past_valid <= 1'b0;
+    end else begin
+      tlboper_ptw_abort_q <= tlboper_ptw_abort;
+      l2mb_sva_past_valid <= 1'b1;
+    end
+  end
+
   function automatic logic is_reqq_or_pfu_type(input logic [ACC_TYPE_WIDTH-1:0] acc_type);
     is_reqq_or_pfu_type = (acc_type == 3'b010) || (acc_type == 3'b110) ||
                           (acc_type == 3'b011) || (acc_type == 3'b100);
@@ -108,10 +121,22 @@ module mmu_l2tlb_mb_sva #(
       |-> (issue_vpn == entry_out_vpn[issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH]]
         && issue_type == entry_out_type[issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH]]));
 
-  a_ptw_ready_backpressure_payload_stable: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
-      (issue_req && !ptw_ready)
-        |=> (issue_req && $stable(issue_eid) && $stable(issue_vpn)
-          && $stable(issue_type) && $stable(issue_is_dtlb)));
+  // L2MB issue payload is a combinational selection from the current ready
+  // entry or bypass alloc. Abort/TLBOP retry may reselect a different entry
+  // under PTW backpressure; the payload must still be stable for a same eid.
+  a_ptw_ready_backpressure_payload_stable: assert property (@(posedge reqq_clk)
+    disable iff (!cpurst_b || !l2mb_sva_past_valid
+              || tlboper_ptw_abort || tlboper_ptw_abort_q)
+      (issue_req && !ptw_ready
+       && $past(issue_req && !ptw_ready)
+       && (issue_eid == $past(issue_eid)))
+        |-> ($stable(issue_vpn) && $stable(issue_type) && $stable(issue_is_dtlb)));
+
+  c_mb_issue_reselect_under_backpressure: cover property (@(posedge reqq_clk)
+    disable iff (!cpurst_b || !l2mb_sva_past_valid)
+      issue_req && !ptw_ready
+      && $past(issue_req && !ptw_ready)
+      && (issue_eid != $past(issue_eid)));
 
   a_feedback_id_known_and_in_range: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     fb_valid |-> (id_in_range(fb_trans_id) && !$isunknown(fb_hit)));

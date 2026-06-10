@@ -27,3 +27,4 @@
 `include "test_mmu_tlbwi_write_entry.svh"
 `include "test_mmu_tlbwr_random_replace.svh"
 `include "test_mmu_tlbwr_rrpv_policy.svh"
+`include "test_mmu_tlbop_reset_mid_fsm.svh"

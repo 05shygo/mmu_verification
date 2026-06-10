@@ -88,14 +88,15 @@ logic [2:0]		pgs_r;
 //logic [PORT_WIDTH-1:0]  port_id_r;
 logic                   store_r;    // New: Register to hold store attribute
 logic                   issued_r;
-logic                   abort_hold_r;
-logic                   fault_hold_r;
+//logic                   abort_hold_r;
+//logic                   fault_hold_r;
 
 //!************************************************
 //! Control Signals
 //!************************************************
 logic entry_clk_en;
 logic abort_this_cyc;
+logic alloc_fire;
 
 //!************************************************
 //! Clock Gating
@@ -116,6 +117,7 @@ gated_clk_cell x_mb_entry_gateclk (
 // Only an RTU pipeline flush aborts pending refill state. TLB clear/invalidate
 // operations target already-installed TLB entries, not in-flight refill data.
 assign abort_this_cyc = rtu_yy_xx_flush;
+assign alloc_fire = alloc_vld && !abort_this_cyc;
 
 //!************************************************
 //! State Machine
@@ -126,8 +128,8 @@ always_comb begin
     state_nxt = state_r;
     
     case (state_r)
-	STATE_IDLE: begin
-            if (alloc_vld) begin
+        STATE_IDLE: begin
+            if (alloc_fire) begin
                 // [FIX 2]: Check for immediate Bypass Grant
                 if (issue_sel && issue_grant) begin
                     state_nxt = STATE_WFC; // Bypass: Skip WFG, go directly to Wait Complete
@@ -154,30 +156,42 @@ always_comb begin
         STATE_WFC: begin
             if (abort_this_cyc && refill_vld) begin
                 state_nxt = STATE_IDLE;
-            end else if (refill_vld) begin
-                // [Priority 1]: Aborted previously
-                if (abort_hold_r) begin
-                    state_nxt = STATE_IDLE;
-                end 
-                // [Priority 2]: Faults (No install needed, go to exception handling)
-                else if (refill_pgflt) begin
-                    state_nxt = STATE_PGFLT;
-                end else if (refill_acflt) begin
-                    state_nxt = STATE_ACFLT;
-                end 
-                // [Priority 3]: Successful Refill
-                else begin
-                    if (refill_gnt) begin
-                        // Collision Winner: Write to L1TLB RAM immediately
-                        state_nxt = STATE_IDLE; 
-                    end else begin
-                        // Collision Loser: Latch data and wait for install arbitration
-                        state_nxt = STATE_WFI; 
-                    end
-                end
             end else if (abort_this_cyc) begin
-                state_nxt = STATE_ABT;
-            end
+                    state_nxt = STATE_ABT;
+            end else if (refill_vld & refill_pgflt) begin
+                    state_nxt = STATE_PGFLT;
+            end else if (refill_vld & refill_acflt) begin
+                    state_nxt = STATE_ACFLT;
+            end else if (refill_vld & refill_gnt) begin
+                    state_nxt = STATE_IDLE;
+            end else if (refill_vld) begin
+                    state_nxt = STATE_WFI;
+            end else 
+                    state_nxt = STATE_WFC;
+
+                //// [Priority 1]: Aborted previously
+                //if (abort_hold_r) begin
+                //    state_nxt = STATE_IDLE;
+                //end 
+                //// [Priority 2]: Faults (No install needed, go to exception handling)
+                //else if (refill_pgflt) begin
+                //    state_nxt = STATE_PGFLT;
+                //end else if (refill_acflt) begin
+                //    state_nxt = STATE_ACFLT;
+                //end 
+                //// [Priority 3]: Successful Refill
+                //else begin
+                //    if (refill_gnt) begin
+                //        // Collision Winner: Write to L1TLB RAM immediately
+                //        state_nxt = STATE_IDLE; 
+                //    end else begin
+                //        // Collision Loser: Latch data and wait for install arbitration
+                //        state_nxt = STATE_WFI; 
+                //    end
+                //end
+            //end else if (abort_this_cyc) begin
+            //    state_nxt = STATE_ABT;
+            //end
         end
 
         STATE_WFI: begin
@@ -240,7 +254,7 @@ always_ff @(posedge mb_clk or negedge cpurst_b) begin
 	pgs_r	  <= '0;
     end else begin
         // Allocation Phase: Capture Request Info
-        if (alloc_vld && state_r == STATE_IDLE) begin
+        if (alloc_fire && state_r == STATE_IDLE) begin
             vpn_r     <= alloc_vpn;
             iid_r     <= alloc_iid;
 //            port_id_r <= alloc_port_id;
@@ -266,7 +280,7 @@ always_ff @(posedge mb_clk or negedge cpurst_b) begin
         issued_r <= 1'b0;
     end else if (state_r == STATE_IDLE) begin
         // [FIX]: Set issued flag if bypassed immediately
-        if (alloc_vld && issue_sel && issue_grant) begin
+        if (alloc_fire && issue_sel && issue_grant) begin
             issued_r <= 1'b1;
         end else begin
             issued_r <= 1'b0;
@@ -277,27 +291,27 @@ always_ff @(posedge mb_clk or negedge cpurst_b) begin
     end
 end
 
-always_ff @(posedge mb_clk or negedge cpurst_b) begin
-    if (!cpurst_b) begin
-        abort_hold_r <= 1'b0;
-    end else if (state_r == STATE_WFC && abort_this_cyc) begin
-        abort_hold_r <= 1'b1;
-    end else if (state_r == STATE_IDLE || state_nxt == STATE_IDLE) begin
-        abort_hold_r <= 1'b0;
-    end
-end
+//always_ff @(posedge mb_clk or negedge cpurst_b) begin
+//    if (!cpurst_b) begin
+//        abort_hold_r <= 1'b0;
+//    end else if (state_r == STATE_WFC && abort_this_cyc) begin
+//        abort_hold_r <= 1'b1;
+//    end else if (state_r == STATE_IDLE || state_nxt == STATE_IDLE) begin
+//        abort_hold_r <= 1'b0;
+//    end
+//end
 
-always_ff @(posedge mb_clk or negedge cpurst_b) begin
-    if (!cpurst_b) begin
-        fault_hold_r <= 1'b0;
-    end else if (state_r == STATE_WFC && refill_vld && (refill_pgflt || refill_acflt)) begin
-        fault_hold_r <= 1'b1;
-    end else if (((state_r == STATE_PGFLT) || (state_r == STATE_ACFLT)) && expt_hit) begin
-        fault_hold_r <= 1'b0;
-    end else if (state_r == STATE_IDLE || state_nxt == STATE_IDLE) begin
-        fault_hold_r <= 1'b0;
-    end
-end
+//always_ff @(posedge mb_clk or negedge cpurst_b) begin
+//    if (!cpurst_b) begin
+//        fault_hold_r <= 1'b0;
+//    end else if (state_r == STATE_WFC && refill_vld && (refill_pgflt || refill_acflt)) begin
+//        fault_hold_r <= 1'b1;
+//    end else if (((state_r == STATE_PGFLT) || (state_r == STATE_ACFLT)) && expt_hit) begin
+//        fault_hold_r <= 1'b0;
+//    end else if (state_r == STATE_IDLE || state_nxt == STATE_IDLE) begin
+//        fault_hold_r <= 1'b0;
+//    end
+//end
 
 //!************************************************
 //! Output Assignments
@@ -318,7 +332,7 @@ assign entry_flg     = flg_r;
 assign entry_pgs     = pgs_r;
 
 // Ready to issue: in WFG state and not aborted this cycle
-assign entry_ready   = (state_r == STATE_WFG) && !abort_this_cyc && !fault_hold_r;
+assign entry_ready   = (state_r == STATE_WFG); //&& !abort_this_cyc && !fault_hold_r;
 
 // Wait for complete (Top logic uses this to track busy status)
 assign entry_wfc     = (state_r == STATE_WFC) || (state_r == STATE_ABT);
@@ -329,6 +343,6 @@ assign entry_fault_state = (state_r == STATE_PGFLT) | (state_r == STATE_ACFLT);
 assign entry_wfi     = (state_r == STATE_WFI);
 
 // Clock enable: Active if valid or allocating or refilling
-assign entry_clk_en  = alloc_vld || (state_r != STATE_IDLE) || refill_vld;
+assign entry_clk_en  = alloc_fire || (state_r != STATE_IDLE) || refill_vld;
 
 endmodule

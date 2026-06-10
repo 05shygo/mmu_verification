@@ -124,6 +124,9 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
   int unsigned m_ptw_accerr_dtlb_load_seen;
   int unsigned m_ptw_accerr_dtlb_store_seen;
   int unsigned m_ptw_accerr_pfu_seen;
+  int unsigned m_detail_log_limit;
+  int unsigned m_source_result_log_count;
+  int unsigned m_payload_ignore_log_count;
 
   function new(string name = "mmu_l2tlb_txn_shadow");
     super.new(name);
@@ -173,6 +176,10 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     m_ptw_accerr_dtlb_load_seen = 0;
     m_ptw_accerr_dtlb_store_seen = 0;
     m_ptw_accerr_pfu_seen = 0;
+    m_source_result_log_count = 0;
+    m_payload_ignore_log_count = 0;
+    m_detail_log_limit = 64;
+    void'($value$plusargs("PHASE6C_L2_DETAIL_LOG_LIMIT=%0d", m_detail_log_limit));
     `uvm_info(get_type_name(),
       $sformatf("[PHASE6C_L2_SHADOW_RESET] reason=%s epoch=%0d", reason, m_epoch),
       UVM_HIGH)
@@ -607,11 +614,19 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
       endcase
     end
 
-    `uvm_info(get_type_name(),
-      $sformatf("[PHASE6C_L2_SOURCE_RESULT] class=%s owner=%s id=0x%02h type=0x%0h vpn=0x%07h asid=0x%04h epoch=%0d cycle=%0d reason=%s",
-        rsp_class_name(cls), owner_name(owner), id, typ, vpn, asid,
-        m_epoch, m_cycle, reason),
-      UVM_MEDIUM)
+    if (m_source_result_log_count < m_detail_log_limit) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[PHASE6C_L2_SOURCE_RESULT] class=%s owner=%s id=0x%02h type=0x%0h vpn=0x%07h asid=0x%04h epoch=%0d cycle=%0d reason=%s",
+          rsp_class_name(cls), owner_name(owner), id, typ, vpn, asid,
+          m_epoch, m_cycle, reason),
+        UVM_MEDIUM)
+    end else if (m_source_result_log_count == m_detail_log_limit) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[PHASE6C_L2_SOURCE_RESULT_SUPPRESS] suppressing further per-event source-result logs after %0d entries; counters remain in PHASE6C_L2_SHADOW summary",
+          m_detail_log_limit),
+        UVM_MEDIUM)
+    end
+    m_source_result_log_count++;
   endfunction
 
   function void note_payload_ignore(
@@ -624,10 +639,18 @@ class mmu_l2tlb_txn_shadow extends uvm_object;
     input string reason
   );
     m_pfu_payload_ignore_seen++;
-    `uvm_info(get_type_name(),
-      $sformatf("[PHASE6C_PAYLOAD_IGNORE] class=%s owner=%s id=0x%02h type=0x%0h vpn=0x%07h asid=0x%04h epoch=%0d reason=%s",
-        rsp_class_name(cls), owner_name(owner), id, typ, vpn, asid, m_epoch, reason),
-      UVM_MEDIUM)
+    if (m_payload_ignore_log_count < m_detail_log_limit) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[PHASE6C_PAYLOAD_IGNORE] class=%s owner=%s id=0x%02h type=0x%0h vpn=0x%07h asid=0x%04h epoch=%0d reason=%s",
+          rsp_class_name(cls), owner_name(owner), id, typ, vpn, asid, m_epoch, reason),
+        UVM_MEDIUM)
+    end else if (m_payload_ignore_log_count == m_detail_log_limit) begin
+      `uvm_info(get_type_name(),
+        $sformatf("[PHASE6C_PAYLOAD_IGNORE_SUPPRESS] suppressing further per-event payload-ignore logs after %0d entries; counters remain in PHASE6C_L2_SHADOW summary",
+          m_detail_log_limit),
+        UVM_MEDIUM)
+    end
+    m_payload_ignore_log_count++;
   endfunction
 
   function void on_l2_final(

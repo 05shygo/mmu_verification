@@ -244,11 +244,13 @@ logic [MB_DEPTH-1:0]                   mb_entry_wfc;
 logic [MB_DEPTH-1:0]                   mb_entry_fault;
 
 logic [MB_DEPTH-1:0]                   mb_alloc_we;
+logic [MB_DEPTH-1:0]                   mb_alloc_we_safe;
 logic [MB_DEPTH-1:0]                   mb_issue_sel;
 logic                                  mb_issue_grant;
 
 // Allocator outputs
 logic alloc_gnt0, alloc_gnt1;
+logic alloc_gnt0_safe, alloc_gnt1_safe;
 logic [EID_WIDTH-1:0] alloc_sel0, alloc_sel1;
 
 // Scheduler outputs
@@ -268,8 +270,6 @@ logic [IID_WIDTH-1:0] miss0_iid_q, miss1_iid_q;
 logic miss0_abort_q, miss1_abort_q;
 
 logic dutlb_miss_vld0, dutlb_miss_vld1;
-logic dutlb_inst_id_match0, dutlb_inst_id_match1;
-logic dutlb_inst_id_older0, dutlb_inst_id_older1;
 logic dutlb_miss_vld_short0, dutlb_miss_vld_short1;
 logic [15:0] dutlb_plru_read_hit0, dutlb_plru_read_hit1;
 logic dutlb_plru_read_hit_vld0, dutlb_plru_read_hit_vld1;
@@ -525,45 +525,12 @@ endgenerate
 //                  Hit Read Instance - Port 0
 //==============================================================================
 
-logic l1dtlb_refill_on ;
-logic dutlb_req_id0_older;
-logic refill_type;
-logic dutlb_refill_upd0;
-logic dutlb_refill_upd1;
-logic dutlb_ref_pgflt;
-logic dutlb_ref_acflt;
 logic dutlb_expt_for_taken;
-logic [IID_WIDTH-1:0] refill_id_flop0;
-logic [IID_WIDTH-1:0] refill_id_flop1;
-logic [IID_WIDTH-1:0] refill_id_flop;
-
 
 // Legacy exception-chain signal is kept only for compatibility/debug visibility.
 // Exception ownership/replay is now handled by mmu_l1dtlb_expt_cam.
 assign dutlb_expt_for_taken = expt_wr0_vld | expt_wr1_vld;
 
-assign l1dtlb_refill_on = |mb_entry_vld;
-
-// &Instance("ct_rtu_compare_iid","x_mmu_dutlb_compare_req_iid"); @243
-ct_rtu_compare_iid  x_mmu_dutlb_compare_req_iid (
-  .x_iid0              (lsu_mmu_id0[6:0]   ),
-  .x_iid0_older        (dutlb_req_id0_older),
-  .x_iid1              (lsu_mmu_id1[6:0]   )
-);
-
-// &Connect( .x_iid0         (lsu_mmu_id0[6:0]), @244
-//           .x_iid1         (lsu_mmu_id1[6:0]), @245
-//           .x_iid0_older   (dutlb_req_id0_older)); @246
-
-always @(posedge dutlb_clk or negedge cpurst_b)
-begin
-  if (!cpurst_b)
-    refill_type <= 1'b0;
-  else if(dutlb_miss_vld0 && dutlb_refill_upd0 && (dutlb_req_id0_older || !dutlb_miss_vld1))
-    refill_type <= 1'b1;
-  else if(dutlb_miss_vld1 && dutlb_refill_upd1)
-    refill_type <= 1'b0;
-end
 
 // ---------------------------------------------------------------------------
 // Legacy (pre-CAM) exception handling path intentionally disabled:
@@ -571,29 +538,6 @@ end
 //   is not safe with outstanding misses.
 // CAM now owns exception attribution, replay, and consume.
 // ---------------------------------------------------------------------------
-assign dutlb_ref_pgflt = 1'b0;
-assign dutlb_ref_acflt = 1'b0;
-
-// Keep refill_id_flop update as a compatibility/debug-only path.
-assign dutlb_refill_upd0  = ~l1dtlb_refill_on;
-assign dutlb_refill_upd1  = ~l1dtlb_refill_on;
-
-always @(posedge dutlb_clk or negedge cpurst_b)
-begin
-  if (!cpurst_b)
-    refill_id_flop0[IID_WIDTH-1:0] <= {IID_WIDTH{1'b0}};
-  else if(dutlb_miss_vld_short0 && dutlb_refill_upd0)
-    refill_id_flop0[IID_WIDTH-1:0] <= lsu_mmu_id0[IID_WIDTH-1:0];
-end
-always @(posedge dutlb_clk or negedge cpurst_b)
-begin
-  if (!cpurst_b)
-    refill_id_flop1[IID_WIDTH-1:0] <= {IID_WIDTH{1'b0}};
-  else if(dutlb_miss_vld_short1 && dutlb_refill_upd1)
-    refill_id_flop1[IID_WIDTH-1:0] <= lsu_mmu_id1[IID_WIDTH-1:0];
-end 
-assign refill_id_flop[IID_WIDTH-1:0] = refill_type ? refill_id_flop0[IID_WIDTH-1:0]
-                                                   : refill_id_flop1[IID_WIDTH-1:0];
 
 `ifndef SYNTHESIS
 `ifdef MMU_DTLB_DBG_EN
@@ -601,14 +545,13 @@ assign refill_id_flop[IID_WIDTH-1:0] = refill_type ? refill_id_flop0[IID_WIDTH-1
 always @(posedge dutlb_clk) begin
   if (lsu_mmu_va0_vld || lsu_mmu_va1_vld || dutlb_expt_for_taken
       || ptw_l1dtlb_ref_cmplt || jtlb_dutlb_ref_cmplt) begin
-    $display("[MMU_DTLB_EXPT_CHAIN_DBG] t=%0t ptw_cmplt=%0b ptw_id=%0d ptw_pgflt=%0b ptw_accerr=%0b | jtlb_cmplt=%0b jtlb_id=%0d jtlb_pgflt=%0b | ref_pgflt=%0b ref_acflt=%0b expt_for_taken=%0b refill_on=%0b refill_type=%0b refill_id0=%0d refill_id1=%0d refill_id_sel=%0d | miss0=%0b miss1=%0b upd0=%0b upd1=%0b older0=%0b older1=%0b",
+    $display("[MMU_DTLB_EXPT_CHAIN_DBG] t=%0t ptw_cmplt=%0b ptw_id=%0d ptw_pgflt=%0b ptw_accerr=%0b | jtlb_cmplt=%0b jtlb_id=%0d jtlb_pgflt=%0b | ref_pgflt=%0b ref_acflt=%0b expt_for_taken=%0b refill_on=%0b  refill_id0=%0d refill_id1=%0d refill_id_sel=%0d | miss0=%0b miss1=%0b upd0=%0b upd1=%0b older0=%0b older1=%0b",
       $time,
       ptw_l1dtlb_ref_cmplt, ptw_l1dtlb_ref_id, ptw_l1tlb_pgflt, ptw_l1tlb_acc_err,
       jtlb_dutlb_ref_cmplt, jtlb_dutlb_ref_id, jtlb_dutlb_pgflt,
-      dutlb_ref_pgflt, dutlb_ref_acflt, dutlb_expt_for_taken, l1dtlb_refill_on,
-      refill_type, refill_id_flop0, refill_id_flop1, refill_id_flop,
-      dutlb_miss_vld0, dutlb_miss_vld1, dutlb_refill_upd0, dutlb_refill_upd1,
-      dutlb_inst_id_older0, dutlb_inst_id_older1);
+      dutlb_expt_for_taken, 
+      dutlb_miss_vld0, dutlb_miss_vld1, dutlb_refill_upd1
+      );
   end
 end
 `endif
@@ -646,8 +589,7 @@ mmu_l1dtlb_hit_rd #(
     .entry_ppn_vec              (entry_ppn_vec),      // [NUM_ENTRY*PPN_WIDTH-1:0]
 
     // Control & Misc
-    .pad_yy_icg_scan_en         (pad_yy_icg_scan_en),
-    .refill_id_flop             (refill_id_flop),               // Tie-off if not using Refill ID checking in Hit path
+    .pad_yy_icg_scan_en         (pad_yy_icg_scan_en),           
 
     // DUTLB Specifics
     .biu_mmu_smp_disable        (biu_mmu_smp_disable),
@@ -658,15 +600,9 @@ mmu_l1dtlb_hit_rd #(
     .dutlb_off_hit              (dutlb_off_hit),
     .dutlb_ori_read_x           (dutlb_ori_read0),
     .dutlb_read_type_x          (dutlb_read_type0),
-    .dutlb_ref_pgflt            (dutlb_ref_pgflt),               //l2tlb page fault or ptw refill page fault 
-    .dutlb_ref_accflt		(dutlb_ref_acflt),
-    .dutlb_refill_on_x          (l1dtlb_refill_on),
-    //.dutlb_stall_override_x     (1'b0),
 
     // Status/Miss Outputs (Connect to Port 0 logic)
     .dutlb_acc_flt_x            (dutlb_acc_flt0),
-    .dutlb_inst_id_match_x      (dutlb_inst_id_match0),
-    .dutlb_inst_id_older_x      (dutlb_inst_id_older0),
     .dutlb_miss_vld_short_x     (dutlb_miss_vld_short0),
     .dutlb_miss_vld_x           (dutlb_miss_vld0),        // To T1 Stage
     .dutlb_plru_read_hit_vld_x  (dutlb_plru_read_hit_vld0),
@@ -738,7 +674,6 @@ mmu_l1dtlb_hit_rd #(
 
     // Control & Misc
     .pad_yy_icg_scan_en         (pad_yy_icg_scan_en),
-    .refill_id_flop             (refill_id_flop),
 
     // DUTLB Specifics
     .biu_mmu_smp_disable        (biu_mmu_smp_disable),
@@ -749,15 +684,9 @@ mmu_l1dtlb_hit_rd #(
     .dutlb_off_hit              (dutlb_off_hit),
     .dutlb_ori_read_x           (dutlb_ori_read1),    // Port 1 Read Logic
     .dutlb_read_type_x          (dutlb_read_type1),   // Port 1 Read Type
-    .dutlb_ref_pgflt            (dutlb_ref_pgflt),
-    .dutlb_ref_accflt		(dutlb_ref_acflt),
-    .dutlb_refill_on_x          (l1dtlb_refill_on),
-    //.dutlb_stall_override_x     (1'b0),
 
     // Status/Miss Outputs (Connect to Port 1 logic)
     .dutlb_acc_flt_x            (dutlb_acc_flt1),
-    .dutlb_inst_id_match_x      (dutlb_inst_id_match1),
-    .dutlb_inst_id_older_x      (dutlb_inst_id_older1),
     .dutlb_miss_vld_short_x     (dutlb_miss_vld_short1),
     .dutlb_miss_vld_x           (dutlb_miss_vld1),        // To T1 Stage
     .dutlb_plru_read_hit_vld_x  (dutlb_plru_read_hit_vld1),
@@ -805,6 +734,12 @@ always_ff @(posedge mb_clk or negedge cpurst_b) begin
         miss0_iid_q   <= '0;
         miss0_abort_q <= 1'b0;
 	miss0_is_store<= 1'b0; 
+    end else if (rtu_yy_xx_flush) begin
+        miss0_vld_q   <= 1'b0;
+        miss0_vpn_q   <= '0;
+        miss0_iid_q   <= '0;
+        miss0_abort_q <= 1'b0;
+        miss0_is_store<= 1'b0;
     end else begin
         miss0_vld_q   <= dutlb_miss_vld0;
         miss0_vpn_q   <= utlb_req_vpn0;
@@ -821,6 +756,12 @@ always_ff @(posedge mb_clk or negedge cpurst_b) begin
         miss1_iid_q   <= '0;
         miss1_abort_q <= 1'b0;
 	miss1_is_store<= 1'b0; 
+    end else if (rtu_yy_xx_flush) begin
+        miss1_vld_q   <= 1'b0;
+        miss1_vpn_q   <= '0;
+        miss1_iid_q   <= '0;
+        miss1_abort_q <= 1'b0;
+        miss1_is_store<= 1'b0;
     end else begin
         miss1_vld_q   <= dutlb_miss_vld1;
         miss1_vpn_q   <= utlb_req_vpn1;
@@ -879,13 +820,13 @@ mmu_l1dtlb_allocator #(
     
     // Port 0: Add !mb_hit0
     // If it's a hit in MB, we treat it as "Merged" and DO NOT allocate a new entry.
-    .req0_vld(miss0_vld_q && !miss0_abort_q && !mb_hit0), 
+    .req0_vld(miss0_vld_q && !miss0_abort_q && !mb_hit0 && !rtu_yy_xx_flush),
     .req0_vpn(miss0_vpn_q),
     .req0_iid(miss0_iid_q),
     .req0_port_id(1'b0),
     
     // Port 1: Add !mb_hit1
-    .req1_vld(miss1_vld_q && !miss1_abort_q && !mb_hit1 && !same_4k_miss01),
+    .req1_vld(miss1_vld_q && !miss1_abort_q && !mb_hit1 && !same_4k_miss01 && !rtu_yy_xx_flush),
     .req1_vpn(miss1_vpn_q),
     .req1_iid(miss1_iid_q),
     .req1_port_id(1'b1),
@@ -898,6 +839,10 @@ mmu_l1dtlb_allocator #(
     .sel1(alloc_sel1),
     .alloc_we(mb_alloc_we)
 );
+
+assign alloc_gnt0_safe = alloc_gnt0 && !rtu_yy_xx_flush;
+assign alloc_gnt1_safe = alloc_gnt1 && !rtu_yy_xx_flush;
+assign mb_alloc_we_safe = mb_alloc_we & {MB_DEPTH{!rtu_yy_xx_flush}};
 
 //!************************************************
 //! Scheduler Instance
@@ -920,13 +865,13 @@ mmu_l1dtlb_scheduler #(
     .mb_entry_store   (mb_entry_store),     // NEW: Connected to MB array
     
     // Bypass Inputs (From T1 Stage / Allocator)
-    .alloc_gnt0       (alloc_gnt0),
+    .alloc_gnt0       (alloc_gnt0_safe),
     .alloc_sel0       (alloc_sel0),
     .alloc_vpn0       (miss0_vpn_q), 
     .alloc_iid0       (miss0_iid_q),
     .alloc_store0     (miss0_is_store),     // NEW: Connected to T1 Port 0
     
-    .alloc_gnt1       (alloc_gnt1),
+    .alloc_gnt1       (alloc_gnt1_safe),
     .alloc_sel1       (alloc_sel1),
     .alloc_vpn1       (miss1_vpn_q),
     .alloc_iid1       (miss1_iid_q),
@@ -970,7 +915,7 @@ generate
         // ============================================================
         logic alloc_this_entry;
         // alloc_we is one-hot from Allocator
-        assign alloc_this_entry = mb_alloc_we[i];
+        assign alloc_this_entry = mb_alloc_we_safe[i];
         
         // Local signals for the entry's allocation inputs
         logic [VPN_WIDTH-1:0] alloc_vpn_i;
@@ -987,14 +932,14 @@ generate
             alloc_store_i   = 1'b0;
 
             // If Allocator granted Port 0 to this Entry Index
-            if (alloc_gnt0 && (alloc_sel0 == i[EID_WIDTH-1:0])) begin
+            if (alloc_gnt0_safe && (alloc_sel0 == i[EID_WIDTH-1:0])) begin
                 alloc_vpn_i     = miss0_vpn_q;
                 alloc_iid_i     = miss0_iid_q;
                 //alloc_port_id_i = 1'b0;
                 alloc_store_i   = miss0_is_store; // Route Port 0 Store bit
             end 
             // If Allocator granted Port 1 to this Entry Index
-            else if (alloc_gnt1 && (alloc_sel1 == i[EID_WIDTH-1:0])) begin
+            else if (alloc_gnt1_safe && (alloc_sel1 == i[EID_WIDTH-1:0])) begin
                 alloc_vpn_i     = miss1_vpn_q;
                 alloc_iid_i     = miss1_iid_q;
                 //alloc_port_id_i = 1'b1;

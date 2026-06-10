@@ -184,4 +184,45 @@ class pmp_flg_cross_8port_seq extends pmp_base_seq;
 
 endclass : pmp_flg_cross_8port_seq
 
+// ── Deterministic flag sweep for agent coverage closure ----------------------
+class pmp_flg_coverage_sweep_seq extends pmp_base_seq;
+  `uvm_object_utils(pmp_flg_coverage_sweep_seq)
+
+  function new(string name = "pmp_flg_coverage_sweep_seq");
+    super.new(name);
+  endfunction
+
+  protected task send_flags(input bit [3:0] flg_in[8]);
+    pmp_txn tr;
+    `uvm_create(tr)
+    foreach (tr.flg[i]) tr.flg[i] = flg_in[i];
+    `uvm_send(tr)
+  endtask
+
+  virtual task body();
+    bit [3:0] flg[8];
+
+    foreach (flg[i]) flg[i] = 4'h7;
+
+    // Cover acc0[3:1] values 0..7 while keeping port0 read-allow set.
+    for (int unsigned acc = 0; acc < 8; acc++) begin
+      foreach (flg[i]) flg[i] = 4'h7;
+      flg[0] = {acc[2:0], 1'b1};
+      send_flags(flg);
+    end
+
+    // Cover first R-allow port p[0:7].  Lower ports are read-denied so the
+    // covergroup's first_r_allow_port() selects the intended port.
+    for (int unsigned port = 0; port < 8; port++) begin
+      foreach (flg[i]) flg[i] = 4'h0;
+      flg[port] = 4'h1;
+      send_flags(flg);
+    end
+
+    foreach (flg[i]) flg[i] = 4'h7;
+    send_flags(flg);
+  endtask
+
+endclass : pmp_flg_coverage_sweep_seq
+
 `endif // PMP_SEQUENCES_SVH

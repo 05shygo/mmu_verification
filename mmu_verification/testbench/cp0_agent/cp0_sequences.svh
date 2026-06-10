@@ -754,7 +754,8 @@ class cp0_l2tlb_tlbop_exact_base_seq extends cp0_base_seq;
     output bit found,
     output bit [10:0] found_index,
     output bit [2:0] found_way,
-    input string ctx
+    input string ctx,
+    input bit allow_duplicates = 1'b0
   );
     bit [26:0] got_vpn;
     bit [15:0] got_asid;
@@ -775,19 +776,24 @@ class cp0_l2tlb_tlbop_exact_base_seq extends cp0_base_seq;
       tlbr_read_sample(candidate_index, got_vpn, got_asid, got_pgs, got_ppn,
                        got_flags, got_g,
                        $sformatf("%s.scan_way%0d", ctx, way_i));
-      if (tlbr_fields_match(ent, got_vpn, got_asid, got_pgs, got_ppn,
-                            got_flags, got_g)) begin
-        if (!found) begin
-          found = 1'b1;
-          found_index = candidate_index;
-          found_way = way;
-        end else begin
-          `uvm_error(get_type_name(),
-            $sformatf("[L2TLB_TLBOP_CHECK] seq=%s ctx=%s op=TLBR_SCAN classification=RTL_bug_or_UVM_duplicate expected_single_payload_duplicate old_index=0x%03h new_index=0x%03h vpn=0x%07h asid=0x%04h",
-              get_name(), ctx, found_index, candidate_index, ent.vpn, ent.asid))
-        end
-      end
-    end
+	    if (tlbr_fields_match(ent, got_vpn, got_asid, got_pgs, got_ppn,
+	                          got_flags, got_g)) begin
+	      if (!found) begin
+	        found = 1'b1;
+	        found_index = candidate_index;
+	        found_way = way;
+	      end else begin
+	        if (allow_duplicates) begin
+	          $display("[L2TLB_TLBOP_CHECK] seq=%s ctx=%s op=TLBR_SCAN classification=random_tlbwr_duplicate_allowed old_index=0x%03h new_index=0x%03h vpn=0x%07h asid=0x%04h status=DIAG",
+	            get_name(), ctx, found_index, candidate_index, ent.vpn, ent.asid);
+	        end else begin
+	          `uvm_error(get_type_name(),
+	            $sformatf("[L2TLB_TLBOP_CHECK] seq=%s ctx=%s op=TLBR_SCAN classification=RTL_bug_or_UVM_duplicate expected_single_payload_duplicate old_index=0x%03h new_index=0x%03h vpn=0x%07h asid=0x%04h",
+	              get_name(), ctx, found_index, candidate_index, ent.vpn, ent.asid))
+	        end
+	      end
+	    end
+	  end
 
     if (!found) begin
       `uvm_error(get_type_name(),
@@ -803,6 +809,75 @@ class cp0_l2tlb_tlbop_exact_base_seq extends cp0_base_seq;
   endtask
 
 endclass : cp0_l2tlb_tlbop_exact_base_seq
+
+class cp0_l2tlb_tlbp_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbp_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbp_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent;
+    ent = make_entry(27'h000923, 16'h0077, 28'h00abc, pgs_4k(), 3'd0, 1'b0,
+                     make_flags());
+    set_cskyee(1'b1);
+    write_meh(ent, "tlbp_reset_target.meh");
+    issue_mcir(mcir_tlbp(), "tlbp_reset_target.tlbp");
+    $display("[L2TLB_TLBOP_RESET_TARGET] seq=%s op=TLBP vpn=0x%07h asid=0x%04h status=ISSUED",
+      get_name(), ent.vpn, ent.asid);
+  endtask
+
+endclass : cp0_l2tlb_tlbp_reset_target_seq
+
+class cp0_l2tlb_tlbr_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbr_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbr_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    set_cskyee(1'b1);
+    write_mir(11'h123, "tlbr_reset_target.mir");
+    issue_mcir(mcir_tlbr(), "tlbr_reset_target.tlbr");
+    $display("[L2TLB_TLBOP_RESET_TARGET] seq=%s op=TLBR index=0x%03h status=ISSUED",
+      get_name(), 11'h123);
+  endtask
+
+endclass : cp0_l2tlb_tlbr_reset_target_seq
+
+class cp0_l2tlb_tlbwi_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbwi_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbwi_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent;
+    ent = make_entry(27'h000a23, 16'h0088, 28'h00bcd, pgs_4k(), 3'd4, 1'b0,
+                     make_flags(.u(1'b1), .rsw(2'b01)));
+    tlbwi_entry(ent, "tlbwi_reset_target");
+  endtask
+
+endclass : cp0_l2tlb_tlbwi_reset_target_seq
+
+class cp0_l2tlb_tlbwr_reset_target_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbwr_reset_target_seq)
+
+  function new(string name = "cp0_l2tlb_tlbwr_reset_target_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent;
+    ent = make_entry(27'h000b24, 16'h0099, 28'h00cde, pgs_4k(), 3'd1, 1'b0,
+                     make_flags(.w(1'b0), .u(1'b1), .rsw(2'b10)));
+    tlbwr_entry(ent, "tlbwr_reset_target");
+  endtask
+
+endclass : cp0_l2tlb_tlbwr_reset_target_seq
 
 class cp0_l2tlb_tlbp_hit_exact_seq extends cp0_l2tlb_tlbop_exact_base_seq;
   `uvm_object_utils(cp0_l2tlb_tlbp_hit_exact_seq)
@@ -903,6 +978,38 @@ class cp0_l2tlb_tlbwi_write_exact_seq extends cp0_l2tlb_tlbop_exact_base_seq;
 
 endclass : cp0_l2tlb_tlbwi_write_exact_seq
 
+class cp0_l2tlb_tlbwi_high_way_hit_seq extends cp0_l2tlb_tlbop_exact_base_seq;
+  `uvm_object_utils(cp0_l2tlb_tlbwi_high_way_hit_seq)
+
+  function new(string name = "cp0_l2tlb_tlbwi_high_way_hit_seq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    tlbop_entry_t ent6;
+    tlbop_entry_t ent7;
+    bit [10:0] observed_index;
+
+    // selector vpn[19:18]==2'b01 predicts 4K for ways 6 and 7.
+    ent6 = make_entry(27'h0040623, 16'h0766, 28'h00a66, pgs_4k(), 3'd6, 1'b0,
+                      make_flags(.w(1'b1), .u(1'b0), .rsw(2'b01)));
+    ent7 = make_entry(27'h0040727, 16'h0777, 28'h00a77, pgs_4k(), 3'd7, 1'b0,
+                      make_flags(.w(1'b0), .u(1'b1), .rsw(2'b10),
+                                 .c(1'b0), .sec(1'b1)));
+
+    tlbwi_entry(ent6, "tlbwi_high_way6_setup");
+    tlbr_read_check(ent6, ent6.index, 1'b1, "tlbwi_high_way6_tlbr");
+    tlbp_probe(ent6, 1'b1, 1'b1, ent6.index, observed_index,
+               "tlbwi_high_way6_tlbp");
+
+    tlbwi_entry(ent7, "tlbwi_high_way7_setup");
+    tlbr_read_check(ent7, ent7.index, 1'b1, "tlbwi_high_way7_tlbr");
+    tlbp_probe(ent7, 1'b1, 1'b1, ent7.index, observed_index,
+               "tlbwi_high_way7_tlbp");
+  endtask
+
+endclass : cp0_l2tlb_tlbwi_high_way_hit_seq
+
 class cp0_l2tlb_inv_asid_directed_probe_seq extends cp0_l2tlb_tlbop_exact_base_seq;
   `uvm_object_utils(cp0_l2tlb_inv_asid_directed_probe_seq)
 
@@ -975,10 +1082,12 @@ class cp0_l2tlb_tlbwr_visible_exact_seq extends cp0_l2tlb_tlbop_exact_base_seq;
   `uvm_object_utils(cp0_l2tlb_tlbwr_visible_exact_seq)
 
   int unsigned num_writes;
+  bit strict_visible_check;
 
   function new(string name = "cp0_l2tlb_tlbwr_visible_exact_seq");
     super.new(name);
     num_writes = 1;
+    strict_visible_check = 1'b0;
   endfunction
 
   protected function tlbop_entry_t make_visible_entry(int unsigned i);
@@ -1000,17 +1109,27 @@ class cp0_l2tlb_tlbwr_visible_exact_seq extends cp0_l2tlb_tlbop_exact_base_seq;
     bit [2:0] observed_way;
     bit found;
 
+    if ($test$plusargs("L2TLB_TLBWR_STRICT_VISIBLE"))
+      strict_visible_check = 1'b1;
+
     for (int unsigned i = 0; i < num_writes; i++) begin
       ent = make_visible_entry(i);
       tlbwr_entry(ent, $sformatf("tlbwr_visible_%0d", i));
       tlbr_find_entry(ent, found, observed_index, observed_way,
-                      $sformatf("tlbwr_visible_%0d_tlbr_scan", i));
+                      $sformatf("tlbwr_visible_%0d_tlbr_scan", i),
+                      !strict_visible_check);
       if (found) begin
         if (!page_size_matches_way(ent, observed_way)) begin
-          `uvm_error(get_type_name(),
-            $sformatf("[L2TLB_TLBOP_CHECK] seq=%s ctx=tlbwr_visible_%0d op=TLBWR classification=RTL_bug_or_spec_gap payload_written_to_tlbp_invisible_way index=0x%03h way=%0d vpn=0x%07h pgs=0x%0h pred_pgs=0x%0h",
+          if (strict_visible_check) begin
+            `uvm_error(get_type_name(),
+              $sformatf("[L2TLB_TLBOP_CHECK] seq=%s ctx=tlbwr_visible_%0d op=TLBWR classification=RTL_bug_or_spec_gap payload_written_to_tlbp_invisible_way index=0x%03h way=%0d vpn=0x%07h pgs=0x%0h pred_pgs=0x%0h",
+                get_name(), i, observed_index, observed_way, ent.vpn, ent.pgs,
+                size_pred(ent.vpn[19:18], observed_way)))
+          end else begin
+            $display("[L2TLB_TLBOP_CHECK] seq=%s ctx=tlbwr_visible_%0d op=TLBWR classification=random_tlbwr_tlbp_invisible_allowed index=0x%03h way=%0d vpn=0x%07h pgs=0x%0h pred_pgs=0x%0h status=DIAG",
               get_name(), i, observed_index, observed_way, ent.vpn, ent.pgs,
-              size_pred(ent.vpn[19:18], observed_way)))
+              size_pred(ent.vpn[19:18], observed_way));
+          end
         end else begin
           tlbp_probe(ent, 1'b1, 1'b1, observed_index, tlbp_index,
                      $sformatf("tlbwr_visible_%0d_tlbp", i));

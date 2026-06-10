@@ -250,6 +250,28 @@ interface mmu_dut_probes_if (
   wire [PTW_ID_WIDTH-1:0]   l2tlb_ptw_id;
   wire [2:0]   l2tlb_ptw_type;
   wire [26:0]  l2tlb_ptw_vpn;
+  wire         l1d_miss0_vld_q;
+  wire         l1d_miss1_vld_q;
+  wire         l1d_miss0_abort_q;
+  wire         l1d_miss1_abort_q;
+  wire [26:0]  l1d_miss0_vpn_q;
+  wire [26:0]  l1d_miss1_vpn_q;
+  wire [6:0]   l1d_miss0_iid_q;
+  wire [6:0]   l1d_miss1_iid_q;
+  wire         l1d_miss0_store_q;
+  wire         l1d_miss1_store_q;
+  wire         l1d_alloc_req0_vld;
+  wire         l1d_alloc_req1_vld;
+  wire         l1d_alloc_gnt0_raw;
+  wire         l1d_alloc_gnt1_raw;
+  wire         l1d_alloc_gnt0_safe;
+  wire         l1d_alloc_gnt1_safe;
+  wire [2:0]   l1d_alloc_sel0;
+  wire [2:0]   l1d_alloc_sel1;
+  wire [7:0]   l1d_mb_alloc_we_raw;
+  wire [7:0]   l1d_mb_alloc_we_safe;
+  wire [7:0]   l1d_mb_issue_sel;
+  wire [7:0]   l1d_mb_issue_grant;
   wire         ptw_lsu_data_req;
   wire [39:0]  ptw_lsu_data_req_addr;
   wire         ptw_lsu_data_req_size;
@@ -408,6 +430,9 @@ interface mmu_dut_probes_if (
   wire [7:0]   tlbop_l2_tlboper_sel;
   wire         tlbop_l2_va_hit;
   wire         tlbop_l2_asid_hit;
+  logic        tlbop_reset_inject_active;
+  logic        tlbop_reset_inject_hit;
+  logic        tlbop_reset_inject_done;
 
   // Monitor clocking
   clocking mon_cb @(posedge clk_i);
@@ -434,6 +459,13 @@ interface mmu_dut_probes_if (
     input l1d_ptw_ref_ppn, l1d_ptw_ref_flg, l1d_ptw_ref_pgs, l1d_ptw_ref_pgflt, l1d_ptw_ref_acflt;
     input l1d_l2_ref_pavld, l1d_l2_ref_cmplt, l1d_l2_ref_eid, l1d_l2_ref_vpn;
     input l1d_l2_ref_ppn, l1d_l2_ref_flg, l1d_l2_ref_pgs, l1d_l2_ref_pgflt;
+    input l1d_miss0_vld_q, l1d_miss1_vld_q, l1d_miss0_abort_q, l1d_miss1_abort_q;
+    input l1d_miss0_vpn_q, l1d_miss1_vpn_q, l1d_miss0_iid_q, l1d_miss1_iid_q;
+    input l1d_miss0_store_q, l1d_miss1_store_q;
+    input l1d_alloc_req0_vld, l1d_alloc_req1_vld;
+    input l1d_alloc_gnt0_raw, l1d_alloc_gnt1_raw, l1d_alloc_gnt0_safe, l1d_alloc_gnt1_safe;
+    input l1d_alloc_sel0, l1d_alloc_sel1, l1d_mb_alloc_we_raw, l1d_mb_alloc_we_safe;
+    input l1d_mb_issue_sel, l1d_mb_issue_grant;
     input l1d_install_req_ptw, l1d_install_req_l2, l1d_install_req_wfi;
     input l1d_install_sel_ptw, l1d_install_sel_l2, l1d_install_sel_wfi;
     input l1d_install_id_ptw, l1d_install_id_l2, l1d_install_id_wfi;
@@ -521,6 +553,7 @@ interface mmu_dut_probes_if (
     input tlbop_l2_tlbr_ppn, tlbop_l2_tlbr_flg, tlbop_l2_tlbr_g;
     input tlbop_l2_tlboper_cmplt, tlbop_l2_tlboper_sel;
     input tlbop_l2_va_hit, tlbop_l2_asid_hit;
+    input tlbop_reset_inject_active, tlbop_reset_inject_hit, tlbop_reset_inject_done;
   endclocking
 
 endinterface : mmu_dut_probes_if

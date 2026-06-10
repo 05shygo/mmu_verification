@@ -12,13 +12,14 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   virtual mmu_dut_probes_if v_probe;
   virtual lsu_if            lsu_vif;
+  virtual ifu_if            ifu_vif;
 
   int unsigned wb_itlb_ent;
-  logic [1:0]  wb_itlb_fsm;
+  logic [2:0]  wb_itlb_fsm;
   bit          wb_itlb_credit;
   int unsigned wb_dtlb_mb_occ;
   int unsigned wb_dtlb_entry_occ;
-  logic [2:0]  wb_dtlb_mb0_st;
+  logic [2:0]  wb_dtlb_mb_state_obs;
   logic [1:0]  wb_dtlb_dual_kind;
   logic [1:0]  wb_dtlb_refill_src;
   bit          wb_dtlb_refill_vld;
@@ -71,6 +72,12 @@ class mmu_env_cg_whitebox extends uvm_component;
   logic [2:0]  wb_maee_leaf_vec;
   logic [1:0]  wb_maee_path;
   logic [3:0]  wb_tlbiva;
+  logic [1:0]  wb_tlbop_tlbp;
+  logic [1:0]  wb_tlbop_tlbr;
+  logic [1:0]  wb_tlbop_tlbwi;
+  logic [1:0]  wb_tlbop_tlbwr;
+  logic [2:0]  wb_tlbop_tlbiasid;
+  bit          wb_tlbop_tlbiall;
   int unsigned wb_sample_cycles;
 
   // --- §10.2: cg_ptw_walk ----------------------------------------------------
@@ -87,7 +94,13 @@ class mmu_env_cg_whitebox extends uvm_component;
     option.per_instance = 1;
     cp_bank: coverpoint wb_l2_b0 { bins b[] = {[0:7]}; }
     cp_way: coverpoint wb_l2_w0 { bins w[] = {[0:7]}; }
-    cp_pgs: coverpoint wb_l2_pgs0;
+    cp_pgs: coverpoint wb_l2_pgs0 {
+      bins idle = {3'b000};
+      bins pgs_4k = {3'b001};
+      bins pgs_2m = {3'b010};
+      bins pgs_1g = {3'b100};
+      ignore_bins reserved = {3'b011, 3'b101, 3'b110, 3'b111};
+    }
     cx_bw: cross cp_bank, cp_way;
   endgroup
 
@@ -98,7 +111,14 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins c0_4 = {[0:4]}; bins c5_8 = {[5:8]}; bins c9_12 = {[9:12]}; bins c13_16 = {[13:16]};
     }
     cp_credit_remain: coverpoint wb_itlb_credit;
-    cp_fsm_state: coverpoint wb_itlb_fsm;
+    cp_fsm_state: coverpoint wb_itlb_fsm {
+      bins idle  = {3'b000};
+      bins wfg   = {3'b001};
+      bins wfc   = {3'b010};
+      bins abt   = {3'b011};
+      bins pgflt = {3'b100};
+      ignore_bins unreachable_or_reserved = {3'b101, 3'b110, 3'b111};
+    }
   endgroup
 
   // --- cg_l1dtlb ------------------------------------------------------------
@@ -117,7 +137,16 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins mid = {[4:7]};
       bins full = {8};
     }
-    cp_fsm_state: coverpoint wb_dtlb_mb0_st;
+    cp_fsm_state: coverpoint wb_dtlb_mb_state_obs {
+      bins idle  = {3'b000};
+      bins wfg   = {3'b001};
+      bins wfc   = {3'b010};
+      bins pgflt = {3'b011};
+      bins acflt = {3'b100};
+      bins abt   = {3'b101};
+      bins wfi   = {3'b110};
+      ignore_bins reserved = {3'b111};
+    }
     cp_dual_lookup: coverpoint wb_dtlb_dual_kind {
       bins none_or_single = {2'd0};
       bins dual_hit = {2'd1};
@@ -181,7 +210,54 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- cg_tlboper_fsm -------------------------------------------------------
   covergroup cg_tlboper_fsm;
     option.per_instance = 1;
-    cp_fsm_state: coverpoint wb_tlbiva { bins s[] = {[0:15]}; }
+    // Current ct_mmu_tlboper implements a compact INVVA FSM:
+    // IDLE/RD/CMP/WR/WT/CMPLT.  The old per-page-size 2M/1G states are
+    // commented out in RTL and must not be counted as stimulus holes.
+    cp_invva_state: coverpoint wb_tlbiva {
+      bins idle  = {4'd0};
+      bins rd    = {4'd2};
+      bins cmp   = {4'd3};
+      bins wr    = {4'd4};
+      bins wt    = {4'd5};
+      bins cmplt = {4'd14};
+      ignore_bins reserved_or_legacy = {4'd1, [4'd6:4'd13], 4'd15};
+    }
+    cp_tlbp_state: coverpoint wb_tlbop_tlbp {
+      bins idle = {2'd0};
+      bins wfg  = {2'd1};
+      bins wfc  = {2'd3};
+      ignore_bins reserved = {2'd2};
+    }
+    cp_tlbr_state: coverpoint wb_tlbop_tlbr {
+      bins idle = {2'd0};
+      bins wfg  = {2'd1};
+      bins wfc  = {2'd3};
+      ignore_bins reserved = {2'd2};
+    }
+    cp_tlbwi_state: coverpoint wb_tlbop_tlbwi {
+      bins idle = {2'd0};
+      bins wfg  = {2'd1};
+      bins wfc  = {2'd3};
+      ignore_bins reserved = {2'd2};
+    }
+    cp_tlbwr_state: coverpoint wb_tlbop_tlbwr {
+      bins idle = {2'd0};
+      bins wfg  = {2'd2};
+      bins tag  = {2'd1};
+      bins wfc  = {2'd3};
+    }
+    cp_invasid_state: coverpoint wb_tlbop_tlbiasid {
+      bins idle = {3'd0};
+      bins rd   = {3'd1};
+      bins wfc  = {3'd2};
+      bins wt   = {3'd3};
+      bins nwt  = {3'd4};
+      ignore_bins reserved = {[3'd5:3'd7]};
+    }
+    cp_invall_state: coverpoint wb_tlbop_tlbiall {
+      bins idle = {1'b0};
+      bins wfc  = {1'b1};
+    }
   endgroup
 
   // --- Phase 12: cg_ptw_ready_transition -------------------------------------
@@ -580,6 +656,9 @@ class mmu_env_cg_whitebox extends uvm_component;
     if (!uvm_config_db#(virtual lsu_if)::get(this, "", "LSU_VIF", lsu_vif)) begin
       `uvm_info(get_type_name(), "LSU_VIF not in config_db - L1DTLB LSU-driven whitebox bins will use DUT probes only", UVM_LOW)
     end
+    if (!uvm_config_db#(virtual ifu_if)::get(this, "", "IFU_VIF", ifu_vif)) begin
+      `uvm_info(get_type_name(), "IFU_VIF not in config_db - L1ITLB full-state whitebox bins will use DUT probes only", UVM_LOW)
+    end
   endfunction
 
   virtual task run_phase(uvm_phase phase);
@@ -594,7 +673,7 @@ class mmu_env_cg_whitebox extends uvm_component;
       cg_ptw_walk.sample();
       cg_l2tlb_bank.sample();
       cg_l1itlb.sample();
-      cg_l1dtlb.sample();
+      sample_l1dtlb_covergroup();
       cg_l2_reqq.sample();
       cg_tlboper_fsm.sample();
       cg_ptw_ready_transition.sample();
@@ -770,19 +849,63 @@ class mmu_env_cg_whitebox extends uvm_component;
       cg_sysmap_4twu_concurrent.sample(active_sysmap_cnt, sysmap_port_map_ok);
   endfunction
 
+  function logic [6:0] f_l1d_mb_states_seen(
+    input logic [7:0]      vld,
+    input logic [7:0][2:0] state
+  );
+    logic [6:0] seen;
+    seen = '0;
+    for (int unsigned i = 0; i < 8; i++) begin
+      if (!$isunknown({vld[i], state[i]})) begin
+        if (!vld[i])
+          seen[0] = 1'b1;
+        else if (state[i] < 3'd7)
+          seen[state[i]] = 1'b1;
+      end
+    end
+    return seen;
+  endfunction
+
+  function void sample_l1dtlb_covergroup();
+    logic [6:0] states_seen;
+
+    states_seen = f_l1d_mb_states_seen(v_probe.l1d_mb_vld, v_probe.l1d_mb_state);
+    if (states_seen == 7'b0)
+      states_seen[0] = 1'b1;
+
+    for (int unsigned st = 0; st < 7; st++) begin
+      if (states_seen[st]) begin
+        wb_dtlb_mb_state_obs = 3'(st);
+        cg_l1dtlb.sample();
+      end
+    end
+  endfunction
+
   virtual function void sample_dut;
     bit lsu_p0_req;
     bit lsu_p1_req;
+    bit lsu_p0_pa_vld;
+    bit lsu_p1_pa_vld;
     bit stamo_vld;
+    logic [27:0] lsu_p0_pa;
+    logic [27:0] lsu_p1_pa;
     logic [27:0] stamo_pa;
 
     lsu_p0_req = 1'b0;
     lsu_p1_req = 1'b0;
+    lsu_p0_pa_vld = 1'b0;
+    lsu_p1_pa_vld = 1'b0;
+    lsu_p0_pa = '0;
+    lsu_p1_pa = '0;
     stamo_vld  = 1'b0;
     stamo_pa   = '0;
     if (lsu_vif != null) begin
       lsu_p0_req = lsu_vif.monitor_cb.lsu_mmu_va0_vld && !lsu_vif.monitor_cb.lsu_mmu_abort0;
       lsu_p1_req = lsu_vif.monitor_cb.lsu_mmu_va1_vld && !lsu_vif.monitor_cb.lsu_mmu_abort1;
+      lsu_p0_pa_vld = lsu_vif.monitor_cb.mmu_lsu_pa0_vld;
+      lsu_p1_pa_vld = lsu_vif.monitor_cb.mmu_lsu_pa1_vld;
+      lsu_p0_pa = lsu_vif.monitor_cb.mmu_lsu_pa0;
+      lsu_p1_pa = lsu_vif.monitor_cb.mmu_lsu_pa1;
       stamo_vld  = lsu_vif.monitor_cb.lsu_mmu_stamo_vld;
       stamo_pa   = lsu_vif.monitor_cb.lsu_mmu_stamo_pa;
     end
@@ -792,11 +915,12 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_ptw_ready            = v_probe.ptw_jtlb_ready;
     wb_ptw_ready_prev_valid = 1'b1;
     wb_itlb_ent    = cnt16(v_probe.l1i_entry_vld);
-    wb_itlb_fsm    = v_probe.l1i_ref_fsm;
+    wb_itlb_fsm    = (ifu_vif != null) ? ifu_vif.monitor_cb.dbg_iutlb_ref_cur_st
+                                        : {1'b0, v_probe.l1i_ref_fsm};
     wb_itlb_credit = v_probe.l1i_credit_cnt;
     wb_dtlb_mb_occ  = $countones(v_probe.l1d_mb_vld);
     wb_dtlb_entry_occ = $countones(v_probe.l1d_entry_vld);
-    wb_dtlb_mb0_st  = v_probe.l1d_mb_st0;
+    wb_dtlb_mb_state_obs  = 3'b000;
     wb_dtlb_refill_src = v_probe.l1d_refill_vld ? v_probe.l1d_refill_src : 2'd0;
     wb_dtlb_refill_vld = v_probe.l1d_refill_vld;
     wb_dtlb_refill_pgs = v_probe.l1d_refill_pgs;
@@ -807,21 +931,20 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_dtlb_hit_any = v_probe.l1d_p0_hit_vld || v_probe.l1d_p1_hit_vld;
     wb_dtlb_hit_pgs = v_probe.l1d_p0_hit_vld ? v_probe.l1d_p0_hit_pgs :
                       v_probe.l1d_p1_hit_vld ? v_probe.l1d_p1_hit_pgs : 3'b000;
-    wb_dtlb_one_free_dual_diff = lsu_p0_req && lsu_p1_req
-                              && v_probe.l1d_p0_miss_vld && v_probe.l1d_p1_miss_vld
-                              && !v_probe.l1d_p0_mb_hit && !v_probe.l1d_p1_mb_hit
+    wb_dtlb_one_free_dual_diff = v_probe.l1d_alloc_req0_vld && v_probe.l1d_alloc_req1_vld
                               && ($countones(v_probe.l1d_mb_vld) == 7)
-                              && (v_probe.l1d_p0_req_vpn != v_probe.l1d_p1_req_vpn);
+                              && (v_probe.l1d_miss0_vpn_q != v_probe.l1d_miss1_vpn_q);
     if (!stamo_vld)
       wb_dtlb_stamo_kind = 2'd0;
-    else if (lsu_p1_req && (v_probe.l1d_p1_fin_pa == stamo_pa))
+    else if (lsu_p1_req && lsu_p1_pa_vld && (lsu_p1_pa == stamo_pa))
       wb_dtlb_stamo_kind = 2'd1;
-    else if (lsu_p0_req && !lsu_p1_req && (v_probe.l1d_p0_fin_pa != stamo_pa))
+    else if (lsu_p0_req && !lsu_p1_req && lsu_p0_pa_vld && (lsu_p0_pa != stamo_pa))
       wb_dtlb_stamo_kind = 2'd2;
     else
       wb_dtlb_stamo_kind = 2'd3;
     if ((lsu_vif != null) && (lsu_vif.monitor_cb.mmu_lsu_mmu_en === 1'b0) && (lsu_p0_req || lsu_p1_req))
-      wb_dtlb_direct_kind = v_probe.l1d_l2_req_vld ? 2'd2 : 2'd1;
+      wb_dtlb_direct_kind = (v_probe.l1d_l2_req_vld || (v_probe.l1d_mb_vld != 8'h00)
+                          || v_probe.l1d_refill_vld) ? 2'd2 : 2'd1;
     else
       wb_dtlb_direct_kind = 2'd0;
     if ((v_probe.l1d_p0_hit_vld && v_probe.l1d_p1_hit_vld))
@@ -878,6 +1001,12 @@ class mmu_env_cg_whitebox extends uvm_component;
                             || (wb_mbuf_lvl != 0)
                             || (wb_twu_idle_cnt != 4);
     wb_tlbiva               = v_probe.tlbiva_cur_st;
+    wb_tlbop_tlbp           = v_probe.tlbop_tlbp_fsm;
+    wb_tlbop_tlbr           = v_probe.tlbop_tlbr_fsm;
+    wb_tlbop_tlbwi          = v_probe.tlbop_tlbwi_fsm;
+    wb_tlbop_tlbwr          = v_probe.tlbop_tlbwr_fsm;
+    wb_tlbop_tlbiasid       = v_probe.tlbop_tlbiasid_fsm;
+    wb_tlbop_tlbiall        = v_probe.tlbop_tlbiall_fsm;
   endfunction
 
   function logic [2:0] f_first_onehot3(input logic [7:0] oh);

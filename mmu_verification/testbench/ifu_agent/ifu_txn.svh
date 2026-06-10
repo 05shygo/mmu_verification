@@ -23,6 +23,7 @@ class ifu_txn extends uvm_sequence_item;
     `uvm_field_int(dbg_iutlb_pmp_deny, UVM_ALL_ON)
     `uvm_field_int(dbg_iutlb_ref_pgflt, UVM_ALL_ON)
     `uvm_field_int(dbg_jtlb_acc_fault_flop, UVM_ALL_ON)
+    `uvm_field_int(credit_counted, UVM_ALL_ON)
   `uvm_object_utils_end
 
   // ── Stimulus fields (driven by ifu_driver) ──────────────────────────────
@@ -42,6 +43,7 @@ class ifu_txn extends uvm_sequence_item;
   bit        dbg_iutlb_pmp_deny; // Whitebox: IFU deny came from PMP check term
   bit        dbg_iutlb_ref_pgflt; // Whitebox: IFU pgflt came from refill-state PGFLT completion
   bit        dbg_jtlb_acc_fault_flop; // Whitebox: IFU deny came from jtlb_acc_fault_flop
+  bit        credit_counted; // Monitor-side conservation bookkeeping marker
 
   // ── Constraints ──────────────────────────────────────────────────────────
   // Sv39 canonical VA: bits[62:39] must all equal bit[38] (sign extension)
@@ -59,10 +61,10 @@ class ifu_txn extends uvm_sequence_item;
 
   virtual function string convert2string();
     return $sformatf(
-      "va=0x%016h abort=%0b idle=%0d | pa=0x%07h pavld=%0b pgflt=%0b deny=%0b sec=%0b ca=%0b dbg_accerr=%0b dbg_pmp_deny=%0b dbg_ref_pgflt=%0b dbg_jtlb_acc_fault_flop=%0b",
+      "va=0x%016h abort=%0b idle=%0d credit_counted=%0b | pa=0x%07h pavld=%0b pgflt=%0b deny=%0b sec=%0b ca=%0b dbg_accerr=%0b dbg_pmp_deny=%0b dbg_ref_pgflt=%0b dbg_jtlb_acc_fault_flop=%0b",
       {1'b0, va}, abort, idle_cycles, pa, pavld, pgflt, deny, sec, ca,
-      dbg_iutlb_acc_flt, dbg_iutlb_pmp_deny, dbg_iutlb_ref_pgflt,
-      dbg_jtlb_acc_fault_flop);
+      credit_counted, dbg_iutlb_acc_flt, dbg_iutlb_pmp_deny,
+      dbg_iutlb_ref_pgflt, dbg_jtlb_acc_fault_flop);
   endfunction
 
 endclass : ifu_txn

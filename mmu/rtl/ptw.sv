@@ -11,6 +11,7 @@ module ptw #(
     parameter TYPE_WIDTH  = 3,
     parameter L1PDE_ENTRY_NUM = 16,
     parameter L2PDE_ENTRY_NUM = 16,
+    parameter MBUF_ID_WIDTH = 4,
 
 // VPN width per level
     parameter VPN_PERLEL  = VPN_WIDTH/PTE_LEVEL,
@@ -121,10 +122,19 @@ module ptw #(
     input  logic                   lsu_mmu_bus_error,
     input  logic [63:0]            lsu_mmu_data,
     input  logic                   lsu_mmu_data_vld,
+    // LSU 返回 PTW load response 时带回的 MBUF entry id。
+    // PTW/MBUF 依靠该 id 把 data 或 bus error 路由回发起请求的 entry。
+    input  logic [MBUF_ID_WIDTH-1:0] lsu_mmu_data_id,
+    // LSU 对 PTW load request 的接收确认。只有 req/grant 同拍有效时，
+    // MBUF entry 才会置 on，并把该请求计入 outstanding。
+    input  logic                   lsu_mmu_data_req_grant,
 	
 	
     output logic                   mmu_lsu_data_req,
     output logic [PADDR_WIDTH-1:0] mmu_lsu_data_req_addr,
+    // PTW 发给 LSU 的 request id，取自当前发起请求的 MBUF entry index。
+    // LSU 必须在 response 上带回同一个 id。
+    output logic [MBUF_ID_WIDTH-1:0] mmu_lsu_data_req_id,
     output logic                   mmu_lsu_data_req_size,
 
 //!******************************************
@@ -283,9 +293,12 @@ assign ptw_jtlb_ready = pde_cache_ready & (!abort_flop);
 always_ff @(posedge ptw_clk or negedge cpurst_b)begin
     if(!cpurst_b)
 		abort_flop <= 1'b0;
-    else if(mbuf_entry_on_vld & tlboper_ptw_abort & !(lsu_mmu_bus_error | lsu_mmu_data_vld))
+    // PTW top 的 ready 需要在 abort drain 期间保持关闭。这里不能再用
+    // “看到一笔 LSU response 就清 abort_flop”的旧串行语义，因为 MBUF 现在
+    // 允许多笔 outstanding；必须等所有 entry.on 都被 response ID 清掉。
+    else if(mbuf_entry_on_vld & tlboper_ptw_abort)
 		abort_flop <= 1'b1;
-    else if(abort_flop & (lsu_mmu_bus_error | lsu_mmu_data_vld))
+    else if(abort_flop & (!mbuf_entry_on_vld))
 		abort_flop <= 1'b0;
 end
 
@@ -812,7 +825,8 @@ ptw_mbuf #(
 .TYPE_WIDTH                          (TYPE_WIDTH         ),
 .VPN_PERLEL                          (VPN_PERLEL         ),
 .TAG_WIDTH                           (TAG_WIDTH          ),
-.RDATA_WIDTH                         (DATA_WIDTH         )
+.RDATA_WIDTH                         (DATA_WIDTH         ),
+.MBUF_ID_WIDTH                       (MBUF_ID_WIDTH      )
 ) u_ptw_mbuf(
 .forever_cpuclk						(forever_cpuclk				),
 .cpurst_b							(cpurst_b					),
@@ -831,10 +845,13 @@ ptw_mbuf #(
 		
 .lsu_mmu_data_vld					(lsu_mmu_data_vld			),     
 .lsu_mmu_data						(lsu_mmu_data				),         
+.lsu_mmu_data_id                     (lsu_mmu_data_id            ),
+.lsu_mmu_data_req_grant              (lsu_mmu_data_req_grant     ),
 .lsu_mmu_bus_error					(lsu_mmu_bus_error			), 
 			
 .mmu_lsu_data_req					(mmu_lsu_data_req			),     
 .mmu_lsu_data_req_addr				(mmu_lsu_data_req_addr		), 
+.mmu_lsu_data_req_id                 (mmu_lsu_data_req_id        ),
 .mmu_lsu_data_req_size				(mmu_lsu_data_req_size		),
 			
 .mbuf_twu_vpn						(mbuf_twu_vpn				),
@@ -1196,22 +1213,32 @@ assign mmu_hpcp_jtlb_miss = l2tlb_miss;
 
 logic                   ptw_lsu_req_dbg_q ;
 logic [PADDR_WIDTH-1:0] ptw_lsu_addr_dbg_q;
+logic [MBUF_ID_WIDTH-1:0] ptw_lsu_id_dbg_q;
 
 // PTW->LSU request trace for run_check log parsing.
-// Emit once per new request (req rising edge or address change while req high).
+// 打印 addr/id/size/grant，方便检查握手是否稳定：
+//   - grant=0 时，如果 req 持续为 1，addr/id 应保持不变；
+//   - grant=1 后，下一笔 request 才允许切换到其它 entry id。
+// Emit once per new request (req rising edge or address/id change while req high).
 always_ff @(posedge ptw_clk or negedge cpurst_b) begin
 	if(!cpurst_b) begin
 		ptw_lsu_req_dbg_q  <= 1'b0;
 		ptw_lsu_addr_dbg_q <= 40'b0;
+        ptw_lsu_id_dbg_q   <= {MBUF_ID_WIDTH{1'b0}};
 	end else begin
 		if(mmu_lsu_data_req
-		   && (!ptw_lsu_req_dbg_q || (mmu_lsu_data_req_addr != ptw_lsu_addr_dbg_q))) begin
-			$display("[%0t][PTW LSU REQ] addr=0x%010h size=%0b satp_base=0x%07h",
-			         $time, mmu_lsu_data_req_addr, mmu_lsu_data_req_size, regs_ptw_satp_ppn);
+		   && (!ptw_lsu_req_dbg_q
+               || (mmu_lsu_data_req_addr != ptw_lsu_addr_dbg_q)
+               || (mmu_lsu_data_req_id != ptw_lsu_id_dbg_q))) begin
+			$display("[%0t][PTW LSU REQ] addr=0x%010h id=0x%0h size=%0b grant=%0b satp_base=0x%07h",
+			         $time, mmu_lsu_data_req_addr, mmu_lsu_data_req_id, mmu_lsu_data_req_size,
+                     lsu_mmu_data_req_grant, regs_ptw_satp_ppn);
 		end
 		ptw_lsu_req_dbg_q <= mmu_lsu_data_req;
-		if(mmu_lsu_data_req)
+		if(mmu_lsu_data_req) begin
 			ptw_lsu_addr_dbg_q <= mmu_lsu_data_req_addr;
+            ptw_lsu_id_dbg_q   <= mmu_lsu_data_req_id;
+        end
 	end
 end
 

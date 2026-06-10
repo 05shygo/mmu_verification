@@ -27,7 +27,6 @@ logic [PDE_ENTRY_NUM-1:0]         vld_entry_num;
 logic [PDE_ENTRY_NUM-1:0]         refill_num_onehot;
 logic [PDE_ENTRY_NUM-1:0]         hit_num_onehot;
 logic [PDE_INDEX_WIDTH-1:0]       write_num;
-logic [PDE_INDEX_WIDTH-1:0]       refill_num_index;
 logic [PDE_INDEX_WIDTH-1:0]       hit_num_index;
 logic [PDE_INDEX_WIDTH-1:0]       hit_num_flop;
 logic [PDE_INDEX_WIDTH-1:0]       plru_num;
@@ -69,18 +68,13 @@ always_comb begin
         write_num[PDE_INDEX_WIDTH-1:0] = {PDE_INDEX_WIDTH{1'b0}};
 end
 
-always_ff @(posedge lru_clk or negedge cpurst_b) begin
-    if(!cpurst_b)
-        refill_num_index[PDE_INDEX_WIDTH-1:0] <= {PDE_INDEX_WIDTH{1'b0}};
-    else
-        refill_num_index[PDE_INDEX_WIDTH-1:0] <= write_num[PDE_INDEX_WIDTH-1:0];
-end
-
+// refill 选路必须和 PDE entry 写使能同拍输出。若先打一拍再输出，
+// 连续两拍 PDE_plru_refill_vld 会用上一拍 way 写 entry，导致第二笔覆盖第一笔。
 always_comb begin
     refill_num_onehot[PDE_ENTRY_NUM-1:0] = {PDE_ENTRY_NUM{1'b0}};
 
     for(int i = 0; i < PDE_ENTRY_NUM; i = i + 1) begin
-        if(refill_num_index[PDE_INDEX_WIDTH-1:0] == i)
+        if(write_num[PDE_INDEX_WIDTH-1:0] == i)
             refill_num_onehot[i] = 1'b1;
     end
 end
@@ -128,10 +122,12 @@ always_comb begin
 
     if(plru_write_updt) begin
 
+        // PLRU 推进使用和本拍 entry 写入完全相同的 write_num，
+        // 保证连续 refill 时每一拍都按实际写入 way 更新替换树。
         for(int level = 0; level < PDE_INDEX_WIDTH; level = level + 1) begin
-            plru_bits_next[node] = !refill_num_index[PDE_INDEX_WIDTH-1-level];
+            plru_bits_next[node] = !write_num[PDE_INDEX_WIDTH-1-level];
 
-            if(refill_num_index[PDE_INDEX_WIDTH-1-level])
+            if(write_num[PDE_INDEX_WIDTH-1-level])
                 node = (node << 1) + 2;
             else
                 node = (node << 1) + 1;

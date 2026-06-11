@@ -30,17 +30,15 @@
 //     L1_DTLB_MB_DEPTH is therefore a WARNING (expected under backpressure),
 //     not a hard error.
 //
-//   m_ptw_mbuf_cnt — PTW->LSU serialized external request outstanding proxy
+//   m_ptw_mbuf_cnt — PTW->LSU external request outstanding proxy
 //     ptw_mem ap_req  → +1 (new PTW memory read issued)
 //     ptw_mem ap_rsp  → -1 (PTW memory read completed)
 //     ptw_mem ap_drop → -1 (request cancelled by reset before response)
-//     PTW external LSU request channel is single-outstanding by protocol.
+//     PTW external LSU request channel now carries an MBUF ID.  Multiple
+//     different IDs may be outstanding concurrently; the hard conservation
+//     check is the ID-indexed set, not a scalar serial limit.
 //     Invalidate/abort may drop the visible req signal, but the accepted memory
-//     read still returns a late response to retire RTL abort cleanup.
-//     Therefore the externally-visible lifetime is normally req → rsp; reset
-//     is the only modeled req → drop path.
-//     Therefore this counter must stay within {0,1}; it is NOT the DUT's
-//     internal 9-entry PTW mbuf occupancy.
+//     read still returns a late response by ID to retire RTL abort cleanup.
 //
 // Conservation: m_credit_l1i/l1d/lsu_ext_outstanding/ptw_mbuf_cnt must be 0
 // at report_phase.  LSU-side sleeping requests must be re-issued by the driver
@@ -80,12 +78,13 @@ class mmu_credit_sb extends uvm_scoreboard;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_req;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_rsp;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)  af_ptw_drop;
+  uvm_tlm_analysis_fifo #(ptw_src_mem_evt_txn) af_ptw_mem_evt;
 
   // ── Credit / occupancy counters (all start at 0) ──────────────────────────
   protected int m_credit_l1i;          // outstanding IFU translation requests
   protected int m_credit_l1d;          // outstanding LSU translation requests (external)
   protected int m_lsu_ext_outstanding; // LSU externally-visible uncompleted (approx, includes sleeping)
-  protected int m_ptw_mbuf_cnt;        // PTW serialized external outstanding proxy
+  protected int m_ptw_mbuf_cnt;        // PTW external outstanding proxy
   protected bit m_end_drain_active;    // run-phase end settle window in progress
   protected bit m_pre_drop_drain_done;  // test_base already performed final drain
   protected bit m_last_drain_timed_out;
@@ -143,7 +142,7 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected logic       m_snap_ptw_l2tlb_ref_pgflt;
   protected logic       m_snap_ptw_l2tlb_ref_acc_err;
   protected logic       m_snap_ptw_lsu_data_req;
-  protected logic [8:0] m_snap_ptw_lsu_data_req_grant;
+  protected logic [8:0] m_snap_ptw_lsu_data_req_grant_vec;
   protected logic       m_snap_ptw_arb_req;
   protected logic       m_snap_arb_ptw_grant;
   protected logic       m_snap_arb_l2tlb_req;
@@ -154,6 +153,23 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected int m_peak_l1d;
   protected int m_peak_lsu_ext;
   protected int m_peak_ptw_mbuf;
+  protected bit m_ptw_id_valid[16];
+  protected bit m_ptw_id_aborted[16];
+  protected bit [8:0] m_ptw_id_req_mask;
+  protected bit [8:0] m_ptw_id_rsp_mask;
+  protected int unsigned m_ptw_id_outstanding;
+  protected int unsigned m_peak_ptw_id_outstanding;
+  protected int unsigned m_ptw_id_evt_count;
+  protected int unsigned m_ptw_id_req_count;
+  protected int unsigned m_ptw_id_rsp_count;
+  protected int unsigned m_ptw_id_drop_count;
+  protected int unsigned m_ptw_id_duplicate_count;
+  protected int unsigned m_ptw_id_invalid_rsp_count;
+  protected int unsigned m_ptw_id_rsp_without_pending_count;
+  protected int unsigned m_ptw_id_ooo_rsp_count;
+  protected int unsigned m_ptw_id_abort_drain_rsp_count;
+  protected int unsigned m_ptw_id_grant_wait_count;
+  protected int unsigned m_ptw_id_max_grant_wait;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -172,6 +188,25 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_peak_l1d            = 0;
     m_peak_lsu_ext        = 0;
     m_peak_ptw_mbuf       = 0;
+    m_ptw_id_outstanding  = 0;
+    m_peak_ptw_id_outstanding = 0;
+    m_ptw_id_evt_count    = 0;
+    m_ptw_id_req_count    = 0;
+    m_ptw_id_rsp_count    = 0;
+    m_ptw_id_drop_count   = 0;
+    m_ptw_id_duplicate_count = 0;
+    m_ptw_id_invalid_rsp_count = 0;
+    m_ptw_id_rsp_without_pending_count = 0;
+    m_ptw_id_ooo_rsp_count = 0;
+    m_ptw_id_abort_drain_rsp_count = 0;
+    m_ptw_id_grant_wait_count = 0;
+    m_ptw_id_max_grant_wait = 0;
+    foreach (m_ptw_id_valid[i]) begin
+      m_ptw_id_valid[i] = 1'b0;
+      m_ptw_id_aborted[i] = 1'b0;
+    end
+    m_ptw_id_req_mask = '0;
+    m_ptw_id_rsp_mask = '0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -188,6 +223,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     af_ptw_req    = new("af_ptw_req",    this);
     af_ptw_rsp    = new("af_ptw_rsp",    this);
     af_ptw_drop   = new("af_ptw_drop",   this);
+    af_ptw_mem_evt = new("af_ptw_mem_evt", this);
     void'($value$plusargs("CREDIT_SB_DRAIN_MAX_CYCLES=%0d", m_end_drain_max_cycles));
     void'($value$plusargs("CREDIT_SB_DRAIN_STABLE_CYCLES=%0d", m_end_drain_stable_cycles));
     if (m_end_drain_max_cycles == 0)
@@ -215,6 +251,7 @@ class mmu_credit_sb extends uvm_scoreboard;
       _consume_ptw_req();
       _consume_ptw_rsp();
       _consume_ptw_drop();
+      _consume_ptw_mem_evt();
     join_none
   endtask
 
@@ -387,11 +424,6 @@ class mmu_credit_sb extends uvm_scoreboard;
     forever begin
       af_ptw_req.get(tr);
       m_ptw_mbuf_cnt++;
-      if (m_ptw_mbuf_cnt > 1)
-        `uvm_error(get_type_name(),
-          $sformatf(
-            "ptw_mbuf_cnt(serialized PTW ext outstanding) overflow: %0d > 1 for addr=0x%010h",
-            m_ptw_mbuf_cnt, tr.addr))
       if (m_ptw_mbuf_cnt > m_peak_ptw_mbuf) m_peak_ptw_mbuf = m_ptw_mbuf_cnt;
       `uvm_info(get_type_name(),
         $sformatf("PTW_REQ: ptw_mbuf_cnt=%0d", m_ptw_mbuf_cnt), UVM_HIGH)
@@ -403,6 +435,13 @@ class mmu_credit_sb extends uvm_scoreboard;
     ptw_mem_txn tr;
     forever begin
       af_ptw_rsp.get(tr);
+      if (tr.rsp_id_invalid || tr.rsp_without_pending) begin
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_RSP_SCALAR_IGNORE: invalid/no-pending response does not retire legacy scalar credit: %s",
+            tr.convert2string()),
+          UVM_HIGH)
+        continue;
+      end
       m_ptw_mbuf_cnt--;
       if (m_ptw_mbuf_cnt < 0)
         `uvm_error(get_type_name(),
@@ -429,12 +468,122 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
   endtask
 
+  protected function bit _ptw_legal_id(input bit [3:0] id);
+    return (id <= 4'd8);
+  endfunction
+
+  protected function void _ptw_id_note_peak();
+    if (m_ptw_id_outstanding > m_peak_ptw_id_outstanding)
+      m_peak_ptw_id_outstanding = m_ptw_id_outstanding;
+  endfunction
+
+  protected function void _credit_ptw_id_req(input ptw_src_mem_evt_txn tr);
+    int unsigned id;
+
+    if (!_ptw_legal_id(tr.req_id)) begin
+      m_ptw_id_duplicate_count++;
+      `uvm_error(get_type_name(),
+        $sformatf("[CreditSB] PTW ID req illegal id=0x%0h mem_evt={%s}",
+          tr.req_id, tr.convert2string()))
+      return;
+    end
+
+    id = tr.req_id;
+    m_ptw_id_req_count++;
+    m_ptw_id_req_mask[id] = 1'b1;
+    if (tr.grant_wait_cycles != 0) begin
+      m_ptw_id_grant_wait_count++;
+      if (tr.grant_wait_cycles > m_ptw_id_max_grant_wait)
+        m_ptw_id_max_grant_wait = tr.grant_wait_cycles;
+    end
+
+    if (m_ptw_id_valid[id]) begin
+      m_ptw_id_duplicate_count++;
+      `uvm_error(get_type_name(),
+        $sformatf("[CreditSB] PTW duplicate outstanding ID id=0x%0h mem_evt={%s}",
+          id, tr.convert2string()))
+      return;
+    end
+
+    m_ptw_id_valid[id] = 1'b1;
+    m_ptw_id_aborted[id] = 1'b0;
+    m_ptw_id_outstanding++;
+    _ptw_id_note_peak();
+  endfunction
+
+  protected function void _credit_ptw_id_rsp(input ptw_src_mem_evt_txn tr);
+    int unsigned id;
+
+    if (tr.invalid_rsp_id || !_ptw_legal_id(tr.rsp_id)) begin
+      m_ptw_id_invalid_rsp_count++;
+      `uvm_warning(get_type_name(),
+        $sformatf("[CreditSB] PTW invalid response ID ignored mem_evt={%s}",
+          tr.convert2string()))
+      return;
+    end
+
+    id = tr.rsp_id;
+    m_ptw_id_rsp_count++;
+    m_ptw_id_rsp_mask[id] = 1'b1;
+    if (tr.ooo)
+      m_ptw_id_ooo_rsp_count++;
+    if (tr.abort_drain || m_ptw_id_aborted[id])
+      m_ptw_id_abort_drain_rsp_count++;
+
+    if (!m_ptw_id_valid[id] || tr.rsp_without_pending) begin
+      m_ptw_id_rsp_without_pending_count++;
+      `uvm_error(get_type_name(),
+        $sformatf("[CreditSB] PTW response without ID pending id=0x%0h mem_evt={%s}",
+          id, tr.convert2string()))
+      return;
+    end
+
+    m_ptw_id_valid[id] = 1'b0;
+    m_ptw_id_aborted[id] = 1'b0;
+    if (m_ptw_id_outstanding != 0)
+      m_ptw_id_outstanding--;
+    else
+      `uvm_error(get_type_name(), "[CreditSB] PTW ID outstanding underflow")
+  endfunction
+
+  protected function void _credit_ptw_id_drop(input ptw_src_mem_evt_txn tr);
+    int unsigned id;
+
+    if (!_ptw_legal_id(tr.req_id))
+      return;
+
+    id = tr.req_id;
+    m_ptw_id_drop_count++;
+    if (m_ptw_id_valid[id]) begin
+      m_ptw_id_valid[id] = 1'b0;
+      m_ptw_id_aborted[id] = 1'b1;
+      if (m_ptw_id_outstanding != 0)
+        m_ptw_id_outstanding--;
+      else
+        `uvm_error(get_type_name(), "[CreditSB] PTW ID outstanding underflow on drop")
+    end
+  endfunction
+
+  protected task _consume_ptw_mem_evt();
+    ptw_src_mem_evt_txn tr;
+
+    forever begin
+      af_ptw_mem_evt.get(tr);
+      m_ptw_id_evt_count++;
+      if (tr.req_fire)
+        _credit_ptw_id_req(tr);
+      if (tr.rsp_fire)
+        _credit_ptw_id_rsp(tr);
+      if (tr.drop_fire)
+        _credit_ptw_id_drop(tr);
+    end
+  endtask
+
   // ── End-of-test drain: allow late PTW/L2 completion / abort settle ────────
-  // The PTW->LSU channel is single-outstanding externally, but a final L2TLB
-  // miss can already be accepted into the PTW/TWU/mbuf pipeline while the
-  // scoreboard counter is still zero or while the responder has not returned
-  // data yet.  End-of-test must therefore wait for both the external credit
-  // counter and the whitebox DUT pending state to be idle before report_phase.
+  // A final L2TLB miss can already be accepted into the PTW/TWU/mbuf pipeline
+  // while the external counters are still zero or while the responder has not
+  // returned data yet.  End-of-test must therefore wait for both the external
+  // counters and the whitebox DUT pending state to be idle before report_phase.
   virtual function void phase_ready_to_end(uvm_phase phase);
     if (phase.get_name() != "run")
       return;
@@ -492,6 +641,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     $display({"[MMU_TIMEOUT_DBG] CreditSB ctx=%s ",
               "credit_l1i=%0d peak_l1i=%0d credit_l1d=%0d peak_l1d=%0d ",
               "lsu_ext=%0d peak_lsu_ext=%0d ptw_mbuf_cnt=%0d peak_ptw_mbuf=%0d ",
+              "ptw_id_outstanding=%0d peak_ptw_id=%0d ",
               "end_drain_active=%0b pre_drop_done=%0b attempts=%0d last_drain_timeout=%0b ",
               "%s"},
       ctx,
@@ -503,6 +653,8 @@ class mmu_credit_sb extends uvm_scoreboard;
       m_peak_lsu_ext,
       m_ptw_mbuf_cnt,
       m_peak_ptw_mbuf,
+      m_ptw_id_outstanding,
+      m_peak_ptw_id_outstanding,
       m_end_drain_active,
       m_pre_drop_drain_done,
       m_end_drain_attempts,
@@ -631,7 +783,7 @@ class mmu_credit_sb extends uvm_scoreboard;
     m_snap_ptw_l2tlb_ref_pgflt    = v_probe.ptw_l2tlb_ref_pgflt;
     m_snap_ptw_l2tlb_ref_acc_err  = v_probe.ptw_l2tlb_ref_acc_err;
     m_snap_ptw_lsu_data_req       = v_probe.ptw_lsu_data_req;
-    m_snap_ptw_lsu_data_req_grant = v_probe.ptw_lsu_data_req_grant;
+    m_snap_ptw_lsu_data_req_grant_vec = v_probe.ptw_lsu_data_req_grant_vec;
     m_snap_ptw_arb_req            = v_probe.ptw_arb_req;
     m_snap_arb_ptw_grant          = v_probe.arb_ptw_grant;
     m_snap_arb_l2tlb_req          = v_probe.arb_l2tlb_req;
@@ -642,11 +794,15 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected function bit _needs_end_drain();
     if (m_ptw_mbuf_cnt != 0)
       return 1'b1;
+    if (m_ptw_id_outstanding != 0)
+      return 1'b1;
     return _ptw_drain_pending_raw();
   endfunction
 
   protected function bit _ptw_end_idle();
     if (m_ptw_mbuf_cnt != 0)
+      return 1'b0;
+    if (m_ptw_id_outstanding != 0)
       return 1'b0;
     return !_ptw_drain_pending();
   endfunction
@@ -677,7 +833,7 @@ class mmu_credit_sb extends uvm_scoreboard;
           || (m_snap_ptw_l2tlb_ref_pgflt    === 1'b1)
           || (m_snap_ptw_l2tlb_ref_acc_err  === 1'b1)
           || (m_snap_ptw_lsu_data_req       === 1'b1)
-          || (m_snap_ptw_lsu_data_req_grant !== 9'b0)
+          || (m_snap_ptw_lsu_data_req_grant_vec !== 9'b0)
           || (m_snap_ptw_arb_req            === 1'b1)
           || (m_snap_arb_ptw_grant          === 1'b1)
           || (m_snap_arb_l2tlb_req          === 1'b1)
@@ -714,7 +870,7 @@ class mmu_credit_sb extends uvm_scoreboard;
         || (v_probe.ptw_l2tlb_ref_pgflt === 1'b1)
         || (v_probe.ptw_l2tlb_ref_acc_err === 1'b1)
         || (v_probe.ptw_lsu_data_req    === 1'b1)
-        || (v_probe.ptw_lsu_data_req_grant !== 9'b0)
+        || (v_probe.ptw_lsu_data_req_grant_vec !== 9'b0)
         || (v_probe.ptw_arb_req         === 1'b1)
         || (v_probe.arb_ptw_grant       === 1'b1)
         || (v_probe.arb_l2tlb_req       === 1'b1)
@@ -828,8 +984,11 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected function string _ptw_pending_snapshot();
     if (m_ptw_snap_valid) begin
       return $sformatf(
-        "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b %s %s sample=settled",
+        "ptw_mbuf_cnt=%0d ptw_id_outstanding=%0d ptw_id_req_mask=0x%03h ptw_id_rsp_mask=0x%03h l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant_vec=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b %s %s sample=settled",
         m_ptw_mbuf_cnt,
+        m_ptw_id_outstanding,
+        m_ptw_id_req_mask,
+        m_ptw_id_rsp_mask,
         m_snap_l1d_mb_vld,
         m_snap_l2_reqq_vld_vec,
         m_snap_l2_reqq_rdy_vec,
@@ -851,7 +1010,7 @@ class mmu_credit_sb extends uvm_scoreboard;
         m_snap_ptw_l2tlb_type,
         m_snap_ptw_l1i_ref_cmplt,
         m_snap_ptw_lsu_data_req,
-        m_snap_ptw_lsu_data_req_grant,
+        m_snap_ptw_lsu_data_req_grant_vec,
         m_snap_ptw_mbuf_entry_vld,
         m_snap_ptw_twu_idle,
         m_snap_ptw_twu_mask,
@@ -864,10 +1023,15 @@ class mmu_credit_sb extends uvm_scoreboard;
     end
 
     if (v_probe == null)
-      return $sformatf("ptw_mbuf_cnt=%0d v_probe=null", m_ptw_mbuf_cnt);
+      return $sformatf("ptw_mbuf_cnt=%0d ptw_id_outstanding=%0d ptw_id_req_mask=0x%03h ptw_id_rsp_mask=0x%03h v_probe=null",
+        m_ptw_mbuf_cnt, m_ptw_id_outstanding, m_ptw_id_req_mask,
+        m_ptw_id_rsp_mask);
     return $sformatf(
-      "ptw_mbuf_cnt=%0d l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b %s %s sample=raw",
+      "ptw_mbuf_cnt=%0d ptw_id_outstanding=%0d ptw_id_req_mask=0x%03h ptw_id_rsp_mask=0x%03h l1d_mb=0x%02h l2_reqq=0x%03h l2_reqq_rdy=0x%03h l2_reqq_issue=%0b/type=0x%0h l2mb=0x%03h l2mb_rdy=0x%03h l2mb_issue=%0b/eid=0x%02h/type=0x%0h l2mb_alloc=%0b l2_final=%0b l2_miss=%0b l2_ptw_req=%0b/id=0x%02h/type=0x%0h ptw_cmplt=%0b/id=0x%02h/type=0x%0h ptw_l1i_cmplt=%0b ptw_lsu_req=%0b ptw_lsu_grant_vec=0x%03h ptw_mbuf=0x%03h twu_idle=0x%0h twu_mask=0x%0h twu_ref=0x%0h ptw_arb_req=%0b arb_ptw_grant=%0b arb_l2tlb_req=%0b %s %s sample=raw",
       m_ptw_mbuf_cnt,
+      m_ptw_id_outstanding,
+      m_ptw_id_req_mask,
+      m_ptw_id_rsp_mask,
       v_probe.l1d_mb_vld,
       v_probe.l2_reqq_vld_vec,
       v_probe.l2_reqq_rdy_vec,
@@ -889,7 +1053,7 @@ class mmu_credit_sb extends uvm_scoreboard;
       v_probe.ptw_l2tlb_type,
       v_probe.ptw_l1i_ref_cmplt,
       v_probe.ptw_lsu_data_req,
-      v_probe.ptw_lsu_data_req_grant,
+      v_probe.ptw_lsu_data_req_grant_vec,
       v_probe.ptw_mbuf_entry_vld,
       v_probe.ptw_twu_idle,
       v_probe.ptw_twu_mask,
@@ -942,12 +1106,26 @@ class mmu_credit_sb extends uvm_scoreboard;
         "  credit_l1i          = %0d  (peak=%0d, limit=%0d)\n",
         "  credit_l1d          = %0d  (peak=%0d, limit=%0d)\n",
         "  lsu_ext_outstanding = %0d  (peak=%0d, MB_depth=%0d)  [approx, includes sleeping]\n",
-        "  ptw_mbuf_cnt        = %0d  (peak=%0d, serialized ext limit=1)"},
+        "  ptw_mbuf_cnt        = %0d  (peak=%0d, ID-indexed ext channel)"},
         m_credit_l1i,          m_peak_l1i,      L1_ITLB_ENTRIES,
         m_credit_l1d,          m_peak_l1d,      L1_DTLB_ENTRIES,
         m_lsu_ext_outstanding, m_peak_lsu_ext,  L1_DTLB_MB_DEPTH,
         m_ptw_mbuf_cnt,        m_peak_ptw_mbuf),
       UVM_MEDIUM)
+
+    `uvm_info(get_type_name(),
+      $sformatf({"MMU_CREDIT_SB_PTW_ID_SUMMARY stage=7 evt=%0d req=%0d rsp=%0d ",
+                 "drop=%0d outstanding=%0d peak=%0d req_mask=0x%03h rsp_mask=0x%03h ",
+                 "duplicate_id=%0d invalid_rsp_id=%0d rsp_without_pending=%0d ",
+                 "ooo_rsp=%0d grant_wait=%0d max_grant_wait=%0d abort_drain_rsp=%0d"},
+        m_ptw_id_evt_count, m_ptw_id_req_count, m_ptw_id_rsp_count,
+        m_ptw_id_drop_count, m_ptw_id_outstanding,
+        m_peak_ptw_id_outstanding, m_ptw_id_req_mask, m_ptw_id_rsp_mask,
+        m_ptw_id_duplicate_count, m_ptw_id_invalid_rsp_count,
+        m_ptw_id_rsp_without_pending_count, m_ptw_id_ooo_rsp_count,
+        m_ptw_id_grant_wait_count, m_ptw_id_max_grant_wait,
+        m_ptw_id_abort_drain_rsp_count),
+      UVM_NONE)
 
     if (m_credit_l1i != 0)
       `uvm_error(get_type_name(),
@@ -968,17 +1146,24 @@ class mmu_credit_sb extends uvm_scoreboard;
 
     if (m_ptw_mbuf_cnt != 0)
       `uvm_error(get_type_name(),
-        $sformatf("[CreditSB] ptw_mbuf_cnt != 0 at end-of-sim (%0d): PTW serialized external request not drained",
+        $sformatf("[CreditSB] ptw_mbuf_cnt != 0 at end-of-sim (%0d): PTW external request not drained",
           m_ptw_mbuf_cnt))
+
+    if (m_ptw_id_outstanding != 0)
+      `uvm_error(get_type_name(),
+        $sformatf("[CreditSB] ptw_id_outstanding != 0 at end-of-sim (%0d): PTW ID-indexed requests not drained",
+          m_ptw_id_outstanding))
 
     if (_ptw_hw_pending())
       `uvm_warning(get_type_name(),
         $sformatf("[CreditSB] PTW/L2 internal state not idle at end-of-sim (likely secondary to LSU/TLB drain): %s",
           _ptw_pending_snapshot()))
 
-    if (m_credit_l1i == 0 && m_credit_l1d == 0 && m_lsu_ext_outstanding == 0 && m_ptw_mbuf_cnt == 0 && !_ptw_hw_pending())
+    if (m_credit_l1i == 0 && m_credit_l1d == 0
+        && m_lsu_ext_outstanding == 0 && m_ptw_mbuf_cnt == 0
+        && m_ptw_id_outstanding == 0 && !_ptw_hw_pending())
       `uvm_info(get_type_name(),
-        "[CreditSB] PASS — credit conservation verified (l1i/l1d/lsu_ext/ptw all == 0 and PTW/L2 idle)",
+        "[CreditSB] PASS — credit conservation verified (l1i/l1d/lsu_ext/ptw scalar+ID all == 0 and PTW/L2 idle)",
         UVM_MEDIUM)
   endfunction
 

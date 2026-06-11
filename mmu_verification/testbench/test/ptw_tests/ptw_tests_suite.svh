@@ -12,6 +12,8 @@
 `include "test_ptw_pde_mmode_lock_matrix_001.svh"
 `include "test_ptw_pde_l2_accerr_valid_gate_001.svh"
 `include "test_ptw_pde_pmp_clear_repopulate_001.svh"
+// PTW LSU-ID Phase12 PDE directed tests used by Phase13 regression lists.
+`include "ptw_lsu_id_phase12_pde_tests.svh"
 `include "test_arb_backpressure_mask.svh"
 `include "test_arb_bank_conflict_resolution.svh"
 `include "test_arb_no_double_grant.svh"

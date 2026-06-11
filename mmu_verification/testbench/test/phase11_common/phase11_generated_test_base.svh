@@ -29,12 +29,25 @@ class phase11_generated_test_base extends phase9_generated_test_base;
   string p11_seq_desc;
   string p11_checker;
   string p11_reviewer;
+  string p11_req_ids[$];
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
   endfunction
 
   protected virtual function void setup_phase11_plan();
+  endfunction
+
+  virtual function void ptw_meta_add_req(string req_id);
+    p11_req_ids.push_back(req_id);
+  endfunction
+
+  protected function string p11_req_ids_string();
+    string reqs;
+    reqs = "";
+    foreach (p11_req_ids[i])
+      reqs = {reqs, (i == 0) ? "" : "|", p11_req_ids[i]};
+    return reqs;
   endfunction
 
   virtual function void setup_plan();
@@ -48,6 +61,7 @@ class phase11_generated_test_base extends phase9_generated_test_base;
     p11_seq_desc = "";
     p11_checker  = "";
     p11_reviewer = "B";
+    p11_req_ids.delete();
 
     setup_phase11_plan();
 
@@ -61,11 +75,19 @@ class phase11_generated_test_base extends phase9_generated_test_base;
 
   virtual task run_test_body();
     setup_plan();
+    void'($value$plusargs("NB_TXNS=%0d", num_txn));
 
     `uvm_info(get_type_name(),
-      $sformatf("Phase11 generated test start: bucket=%s trace_id=%s fid=%s priority=%s status=%s checker=%s reviewer=%s seq=%s",
-        p11_bucket, p11_trace_id, p11_fid, p11_priority, p11_status, p11_checker, p11_reviewer, p11_seq_desc),
+      $sformatf("Phase11 generated test start: bucket=%s trace_id=%s fid=%s priority=%s status=%s reqs=%s checker=%s reviewer=%s seq=%s",
+        p11_bucket, p11_trace_id, p11_fid, p11_priority, p11_status,
+        p11_req_ids_string(), p11_checker, p11_reviewer, p11_seq_desc),
       UVM_LOW)
+
+    `uvm_info(get_type_name(),
+      $sformatf("PTW_SCENARIO_META tc_id=%s scenario_id=%s requirement_ids=%s context={phase11_bucket=%s ; legacy_wrapper=%s ; seq=%s ; checker=%s} levels={} expected={%s} actual={phase11_compat_wrapper} result=%s provisional=1",
+        p11_trace_id, p11_trace_id, p11_req_ids_string(), p11_bucket,
+        get_type_name(), p11_seq_desc, p11_checker, p11_checker, p11_status),
+      UVM_NONE)
 
     if (m_run_misc_init)
       start_misc_seq_by_name("misc_init_seq");

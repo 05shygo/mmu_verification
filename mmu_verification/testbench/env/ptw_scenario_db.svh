@@ -21,6 +21,7 @@ class ptw_scenario_db extends uvm_component;
   uvm_tlm_analysis_fifo #(ptw_src_level_evt_txn)  af_level;
   uvm_tlm_analysis_fifo #(ptw_src_pde_evt_txn)    af_pde;
   uvm_tlm_analysis_fifo #(ptw_src_drop_txn)       af_drop;
+  uvm_tlm_analysis_fifo #(ptw_src_mem_evt_txn)    af_mem_evt;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)            af_ptw_mem_req;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)            af_ptw_mem_rsp;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)            af_ptw_mem_drop;
@@ -42,6 +43,21 @@ class ptw_scenario_db extends uvm_component;
   int unsigned m_mem_rsp_count;
   int unsigned m_mem_bus_error_count;
   int unsigned m_mem_drop_count;
+  int unsigned m_src_mem_evt_count;
+  int unsigned m_src_mem_key_valid_count;
+  int unsigned m_src_mem_key_gap_count;
+  int unsigned m_src_mem_req_count;
+  int unsigned m_src_mem_rsp_count;
+  int unsigned m_src_mem_drop_count;
+  int unsigned m_src_mem_ooo_rsp_count;
+  int unsigned m_src_mem_grant_wait_count;
+  int unsigned m_src_mem_max_grant_wait;
+  int unsigned m_src_mem_abort_drain_rsp_count;
+  int unsigned m_src_mem_invalid_rsp_id_count;
+  int unsigned m_src_mem_rsp_without_pending_count;
+  int unsigned m_src_mem_duplicate_id_count;
+  bit [8:0]    m_src_mem_req_id_mask;
+  bit [8:0]    m_src_mem_rsp_id_mask;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -61,6 +77,21 @@ class ptw_scenario_db extends uvm_component;
     m_mem_rsp_count = 0;
     m_mem_bus_error_count = 0;
     m_mem_drop_count = 0;
+    m_src_mem_evt_count = 0;
+    m_src_mem_key_valid_count = 0;
+    m_src_mem_key_gap_count = 0;
+    m_src_mem_req_count = 0;
+    m_src_mem_rsp_count = 0;
+    m_src_mem_drop_count = 0;
+    m_src_mem_ooo_rsp_count = 0;
+    m_src_mem_grant_wait_count = 0;
+    m_src_mem_max_grant_wait = 0;
+    m_src_mem_abort_drain_rsp_count = 0;
+    m_src_mem_invalid_rsp_id_count = 0;
+    m_src_mem_rsp_without_pending_count = 0;
+    m_src_mem_duplicate_id_count = 0;
+    m_src_mem_req_id_mask = '0;
+    m_src_mem_rsp_id_mask = '0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -73,6 +104,7 @@ class ptw_scenario_db extends uvm_component;
     af_level       = new("af_level",       this);
     af_pde         = new("af_pde",         this);
     af_drop        = new("af_drop",        this);
+    af_mem_evt     = new("af_mem_evt",     this);
     af_ptw_mem_req = new("af_ptw_mem_req", this);
     af_ptw_mem_rsp = new("af_ptw_mem_rsp", this);
     af_ptw_mem_drop = new("af_ptw_mem_drop", this);
@@ -106,6 +138,7 @@ class ptw_scenario_db extends uvm_component;
       collect_level();
       collect_pde();
       collect_drop();
+      collect_src_mem_evt();
       collect_mem_req();
       collect_mem_rsp();
       collect_mem_drop();
@@ -214,6 +247,49 @@ class ptw_scenario_db extends uvm_component;
     end
   endtask
 
+  protected task collect_src_mem_evt();
+    forever begin
+      ptw_src_mem_evt_txn tr;
+      af_mem_evt.get(tr);
+      m_src_mem_evt_count++;
+      if (tr.source_key_valid)
+        m_src_mem_key_valid_count++;
+      else if (tr.req_fire || (tr.rsp_fire && !tr.invalid_rsp_id))
+        m_src_mem_key_gap_count++;
+      if (tr.req_fire) begin
+        m_src_mem_req_count++;
+        if (tr.req_id <= 4'd8)
+          m_src_mem_req_id_mask[tr.req_id] = 1'b1;
+        if (tr.grant_wait_cycles != 0) begin
+          m_src_mem_grant_wait_count++;
+          if (tr.grant_wait_cycles > m_src_mem_max_grant_wait)
+            m_src_mem_max_grant_wait = tr.grant_wait_cycles;
+        end
+        if (tr.duplicate_id_error)
+          m_src_mem_duplicate_id_count++;
+      end
+      if (tr.rsp_fire) begin
+        m_src_mem_rsp_count++;
+        if (!tr.invalid_rsp_id && (tr.rsp_id <= 4'd8))
+          m_src_mem_rsp_id_mask[tr.rsp_id] = 1'b1;
+        if (tr.ooo)
+          m_src_mem_ooo_rsp_count++;
+        if (tr.abort_drain)
+          m_src_mem_abort_drain_rsp_count++;
+        if (tr.invalid_rsp_id)
+          m_src_mem_invalid_rsp_id_count++;
+        if (tr.rsp_without_pending)
+          m_src_mem_rsp_without_pending_count++;
+      end
+      if (tr.drop_fire)
+        m_src_mem_drop_count++;
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_SCENARIO_EVENT scenario_id=%s kind=src_mem_evt %s",
+          m_active_scenario_id, tr.convert2string()),
+        UVM_HIGH)
+    end
+  endtask
+
   protected task collect_mem_rsp();
     forever begin
       ptw_mem_txn tr;
@@ -245,12 +321,27 @@ class ptw_scenario_db extends uvm_component;
       $sformatf({"PTW_SCENARIO_DB_SUMMARY stage=3 registered=%0d req_accept=%0d ",
                  "actual_rsp=%0d refill=%0d page_fault=%0d access_fault=%0d ",
                  "abort=%0d ctx=%0d level=%0d pde=%0d drop=%0d ",
-                 "mem_req=%0d mem_rsp=%0d mem_bus_error=%0d mem_drop=%0d provisional=1"},
+                 "mem_req=%0d mem_rsp=%0d mem_bus_error=%0d mem_drop=%0d ",
+                 "src_mem_evt=%0d src_mem_key_valid=%0d src_mem_key_gap=%0d provisional=1"},
         m_registered_scenarios, m_req_accept_count, m_actual_rsp_count,
         m_refill_count, m_page_fault_count, m_access_fault_count,
         m_abort_count, m_ctx_count, m_level_count, m_pde_count, m_drop_count,
         m_mem_req_count, m_mem_rsp_count, m_mem_bus_error_count,
-        m_mem_drop_count),
+        m_mem_drop_count, m_src_mem_evt_count, m_src_mem_key_valid_count,
+        m_src_mem_key_gap_count),
+      UVM_NONE)
+    `uvm_info(get_type_name(),
+      $sformatf({"PTW_SCENARIO_DB_LSU_ID_SUMMARY stage=7 scenario_id=%s ",
+                 "src_mem_req=%0d src_mem_rsp=%0d src_mem_drop=%0d ",
+                 "req_id_mask=0x%03h rsp_id_mask=0x%03h ooo_rsp=%0d ",
+                 "grant_wait=%0d max_grant_wait=%0d abort_drain_rsp=%0d ",
+                 "invalid_rsp_id=%0d rsp_without_pending=%0d duplicate_id=%0d provisional=1"},
+        m_active_scenario_id, m_src_mem_req_count, m_src_mem_rsp_count,
+        m_src_mem_drop_count, m_src_mem_req_id_mask, m_src_mem_rsp_id_mask,
+        m_src_mem_ooo_rsp_count, m_src_mem_grant_wait_count,
+        m_src_mem_max_grant_wait, m_src_mem_abort_drain_rsp_count,
+        m_src_mem_invalid_rsp_id_count, m_src_mem_rsp_without_pending_count,
+        m_src_mem_duplicate_id_count),
       UVM_NONE)
   endfunction
 

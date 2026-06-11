@@ -43,6 +43,7 @@ class ptw_source_ref_model extends uvm_component;
   uvm_tlm_analysis_fifo #(ptw_src_level_evt_txn)  af_level;
   uvm_tlm_analysis_fifo #(ptw_src_pde_evt_txn)    af_pde;
   uvm_tlm_analysis_fifo #(ptw_src_drop_txn)       af_drop;
+  uvm_tlm_analysis_fifo #(ptw_src_mem_evt_txn)    af_mem_evt;
 
   uvm_analysis_port #(ptw_src_expected_rsp_txn) ap_expected;
 
@@ -108,10 +109,27 @@ class ptw_source_ref_model extends uvm_component;
     int unsigned       cycle;
   } pde_direct_accerr_info_s;
 
+  typedef struct {
+    bit                    valid;
+    bit [3:0]              mbuf_id;
+    bit                    source_key_valid;
+    string                 source_key;
+    ptw_src_req_type_e     req_type;
+    logic [PTW_SRC_ID_WIDTH-1:0] source_id;
+    vpn_t                  vpn;
+    logic [39:0]           addr;
+    bit                    size;
+    bit                    aborted;
+    bit                    visible_allowed;
+    int unsigned           accept_cycle;
+    int unsigned           accept_order;
+  } ptw_mem_outstanding_s;
+
   localparam int unsigned PDE_UPDATE_MATCH_WINDOW = 8;
   localparam int unsigned PDE_DIRECT_ACCERR_DUP_WINDOW = 8;
 
   pending_req_s m_pending[string];
+  ptw_mem_outstanding_s m_mem_by_mbuf_id[16];
   pde_update_info_s m_pde_expected_update_q[$];
   pde_update_info_s m_pde_observed_update_q[$];
   pde_direct_accerr_info_s m_pde_recent_direct_accerr_q[$];
@@ -141,6 +159,17 @@ class ptw_source_ref_model extends uvm_component;
   int unsigned m_mem_req_count;
   int unsigned m_mem_rsp_count;
   int unsigned m_mem_drop_count;
+  int unsigned m_mem_evt_count;
+  int unsigned m_mem_evt_key_valid_count;
+  int unsigned m_mem_evt_key_gap_count;
+  int unsigned m_mem_outstanding_req_count;
+  int unsigned m_mem_rsp_id_match_count;
+  int unsigned m_mem_rsp_invalid_id_count;
+  int unsigned m_mem_rsp_without_outstanding_count;
+  int unsigned m_mem_duplicate_outstanding_count;
+  int unsigned m_mem_abort_drain_rsp_count;
+  int unsigned m_mem_bus_error_by_id_count;
+  int unsigned m_mem_aborted_mark_count;
   int unsigned m_ctx_count;
   int unsigned m_level_count;
   int unsigned m_pde_event_count;
@@ -184,6 +213,12 @@ class ptw_source_ref_model extends uvm_component;
     m_cur_sum = 1'b0;
     m_cur_mpp = PRIV_M;
     m_cur_priv_mode = PRIV_M;
+    foreach (m_mem_by_mbuf_id[i]) begin
+      m_mem_by_mbuf_id[i].valid = 1'b0;
+      m_mem_by_mbuf_id[i].source_key_valid = 1'b0;
+      m_mem_by_mbuf_id[i].source_key = "";
+      m_mem_by_mbuf_id[i].visible_allowed = 1'b0;
+    end
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -201,6 +236,7 @@ class ptw_source_ref_model extends uvm_component;
     af_level        = new("af_level",        this);
     af_pde          = new("af_pde",          this);
     af_drop         = new("af_drop",         this);
+    af_mem_evt      = new("af_mem_evt",      this);
     ap_expected     = new("ap_expected",     this);
     m_pde_model     = ptw_pde_cache_model::type_id::create("m_pde_model");
 
@@ -226,6 +262,7 @@ class ptw_source_ref_model extends uvm_component;
       collect_level();
       collect_pde();
       collect_drop();
+      collect_mem_evt();
     join_none
   endtask
 
@@ -323,6 +360,176 @@ class ptw_source_ref_model extends uvm_component;
     end
     return 1'b0;
   endfunction
+
+  protected function bit is_legal_mbuf_id(input bit [3:0] mbuf_id);
+    return (mbuf_id <= 4'd8);
+  endfunction
+
+  protected function int unsigned mem_outstanding_count();
+    int unsigned count;
+
+    count = 0;
+    foreach (m_mem_by_mbuf_id[i]) begin
+      if (m_mem_by_mbuf_id[i].valid)
+        count++;
+    end
+    return count;
+  endfunction
+
+  protected function void clear_mem_outstanding(input bit [3:0] mbuf_id);
+    if (!is_legal_mbuf_id(mbuf_id))
+      return;
+
+    m_mem_by_mbuf_id[mbuf_id].valid = 1'b0;
+    m_mem_by_mbuf_id[mbuf_id].mbuf_id = mbuf_id;
+    m_mem_by_mbuf_id[mbuf_id].source_key_valid = 1'b0;
+    m_mem_by_mbuf_id[mbuf_id].source_key = "";
+    m_mem_by_mbuf_id[mbuf_id].req_type = PTW_SRC_TYPE_UNKNOWN;
+    m_mem_by_mbuf_id[mbuf_id].source_id = '0;
+    m_mem_by_mbuf_id[mbuf_id].vpn = '0;
+    m_mem_by_mbuf_id[mbuf_id].addr = '0;
+    m_mem_by_mbuf_id[mbuf_id].size = 1'b0;
+    m_mem_by_mbuf_id[mbuf_id].aborted = 1'b0;
+    m_mem_by_mbuf_id[mbuf_id].visible_allowed = 1'b0;
+    m_mem_by_mbuf_id[mbuf_id].accept_cycle = 0;
+    m_mem_by_mbuf_id[mbuf_id].accept_order = 0;
+  endfunction
+
+  protected function bit mem_source_matches(
+    input ptw_mem_outstanding_s mem,
+    input ptw_src_req_type_e    req_type,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
+    input bit                   use_vpn,
+    input vpn_t                 vpn
+  );
+    if (!mem.valid || !mem.source_key_valid)
+      return 1'b0;
+    if ((req_type != PTW_SRC_TYPE_UNKNOWN) && (mem.req_type != req_type))
+      return 1'b0;
+    if (mem.source_id != id)
+      return 1'b0;
+    if (use_vpn && (mem.vpn != vpn))
+      return 1'b0;
+    return 1'b1;
+  endfunction
+
+  protected function void mark_mem_outstanding_aborted_by_source(
+    input ptw_src_req_type_e req_type,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
+    input bit                use_vpn,
+    input vpn_t              vpn,
+    input string             reason
+  );
+    foreach (m_mem_by_mbuf_id[i]) begin
+      if (!mem_source_matches(m_mem_by_mbuf_id[i], req_type, id, use_vpn, vpn))
+        continue;
+      if (!m_mem_by_mbuf_id[i].aborted) begin
+        m_mem_by_mbuf_id[i].aborted = 1'b1;
+        m_mem_by_mbuf_id[i].visible_allowed = 1'b0;
+        m_mem_aborted_mark_count++;
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_SOURCE_REF_MEM_ABORT_MARK mbuf_id=0x%0h source={type=%s,id=0x%02h,vpn=0x%07h} reason=%s",
+            i, m_mem_by_mbuf_id[i].req_type.name(),
+            m_mem_by_mbuf_id[i].source_id, m_mem_by_mbuf_id[i].vpn, reason),
+          UVM_HIGH)
+      end
+    end
+  endfunction
+
+  protected function void mark_all_mem_outstanding_aborted(input string reason);
+    foreach (m_mem_by_mbuf_id[i]) begin
+      if (!m_mem_by_mbuf_id[i].valid || m_mem_by_mbuf_id[i].aborted)
+        continue;
+      m_mem_by_mbuf_id[i].aborted = 1'b1;
+      m_mem_by_mbuf_id[i].visible_allowed = 1'b0;
+      m_mem_aborted_mark_count++;
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_SOURCE_REF_MEM_ABORT_MARK_ALL mbuf_id=0x%0h source_valid=%0b source={type=%s,id=0x%02h,vpn=0x%07h} reason=%s",
+          i, m_mem_by_mbuf_id[i].source_key_valid,
+          m_mem_by_mbuf_id[i].req_type.name(), m_mem_by_mbuf_id[i].source_id,
+          m_mem_by_mbuf_id[i].vpn, reason),
+        UVM_HIGH)
+    end
+  endfunction
+
+  protected function void clear_mem_outstanding_by_source(
+    input ptw_src_req_type_e req_type,
+    input logic [PTW_SRC_ID_WIDTH-1:0] id,
+    input bit                use_vpn,
+    input vpn_t              vpn
+  );
+    foreach (m_mem_by_mbuf_id[i]) begin
+      if (mem_source_matches(m_mem_by_mbuf_id[i], req_type, id, use_vpn, vpn))
+        clear_mem_outstanding(i[3:0]);
+    end
+  endfunction
+
+  protected function bit resolve_mem_evt_source_key(
+    input  ptw_src_mem_evt_txn tr,
+    output string              key,
+    input  bit                 warn_on_fail = 1'b1
+  );
+    key = "";
+    if (!tr.source_key_valid || (tr.req_type == PTW_SRC_TYPE_UNKNOWN)) begin
+      if (warn_on_fail) begin
+        m_probe_gap_count++;
+        `uvm_warning(get_type_name(),
+          $sformatf("PTW_STAGE7_OPEN_GAP kind=mem_evt_source_key_missing %s",
+            tr.convert2string()))
+      end
+      return 1'b0;
+    end
+
+    if (resolve_pending_key(tr.req_type, tr.source_id, key, 1'b1, tr.vpn,
+          warn_on_fail))
+      return 1'b1;
+
+    key = key_string(tr.req_type, tr.source_id);
+    return 1'b0;
+  endfunction
+
+  protected task emit_bus_error_completion_by_mem_id(
+    input ptw_src_mem_evt_txn  tr,
+    input ptw_mem_outstanding_s mem
+  );
+    string key;
+    pending_req_s pending;
+
+    key = mem.source_key;
+    if ((key == "") || !m_pending.exists(key)) begin
+      if (!resolve_pending_key(mem.req_type, mem.source_id, key, 1'b1,
+            mem.vpn, 1'b0)) begin
+        m_probe_gap_count++;
+        `uvm_warning(get_type_name(),
+          $sformatf("PTW_STAGE7_OPEN_GAP kind=bus_error_without_source_pending mbuf_id=0x%0h source_valid=%0b source={type=%s,id=0x%02h,vpn=0x%07h} pending=%0d %s",
+            mem.mbuf_id, mem.source_key_valid, mem.req_type.name(),
+            mem.source_id, mem.vpn, m_pending.num(), tr.convert2string()))
+        return;
+      end
+    end
+
+    pending = m_pending[key];
+    pending.asid = m_cur_asid;
+    pending.satp_ppn = m_cur_satp_ppn;
+    pending.maee = m_cur_maee;
+    pending.mprv = m_cur_mprv;
+    pending.mxr = m_cur_mxr;
+    pending.sum = m_cur_sum;
+    pending.mpp = m_cur_mpp;
+    pending.priv_mode = m_cur_priv_mode;
+    pending.ctx_sample_seen = 1'b1;
+    pending.last_cycle = tr.cycle;
+    pending.bus_error_seen = 1'b1;
+    pending.expected_access_fault = 1'b1;
+    pending.access_src = PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR;
+    m_pending[key] = pending;
+    m_mem_bus_error_by_id_count++;
+
+    build_and_emit_completion(key, pending, PTW_SRC_EXP_ACCESS_FAULT,
+      PTW_SRC_FAULT_BUS_ERROR, pending.last_pte, 1'b0, tr.cycle,
+      pending.access_src, pending.pde_reason, pending.pde_l1pmpflg,
+      pending.pde_l2pmpflg, pending.pde_direct_accerr_seen);
+  endtask
 
   protected function bit is_leaf(input pte_t raw_pte);
     return raw_pte[PTE_V] && (raw_pte[PTE_R] || raw_pte[PTE_X]);
@@ -1137,6 +1344,17 @@ class ptw_source_ref_model extends uvm_component;
       bit refill_degraded;
 
       af_level.get(tr);
+      if (tr.abort_drain && tr.mbuf_data_vld) begin
+        m_level_count++;
+        mark_mem_outstanding_aborted_by_source(tr.req_type, tr.id, 1'b1,
+          tr.vpn, "level_abort_drain");
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_SOURCE_REF_ABORT_DRAIN_LEVEL_IGNORED %s",
+            tr.convert2string()),
+          UVM_MEDIUM)
+        continue;
+      end
+
       if (!resolve_pending_key(tr.req_type, tr.id, key, 1'b1, tr.vpn)) begin
         m_level_count++;
         continue;
@@ -1247,49 +1465,9 @@ class ptw_source_ref_model extends uvm_component;
   protected task collect_mem_rsp();
     forever begin
       ptw_mem_txn tr;
-      string selected_key;
-      string iter_key;
-      bit found;
-      pending_req_s pending;
 
       af_ptw_mem_rsp.get(tr);
       m_mem_rsp_count++;
-      if (!tr.bus_error)
-        continue;
-
-      found = 1'b0;
-      if (m_pending.num() == 1) begin
-        foreach (m_pending[iter_key]) begin
-          selected_key = iter_key;
-          pending = m_pending[iter_key];
-          found = 1'b1;
-        end
-      end
-
-      if (found) begin
-        pending.asid = m_cur_asid;
-        pending.satp_ppn = m_cur_satp_ppn;
-        pending.maee = m_cur_maee;
-        pending.mprv = m_cur_mprv;
-        pending.mxr = m_cur_mxr;
-        pending.sum = m_cur_sum;
-        pending.mpp = m_cur_mpp;
-        pending.priv_mode = m_cur_priv_mode;
-        pending.ctx_sample_seen = 1'b1;
-        pending.bus_error_seen = 1'b1;
-        pending.expected_access_fault = 1'b1;
-        pending.access_src = PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR;
-        m_pending[selected_key] = pending;
-        build_and_emit_completion(selected_key, pending, PTW_SRC_EXP_ACCESS_FAULT,
-          PTW_SRC_FAULT_BUS_ERROR, pending.last_pte, 1'b0, pending.last_cycle,
-          pending.access_src, pending.pde_reason, pending.pde_l1pmpflg,
-          pending.pde_l2pmpflg, pending.pde_direct_accerr_seen);
-      end else begin
-        m_probe_gap_count++;
-        `uvm_warning(get_type_name(),
-          $sformatf("PTW_STAGE7_OPEN_GAP kind=bus_error_without_unique_pending addr=0x%010h pending=%0d",
-            tr.addr, m_pending.num()))
-      end
     end
   endtask
 
@@ -1308,6 +1486,13 @@ class ptw_source_ref_model extends uvm_component;
       end
       emit_drop_expected(tr);
       if (tr.has_key) begin
+        if (tr.abort_drop || tr.late_data || tr.abort_bus_error)
+          mark_mem_outstanding_aborted_by_source(tr.key.req_type, tr.key.id,
+            1'b1, tr.vpn, tr.drop_reason.name());
+        else if (tr.reset_drop)
+          clear_mem_outstanding_by_source(tr.key.req_type, tr.key.id,
+            1'b1, tr.vpn);
+
         if (!resolve_pending_key(tr.key.req_type, tr.key.id,
               key, 1'b1, tr.vpn, 1'b0))
           key = key_string(tr.key.req_type, tr.key.id);
@@ -1321,6 +1506,11 @@ class ptw_source_ref_model extends uvm_component;
     forever begin
       ptw_src_abort_txn tr;
       af_abort.get(tr);
+      if (tr.has_key)
+        mark_mem_outstanding_aborted_by_source(tr.key.req_type, tr.key.id,
+          1'b1, tr.vpn, "abort");
+      else
+        mark_all_mem_outstanding_aborted("abort");
       m_pde_model.abort_flush();
       clear_pde_pmpflg_shadow();
     end
@@ -1455,6 +1645,112 @@ class ptw_source_ref_model extends uvm_component;
     end
   endtask
 
+  protected task collect_mem_evt();
+    forever begin
+      ptw_src_mem_evt_txn tr;
+      ptw_mem_outstanding_s mem;
+      bit [3:0] mbuf_id;
+      string key;
+
+      af_mem_evt.get(tr);
+      m_mem_evt_count++;
+      if (tr.source_key_valid)
+        m_mem_evt_key_valid_count++;
+      else if (tr.req_fire || (tr.rsp_fire && !tr.invalid_rsp_id))
+        m_mem_evt_key_gap_count++;
+
+      if (tr.req_fire) begin
+        mbuf_id = tr.req_id;
+        if (!is_legal_mbuf_id(mbuf_id)) begin
+          m_probe_gap_count++;
+          `uvm_error(get_type_name(),
+            $sformatf("PTW_SOURCE_REF_MEM_REQ_INVALID_ID %s",
+              tr.convert2string()))
+          continue;
+        end
+
+        if (m_mem_by_mbuf_id[mbuf_id].valid) begin
+          m_mem_duplicate_outstanding_count++;
+          `uvm_error(get_type_name(),
+            $sformatf("PTW_SOURCE_REF_MEM_DUPLICATE_OUTSTANDING old={source_valid=%0b source={type=%s,id=0x%02h,vpn=0x%07h} addr=0x%010h cycle=%0d} new={%s}",
+              m_mem_by_mbuf_id[mbuf_id].source_key_valid,
+              m_mem_by_mbuf_id[mbuf_id].req_type.name(),
+              m_mem_by_mbuf_id[mbuf_id].source_id,
+              m_mem_by_mbuf_id[mbuf_id].vpn,
+              m_mem_by_mbuf_id[mbuf_id].addr,
+              m_mem_by_mbuf_id[mbuf_id].accept_cycle,
+              tr.convert2string()))
+        end
+
+        mem.valid = 1'b1;
+        mem.mbuf_id = mbuf_id;
+        mem.source_key_valid = tr.source_key_valid;
+        mem.source_key = "";
+        mem.req_type = tr.req_type;
+        mem.source_id = tr.source_id;
+        mem.vpn = tr.vpn;
+        mem.addr = tr.addr;
+        mem.size = tr.size;
+        mem.aborted = 1'b0;
+        mem.visible_allowed = tr.source_key_valid;
+        mem.accept_cycle = tr.cycle;
+        mem.accept_order = tr.accept_order;
+        if (tr.source_key_valid) begin
+          void'(resolve_mem_evt_source_key(tr, key, 1'b0));
+          mem.source_key = key;
+        end
+
+        m_mem_by_mbuf_id[mbuf_id] = mem;
+        m_mem_outstanding_req_count++;
+        continue;
+      end
+
+      if (tr.rsp_fire) begin
+        mbuf_id = tr.rsp_id;
+        if (tr.invalid_rsp_id || !is_legal_mbuf_id(mbuf_id)) begin
+          m_mem_rsp_invalid_id_count++;
+          `uvm_warning(get_type_name(),
+            $sformatf("PTW_SOURCE_REF_MEM_RSP_INVALID_ID %s",
+              tr.convert2string()))
+          continue;
+        end
+
+        if (!m_mem_by_mbuf_id[mbuf_id].valid) begin
+          m_mem_rsp_without_outstanding_count++;
+          `uvm_error(get_type_name(),
+            $sformatf("PTW_SOURCE_REF_MEM_RSP_WITHOUT_OUTSTANDING %s",
+              tr.convert2string()))
+          continue;
+        end
+
+        mem = m_mem_by_mbuf_id[mbuf_id];
+        m_mem_rsp_id_match_count++;
+        if (tr.abort_drain || mem.aborted) begin
+          m_mem_abort_drain_rsp_count++;
+          clear_mem_outstanding(mbuf_id);
+          `uvm_info(get_type_name(),
+            $sformatf("PTW_SOURCE_REF_MEM_ABORT_DRAIN_RSP_IGNORED mbuf_id=0x%0h source_valid=%0b source={type=%s,id=0x%02h,vpn=0x%07h} %s",
+              mbuf_id, mem.source_key_valid, mem.req_type.name(),
+              mem.source_id, mem.vpn, tr.convert2string()),
+            UVM_MEDIUM)
+          continue;
+        end
+
+        if (tr.bus_error)
+          emit_bus_error_completion_by_mem_id(tr, mem);
+
+        clear_mem_outstanding(mbuf_id);
+        continue;
+      end
+
+      if (tr.drop_fire) begin
+        mbuf_id = tr.mbuf_id;
+        if (is_legal_mbuf_id(mbuf_id))
+          clear_mem_outstanding(mbuf_id);
+      end
+    end
+  endtask
+
   virtual function void report_phase(uvm_phase phase);
     while (m_deferred_pde_lookup_q.size() > 0) begin
       m_probe_gap_count++;
@@ -1480,7 +1776,13 @@ class ptw_source_ref_model extends uvm_component;
                  "pde_l2_l2pmp_deny_accerr=%0d pde_pmpflg_update_l1=%0d ",
                  "pde_pmpflg_update_l2=%0d pde_mmode_bypass=%0d ",
                  "pde_mmode_lock_deny=%0d pde_update_match=%0d ",
-                 "pde_update_mismatch=%0d pde_duplicate_direct_accerr=%0d provisional=0"},
+                 "pde_update_mismatch=%0d pde_duplicate_direct_accerr=%0d ",
+                 "mem_evt=%0d mem_evt_key_valid=%0d mem_evt_key_gap=%0d ",
+                 "mem_by_id_req=%0d mem_by_id_rsp_match=%0d ",
+                 "mem_by_id_invalid_rsp=%0d mem_by_id_rsp_without_outstanding=%0d ",
+                 "mem_by_id_duplicate=%0d mem_by_id_abort_drain_rsp=%0d ",
+                 "mem_by_id_bus_error=%0d mem_aborted_mark=%0d ",
+                 "mem_outstanding=%0d provisional=0"},
         m_req_accept_count, m_expected_count, m_refill_expected_count,
         m_page_fault_expected_count, m_access_fault_expected_count,
         m_drop_expected_count, m_pending.num(), m_duplicate_req_count,
@@ -1502,11 +1804,17 @@ class ptw_source_ref_model extends uvm_component;
         m_pde_mmode_lock_deny_count,
         m_pde_update_match_count,
         m_pde_update_mismatch_count,
-        m_pde_duplicate_direct_accerr_event_count),
+        m_pde_duplicate_direct_accerr_event_count,
+        m_mem_evt_count, m_mem_evt_key_valid_count, m_mem_evt_key_gap_count,
+        m_mem_outstanding_req_count, m_mem_rsp_id_match_count,
+        m_mem_rsp_invalid_id_count, m_mem_rsp_without_outstanding_count,
+        m_mem_duplicate_outstanding_count, m_mem_abort_drain_rsp_count,
+        m_mem_bus_error_by_id_count, m_mem_aborted_mark_count,
+        mem_outstanding_count()),
       UVM_NONE)
 
     `uvm_info(get_type_name(),
-      "PTW_SOURCE_CLOSURE component=ref_model stage=7 status=event_driven_no_translate current_context_and_maee_degrade=1 provisional=0",
+      "PTW_SOURCE_CLOSURE component=ref_model stage=7 status=event_driven_id_matched current_context_and_maee_degrade=1 provisional=0",
       UVM_NONE)
   endfunction
 

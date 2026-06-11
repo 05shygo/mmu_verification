@@ -26,11 +26,11 @@ test_bug_008_pplru_entry0_first_hit
 test_bug_012_csr_grant_onehot
 test_bug_013_ptw_write_pipe_reset
 test_bug_014_xbar_cold_start
-test_pmbuf_serial_outstanding_001
-test_pmbuf_addr_stable_001
-test_pmbuf_no_tag_001
-test_pmbuf_inorder_resp_001
-test_pmbuf_ptr_hold_001
+test_pmbuf_req_resp_id_basic_001
+test_pmbuf_multi_outstanding_id_001
+test_pmbuf_ooo_response_by_id_001
+test_pmbuf_grant_hold_addr_id_001
+test_pmbuf_abort_drain_multi_001
 
 # Blocked/doc-only Phase 11 items, intentionally not runnable in Phase 14:
 # test_bug_011_twu_2m_csr_cross  # MMU-P14-ISSUE-003/R19: blocked until RTL fix or waiver
@@ -60,6 +60,18 @@ test_mmu_arb_refill_except_priority
 test_mmu_arb_multi_twu_fairness
 test_mmu_arb_vpn_match_tag_din
 test_mmu_arb_pgs_bank_select
+
+# PTW LSU-ID/grant protocol and PDE consecutive-update closure
+test_pmbuf_abort_before_grant_cancel_001
+test_pmbuf_bus_error_route_by_id_001
+test_pmbuf_abort_drain_single_001
+test_pmbuf_no_new_req_during_drain_001
+test_pmbuf_duplicate_id_blocked_001
+test_pmbuf_random_id_ooo_stress_001
+test_pde_consecutive_l1_update_plru_001
+test_pde_consecutive_l2_update_plru_001
+test_pde_consecutive_mixed_update_001
+test_pde_abort_drain_no_update_001
 
 # Phase 13 PMP/TWU
 test_twu_pmp_serial

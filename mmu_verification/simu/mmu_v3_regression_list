@@ -17,12 +17,12 @@ test_bug_012_csr_grant_onehot
 test_bug_013_ptw_write_pipe_reset
 test_bug_014_xbar_cold_start
 #
-# PTW->LSU protocol
-test_pmbuf_serial_outstanding_001
-test_pmbuf_addr_stable_001
-test_pmbuf_no_tag_001
-test_pmbuf_inorder_resp_001
-test_pmbuf_ptr_hold_001
+# PTW->LSU protocol, redirected to LSU-ID compatible representatives
+test_pmbuf_req_resp_id_basic_001
+test_pmbuf_multi_outstanding_id_001
+test_pmbuf_ooo_response_by_id_001
+test_pmbuf_grant_hold_addr_id_001
+test_pmbuf_abort_drain_multi_001
 #
 # Blocked until R19 closure / xfail policy is available:
 # test_bug_011_twu_2m_csr_cross

@@ -7,15 +7,10 @@
 // v7.3 NOTE:
 //   mmu_lsu_mmu_en / mmu_lsu_tlb_busy / mmu_lsu_tlb_wakeup[11:0]
 //   have been moved to lsu_if (L1DTLB→LSU broadcast subgroup).
-//   This interface covers ONLY the strict serial single-outstanding
-//   PTE data channel. Protocol constraints (BuildPlan §2.4 Group 7):
-//     · mmu_lsu_data_req stable until lsu_mmu_data_vld or bus_error, except
-//       abort may withdraw req after the read was accepted; the late response
-//       still returns to retire PTW abort cleanup
-//     · lsu_mmu_data_req_grant is the TB memory-side accept.
-//     · mmu_lsu_data_req_accept is the derived req/grant fire event.
-//     · At most 1 outstanding request at any cycle.
-//     · The request ID is returned on the response for PTW MBUF routing.
+//   This interface covers the PTW PTE data channel. The RTL protocol now uses
+//   a real LSU grant plus 4-bit request/response IDs; the legacy
+//   mmu_lsu_data_req_accept name is kept as a deprecated req&&grant alias for
+//   existing single-slot UVM components until later phases replace them.
 // =============================================================================
 `ifndef PTW_MEM_IF_SV
 `define PTW_MEM_IF_SV
@@ -33,7 +28,8 @@ interface ptw_mem_if (
   logic [3:0]  mmu_lsu_data_req_id;
   logic        mmu_lsu_data_req_size; // 0=4B, 1=8B (PTE fetch is always 8B)
   logic        lsu_mmu_data_req_grant;
-  wire         mmu_lsu_data_req_accept = mmu_lsu_data_req & lsu_mmu_data_req_grant;
+  wire         mmu_lsu_data_req_fire;
+  wire         mmu_lsu_data_req_accept;
 
   // =========================================================================
   // PTW Response (driven by ptw_mem_responder)
@@ -42,6 +38,9 @@ interface ptw_mem_if (
   logic [63:0] lsu_mmu_data;
   logic [3:0]  lsu_mmu_data_id;
   logic        lsu_mmu_bus_error;
+
+  assign mmu_lsu_data_req_fire   = mmu_lsu_data_req & lsu_mmu_data_req_grant;
+  assign mmu_lsu_data_req_accept = mmu_lsu_data_req_fire;
 
   // =========================================================================
   // Clocking Block — Responder Driver
@@ -52,8 +51,9 @@ interface ptw_mem_if (
     input  mmu_lsu_data_req_addr;
     input  mmu_lsu_data_req_id;
     input  mmu_lsu_data_req_size;
-    input  mmu_lsu_data_req_accept;
     output lsu_mmu_data_req_grant;
+    input  mmu_lsu_data_req_fire;
+    input  mmu_lsu_data_req_accept;
     output lsu_mmu_data_vld;
     output lsu_mmu_data;
     output lsu_mmu_data_id;
@@ -70,6 +70,7 @@ interface ptw_mem_if (
     input mmu_lsu_data_req_id;
     input mmu_lsu_data_req_size;
     input lsu_mmu_data_req_grant;
+    input mmu_lsu_data_req_fire;
     input mmu_lsu_data_req_accept;
     input lsu_mmu_data_vld;
     input lsu_mmu_data;

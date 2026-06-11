@@ -136,10 +136,13 @@ module ct_mmu_top(
     output logic           mmu_lsu_data_req,            
     output logic   [39:0]  mmu_lsu_data_req_addr,        
     output logic           mmu_lsu_data_req_size,        
+    output logic   [3 :0]  mmu_lsu_data_req_id,
 
     input logic           lsu_mmu_bus_error,            
     input logic           lsu_mmu_data_vld,            
     input logic   [63:0]  lsu_mmu_data,                
+    input logic   [3 :0]  lsu_mmu_data_id,
+    input logic           lsu_mmu_data_req_grant,
 
     output logic           mmu_lsu_tlb_busy,            
     output logic   [11:0]  mmu_lsu_tlb_wakeup,       
@@ -953,8 +956,11 @@ module ct_mmu_top(
         .lsu_mmu_bus_error          (lsu_mmu_bus_error),
         .lsu_mmu_data               (lsu_mmu_data),
         .lsu_mmu_data_vld           (lsu_mmu_data_vld),
+        .lsu_mmu_data_id            (lsu_mmu_data_id),
+        .lsu_mmu_data_req_grant     (lsu_mmu_data_req_grant),
         .mmu_lsu_data_req           (mmu_lsu_data_req),
         .mmu_lsu_data_req_addr      (mmu_lsu_data_req_addr),
+        .mmu_lsu_data_req_id        (mmu_lsu_data_req_id),
         .mmu_lsu_data_req_size      (mmu_lsu_data_req_size),
         
         // To Arbiter

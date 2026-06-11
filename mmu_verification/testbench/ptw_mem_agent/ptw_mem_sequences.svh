@@ -118,6 +118,67 @@ class ptw_mem_delay_by_count_seq extends ptw_mem_cfg_base_seq;
   endtask
 endclass : ptw_mem_delay_by_count_seq
 
+class ptw_mem_delay_by_id_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_delay_by_id_seq)
+  rand bit [3:0] id;
+  rand int unsigned delay;
+  constraint c_id { id inside {[0:8]}; }
+  constraint c_delay { delay inside {[0:512]}; }
+  function new(string name = "ptw_mem_delay_by_id_seq");
+    super.new(name);
+    id = 4'h0;
+    delay = 0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_delay_for_id(id, delay);
+  endtask
+endclass : ptw_mem_delay_by_id_seq
+
+class ptw_mem_response_delay_by_id_seq extends ptw_mem_delay_by_id_seq;
+  `uvm_object_utils(ptw_mem_response_delay_by_id_seq)
+  function new(string name = "ptw_mem_response_delay_by_id_seq");
+    super.new(name);
+  endfunction
+endclass : ptw_mem_response_delay_by_id_seq
+
+class ptw_mem_grant_delay_by_count_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_grant_delay_by_count_seq)
+  rand int unsigned accept_count;
+  rand int unsigned cycles;
+  constraint c_count { accept_count inside {[1:1024]}; }
+  constraint c_cycles { cycles inside {[0:512]}; }
+  function new(string name = "ptw_mem_grant_delay_by_count_seq");
+    super.new(name);
+    accept_count = 1;
+    cycles = 0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_grant_delay_for_count(accept_count, cycles);
+  endtask
+endclass : ptw_mem_grant_delay_by_count_seq
+
+class ptw_mem_grant_delay_by_id_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_grant_delay_by_id_seq)
+  rand bit [3:0] id;
+  rand int unsigned cycles;
+  constraint c_id { id inside {[0:8]}; }
+  constraint c_cycles { cycles inside {[0:512]}; }
+  function new(string name = "ptw_mem_grant_delay_by_id_seq");
+    super.new(name);
+    id = 4'h0;
+    cycles = 0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_grant_delay_for_id(id, cycles);
+  endtask
+endclass : ptw_mem_grant_delay_by_id_seq
+
 class ptw_mem_bus_error_by_addr_seq extends ptw_mem_cfg_base_seq;
   `uvm_object_utils(ptw_mem_bus_error_by_addr_seq)
   rand bit [39:0] addr;
@@ -150,6 +211,23 @@ class ptw_mem_bus_error_by_count_seq extends ptw_mem_cfg_base_seq;
     rsp_h.set_bus_error_for_count(accept_count, enable);
   endtask
 endclass : ptw_mem_bus_error_by_count_seq
+
+class ptw_mem_bus_error_by_id_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_bus_error_by_id_seq)
+  rand bit [3:0] id;
+  bit enable;
+  constraint c_id { id inside {[0:8]}; }
+  function new(string name = "ptw_mem_bus_error_by_id_seq");
+    super.new(name);
+    id = 4'h0;
+    enable = 1'b1;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_bus_error_for_id(id, enable);
+  endtask
+endclass : ptw_mem_bus_error_by_id_seq
 
 class ptw_mem_same_cycle_abort_data_seq extends ptw_mem_cfg_base_seq;
   `uvm_object_utils(ptw_mem_same_cycle_abort_data_seq)
@@ -197,17 +275,123 @@ class ptw_mem_chk_not_ready_slow_seq extends ptw_mem_cfg_base_seq;
 endclass : ptw_mem_chk_not_ready_slow_seq
 
 // -----------------------------------------------------------------------------
-// 2. Out-of-order response (protocol does not support OOO; reserved for future)
+// 2. ID-directed response controls
 // -----------------------------------------------------------------------------
 class ptw_mem_ooo_rsp_seq extends ptw_mem_cfg_base_seq;
   `uvm_object_utils(ptw_mem_ooo_rsp_seq)
   function new(string name = "ptw_mem_ooo_rsp_seq"); super.new(name); endfunction
   virtual task body();
-    // Protocol constraint: single-outstanding, OOO not applicable
-    `uvm_warning(get_type_name(),
-      "ptw_mem_ooo_rsp_seq: OOO not supported by single-outstanding protocol")
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_response_order_mode(PTW_RSP_BY_ID_OOO);
   endtask
 endclass : ptw_mem_ooo_rsp_seq
+
+class ptw_mem_force_next_response_id_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_force_next_response_id_seq)
+  rand bit [3:0] id;
+  constraint c_id { id inside {[0:8]}; }
+  function new(string name = "ptw_mem_force_next_response_id_seq");
+    super.new(name);
+    id = 4'h0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.force_next_response_id(id);
+  endtask
+endclass : ptw_mem_force_next_response_id_seq
+
+class ptw_mem_force_invalid_response_id_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_force_invalid_response_id_seq)
+  rand bit [3:0] id;
+  constraint c_id { id inside {[9:15]}; }
+  function new(string name = "ptw_mem_force_invalid_response_id_seq");
+    super.new(name);
+    id = 4'h9;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.force_invalid_response_id(id);
+  endtask
+endclass : ptw_mem_force_invalid_response_id_seq
+
+class ptw_mem_max_outstanding_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_max_outstanding_seq)
+  rand int unsigned depth;
+  constraint c_depth { depth inside {[0:9]}; }
+  function new(string name = "ptw_mem_max_outstanding_seq");
+    super.new(name);
+    depth = 9;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.set_max_outstanding(depth);
+  endtask
+endclass : ptw_mem_max_outstanding_seq
+
+class ptw_mem_grant_backpressure_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_grant_backpressure_seq)
+  rand int unsigned accept_count;
+  rand bit [3:0] id;
+  rand int unsigned cycles;
+  bit use_id;
+  constraint c_count { accept_count inside {[1:1024]}; }
+  constraint c_id { id inside {[0:8]}; }
+  constraint c_cycles { cycles inside {[1:512]}; }
+  function new(string name = "ptw_mem_grant_backpressure_seq");
+    super.new(name);
+    accept_count = 1;
+    id = 4'h0;
+    cycles = 8;
+    use_id = 1'b0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    if (use_id)
+      rsp_h.set_grant_delay_for_id(id, cycles);
+    else
+      rsp_h.set_grant_delay_for_count(accept_count, cycles);
+  endtask
+endclass : ptw_mem_grant_backpressure_seq
+
+class ptw_mem_abort_drain_rsp_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_abort_drain_rsp_seq)
+  rand int unsigned accept_count;
+  bit bus_error;
+  constraint c_count { accept_count inside {[1:1024]}; }
+  function new(string name = "ptw_mem_abort_drain_rsp_seq");
+    super.new(name);
+    accept_count = 1;
+    bus_error = 1'b0;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    if (bus_error)
+      rsp_h.set_same_cycle_abort_bus_error_for_count(accept_count);
+    else
+      rsp_h.set_same_cycle_abort_data_for_count(accept_count);
+  endtask
+endclass : ptw_mem_abort_drain_rsp_seq
+
+class ptw_mem_invalid_rsp_id_negative_seq extends ptw_mem_cfg_base_seq;
+  `uvm_object_utils(ptw_mem_invalid_rsp_id_negative_seq)
+  rand bit [3:0] id;
+  constraint c_id { id inside {[9:15]}; }
+  function new(string name = "ptw_mem_invalid_rsp_id_negative_seq");
+    super.new(name);
+    id = 4'h9;
+  endfunction
+  virtual task body();
+    ptw_mem_responder rsp_h;
+    rsp_h = get_responder();
+    rsp_h.force_invalid_response_id(id);
+  endtask
+endclass : ptw_mem_invalid_rsp_id_negative_seq
 
 // -----------------------------------------------------------------------------
 // 3. Slow response (high delay to stress PTW latency sensitivity)

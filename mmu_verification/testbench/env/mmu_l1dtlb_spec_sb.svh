@@ -979,6 +979,42 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     return 1'b0;
   endfunction
 
+  protected function bit no_response_refill_has_existing_owner(
+    input lsu_pipe_token_t tok,
+    output int unsigned owner_idx
+  );
+    owner_idx = MB_DEPTH;
+
+    if (!tok.vld || !v_probe.mon_cb.l1d_refill_vld)
+      return 1'b0;
+    if ($isunknown({tok.vpn, v_probe.mon_cb.l1d_refill_vpn,
+                    v_probe.mon_cb.l1d_refill_gnt_bus,
+                    m_prev_mb_vld, v_probe.mon_cb.l1d_mb_vld}))
+      return 1'b0;
+    if (v_probe.mon_cb.l1d_refill_vpn != tok.vpn)
+      return 1'b0;
+
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (v_probe.mon_cb.l1d_mb_vld[i]
+          && (v_probe.mon_cb.l1d_mb_vpn[i] == tok.vpn)
+          && v_probe.mon_cb.l1d_refill_gnt_bus[i]) begin
+        owner_idx = i;
+        return 1'b1;
+      end
+    end
+
+    for (int i = 0; i < MB_DEPTH; i++) begin
+      if (m_prev_mb_vld[i]
+          && (m_prev_mb_vpn[i] == tok.vpn)
+          && v_probe.mon_cb.l1d_refill_gnt_bus[i]) begin
+        owner_idx = i;
+        return 1'b1;
+      end
+    end
+
+    return 1'b0;
+  endfunction
+
   protected function void mb_alloc_expect_reset();
     for (int i = 0; i < MB_ALLOC_EXPECT_DEPTH; i++)
       m_mb_alloc_expect_q[i] = '{default: '0};
@@ -1324,14 +1360,14 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     input lsu_pipe_token_t t0_p0,
     input lsu_pipe_token_t t0_p1
   );
-    if (v_probe.mon_cb.rtu_yy_xx_flush) begin
-      if (phase6e_any_expt_life_valid())
-        m_phase6f_flush_expt_clear++;
-      for (int i = 0; i < MB_DEPTH; i++)
-        m_expt_life[i] = '{default: '0};
-      m_phase6e_expt_flush_clear++;
-    end
+    bit flush_pending;
+    bit flush_had_life;
 
+    flush_pending = v_probe.mon_cb.rtu_yy_xx_flush;
+    flush_had_life = flush_pending && phase6e_any_expt_life_valid();
+
+    // RTL expt CAM can still match old entries in the sampled flush cycle.
+    // Consume same-cycle replays before modeling the clock-edge clear.
     if (v_probe.mon_cb.l1d_expt_wr0_vld)
       phase6e_expt_write("PTW", v_probe.mon_cb.l1d_expt_wr0_eid[2:0],
         v_probe.mon_cb.l1d_expt_wr0_iid, v_probe.mon_cb.l1d_expt_wr0_vpn,
@@ -1345,6 +1381,14 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
 
     phase6e_check_expt_consume(t0_p0);
     phase6e_check_expt_consume(t0_p1);
+
+    if (flush_pending) begin
+      if (flush_had_life)
+        m_phase6f_flush_expt_clear++;
+      for (int i = 0; i < MB_DEPTH; i++)
+        m_expt_life[i] = '{default: '0};
+      m_phase6e_expt_flush_clear++;
+    end
   endfunction
 
   protected function void phase6e_check_install_and_refill();
@@ -2284,7 +2328,9 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     bit expt_sidefx;
     bit wakeup_sidefx;
     bit prev_owner_match;
+    bit no_response_refill_owner_match;
     bit legal_flush_l2_wfg_grant;
+    int unsigned no_response_refill_owner_idx;
     string diag_token;
     string alloc_diag;
 
@@ -2371,6 +2417,18 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
               && (v_probe.mon_cb.l1d_refill_iid_sel == tok.iid)
               && !prev_owner_match) begin
       refill_sidefx = 1'b1;
+    end
+
+    no_response_refill_owner_match =
+      no_response_refill_has_existing_owner(tok, no_response_refill_owner_idx);
+    if (((reason == "mb_cam_hit") || (reason == "busy_sleep"))
+        && no_response_refill_owner_match) begin
+      refill_sidefx = 1'b0;
+      `uvm_info({get_type_name(), "::PHASE6D_NO_RSP_REFILL_OWNER"},
+        $sformatf("legal no-response reason=%s shares VPN with MB owner idx=%0d refill_idx=%0d vpn=0x%07h token{%s}",
+          reason, no_response_refill_owner_idx, v_probe.mon_cb.l1d_refill_idx,
+          v_probe.mon_cb.l1d_refill_vpn, diag_token),
+        UVM_HIGH)
     end
 
     if (refill_sidefx) begin

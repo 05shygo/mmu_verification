@@ -26,6 +26,7 @@ class ptw_source_monitor extends uvm_monitor;
   uvm_analysis_port #(ptw_src_level_evt_txn)  ap_level;
   uvm_analysis_port #(ptw_src_pde_evt_txn)    ap_pde;
   uvm_analysis_port #(ptw_src_drop_txn)       ap_drop;
+  uvm_analysis_port #(ptw_src_mem_evt_txn)    ap_mem_evt;
 
   int unsigned m_cycle;
   int unsigned m_req_accept_count;
@@ -44,6 +45,11 @@ class ptw_source_monitor extends uvm_monitor;
   int unsigned m_gap_late_data_count;
   int unsigned m_gap_abort_bus_error_count;
   int unsigned m_gap_pre_existing_exception_count;
+  int unsigned m_mem_evt_count;
+  int unsigned m_mem_req_evt_count;
+  int unsigned m_mem_rsp_evt_count;
+  int unsigned m_mem_drop_evt_count;
+  int unsigned m_mem_key_gap_count;
   bit          m_prev_pde_cache_acc_err_vld;
 
   typedef struct {
@@ -56,6 +62,14 @@ class ptw_source_monitor extends uvm_monitor;
   } pending_req_s;
 
   pending_req_s m_pending[string];
+  pending_req_s m_mbuf_source_by_id[16];
+  bit           m_mbuf_source_valid_by_id[16];
+  int unsigned  m_mem_accept_order_by_id[16];
+  bit           m_mem_hold_active;
+  bit [39:0]    m_mem_hold_addr;
+  bit           m_mem_hold_size;
+  bit [3:0]     m_mem_hold_id;
+  int unsigned  m_mem_hold_wait_cycles;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -76,7 +90,23 @@ class ptw_source_monitor extends uvm_monitor;
     m_gap_late_data_count = 0;
     m_gap_abort_bus_error_count = 0;
     m_gap_pre_existing_exception_count = 0;
+    m_mem_evt_count = 0;
+    m_mem_req_evt_count = 0;
+    m_mem_rsp_evt_count = 0;
+    m_mem_drop_evt_count = 0;
+    m_mem_key_gap_count = 0;
     m_prev_pde_cache_acc_err_vld = 1'b0;
+    foreach (m_mbuf_source_valid_by_id[i]) begin
+      m_mbuf_source_valid_by_id[i] = 1'b0;
+      m_mbuf_source_by_id[i].valid = 1'b0;
+    end
+    foreach (m_mem_accept_order_by_id[i])
+      m_mem_accept_order_by_id[i] = 0;
+    m_mem_hold_active = 1'b0;
+    m_mem_hold_addr = '0;
+    m_mem_hold_size = 1'b0;
+    m_mem_hold_id = '0;
+    m_mem_hold_wait_cycles = 0;
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -89,6 +119,7 @@ class ptw_source_monitor extends uvm_monitor;
     ap_level      = new("ap_level",      this);
     ap_pde        = new("ap_pde",        this);
     ap_drop       = new("ap_drop",       this);
+    ap_mem_evt    = new("ap_mem_evt",    this);
 
     if (!uvm_config_db #(mmu_top_cfg)::get(this, "", "m_cfg", m_cfg))
       m_cfg = mmu_top_cfg::type_id::create("m_cfg");
@@ -115,11 +146,15 @@ class ptw_source_monitor extends uvm_monitor;
 
       if (v_probe.rst_ni !== 1'b1) begin
         m_prev_pde_cache_acc_err_vld = 1'b0;
+        emit_reset_mem_drops();
+        clear_mbuf_source_map();
+        clear_mem_channel_state();
         emit_reset_drops();
         continue;
       end
 
       sample_req_accept();
+      sample_memory_events();
       sample_context();
       sample_level_events();
       sample_pde_events();
@@ -130,6 +165,10 @@ class ptw_source_monitor extends uvm_monitor;
 
   protected function string key_string(input logic [2:0] req_type, input logic [PTW_SRC_ID_WIDTH-1:0] id);
     return $sformatf("%0h:%0h", req_type, id);
+  endfunction
+
+  protected function bit is_legal_mbuf_id(input bit [3:0] mbuf_id);
+    return (mbuf_id <= 4'd8);
   endfunction
 
   protected function ptw_src_req_type_e cast_req_type(input logic [2:0] raw_type);
@@ -143,6 +182,216 @@ class ptw_source_monitor extends uvm_monitor;
       return ptw_src_page_size_e'(raw_pgs);
     return PTW_SRC_PGS_NONE;
   endfunction
+
+  protected function void clear_mbuf_source_map();
+    foreach (m_mbuf_source_valid_by_id[i]) begin
+      m_mbuf_source_valid_by_id[i] = 1'b0;
+      m_mbuf_source_by_id[i].valid = 1'b0;
+    end
+  endfunction
+
+  protected function void clear_mem_request_hold();
+    m_mem_hold_active = 1'b0;
+    m_mem_hold_addr = '0;
+    m_mem_hold_size = 1'b0;
+    m_mem_hold_id = '0;
+    m_mem_hold_wait_cycles = 0;
+  endfunction
+
+  protected function void clear_mem_channel_state();
+    foreach (m_mem_accept_order_by_id[i])
+      m_mem_accept_order_by_id[i] = 0;
+    clear_mem_request_hold();
+  endfunction
+
+  protected function void update_mem_request_hold(
+    input bit [39:0] cur_addr,
+    input bit        cur_size,
+    input bit [3:0]  cur_id
+  );
+    if (!m_mem_hold_active) begin
+      m_mem_hold_active = 1'b1;
+      m_mem_hold_addr = cur_addr;
+      m_mem_hold_size = cur_size;
+      m_mem_hold_id = cur_id;
+      m_mem_hold_wait_cycles = 1;
+      return;
+    end
+
+    if ((cur_addr !== m_mem_hold_addr) || (cur_size !== m_mem_hold_size)
+        || (cur_id !== m_mem_hold_id)) begin
+      `uvm_warning(get_type_name(),
+        $sformatf({"PTW_SRC_MEM_REQ_HOLD_CHANGED old={addr=0x%010h size=%0b id=0x%0h} ",
+                   "new={addr=0x%010h size=%0b id=0x%0h}"},
+          m_mem_hold_addr, m_mem_hold_size, m_mem_hold_id,
+          cur_addr, cur_size, cur_id))
+    end
+    m_mem_hold_wait_cycles++;
+  endfunction
+
+  protected function void fill_mbuf_source_from_entry(input bit [3:0] mbuf_id);
+    pending_req_s src;
+
+    if (!is_legal_mbuf_id(mbuf_id))
+      return;
+
+    src.valid = 1'b1;
+    src.req_type = cast_req_type(v_probe.mon_cb.ptw_mbuf_entry_type_by_id[mbuf_id]);
+    src.id = v_probe.mon_cb.ptw_mbuf_entry_source_id_by_id[mbuf_id];
+    src.vpn = v_probe.mon_cb.ptw_mbuf_entry_vpn_by_id[mbuf_id];
+    src.asid = v_probe.mon_cb.regs_ptw_cur_asid;
+    src.cycle = m_cycle;
+
+    m_mbuf_source_by_id[mbuf_id] = src;
+    m_mbuf_source_valid_by_id[mbuf_id] = (src.req_type != PTW_SRC_TYPE_UNKNOWN);
+  endfunction
+
+  protected function void fill_mem_evt_source(
+    input ptw_src_mem_evt_txn tr,
+    input bit [3:0]           mbuf_id
+  );
+    tr.mbuf_id = mbuf_id;
+    if (is_legal_mbuf_id(mbuf_id) && m_mbuf_source_valid_by_id[mbuf_id]) begin
+      tr.source_key_valid = 1'b1;
+      tr.req_type = m_mbuf_source_by_id[mbuf_id].req_type;
+      tr.source_id = m_mbuf_source_by_id[mbuf_id].id;
+      tr.vpn = m_mbuf_source_by_id[mbuf_id].vpn;
+    end else begin
+      tr.source_key_valid = 1'b0;
+      tr.req_type = PTW_SRC_TYPE_UNKNOWN;
+      tr.source_id = '0;
+      tr.vpn = '0;
+    end
+  endfunction
+
+  protected function void publish_mem_evt(input ptw_src_mem_evt_txn tr);
+    m_mem_evt_count++;
+    if (tr.req_fire)
+      m_mem_req_evt_count++;
+    if (tr.rsp_fire)
+      m_mem_rsp_evt_count++;
+    if (tr.drop_fire)
+      m_mem_drop_evt_count++;
+    if ((tr.req_fire || (tr.rsp_fire && !tr.invalid_rsp_id))
+        && !tr.source_key_valid)
+      m_mem_key_gap_count++;
+
+    ap_mem_evt.write(tr);
+    `uvm_info(get_type_name(), {"PTW_SRC_MEM_EVT ", tr.convert2string()}, UVM_HIGH)
+  endfunction
+
+  protected function void emit_reset_mem_drops();
+    foreach (m_mbuf_source_valid_by_id[i]) begin
+      if (m_mbuf_source_valid_by_id[i]) begin
+        ptw_src_mem_evt_txn tr;
+        bit [3:0] mbuf_id;
+
+        mbuf_id = i[3:0];
+        tr = ptw_src_mem_evt_txn::type_id::create("ptw_src_mem_reset_drop");
+        tr.cycle = m_cycle;
+        tr.drop_fire = 1'b1;
+        tr.req_id = mbuf_id;
+        tr.mbuf_id = mbuf_id;
+        fill_mem_evt_source(tr, mbuf_id);
+        publish_mem_evt(tr);
+      end
+    end
+  endfunction
+
+  protected task sample_memory_events();
+    bit rsp_seen;
+    bit req_seen;
+    bit req_fire_seen;
+    bit req_grant_seen;
+
+    rsp_seen = (v_probe.mon_cb.ptw_lsu_data_vld === 1'b1)
+            || (v_probe.mon_cb.ptw_lsu_bus_error === 1'b1);
+    req_seen = (v_probe.mon_cb.ptw_lsu_data_req === 1'b1);
+    req_fire_seen = (v_probe.mon_cb.ptw_lsu_data_req_fire === 1'b1);
+    req_grant_seen = (v_probe.mon_cb.ptw_lsu_data_req_grant === 1'b1);
+
+    if (rsp_seen) begin
+      ptw_src_mem_evt_txn tr;
+      bit [3:0] rsp_id;
+      int unsigned rsp_order;
+
+      rsp_id = v_probe.mon_cb.ptw_lsu_data_rsp_id;
+      rsp_order = m_mem_rsp_evt_count + 1;
+      tr = ptw_src_mem_evt_txn::type_id::create("ptw_src_mem_rsp_evt");
+      tr.cycle = m_cycle;
+      tr.rsp_fire = 1'b1;
+      tr.rsp_id = rsp_id;
+      tr.mbuf_id = rsp_id;
+      tr.data = v_probe.mon_cb.ptw_lsu_data;
+      tr.bus_error = v_probe.mon_cb.ptw_lsu_bus_error;
+      tr.invalid_rsp_id = !is_legal_mbuf_id(rsp_id);
+      tr.abort_drain = (v_probe.mon_cb.ptw_abort_drain === 1'b1)
+                    || (v_probe.mon_cb.ptw_abort_flop === 1'b1);
+      tr.response_order = rsp_order;
+      if (!tr.invalid_rsp_id)
+        tr.rsp_without_pending = !m_mbuf_source_valid_by_id[rsp_id];
+      if (!tr.invalid_rsp_id && m_mbuf_source_valid_by_id[rsp_id]
+          && (m_mem_accept_order_by_id[rsp_id] != 0))
+        tr.ooo = (rsp_order != m_mem_accept_order_by_id[rsp_id]);
+      fill_mem_evt_source(tr, rsp_id);
+      publish_mem_evt(tr);
+
+      if (is_legal_mbuf_id(rsp_id)) begin
+        m_mbuf_source_valid_by_id[rsp_id] = 1'b0;
+        m_mbuf_source_by_id[rsp_id].valid = 1'b0;
+        m_mem_accept_order_by_id[rsp_id] = 0;
+      end
+    end
+
+    if (req_fire_seen) begin
+      ptw_src_mem_evt_txn tr;
+      bit [3:0] req_id;
+      bit duplicate_id;
+      int unsigned grant_wait;
+      int unsigned accept_order;
+
+      req_id = v_probe.mon_cb.ptw_lsu_data_req_id;
+      duplicate_id = is_legal_mbuf_id(req_id) && m_mbuf_source_valid_by_id[req_id];
+      grant_wait = 0;
+      accept_order = m_mem_req_evt_count + 1;
+      if (m_mem_hold_active) begin
+        grant_wait = m_mem_hold_wait_cycles;
+        if ((v_probe.mon_cb.ptw_lsu_data_req_addr !== m_mem_hold_addr)
+            || (v_probe.mon_cb.ptw_lsu_data_req_size !== m_mem_hold_size)
+            || (req_id !== m_mem_hold_id)) begin
+          `uvm_warning(get_type_name(),
+            $sformatf({"PTW_SRC_MEM_REQ_HOLD_ACCEPT_CHANGED old={addr=0x%010h size=%0b id=0x%0h} ",
+                       "new={addr=0x%010h size=%0b id=0x%0h}"},
+              m_mem_hold_addr, m_mem_hold_size, m_mem_hold_id,
+              v_probe.mon_cb.ptw_lsu_data_req_addr,
+              v_probe.mon_cb.ptw_lsu_data_req_size, req_id))
+        end
+      end
+      if (is_legal_mbuf_id(req_id))
+        fill_mbuf_source_from_entry(req_id);
+
+      tr = ptw_src_mem_evt_txn::type_id::create("ptw_src_mem_req_evt");
+      tr.cycle = m_cycle;
+      tr.req_fire = 1'b1;
+      tr.req_id = req_id;
+      tr.mbuf_id = req_id;
+      tr.addr = v_probe.mon_cb.ptw_lsu_data_req_addr;
+      tr.size = v_probe.mon_cb.ptw_lsu_data_req_size;
+      tr.duplicate_id_error = duplicate_id;
+      tr.grant_wait_cycles = grant_wait;
+      tr.accept_order = accept_order;
+      fill_mem_evt_source(tr, req_id);
+      publish_mem_evt(tr);
+      if (is_legal_mbuf_id(req_id))
+        m_mem_accept_order_by_id[req_id] = accept_order;
+      clear_mem_request_hold();
+    end else if (req_seen && !req_grant_seen) begin
+      update_mem_request_hold(v_probe.mon_cb.ptw_lsu_data_req_addr,
+        v_probe.mon_cb.ptw_lsu_data_req_size, v_probe.mon_cb.ptw_lsu_data_req_id);
+    end else if (!req_seen) begin
+      clear_mem_request_hold();
+    end
+  endtask
 
   protected function ptw_src_level_e level_from_onehot(input logic [2:0] raw_level);
     case (raw_level)
@@ -376,6 +625,9 @@ class ptw_source_monitor extends uvm_monitor;
         tr.refill_req = v_probe.mon_cb.ptw_twu_ref_req[twu];
         tr.page_fault = v_probe.mon_cb.ptw_twu_pgflt_vec[twu];
         tr.access_fault = v_probe.mon_cb.ptw_twu_acc_err_vec[twu];
+        tr.abort_drain = ((v_probe.mon_cb.ptw_abort_drain === 1'b1)
+                       || (v_probe.mon_cb.ptw_abort_flop === 1'b1))
+                       && tr.mbuf_data_vld;
         tr.pmp_vld = |pmp_vld_vec;
         tr.pmp_grant = |pmp_grant_vec;
         tr.pmp_deny = |pmp_deny_fire_vec;
@@ -703,14 +955,17 @@ class ptw_source_monitor extends uvm_monitor;
                  "ctx=%0d level=%0d pde=%0d pending=%0d gap_late_data=%0d ",
                  "pde_pmpflg_update=%0d pde_l1_deny_miss=%0d ",
                  "pde_direct_accerr=%0d gap_abort_bus_error=%0d ",
-                 "gap_pre_existing_exception=%0d provisional=1"},
+                 "gap_pre_existing_exception=%0d mem_evt=%0d mem_req_evt=%0d ",
+                 "mem_rsp_evt=%0d mem_drop_evt=%0d mem_key_gap=%0d provisional=1"},
         m_req_accept_count, m_actual_rsp_count, m_refill_count,
         m_page_fault_count, m_access_fault_count, m_abort_count, m_drop_count,
         m_ctx_count, m_level_count, m_pde_count, m_pending.num(),
         m_gap_late_data_count, m_pde_pmpflg_update_count,
         m_pde_l1_deny_miss_count, m_pde_direct_accerr_count,
         m_gap_abort_bus_error_count,
-        m_gap_pre_existing_exception_count),
+        m_gap_pre_existing_exception_count, m_mem_evt_count,
+        m_mem_req_evt_count, m_mem_rsp_evt_count, m_mem_drop_evt_count,
+        m_mem_key_gap_count),
       UVM_NONE)
 
     `uvm_info(get_type_name(),

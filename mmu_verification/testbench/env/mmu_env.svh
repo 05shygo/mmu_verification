@@ -292,6 +292,7 @@ class mmu_env extends uvm_env;
       m_ptw_source_mon.ap_level.connect(m_ptw_source_ref.af_level.analysis_export);
       m_ptw_source_mon.ap_pde.connect(m_ptw_source_ref.af_pde.analysis_export);
       m_ptw_source_mon.ap_drop.connect(m_ptw_source_ref.af_drop.analysis_export);
+      m_ptw_source_mon.ap_mem_evt.connect(m_ptw_source_ref.af_mem_evt.analysis_export);
     end
 
     if ((m_ptw_source_ref != null) && (m_ptw_source_sb != null))
@@ -303,6 +304,7 @@ class mmu_env extends uvm_env;
       m_ptw_source_mon.ap_pde.connect(m_ptw_source_sb.af_pde.analysis_export);
       m_ptw_source_mon.ap_actual_rsp.connect(m_ptw_source_sb.af_actual.analysis_export);
       m_ptw_source_mon.ap_drop.connect(m_ptw_source_sb.af_drop.analysis_export);
+      m_ptw_source_mon.ap_mem_evt.connect(m_ptw_source_sb.af_mem_evt.analysis_export);
     end
 
     if ((m_ptw_source_mon != null) && (m_ptw_scenario_db != null)) begin
@@ -313,6 +315,7 @@ class mmu_env extends uvm_env;
       m_ptw_source_mon.ap_level.connect(m_ptw_scenario_db.af_level.analysis_export);
       m_ptw_source_mon.ap_pde.connect(m_ptw_scenario_db.af_pde.analysis_export);
       m_ptw_source_mon.ap_drop.connect(m_ptw_scenario_db.af_drop.analysis_export);
+      m_ptw_source_mon.ap_mem_evt.connect(m_ptw_scenario_db.af_mem_evt.analysis_export);
       m_ptw_mem.m_monitor.ap_req.connect(m_ptw_scenario_db.af_ptw_mem_req.analysis_export);
       m_ptw_mem.m_monitor.ap_rsp.connect(m_ptw_scenario_db.af_ptw_mem_rsp.analysis_export);
       m_ptw_mem.m_monitor.ap_drop.connect(m_ptw_scenario_db.af_ptw_mem_drop.analysis_export);
@@ -355,6 +358,8 @@ class mmu_env extends uvm_env;
     m_ptw_mem.m_monitor.ap_req.connect(m_credit_sb.af_ptw_req.analysis_export);
     m_ptw_mem.m_monitor.ap_rsp.connect(m_credit_sb.af_ptw_rsp.analysis_export);
     m_ptw_mem.m_monitor.ap_drop.connect(m_credit_sb.af_ptw_drop.analysis_export);
+    if (m_ptw_source_mon != null)
+      m_ptw_source_mon.ap_mem_evt.connect(m_credit_sb.af_ptw_mem_evt.analysis_export);
 
     // Phase 5 (Engineer A): IFU/LSU rsp + misc HPCP → performance monitor
     m_ifu.m_monitor.ap_rsp.connect(m_perf.af_ifu_rsp.analysis_export);
@@ -365,6 +370,8 @@ class mmu_env extends uvm_env;
     // Phase 8: PTW mem channel → perf (PTW walk proxy / TaskDivision #3)
     m_ptw_mem.m_monitor.ap_req.connect(m_perf.af_ptw_req.analysis_export);
     m_ptw_mem.m_monitor.ap_rsp.connect(m_perf.af_ptw_rsp.analysis_export);
+    if (m_ptw_source_mon != null)
+      m_ptw_source_mon.ap_mem_evt.connect(m_perf.af_ptw_mem_evt.analysis_export);
   endfunction
 
   virtual function void report_phase(uvm_phase phase);

@@ -17,6 +17,10 @@ module mmu_pde_cache_sva #(
     input logic                                      cpurst_b,
     input logic                                      regs_ptw_clr,
     input logic                                      tlboper_ptw_abort,
+    input logic                                      ptw_abort_drain,
+    input logic                                      ptw_lsu_bus_error_rsp,
+    input logic                                      ptw_writeback_req_any,
+    input logic                                      ptw_writeback_grant_any,
     input logic                                      pmp_regs_update,
     input logic                                      pde_cache_clear,
     input logic                                      xbar_pde_ready,
@@ -32,6 +36,10 @@ module mmu_pde_cache_sva #(
     input logic                                      ptw_req,
     input logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_entry_upd,
     input logic [L2PDE_ENTRY_NUM-1:0]                L2PDE_entry_upd,
+    input logic [L1PDE_ENTRY_NUM-1:0]                plru_L1PDE_ref_num,
+    input logic [L2PDE_ENTRY_NUM-1:0]                plru_L2PDE_ref_num,
+    input logic                                      L1PDE_plru_refill_vld,
+    input logic                                      L2PDE_plru_refill_vld,
     input logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_entry_vld,
     input logic [L2PDE_ENTRY_NUM-1:0]                L2PDE_entry_vld,
     input logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_entry_hit,
@@ -91,7 +99,16 @@ module mmu_pde_cache_sva #(
   int unsigned cp_pde_update_pmpflg_hits;
   int unsigned cp_pde_tag_deny_no_plru_hits;
   int unsigned cp_pde_accerr_pending_hits;
+  int unsigned cp_pde_consecutive_refill_hits;
+  int unsigned cp_pde_l1_consecutive_advance_hits;
+  int unsigned cp_pde_l2_consecutive_advance_hits;
+  int unsigned cp_pde_l1_plru_refill_hits;
+  int unsigned cp_pde_l2_plru_refill_hits;
+  int unsigned cp_pde_update_mutual_exclusive_hits;
+  int unsigned cp_pde_abort_drain_no_update_hits;
+  int unsigned cp_pde_bus_error_no_update_hits;
 
+  logic pde_past_valid;
   logic [L1PDE_ENTRY_NUM-1:0] l1_allow_vec;
   logic [L1PDE_ENTRY_NUM-1:0] l1_expected_hit_vec;
   logic [L1PDE_ENTRY_NUM-1:0] l1_deny_vec;
@@ -144,6 +161,13 @@ module mmu_pde_cache_sva #(
       l2_deny_vec[i] = L2PDE_entry_vld[i] && L2PDE_tag_hit[i]
                     && !(l2_l1_allow_vec[i] && l2_l2_allow_vec[i]);
     end
+  end
+
+  always_ff @(posedge pde_cache_clk or negedge cpurst_b) begin
+    if (!cpurst_b)
+      pde_past_valid <= 1'b0;
+    else
+      pde_past_valid <= 1'b1;
   end
 
   // PTW-SVA-PDE-001/002: reset, satp/PMP clear, and abort clear all valid entries.
@@ -234,6 +258,128 @@ module mmu_pde_cache_sva #(
     && ((mbuf_cache_upd_lvl[1] && |L1PDE_entry_before_upd_hit && !(|L1PDE_entry_upd))
      || (mbuf_cache_upd_lvl[0] && |L2PDE_entry_before_upd_hit && !(|L2PDE_entry_upd)))) begin
     cp_pde_old_state_lookup_hits++;
+  end
+
+  // PTW-SVA-PDE-UPD-020/024: back-to-back refill updates remain known, onehot, and single-level.
+  a_pde_consecutive_refill_update_onehot_known: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    mbuf_cache_upd && $past(mbuf_cache_upd) && (L1PDE_plru_refill_vld || L2PDE_plru_refill_vld)
+    |-> (!$isunknown({L1PDE_entry_upd, L2PDE_entry_upd})
+      && $onehot({L1PDE_entry_upd, L2PDE_entry_upd})));
+
+  a_pde_update_vectors_mutually_exclusive_phase9: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    mbuf_cache_upd |-> !(|L1PDE_entry_upd && |L2PDE_entry_upd));
+
+  cp_pde_consecutive_refill: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    mbuf_cache_upd && $past(mbuf_cache_upd) && (L1PDE_plru_refill_vld || L2PDE_plru_refill_vld)) begin
+    cp_pde_consecutive_refill_hits++;
+  end
+
+  cp_pde_update_mutual_exclusive: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    mbuf_cache_upd && !(|L1PDE_entry_upd && |L2PDE_entry_upd)
+    && ((|L1PDE_entry_upd) || (|L2PDE_entry_upd))) begin
+    cp_pde_update_mutual_exclusive_hits++;
+  end
+
+  // PTW-SVA-PDE-UPD-021: while invalid ways remain, consecutive refill cannot reuse the previous way.
+  a_pde_l1_consecutive_refill_no_reuse_when_invalid: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    mbuf_cache_upd && L1PDE_plru_refill_vld && !(&L1PDE_entry_vld)
+    && $past(mbuf_cache_upd && L1PDE_plru_refill_vld && !(&L1PDE_entry_vld))
+    |-> ((L1PDE_entry_upd & $past(L1PDE_entry_upd)) == '0));
+
+  a_pde_l2_consecutive_refill_no_reuse_when_invalid: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    mbuf_cache_upd && L2PDE_plru_refill_vld && !(&L2PDE_entry_vld)
+    && $past(mbuf_cache_upd && L2PDE_plru_refill_vld && !(&L2PDE_entry_vld))
+    |-> ((L2PDE_entry_upd & $past(L2PDE_entry_upd)) == '0));
+
+  cp_pde_l1_consecutive_advance: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    mbuf_cache_upd && L1PDE_plru_refill_vld && !(&L1PDE_entry_vld)
+    && $past(mbuf_cache_upd && L1PDE_plru_refill_vld && !(&L1PDE_entry_vld))
+    && ((L1PDE_entry_upd & $past(L1PDE_entry_upd)) == '0)) begin
+    cp_pde_l1_consecutive_advance_hits++;
+  end
+
+  cp_pde_l2_consecutive_advance: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    mbuf_cache_upd && L2PDE_plru_refill_vld && !(&L2PDE_entry_vld)
+    && $past(mbuf_cache_upd && L2PDE_plru_refill_vld && !(&L2PDE_entry_vld))
+    && ((L2PDE_entry_upd & $past(L2PDE_entry_upd)) == '0)) begin
+    cp_pde_l2_consecutive_advance_hits++;
+  end
+
+  // PTW-SVA-PDE-UPD-022/023: entry write enables use the same-cycle PLRU refill vector.
+  a_pde_l1_entry_upd_matches_plru_refill: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    L1PDE_entry_upd == (plru_L1PDE_ref_num & {L1PDE_ENTRY_NUM{L1PDE_plru_refill_vld}}));
+
+  a_pde_l2_entry_upd_matches_plru_refill: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    L2PDE_entry_upd == (plru_L2PDE_ref_num & {L2PDE_ENTRY_NUM{L2PDE_plru_refill_vld}}));
+
+  a_pde_l1_refill_vec_known_onehot: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    L1PDE_plru_refill_vld |-> (!$isunknown(plru_L1PDE_ref_num) && $onehot(plru_L1PDE_ref_num)
+                            && $onehot(L1PDE_entry_upd)));
+
+  a_pde_l2_refill_vec_known_onehot: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    L2PDE_plru_refill_vld |-> (!$isunknown(plru_L2PDE_ref_num) && $onehot(plru_L2PDE_ref_num)
+                            && $onehot(L2PDE_entry_upd)));
+
+  cp_pde_l1_plru_refill: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    L1PDE_plru_refill_vld && (L1PDE_entry_upd == plru_L1PDE_ref_num)) begin
+    cp_pde_l1_plru_refill_hits++;
+  end
+
+  cp_pde_l2_plru_refill: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    L2PDE_plru_refill_vld && (L2PDE_entry_upd == plru_L2PDE_ref_num)) begin
+    cp_pde_l2_plru_refill_hits++;
+  end
+
+  // PTW-SVA-PDE-UPD-025/026: abort drain and isolated bus-error responses must
+  // not create PDE cache refill updates.
+  a_pde_abort_drain_no_cache_update_phase9: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    ptw_abort_drain |-> !mbuf_cache_upd);
+
+  a_pde_bus_error_no_cache_update_same_cycle: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    ptw_lsu_bus_error_rsp
+    && !ptw_writeback_req_any
+    && !ptw_writeback_grant_any
+    && !$past(ptw_writeback_grant_any)
+    |-> !mbuf_cache_upd);
+
+  a_pde_bus_error_no_cache_update_next_cycle: assert property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    ptw_lsu_bus_error_rsp
+    && !ptw_writeback_req_any
+    && !ptw_writeback_grant_any
+    |=> !mbuf_cache_upd);
+
+  cp_pde_abort_drain_no_update: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b)
+    ptw_abort_drain && !mbuf_cache_upd) begin
+    cp_pde_abort_drain_no_update_hits++;
+  end
+
+  cp_pde_bus_error_no_update: cover property (@(posedge pde_cache_clk)
+    disable iff (!cpurst_b || !pde_past_valid)
+    ptw_lsu_bus_error_rsp
+    && !ptw_writeback_req_any
+    && !ptw_writeback_grant_any
+    && !$past(ptw_writeback_grant_any)
+    && !mbuf_cache_upd
+    ##1 !mbuf_cache_upd) begin
+    cp_pde_bus_error_no_update_hits++;
   end
 
   a_pde_output_payload_matches_registered_req: assert property (@(posedge pde_cache_clk)
@@ -399,6 +545,14 @@ module mmu_pde_cache_sva #(
     $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_update_pmpflg req=PTW-SVA-PDE-015 hits=%0d", cp_pde_update_pmpflg_hits);
     $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_tag_deny_no_plru req=PTW-SVA-PDE-016 hits=%0d", cp_pde_tag_deny_no_plru_hits);
     $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_accerr_pending req=PTW-SVA-PDE-017 hits=%0d", cp_pde_accerr_pending_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_consecutive_refill req=PTW-SVA-PDE-UPD-020 hits=%0d", cp_pde_consecutive_refill_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_l1_consecutive_advance req=PTW-SVA-PDE-UPD-021 hits=%0d", cp_pde_l1_consecutive_advance_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_l2_consecutive_advance req=PTW-SVA-PDE-UPD-021 hits=%0d", cp_pde_l2_consecutive_advance_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_l1_plru_refill req=PTW-SVA-PDE-UPD-022 hits=%0d", cp_pde_l1_plru_refill_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_l2_plru_refill req=PTW-SVA-PDE-UPD-023 hits=%0d", cp_pde_l2_plru_refill_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_update_mutual_exclusive req=PTW-SVA-PDE-UPD-024 hits=%0d", cp_pde_update_mutual_exclusive_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_abort_drain_no_update req=PTW-SVA-PDE-UPD-025 hits=%0d", cp_pde_abort_drain_no_update_hits);
+    $display("PTW_SVA_COVER module=mmu_pde_cache_sva name=cp_pde_bus_error_no_update req=PTW-SVA-PDE-UPD-026 hits=%0d", cp_pde_bus_error_no_update_hits);
   end
 
 endmodule

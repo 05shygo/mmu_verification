@@ -1,5 +1,5 @@
 // =============================================================================
-// Phase 8 — single harness: +VSEQ_NAME=<class> selects one of 14 vseq classes.
+// Phase 8 — single harness: +VSEQ_NAME=<class> selects one vseq class.
 // Default: mmu_smoke_vseq.  Optional: +VSEQ_NUM_TXN=<n> (see mmu_base_vseq).
 // =============================================================================
 `ifndef TEST_MMU_VSEQ_RUNNER_SVH
@@ -31,9 +31,17 @@ class test_mmu_vseq_runner extends test_base;
       "mmu_ptw_thrash_vseq":           o = mmu_ptw_thrash_vseq::type_id::create("vseq");
       "mmu_sfence_during_walk_vseq":   o = mmu_sfence_during_walk_vseq::type_id::create("vseq");
       "mmu_asid_context_switch_vseq":  o = mmu_asid_context_switch_vseq::type_id::create("vseq");
+      "mmu_inv_asid_hit_directed_vseq": o = mmu_inv_asid_hit_directed_vseq::type_id::create("vseq");
+      "mmu_inv_asid_global_directed_vseq": o = mmu_inv_asid_global_directed_vseq::type_id::create("vseq");
+      "mmu_inv_asid_overlap_directed_vseq": o = mmu_inv_asid_overlap_directed_vseq::type_id::create("vseq");
       "mmu_huge_page_mix_vseq":        o = mmu_huge_page_mix_vseq::type_id::create("vseq");
       "mmu_rrpv_aging_vseq":           o = mmu_rrpv_aging_vseq::type_id::create("vseq");
       "mmu_l2tlb_bank_conflict_vseq":   o = mmu_l2tlb_bank_conflict_vseq::type_id::create("vseq");
+      "mmu_l2tlb_reqq_arb_fine_vseq":  o = mmu_l2tlb_reqq_arb_fine_vseq::type_id::create("vseq");
+      "mmu_l2tlb_hash_directed_vseq":  o = mmu_l2tlb_hash_directed_vseq::type_id::create("vseq");
+      "mmu_l1itlb_state_mix_vseq":     o = mmu_l1itlb_state_mix_vseq::type_id::create("vseq");
+      "mmu_l2tlb_bank_page_size_matrix_vseq": o = mmu_l2tlb_bank_page_size_matrix_vseq::type_id::create("vseq");
+      "mmu_l2tlb_tag_write_read_inv_mix_vseq": o = mmu_l2tlb_tag_write_read_inv_mix_vseq::type_id::create("vseq");
       "mmu_satp_hotswap_vseq":         o = mmu_satp_hotswap_vseq::type_id::create("vseq");
       "mmu_stress_all_ports_vseq":     o = mmu_stress_all_ports_vseq::type_id::create("vseq");
       "mmu_power_gating_vseq":         o = mmu_power_gating_vseq::type_id::create("vseq");

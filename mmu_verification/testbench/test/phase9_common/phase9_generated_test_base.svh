@@ -667,6 +667,36 @@ class phase9_generated_test_base extends test_base;
         ptw_mem_ooo_rsp_seq seq = ptw_mem_ooo_rsp_seq::type_id::create(seq_name);
         seq.start(m_env.m_ptw_mem.m_sequencer);
       end
+      "ptw_mem_grant_backpressure_seq": begin
+        ptw_mem_grant_backpressure_seq seq = ptw_mem_grant_backpressure_seq::type_id::create(seq_name);
+        seq.accept_count = 1;
+        seq.cycles = 8;
+        seq.use_id = 1'b0;
+        seq.start(m_env.m_ptw_mem.m_sequencer);
+      end
+      "ptw_mem_grant_long_backpressure_seq": begin
+        ptw_mem_grant_backpressure_seq seq = ptw_mem_grant_backpressure_seq::type_id::create(seq_name);
+        seq.accept_count = 1;
+        seq.cycles = 32;
+        seq.use_id = 1'b0;
+        seq.start(m_env.m_ptw_mem.m_sequencer);
+      end
+      "ptw_mem_bus_error_by_count1_seq": begin
+        ptw_mem_bus_error_by_count_seq seq = ptw_mem_bus_error_by_count_seq::type_id::create(seq_name);
+        seq.accept_count = 1;
+        seq.enable = 1'b1;
+        seq.start(m_env.m_ptw_mem.m_sequencer);
+      end
+      "ptw_mem_invalid_rsp_id_negative_seq": begin
+        ptw_mem_invalid_rsp_id_negative_seq seq = ptw_mem_invalid_rsp_id_negative_seq::type_id::create(seq_name);
+        seq.id = 4'h9;
+        seq.start(m_env.m_ptw_mem.m_sequencer);
+      end
+      "ptw_mem_max_outstanding_seq": begin
+        ptw_mem_max_outstanding_seq seq = ptw_mem_max_outstanding_seq::type_id::create(seq_name);
+        seq.depth = 9;
+        seq.start(m_env.m_ptw_mem.m_sequencer);
+      end
       "ptw_mem_slow_rsp_seq": begin
         ptw_mem_slow_rsp_seq seq = ptw_mem_slow_rsp_seq::type_id::create(seq_name);
         void'(seq.randomize());

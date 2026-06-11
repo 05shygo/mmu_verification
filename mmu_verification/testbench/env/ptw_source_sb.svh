@@ -32,6 +32,10 @@ class ptw_source_sb extends uvm_scoreboard;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)              af_mem_req;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)              af_mem_rsp;
   uvm_tlm_analysis_fifo #(ptw_mem_txn)              af_mem_drop;
+  uvm_tlm_analysis_fifo #(ptw_src_mem_evt_txn)      af_mem_evt;
+
+  localparam int PTW_SOURCE_SB_LSU_ID_SLOTS = 16;
+  localparam int PTW_SOURCE_SB_LEGAL_LSU_IDS = 9;
 
   typedef struct {
     bit                    valid;
@@ -57,6 +61,20 @@ class ptw_source_sb extends uvm_scoreboard;
     bit                    ambiguous_seen;
   } pde_direct_accerr_window_s;
 
+  typedef struct {
+    bit                    valid;
+    bit                    source_key_valid;
+    ptw_src_req_type_e     req_type;
+    logic [PTW_SRC_ID_WIDTH-1:0] source_id;
+    vpn_t                  vpn;
+    bit [39:0]             addr;
+    bit                    size;
+    int unsigned           cycle;
+    int unsigned           accept_order;
+    int unsigned           grant_wait_cycles;
+    bit                    aborted;
+  } lsu_id_outstanding_s;
+
   ptw_src_expected_rsp_txn m_expected_q[string][$];
   ptw_src_actual_rsp_txn   m_actual_q[string][$];
   ptw_src_expected_rsp_txn m_drop_expected_q[$];
@@ -71,6 +89,13 @@ class ptw_source_sb extends uvm_scoreboard;
   bit                      m_pde_direct_accerr_cov_seen[string];
   bit                      m_pde_root_seen[string];
   bit                      m_no_extra_lsu_credit_key[string];
+  lsu_id_outstanding_s     m_lsu_by_id[PTW_SOURCE_SB_LSU_ID_SLOTS];
+  bit [PTW_SOURCE_SB_LEGAL_LSU_IDS-1:0] m_lsu_req_id_mask;
+  bit [PTW_SOURCE_SB_LEGAL_LSU_IDS-1:0] m_lsu_rsp_id_mask;
+  bit                      m_prev_pde_update_valid;
+  int unsigned             m_prev_pde_update_cycle;
+  logic [1:0]              m_prev_pde_update_level;
+  logic [15:0]             m_prev_pde_update_vec;
 
   int unsigned n_accepted;
   int unsigned n_expected;
@@ -86,10 +111,14 @@ class ptw_source_sb extends uvm_scoreboard;
   int unsigned n_drop_mismatch;
   int unsigned n_pending_expected;
   int unsigned n_pending_actual;
+  int unsigned n_unexpected_actual_drained;
   int unsigned n_probe_gap;
   int unsigned n_mem_req;
   int unsigned n_mem_rsp;
   int unsigned n_mem_drop;
+  int unsigned n_mem_evt;
+  int unsigned n_mem_evt_key_valid;
+  int unsigned n_mem_evt_key_gap;
   int unsigned n_cov_refill;
   int unsigned n_cov_page_fault;
   int unsigned n_cov_access_fault;
@@ -135,6 +164,25 @@ class ptw_source_sb extends uvm_scoreboard;
   int unsigned n_probe_gap_pde_root_missing;
   int unsigned n_pde_root_matched;
   int unsigned n_pending_oldest_age;
+  int unsigned n_cov_lsu_req_id[PTW_SOURCE_SB_LEGAL_LSU_IDS];
+  int unsigned n_cov_lsu_rsp_id[PTW_SOURCE_SB_LEGAL_LSU_IDS];
+  int unsigned n_cov_lsu_req_rsp_id_match;
+  int unsigned n_cov_lsu_two_outstanding;
+  int unsigned n_cov_lsu_max_outstanding;
+  int unsigned n_cov_lsu_ooo_response;
+  int unsigned n_cov_lsu_grant_wait;
+  int unsigned n_cov_lsu_max_grant_wait;
+  int unsigned n_cov_lsu_abort_drain_rsp;
+  int unsigned n_cov_lsu_invalid_rsp_id_ignored;
+  int unsigned n_cov_lsu_bus_error_by_id;
+  int unsigned n_cov_lsu_duplicate_id_blocked;
+  int unsigned n_cov_lsu_rsp_without_pending;
+  int unsigned n_cov_lsu_drop_by_id;
+  int unsigned n_cov_pde_consecutive_l1_update;
+  int unsigned n_cov_pde_consecutive_l2_update;
+  int unsigned n_cov_pde_consecutive_mixed_l1_l2;
+  int unsigned n_cov_pde_update_way_changes_when_invalid_available;
+  int unsigned n_cov_pde_update_blocked_by_abort_drain;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -152,6 +200,7 @@ class ptw_source_sb extends uvm_scoreboard;
     af_mem_req  = new("af_mem_req",  this);
     af_mem_rsp  = new("af_mem_rsp",  this);
     af_mem_drop = new("af_mem_drop", this);
+    af_mem_evt  = new("af_mem_evt",  this);
 
     if (!uvm_config_db #(mmu_top_cfg)::get(this, "", "m_cfg", m_cfg))
       m_cfg = mmu_top_cfg::type_id::create("m_cfg");
@@ -172,6 +221,7 @@ class ptw_source_sb extends uvm_scoreboard;
       collect_mem_req();
       collect_mem_rsp();
       collect_mem_drop();
+      collect_mem_evt();
     join_none
   endtask
 
@@ -655,12 +705,36 @@ class ptw_source_sb extends uvm_scoreboard;
       effective_m = effective_machine_from_ctx(m_ctx_by_key[key]);
 
     if (tr.kind == PTW_SRC_PDE_EVT_UPDATE) begin
+      if (m_prev_pde_update_valid
+          && ((tr.cycle == (m_prev_pde_update_cycle + 1))
+              || (tr.cycle == m_prev_pde_update_cycle))) begin
+        if ((m_prev_pde_update_level == 2'b10) && (tr.update_level == 2'b10))
+          n_cov_pde_consecutive_l1_update++;
+        else if ((m_prev_pde_update_level == 2'b01) && (tr.update_level == 2'b01))
+          n_cov_pde_consecutive_l2_update++;
+        else
+          n_cov_pde_consecutive_mixed_l1_l2++;
+
+        if ((m_prev_pde_update_vec != '0)
+            && ((tr.l1_update_vec | tr.l2_update_vec) != '0)
+            && (m_prev_pde_update_vec != (tr.l1_update_vec | tr.l2_update_vec)))
+          n_cov_pde_update_way_changes_when_invalid_available++;
+      end
+
+      m_prev_pde_update_valid = 1'b1;
+      m_prev_pde_update_cycle = tr.cycle;
+      m_prev_pde_update_level = tr.update_level;
+      m_prev_pde_update_vec = tr.l1_update_vec | tr.l2_update_vec;
+
       if (tr.update_level == 2'b10)
         n_cov_pde_update_l1_pmpflg++;
       else if (tr.update_level == 2'b01)
         n_cov_pde_update_l2_pmpflg++;
       return;
     end
+
+    if (tr.kind == PTW_SRC_PDE_EVT_CLEAR)
+      m_prev_pde_update_valid = 1'b0;
 
     if (!((tr.kind == PTW_SRC_PDE_EVT_HIT) || (tr.kind == PTW_SRC_PDE_EVT_MISS)))
       return;
@@ -794,17 +868,99 @@ class ptw_source_sb extends uvm_scoreboard;
     return count;
   endfunction
 
+  protected function bit is_legal_lsu_id(input bit [3:0] id);
+    return (id < PTW_SOURCE_SB_LEGAL_LSU_IDS);
+  endfunction
+
+  protected function int unsigned count_lsu_outstanding();
+    int unsigned count;
+
+    count = 0;
+    foreach (m_lsu_by_id[i]) begin
+      if (m_lsu_by_id[i].valid)
+        count++;
+    end
+    return count;
+  endfunction
+
+  protected function void update_lsu_outstanding_peak();
+    int unsigned count;
+
+    count = count_lsu_outstanding();
+    if (count >= 2)
+      n_cov_lsu_two_outstanding++;
+    if (count > n_cov_lsu_max_outstanding)
+      n_cov_lsu_max_outstanding = count;
+  endfunction
+
+  protected function bit src_mem_evt_same_source_key(
+    input ptw_src_mem_evt_txn tr,
+    input pde_direct_accerr_window_s win
+  );
+    return tr.source_key_valid
+        && (tr.req_type == win.req_type)
+        && (tr.source_id == win.id)
+        && (tr.vpn == win.vpn);
+  endfunction
+
+  protected function void check_src_mem_req_against_no_extra_lsu(
+    input ptw_src_mem_evt_txn tr
+  );
+    string key;
+    pde_direct_accerr_window_s win;
+
+    if (count_active_no_extra_lsu_windows() == 0)
+      return;
+
+    if (!tr.source_key_valid) begin
+      foreach (m_pde_no_extra_lsu_window[win_key]) begin
+        if (!m_pde_no_extra_lsu_window[win_key].active)
+          continue;
+        win = m_pde_no_extra_lsu_window[win_key];
+        win.ambiguous_seen = 1'b1;
+        win.mem_req_seen_after_accerr++;
+        m_pde_no_extra_lsu_window[win_key] = win;
+      end
+      n_probe_gap++;
+      n_probe_gap_no_extra_lsu_ambiguous++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_PROBE_GAP class=probe_gap_source_key_missing mem_evt={%s}",
+          tr.convert2string()))
+      return;
+    end
+
+    key = key_string(tr.req_type, tr.source_id);
+    if (!m_pde_no_extra_lsu_window.exists(key)
+        || !m_pde_no_extra_lsu_window[key].active)
+      return;
+
+    win = m_pde_no_extra_lsu_window[key];
+    if (!src_mem_evt_same_source_key(tr, win))
+      return;
+
+    win.mem_req_seen_after_accerr++;
+    if (!win.violation_seen) begin
+      n_no_extra_lsu_violation++;
+      n_mismatch++;
+      n_field_mismatch++;
+    end
+    win.violation_seen = 1'b1;
+    m_pde_no_extra_lsu_window[key] = win;
+    `uvm_error(get_type_name(),
+      $sformatf({"PTW_SOURCE_SB_NO_EXTRA_LSU_FAIL key=%s class=source_key_scoped ",
+                 "mem_evt={%s} start_cycle=%0d"},
+        key, tr.convert2string(), win.start_cycle))
+  endfunction
+
   protected function void check_mem_req_against_no_extra_lsu(
     input ptw_mem_txn tr
   );
     int unsigned active_windows;
-    int unsigned active_reqs;
 
     active_windows = count_active_no_extra_lsu_windows();
     if (active_windows == 0)
       return;
 
-    active_reqs = m_active_keys.num();
     foreach (m_pde_no_extra_lsu_window[key]) begin
       pde_direct_accerr_window_s win;
 
@@ -813,27 +969,35 @@ class ptw_source_sb extends uvm_scoreboard;
 
       win = m_pde_no_extra_lsu_window[key];
       win.mem_req_seen_after_accerr++;
-
-      if ((active_windows == 1) && (active_reqs <= 1)) begin
-        if (!win.violation_seen) begin
-          n_no_extra_lsu_violation++;
-          n_mismatch++;
-          n_field_mismatch++;
-        end
-        win.violation_seen = 1'b1;
-        `uvm_error(get_type_name(),
-          $sformatf("PTW_SOURCE_SB_NO_EXTRA_LSU_FAIL key=%s class=strict_single_outstanding mem_req={%s} start_cycle=%0d active_reqs=%0d",
-            key, tr.convert2string(), win.start_cycle, active_reqs))
-      end else begin
-        win.ambiguous_seen = 1'b1;
-        n_probe_gap++;
-        n_probe_gap_no_extra_lsu_ambiguous++;
-        `uvm_warning(get_type_name(),
-          $sformatf("PTW_SOURCE_PROBE_GAP class=no_extra_lsu_ambiguous key=%s mem_req={%s} active_windows=%0d active_reqs=%0d",
-            key, tr.convert2string(), active_windows, active_reqs))
-      end
+      win.ambiguous_seen = 1'b1;
+      n_probe_gap++;
+      n_probe_gap_no_extra_lsu_ambiguous++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_PROBE_GAP class=probe_gap_source_key_missing key=%s mem_req={%s} active_windows=%0d",
+          key, tr.convert2string(), active_windows))
 
       m_pde_no_extra_lsu_window[key] = win;
+    end
+  endfunction
+
+  protected function void mark_lsu_outstanding_aborted_by_source(
+    input ptw_src_key_s         src_key,
+    input vpn_t                 vpn,
+    input int unsigned          cycle,
+    input string                reason
+  );
+    foreach (m_lsu_by_id[i]) begin
+      if (!m_lsu_by_id[i].valid || !m_lsu_by_id[i].source_key_valid)
+        continue;
+      if ((m_lsu_by_id[i].req_type == src_key.req_type)
+          && (m_lsu_by_id[i].source_id == src_key.id)
+          && (m_lsu_by_id[i].vpn == vpn)) begin
+        m_lsu_by_id[i].aborted = 1'b1;
+        `uvm_info(get_type_name(),
+          $sformatf("PTW_SOURCE_SB_LSU_ID_ABORT_MARK id=0x%0h reason=%s cycle=%0d",
+            i, reason, cycle),
+          UVM_MEDIUM)
+      end
     end
   endfunction
 
@@ -1034,9 +1198,12 @@ class ptw_source_sb extends uvm_scoreboard;
         continue;
       end
       n_drop_actual++;
-      if (tr.has_key)
+      if (tr.has_key) begin
+        mark_lsu_outstanding_aborted_by_source(tr.key, tr.vpn,
+          tr.cycle, tr.drop_reason.name());
         note_visible_completion(tr.key.req_type, tr.key.id,
           tr.cycle, "actual_drop_seen");
+      end
       m_drop_actual_q.push_back(tr);
       try_match_drops();
     end
@@ -1047,7 +1214,11 @@ class ptw_source_sb extends uvm_scoreboard;
       ptw_mem_txn tr;
       af_mem_req.get(tr);
       n_mem_req++;
-      check_mem_req_against_no_extra_lsu(tr);
+      if (is_legal_lsu_id(tr.req_id) && (tr.grant_wait_cycles != 0)) begin
+        n_cov_lsu_grant_wait++;
+        if (tr.grant_wait_cycles > n_cov_lsu_max_grant_wait)
+          n_cov_lsu_max_grant_wait = tr.grant_wait_cycles;
+      end
     end
   endtask
 
@@ -1064,6 +1235,166 @@ class ptw_source_sb extends uvm_scoreboard;
       ptw_mem_txn tr;
       af_mem_drop.get(tr);
       n_mem_drop++;
+    end
+  endtask
+
+  protected function string lsu_source_key_mismatch_msg(
+    input lsu_id_outstanding_s stored,
+    input ptw_src_mem_evt_txn  tr
+  );
+    string msg;
+
+    msg = "";
+    if (!stored.source_key_valid || !tr.source_key_valid)
+      return msg;
+    if (stored.req_type != tr.req_type)
+      msg = {msg, $sformatf(" type req=%s rsp=%s;",
+        stored.req_type.name(), tr.req_type.name())};
+    if (stored.source_id != tr.source_id)
+      msg = {msg, $sformatf(" source_id req=0x%02h rsp=0x%02h;",
+        stored.source_id, tr.source_id)};
+    if (stored.vpn != tr.vpn)
+      msg = {msg, $sformatf(" vpn req=0x%07h rsp=0x%07h;",
+        stored.vpn, tr.vpn)};
+    return msg;
+  endfunction
+
+  protected function void process_lsu_mem_req_event(
+    input ptw_src_mem_evt_txn tr
+  );
+    int unsigned id;
+
+    id = tr.req_id;
+    check_src_mem_req_against_no_extra_lsu(tr);
+
+    if (!is_legal_lsu_id(tr.req_id)) begin
+      n_cov_lsu_duplicate_id_blocked++;
+      `uvm_error(get_type_name(),
+        $sformatf("PTW_SOURCE_SB_LSU_ID_REQ_ILLEGAL id=0x%0h mem_evt={%s}",
+          tr.req_id, tr.convert2string()))
+      return;
+    end
+
+    n_cov_lsu_req_id[id]++;
+    m_lsu_req_id_mask[id] = 1'b1;
+    if (tr.grant_wait_cycles != 0) begin
+      n_cov_lsu_grant_wait++;
+      if (tr.grant_wait_cycles > n_cov_lsu_max_grant_wait)
+        n_cov_lsu_max_grant_wait = tr.grant_wait_cycles;
+    end
+
+    if (m_lsu_by_id[id].valid) begin
+      n_cov_lsu_duplicate_id_blocked++;
+      n_mismatch++;
+      n_field_mismatch++;
+      `uvm_error(get_type_name(),
+        $sformatf({"PTW_SOURCE_SB_LSU_ID_DUPLICATE id=0x%0h old={addr=0x%010h ",
+                   "source_valid=%0b type=%s source_id=0x%02h vpn=0x%07h} new={%s}"},
+          id, m_lsu_by_id[id].addr, m_lsu_by_id[id].source_key_valid,
+          m_lsu_by_id[id].req_type.name(), m_lsu_by_id[id].source_id,
+          m_lsu_by_id[id].vpn, tr.convert2string()))
+      return;
+    end
+
+    m_lsu_by_id[id].valid = 1'b1;
+    m_lsu_by_id[id].source_key_valid = tr.source_key_valid;
+    m_lsu_by_id[id].req_type = tr.req_type;
+    m_lsu_by_id[id].source_id = tr.source_id;
+    m_lsu_by_id[id].vpn = tr.vpn;
+    m_lsu_by_id[id].addr = tr.addr;
+    m_lsu_by_id[id].size = tr.size;
+    m_lsu_by_id[id].cycle = tr.cycle;
+    m_lsu_by_id[id].accept_order = tr.accept_order;
+    m_lsu_by_id[id].grant_wait_cycles = tr.grant_wait_cycles;
+    m_lsu_by_id[id].aborted = 1'b0;
+    update_lsu_outstanding_peak();
+  endfunction
+
+  protected function void process_lsu_mem_rsp_event(
+    input ptw_src_mem_evt_txn tr
+  );
+    int unsigned id;
+    lsu_id_outstanding_s stored;
+    string diff;
+
+    id = tr.rsp_id;
+    if (tr.invalid_rsp_id || !is_legal_lsu_id(tr.rsp_id)) begin
+      n_cov_lsu_invalid_rsp_id_ignored++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_SB_LSU_ID_INVALID_RSP_IGNORED mem_evt={%s}",
+          tr.convert2string()))
+      return;
+    end
+
+    n_cov_lsu_rsp_id[id]++;
+    m_lsu_rsp_id_mask[id] = 1'b1;
+
+    if (!m_lsu_by_id[id].valid || tr.rsp_without_pending) begin
+      n_cov_lsu_rsp_without_pending++;
+      n_mismatch++;
+      n_field_mismatch++;
+      `uvm_error(get_type_name(),
+        $sformatf("PTW_SOURCE_SB_LSU_ID_RSP_WITHOUT_PENDING id=0x%0h mem_evt={%s}",
+          id, tr.convert2string()))
+      return;
+    end
+
+    stored = m_lsu_by_id[id];
+    diff = lsu_source_key_mismatch_msg(stored, tr);
+    if (diff != "") begin
+      n_mismatch++;
+      n_field_mismatch++;
+      `uvm_error(get_type_name(),
+        $sformatf("PTW_SOURCE_SB_LSU_ID_SOURCE_MISMATCH id=0x%0h diff={%s} mem_evt={%s}",
+          id, diff, tr.convert2string()))
+    end
+
+    n_cov_lsu_req_rsp_id_match++;
+    if ((tr.ooo)
+        || ((tr.response_order != 0) && (stored.accept_order != 0)
+            && (tr.response_order != stored.accept_order)))
+      n_cov_lsu_ooo_response++;
+    if (tr.bus_error)
+      n_cov_lsu_bus_error_by_id++;
+    if (tr.abort_drain || stored.aborted) begin
+      n_cov_lsu_abort_drain_rsp++;
+      n_cov_pde_update_blocked_by_abort_drain++;
+    end
+
+    m_lsu_by_id[id].valid = 1'b0;
+    m_lsu_by_id[id].aborted = 1'b0;
+  endfunction
+
+  protected function void process_lsu_mem_drop_event(
+    input ptw_src_mem_evt_txn tr
+  );
+    int unsigned id;
+
+    id = tr.req_id;
+    if (!is_legal_lsu_id(tr.req_id))
+      return;
+    if (m_lsu_by_id[id].valid) begin
+      n_cov_lsu_drop_by_id++;
+      m_lsu_by_id[id].valid = 1'b0;
+      m_lsu_by_id[id].aborted = 1'b0;
+    end
+  endfunction
+
+  protected task collect_mem_evt();
+    forever begin
+      ptw_src_mem_evt_txn tr;
+      af_mem_evt.get(tr);
+      n_mem_evt++;
+      if (tr.source_key_valid)
+        n_mem_evt_key_valid++;
+      else if (tr.req_fire || (tr.rsp_fire && !tr.invalid_rsp_id))
+        n_mem_evt_key_gap++;
+      if (tr.req_fire)
+        process_lsu_mem_req_event(tr);
+      if (tr.rsp_fire)
+        process_lsu_mem_rsp_event(tr);
+      if (tr.drop_fire)
+        process_lsu_mem_drop_event(tr);
     end
   endtask
 
@@ -1186,10 +1517,52 @@ class ptw_source_sb extends uvm_scoreboard;
     end
   endfunction
 
+  protected function void drain_unexpected_actuals_without_expected();
+    foreach (m_actual_q[key]) begin
+      while ((m_actual_q[key].size() != 0)
+             && (!m_expected_q.exists(key) || (m_expected_q[key].size() == 0))) begin
+        ptw_src_actual_rsp_txn actual;
+
+        actual = m_actual_q[key].pop_front();
+        n_unexpected_actual_drained++;
+        n_probe_gap++;
+        `uvm_warning(get_type_name(),
+          $sformatf("PTW_SOURCE_PROBE_GAP class=unexpected_actual_without_expected_drain key=%s act={%s}",
+            key, actual.convert2string()))
+      end
+    end
+
+    while ((m_drop_actual_q.size() != 0) && (m_drop_expected_q.size() == 0)) begin
+      ptw_src_drop_txn actual_drop;
+
+      actual_drop = m_drop_actual_q.pop_front();
+      n_unexpected_actual_drained++;
+      n_probe_gap++;
+      `uvm_warning(get_type_name(),
+        $sformatf("PTW_SOURCE_PROBE_GAP class=unexpected_drop_without_expected_drain act={%s}",
+          actual_drop.convert2string()))
+    end
+  endfunction
+
   virtual function void report_phase(uvm_phase phase);
     n_pending = 0;
 
     flush_unmatched_completion_pairs();
+    drain_unexpected_actuals_without_expected();
+
+    foreach (m_lsu_by_id[i]) begin
+      if (m_lsu_by_id[i].valid) begin
+        n_pending++;
+        `uvm_warning(get_type_name(),
+          $sformatf({"PTW_SOURCE_SB_LSU_ID_PENDING id=0x%0h source_valid=%0b ",
+                     "type=%s source_id=0x%02h vpn=0x%07h addr=0x%010h ",
+                     "accept_order=%0d grant_wait=%0d aborted=%0b"},
+            i, m_lsu_by_id[i].source_key_valid, m_lsu_by_id[i].req_type.name(),
+            m_lsu_by_id[i].source_id, m_lsu_by_id[i].vpn, m_lsu_by_id[i].addr,
+            m_lsu_by_id[i].accept_order, m_lsu_by_id[i].grant_wait_cycles,
+            m_lsu_by_id[i].aborted))
+      end
+    end
 
     foreach (m_pde_root_pending_q[key]) begin
       for (int i = 0; i < m_pde_root_pending_q[key].size(); i++) begin
@@ -1249,12 +1622,15 @@ class ptw_source_sb extends uvm_scoreboard;
                  "pending=%0d pending_expected=%0d pending_actual=%0d active=%0d ",
                  "illegal=%0d class_mismatch=%0d field_mismatch=%0d ",
                  "drop_mismatch=%0d probe_gap=%0d mem_req=%0d mem_rsp=%0d ",
-                 "mem_drop=%0d pending_oldest_age=%0d provisional=0"},
+                 "mem_drop=%0d mem_evt=%0d mem_evt_key_valid=%0d ",
+                 "mem_evt_key_gap=%0d unexpected_actual_drained=%0d ",
+                 "pending_oldest_age=%0d provisional=0"},
         n_accepted, n_expected, n_actual, n_drop_expected, n_drop_actual,
         n_matched, n_mismatch, n_pending, n_pending_expected,
         n_pending_actual, m_active_keys.num(), n_illegal,
         n_class_mismatch, n_field_mismatch, n_drop_mismatch, n_probe_gap,
-        n_mem_req, n_mem_rsp, n_mem_drop, n_pending_oldest_age),
+        n_mem_req, n_mem_rsp, n_mem_drop, n_mem_evt, n_mem_evt_key_valid,
+        n_mem_evt_key_gap, n_unexpected_actual_drained, n_pending_oldest_age),
       UVM_NONE)
 
     `uvm_info(get_type_name(),
@@ -1306,6 +1682,40 @@ class ptw_source_sb extends uvm_scoreboard;
         n_probe_gap_no_extra_lsu_ambiguous,
         n_pde_root_matched,
         n_probe_gap_pde_root_missing),
+      UVM_NONE)
+
+    `uvm_info(get_type_name(),
+      $sformatf({"PTW_SOURCE_SB_LSU_ID_COVERAGE stage=7 req_id_mask=0x%03h ",
+                 "rsp_id_mask=0x%03h req_rsp_id_match=%0d two_outstanding=%0d ",
+                 "ooo=%0d grant_wait=%0d max_grant_wait=%0d abort_drain=%0d ",
+                 "buserr_by_id=%0d invalid_id=%0d duplicate_id=%0d ",
+                 "rsp_without_pending=%0d drop_by_id=%0d max_outstanding=%0d ",
+                 "req_id_count={0:%0d,1:%0d,2:%0d,3:%0d,4:%0d,5:%0d,6:%0d,7:%0d,8:%0d} ",
+                 "rsp_id_count={0:%0d,1:%0d,2:%0d,3:%0d,4:%0d,5:%0d,6:%0d,7:%0d,8:%0d}"},
+        m_lsu_req_id_mask, m_lsu_rsp_id_mask, n_cov_lsu_req_rsp_id_match,
+        n_cov_lsu_two_outstanding, n_cov_lsu_ooo_response,
+        n_cov_lsu_grant_wait, n_cov_lsu_max_grant_wait,
+        n_cov_lsu_abort_drain_rsp, n_cov_lsu_bus_error_by_id,
+        n_cov_lsu_invalid_rsp_id_ignored, n_cov_lsu_duplicate_id_blocked,
+        n_cov_lsu_rsp_without_pending, n_cov_lsu_drop_by_id,
+        n_cov_lsu_max_outstanding,
+        n_cov_lsu_req_id[0], n_cov_lsu_req_id[1], n_cov_lsu_req_id[2],
+        n_cov_lsu_req_id[3], n_cov_lsu_req_id[4], n_cov_lsu_req_id[5],
+        n_cov_lsu_req_id[6], n_cov_lsu_req_id[7], n_cov_lsu_req_id[8],
+        n_cov_lsu_rsp_id[0], n_cov_lsu_rsp_id[1], n_cov_lsu_rsp_id[2],
+        n_cov_lsu_rsp_id[3], n_cov_lsu_rsp_id[4], n_cov_lsu_rsp_id[5],
+        n_cov_lsu_rsp_id[6], n_cov_lsu_rsp_id[7], n_cov_lsu_rsp_id[8]),
+      UVM_NONE)
+
+    `uvm_info(get_type_name(),
+      $sformatf({"PTW_SOURCE_SB_PDE_UPDATE_CONTIG_COVERAGE stage=7 ",
+                 "consecutive_l1=%0d consecutive_l2=%0d consecutive_mixed_l1_l2=%0d ",
+                 "way_changes_when_invalid_available=%0d blocked_by_abort_drain=%0d"},
+        n_cov_pde_consecutive_l1_update,
+        n_cov_pde_consecutive_l2_update,
+        n_cov_pde_consecutive_mixed_l1_l2,
+        n_cov_pde_update_way_changes_when_invalid_available,
+        n_cov_pde_update_blocked_by_abort_drain),
       UVM_NONE)
 
     `uvm_info(get_type_name(),

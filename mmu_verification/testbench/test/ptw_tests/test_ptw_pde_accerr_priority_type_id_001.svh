@@ -474,7 +474,7 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
     bit seen;
     bit saw_req;
     pa_t last_addr;
-    logic [8:0] last_grant;
+    logic       last_grant;
 
     if (ptw_probe_vif == null) begin
       `uvm_error(get_type_name(),
@@ -496,12 +496,13 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
           saw_req = 1'b1;
       end
       if ((ptw_probe_vif.mon_cb.ptw_lsu_data_req === 1'b1)
-          && (|ptw_probe_vif.mon_cb.ptw_lsu_data_req_grant)
+          && (ptw_probe_vif.mon_cb.ptw_lsu_data_req_fire === 1'b1)
           && (!match_addr || (ptw_probe_vif.mon_cb.ptw_lsu_data_req_addr == target_addr))) begin
         seen = 1'b1;
-        ptw_meta_add_context($sformatf("%s: ptw_mem_accept cycle_offset=%0d addr=0x%010h grant=0x%0h",
+        ptw_meta_add_context($sformatf("%s: ptw_mem_accept cycle_offset=%0d addr=0x%010h req_id=0x%0h grant=%0b",
           scenario_id, cycle,
           ptw_probe_vif.mon_cb.ptw_lsu_data_req_addr,
+          ptw_probe_vif.mon_cb.ptw_lsu_data_req_id,
           ptw_probe_vif.mon_cb.ptw_lsu_data_req_grant));
         break;
       end
@@ -509,7 +510,7 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
 
     if (!seen) begin
       `uvm_error(get_type_name(),
-        $sformatf("%s: PTW memory accept not observed within %0d cycles match_addr=%0b target_addr=0x%010h saw_req=%0b last_req={addr=0x%010h grant=0x%0h}",
+        $sformatf("%s: PTW memory accept not observed within %0d cycles match_addr=%0b target_addr=0x%010h saw_req=%0b last_req={addr=0x%010h grant=%0b}",
           scenario_id, max_cycles, match_addr, target_addr, saw_req,
           last_addr, last_grant))
     end

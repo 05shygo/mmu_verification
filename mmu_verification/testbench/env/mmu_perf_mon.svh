@@ -30,6 +30,7 @@ class mmu_perf_mon extends uvm_component;
   uvm_tlm_analysis_fifo #(misc_txn)    af_hpcp;
   uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_req;
   uvm_tlm_analysis_fifo #(ptw_mem_txn) af_ptw_rsp;
+  uvm_tlm_analysis_fifo #(ptw_src_mem_evt_txn) af_ptw_mem_evt;
 
   // ── Statistics counters ───────────────────────────────────────────────────
   // IFU
@@ -43,6 +44,19 @@ class mmu_perf_mon extends uvm_component;
   // PTW memory channel (Phase 8)
   int unsigned     n_ptw_mem_req;     // PTW bus read requests (proxy for walk activity)
   int unsigned     n_ptw_mem_rsp;
+  int unsigned     n_ptw_mem_drop;
+  int unsigned     n_ptw_mem_evt;
+  int unsigned     n_ptw_mem_peak_outstanding;
+  int unsigned     n_ptw_mem_outstanding;
+  int unsigned     n_ptw_mem_ooo_rsp;
+  int unsigned     n_ptw_mem_grant_wait;
+  int unsigned     n_ptw_mem_max_grant_wait;
+  int unsigned     n_ptw_mem_abort_drain_rsp;
+  int unsigned     n_ptw_mem_abort_latency_sum;
+  bit [8:0]        ptw_mem_req_id_mask;
+  bit [8:0]        ptw_mem_rsp_id_mask;
+  bit              m_ptw_id_valid[16];
+  int unsigned     m_ptw_id_accept_cycle[16];
   // PTW / walk latency (TODO: precise cycle measure)
   longint unsigned walk_latency_sum;  // sum of PTW walk latency in cycles
 
@@ -64,6 +78,21 @@ class mmu_perf_mon extends uvm_component;
     n_hpcp_jtlb_miss  = 0;
     n_ptw_mem_req     = 0;
     n_ptw_mem_rsp     = 0;
+    n_ptw_mem_drop    = 0;
+    n_ptw_mem_evt     = 0;
+    n_ptw_mem_peak_outstanding = 0;
+    n_ptw_mem_outstanding = 0;
+    n_ptw_mem_ooo_rsp = 0;
+    n_ptw_mem_grant_wait = 0;
+    n_ptw_mem_max_grant_wait = 0;
+    n_ptw_mem_abort_drain_rsp = 0;
+    n_ptw_mem_abort_latency_sum = 0;
+    ptw_mem_req_id_mask = '0;
+    ptw_mem_rsp_id_mask = '0;
+    foreach (m_ptw_id_valid[i]) begin
+      m_ptw_id_valid[i] = 1'b0;
+      m_ptw_id_accept_cycle[i] = 0;
+    end
   endfunction
 
   virtual function void build_phase(uvm_phase phase);
@@ -75,6 +104,7 @@ class mmu_perf_mon extends uvm_component;
     af_hpcp       = new("af_hpcp",       this);
     af_ptw_req    = new("af_ptw_req",    this);
     af_ptw_rsp    = new("af_ptw_rsp",    this);
+    af_ptw_mem_evt = new("af_ptw_mem_evt", this);
   endfunction
 
   // ── run_phase: fork 5 consumer threads ────────────────────────────────────
@@ -87,6 +117,7 @@ class mmu_perf_mon extends uvm_component;
       _consume_hpcp();
       _consume_ptw_req();
       _consume_ptw_rsp();
+      _consume_ptw_mem_evt();
     join_none
   endtask
 
@@ -165,6 +196,69 @@ class mmu_perf_mon extends uvm_component;
     end
   endtask
 
+  protected function bit _ptw_legal_id(input bit [3:0] id);
+    return (id <= 4'd8);
+  endfunction
+
+  protected task _consume_ptw_mem_evt();
+    ptw_src_mem_evt_txn tr;
+    int unsigned id;
+
+    forever begin
+      af_ptw_mem_evt.get(tr);
+      n_ptw_mem_evt++;
+      if (tr.req_fire) begin
+        if (_ptw_legal_id(tr.req_id)) begin
+          id = tr.req_id;
+          ptw_mem_req_id_mask[id] = 1'b1;
+          if (!m_ptw_id_valid[id]) begin
+            m_ptw_id_valid[id] = 1'b1;
+            m_ptw_id_accept_cycle[id] = tr.cycle;
+            n_ptw_mem_outstanding++;
+            if (n_ptw_mem_outstanding > n_ptw_mem_peak_outstanding)
+              n_ptw_mem_peak_outstanding = n_ptw_mem_outstanding;
+          end
+        end
+        if (tr.grant_wait_cycles != 0) begin
+          n_ptw_mem_grant_wait++;
+          if (tr.grant_wait_cycles > n_ptw_mem_max_grant_wait)
+            n_ptw_mem_max_grant_wait = tr.grant_wait_cycles;
+        end
+      end
+
+      if (tr.rsp_fire) begin
+        if (!tr.invalid_rsp_id && _ptw_legal_id(tr.rsp_id)) begin
+          id = tr.rsp_id;
+          ptw_mem_rsp_id_mask[id] = 1'b1;
+          if (tr.abort_drain && m_ptw_id_valid[id]
+              && (tr.cycle >= m_ptw_id_accept_cycle[id]))
+            n_ptw_mem_abort_latency_sum += tr.cycle - m_ptw_id_accept_cycle[id];
+          if (m_ptw_id_valid[id]) begin
+            m_ptw_id_valid[id] = 1'b0;
+            if (n_ptw_mem_outstanding != 0)
+              n_ptw_mem_outstanding--;
+          end
+        end
+        if (tr.ooo)
+          n_ptw_mem_ooo_rsp++;
+        if (tr.abort_drain)
+          n_ptw_mem_abort_drain_rsp++;
+      end
+
+      if (tr.drop_fire) begin
+        n_ptw_mem_drop++;
+        if (_ptw_legal_id(tr.req_id)) begin
+          id = tr.req_id;
+          if (m_ptw_id_valid[id]) begin
+            m_ptw_id_valid[id] = 1'b0;
+            if (n_ptw_mem_outstanding != 0)
+              n_ptw_mem_outstanding--;
+          end
+        end
+      end
+    end
+  endtask
+
   protected task _consume_hpcp();
     misc_txn tr;
     forever begin
@@ -190,14 +284,29 @@ class mmu_perf_mon extends uvm_component;
         "  n_txn_total (ifu+lsu0+1+2 rsp)     = %0d\n",
         "  n_miss_hpc (dutlb+iutlb+jtlb HPCP)  = %0d\n",
         "  n_ptw_mem_req / n_ptw_mem_rsp        = %0d / %0d\n",
+        "  ptw_id peak/ooo/grant_wait/max_gw/drain = %0d/%0d/%0d/%0d/%0d\n",
         "  per-channel: IFU req=%0d; LSU0/1/2=%0d/%0d/%0d\n",
         "  HPCP detail: dutlb=%0d iutlb=%0d jtlb=%0d  walk_latency_sum=%0d\n"},
         n_txn_total,
         n_miss_hpc,
         n_ptw_mem_req, n_ptw_mem_rsp,
+        n_ptw_mem_peak_outstanding, n_ptw_mem_ooo_rsp,
+        n_ptw_mem_grant_wait, n_ptw_mem_max_grant_wait,
+        n_ptw_mem_abort_drain_rsp,
         n_ifu_req, n_lsu_req[0], n_lsu_req[1], n_lsu_req[2],
         n_hpcp_dutlb_miss, n_hpcp_iutlb_miss, n_hpcp_jtlb_miss, walk_latency_sum),
       UVM_MEDIUM)
+    `uvm_info(get_type_name(),
+      $sformatf({"MMU_PERF_MON_PTW_ID_SUMMARY stage=7 evt=%0d outstanding=%0d ",
+                 "peak_outstanding=%0d req_id_mask=0x%03h rsp_id_mask=0x%03h ",
+                 "ooo_rsp=%0d grant_wait=%0d max_grant_wait=%0d ",
+                 "abort_drain_rsp=%0d abort_latency_sum=%0d mem_drop=%0d"},
+        n_ptw_mem_evt, n_ptw_mem_outstanding, n_ptw_mem_peak_outstanding,
+        ptw_mem_req_id_mask, ptw_mem_rsp_id_mask, n_ptw_mem_ooo_rsp,
+        n_ptw_mem_grant_wait, n_ptw_mem_max_grant_wait,
+        n_ptw_mem_abort_drain_rsp, n_ptw_mem_abort_latency_sum,
+        n_ptw_mem_drop),
+      UVM_NONE)
   endfunction
 
 endclass : mmu_perf_mon

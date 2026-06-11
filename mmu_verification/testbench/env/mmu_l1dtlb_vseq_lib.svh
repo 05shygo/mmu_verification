@@ -2078,8 +2078,18 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     bit wait_not_busy = 1'b1
   );
     raw_idle();
-    if (wait_not_busy && (m_lsu_vif.driver_cb.mmu_lsu_tlb_busy === 1'b1))
-      @(m_lsu_vif.driver_cb iff m_lsu_vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
+    if (wait_not_busy && (m_lsu_vif.driver_cb.mmu_lsu_tlb_busy === 1'b1)) begin
+      fork
+        begin
+          @(m_lsu_vif.driver_cb iff m_lsu_vif.driver_cb.mmu_lsu_tlb_busy === 1'b0);
+        end
+        begin
+          repeat (4096) @(m_lsu_vif.driver_cb);
+          `uvm_warning(get_type_name(), "raw_inv timed out waiting for mmu_lsu_tlb_busy to clear")
+        end
+      join_any
+      disable fork;
+    end
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_tlb_va <= va[38:12];
     m_lsu_vif.driver_cb.lsu_mmu_tlb_asid <= asid;
@@ -2422,6 +2432,20 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     do_bringup(256, 39'h10_0000);
     configure_ptw_delay(96, 192);
     raw_inv_pulse(INV_ASID_ALL, va_page(0), m_asid, 1'b0, 1'b1);
+    // Wait for INV_ASID_ALL to complete before firing the burst.
+    // The L2TLB epoch storm can take >1000 cycles; firing requests during
+    // tlboper_ptw_abort processing can cause L2 MB entries to get stuck in
+    // SENT state (race between abort-induced re-issue and new allocations).
+    fork
+      begin
+        @(m_lsu_vif.driver_cb iff m_lsu_vif.driver_cb.mmu_lsu_tlb_inv_done === 1'b1);
+      end
+      begin
+        repeat (8192) @(m_lsu_vif.driver_cb);
+        `uvm_warning(get_type_name(), "scenario_direct_map: timed out waiting for INV_ASID_ALL inv_done")
+      end
+    join_any
+    disable fork;
     raw_pipe01_contiguous_burst(132, 4, 7'd40);
     wait_l1d_mb_occupancy_at_least("l1dtlb_direct_map_overlap_prefill",
                                    2, overlap_occ_seen, 8192, 1'b1);
@@ -2439,8 +2463,11 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       end
     join
     set_priv(2'b01);
-    raw_inv(INV_ALL);
     reset_ptw_responder_controls(1, 4);
+    raw_inv(INV_ALL);
+    // RTU flush clears MB entries stuck in WFI/ABT/PGFLT/ACFLT state that
+    // INV_ALL cannot clear (INV_ALL only targets installed TLB entries).
+    raw_rtu_flush();
     m_env_h.wait_for_quiescent_midtest("l1dtlb_direct_map_overlap", 524288, 16);
   endtask
 
@@ -3679,11 +3706,12 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(32);
     raw_pipe0(va_page(60), 7'd2);
     wait_lsu_cycles(64);
+    configure_ptw_delay(1, 4);
     raw_inv(INV_ALL);
+    raw_rtu_flush();
     scenario_direct_map();
     raw_stamo(28'h34567);
     wait_lsu_cycles(20);
-    configure_ptw_delay(1, 4);
   endtask
 
   protected task scenario_generic_audit();

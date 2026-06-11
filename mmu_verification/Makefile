@@ -2426,6 +2426,11 @@ cov:
 	URG_VDB_GLOB="$(URG_VDB_GLOB)" \
 	bash "$(PROJECT_DIR)/scripts/run_urg_report.sh"
 
+verdi_cov:
+	@test -d "$(COV_DB_DIR)" || (echo "ERROR: COV_DB_DIR not found: $(COV_DB_DIR)"; exit 2)
+	@echo "[verdi_cov] Opening Verdi with DUT code coverage VDB: $(COV_DB_DIR)"
+	$(VERDI) -cov -covdir $(COV_DB_DIR) -top ct_mmu_top &
+
 merge_cov:
 	@$(MAKE) cov URG_REPORT_DIR="$(URG_MERGE_REPORT_DIR)" URG_MERGED_DB="$(URG_MERGED_DB)"
 

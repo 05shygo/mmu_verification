@@ -1,4 +1,5 @@
 import json
+import shlex
 import subprocess
 import sys
 import tempfile
@@ -15,6 +16,29 @@ import run_ptw_code_coverage
 
 
 class PtwCovRunnerTest(unittest.TestCase):
+    def expected_profile_entry_count(self, profile):
+        profiles = json.loads((PROJECT_DIR / "scripts" / "ptw_code_coverage_profiles.json").read_text())
+        seen = set()
+        count = 0
+        for run in profiles["profiles"][profile]["runs"]:
+            list_path = PROJECT_DIR / run["list"]
+            tests = []
+            for raw in list_path.read_text(encoding="utf-8", errors="ignore").splitlines():
+                line = raw.split("#", 1)[0].strip()
+                if not line:
+                    continue
+                tokens = shlex.split(line)
+                if tokens:
+                    tests.append(tokens[0])
+            for test in tests:
+                for seed in run["seeds"]:
+                    key = (test, str(seed))
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    count += 1
+        return count
+
     def run_runner(self, args, expect_rc=0):
         proc = subprocess.run(
             ["python3", str(SCRIPT)] + args,
@@ -40,7 +64,7 @@ class PtwCovRunnerTest(unittest.TestCase):
             manifest = json.loads((cov_root / "ptw_cov_manifest.json").read_text())
             self.assertTrue(manifest["dry_run"])
             self.assertEqual(manifest["status"], "CONDITIONAL_PASS")
-            self.assertEqual(manifest["expanded_run_count"], 10)
+            self.assertEqual(manifest["expanded_run_count"], self.expected_profile_entry_count("quick"))
             self.assertEqual(len(manifest["coverage_runs"]), 2)
             self.assertEqual(manifest["functional_gate"]["status"], "SKIPPED")
             self.assertTrue((cov_root / "run_ptw_code_coverage.log").is_file())

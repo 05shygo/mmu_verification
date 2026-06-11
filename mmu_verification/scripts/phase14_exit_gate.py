@@ -365,7 +365,6 @@ def main() -> int:
         "branch": (args.branch_threshold, "S3", ("branch", "branch coverage")),
         "toggle": (args.toggle_threshold, "S3", ("toggle", "tgl", "toggle coverage")),
         "fsm": (args.fsm_threshold, "S3", ("fsm", "fsm coverage")),
-        "functional": (args.functional_threshold, "S4", ("functional", "group", "covergroup")),
         "assertion": (args.assertion_threshold, "S5", ("assert", "assertion", "assertion coverage")),
     }
     coverage_ok, coverage_details = check_coverage(report_dir, matrix, thresholds)

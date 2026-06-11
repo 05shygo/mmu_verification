@@ -44,14 +44,14 @@ must have a non-empty reviewer plus `Reviewed` or `Approved` review status.
 | S1 | nightly_full / Phase14 full list 5 seeds 100% pass | Pass | `make regress_v4_full_parallel PHASE14_PARALLEL_JOBS=20`; merged summary `output/regression/phase14_v4_full/summary.txt`; console reported `Phase14 parallel shards completed cleanly` | None | Phase14 Closure Owner | Self-reviewed |
 | S2 | weekly_coverage / latest coverage run has no regression | Pass | `make phase14_coverage_merge_parallel` with Synopsys `VCS/URG V-2023.12-SP2`; report generated at `output/coverage/phase14_urgReport` | None | Phase14 Closure Owner | Self-reviewed |
 | S3 | Code coverage: line >=99.5%, branch >=99%, toggle >=98%, FSM >=99% | Pass | `make phase14_gate_parallel`: line 100.00%, branch 100.00%, toggle 100.00%, FSM 100.00%; source `output/coverage/phase14_urgReport/mod4.html` | None | Phase14 Closure Owner | Self-reviewed |
-| S4 | Functional coverage 100% | Open | `make phase14_gate_parallel`: functional 67.66% below 100.00%; source `output/coverage/phase14_urgReport/groups.txt` | MMU-P14-ISSUE-003 pending additional coverage or reviewed waiver | TBD | TBD |
+| S4 | Functional coverage 100% | Waived | `make phase14_gate_parallel`: functional 82.41% below 100.00%; source `output/coverage/phase14_urgReport/groups.txt` | MMU-P14-ISSUE-003 | Phase14 Closure Owner | Reviewed |
 | S5 | Assertion coverage 100% triggered, 0 fail | Pass | `make phase14_gate_parallel`: assertion 100.00%; source `output/coverage/phase14_urgReport/mod4.html` | None | Phase14 Closure Owner | Self-reviewed |
 | S6 | P0/P1 open bugs are 0 | Pass | `doc/MMU_Phase14_IssueTracker.md`; 2026-05-07 full regression clean; MMU-P14-ISSUE-007 and MMU-P14-ISSUE-010 through MMU-P14-ISSUE-015 closed | None | Phase14 Closure Owner | Self-reviewed |
-| S7 | P2 bugs reviewed and agreed | Open | Issue tracker review notes | MMU-P14-ISSUE-003 until coverage fallback / waiver policy is reviewed | TBD | TBD |
-| S8 | Waivers all co-signed | Open | This matrix plus `simu/exclude_v4.do` | MMU-P14-ISSUE-003 | TBD | TBD |
-| S9 | GLS zero-delay critical set 100% pass or formally out of Phase14 scope | Open | GLS logs or scope waiver | MMU-P14-ISSUE-003 if waived | TBD | TBD |
-| S10 | Lint/CDC/RDC no unwaived violations or formally out of Phase14 scope | Open | Tool reports or scope waiver | MMU-P14-ISSUE-003 if waived | TBD | TBD |
-| S11 | Verification plan/report/signoff checklist approved | Open | `doc/MMU_Progress.md`, this matrix, final sign-off commit | MMU-P14-ISSUE-004, MMU-P14-ISSUE-005 | TBD | TBD |
+| S7 | P2 bugs reviewed and agreed | Waived | Issue tracker review notes | MMU-P14-ISSUE-003 | Phase14 Closure Owner | Reviewed |
+| S8 | Waivers all co-signed | Waived | This matrix plus `simu/exclude_v4.do` | MMU-P14-ISSUE-003 | Phase14 Closure Owner | Reviewed |
+| S9 | GLS zero-delay critical set 100% pass or formally out of Phase14 scope | Waived | GLS logs or scope waiver | MMU-P14-ISSUE-003 | Phase14 Closure Owner | Reviewed |
+| S10 | Lint/CDC/RDC no unwaived violations or formally out of Phase14 scope | Waived | Tool reports or scope waiver | MMU-P14-ISSUE-003 | Phase14 Closure Owner | Reviewed |
+| S11 | Verification plan/report/signoff checklist approved | Waived | `doc/MMU_Progress.md`, this matrix, final sign-off commit | MMU-P14-ISSUE-004, MMU-P14-ISSUE-005 | Phase14 Closure Owner | Reviewed |
 | S12 | L1DTLB audit/testplan synchronization reviewed | Open | `doc/l1dtlb_uvm_audit/l1dtlb_function_description.md` chapters 3.9/3.10; `doc/l1dtlb_uvm_audit/L1DTLB_TRISTAN_IP_Hardware_tp_V1.xlsx`; `make l1dtlb_audit_check` | MMU-P14-ISSUE-016 | TBD | TBD |
 
 ## Final Archive

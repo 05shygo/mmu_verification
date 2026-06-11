@@ -142,6 +142,124 @@ PDE_PMPFLG_ALLOWED_OPEN_IDS = {
     "PDE-TP-018",
 }
 
+LSU_ID_P0_REQUIRED_TESTS = {
+    "test_pmbuf_req_resp_id_basic_001",
+    "test_pmbuf_multi_outstanding_id_001",
+    "test_pmbuf_ooo_response_by_id_001",
+    "test_pmbuf_grant_hold_addr_id_001",
+    "test_pmbuf_abort_before_grant_cancel_001",
+    "test_pmbuf_bus_error_route_by_id_001",
+    "test_pmbuf_abort_drain_single_001",
+    "test_pmbuf_abort_drain_multi_001",
+    "test_pmbuf_no_new_req_during_drain_001",
+    "test_pde_consecutive_l1_update_plru_001",
+    "test_pde_consecutive_l2_update_plru_001",
+    "test_pde_abort_drain_no_update_001",
+}
+
+LSU_ID_P1_REQUIRED_TESTS = {
+    "test_pmbuf_duplicate_id_blocked_001",
+    "test_pmbuf_random_id_ooo_stress_001",
+    "test_pde_consecutive_mixed_update_001",
+}
+
+LSU_ID_P2_NEGATIVE_TESTS = {
+    "test_pmbuf_invalid_rsp_id_ignored_001",
+}
+
+LSU_ID_FOCUSED_REQUIRED_TESTS = {
+    "test_pmbuf_req_resp_id_basic_001",
+    "test_pmbuf_multi_outstanding_id_001",
+    "test_pmbuf_ooo_response_by_id_001",
+    "test_pmbuf_grant_hold_addr_id_001",
+    "test_pmbuf_abort_before_grant_cancel_001",
+    "test_pmbuf_bus_error_route_by_id_001",
+    "test_pmbuf_abort_drain_multi_001",
+    "test_pmbuf_invalid_rsp_id_ignored_001",
+    "test_pde_consecutive_l1_update_plru_001",
+    "test_pde_consecutive_l2_update_plru_001",
+    "test_pde_abort_drain_no_update_001",
+}
+
+LSU_ID_LEGACY_WRAPPER_TESTS = {
+    "test_pmbuf_serial_outstanding_001",
+    "test_pmbuf_no_tag_001",
+    "test_pmbuf_inorder_resp_001",
+    "test_pmbuf_addr_stable_001",
+    "test_pmbuf_ptr_hold_001",
+}
+
+LSU_ID_REQUIRED_MATRIX_IDS = {
+    "PTW-LSU-ID-001",
+    "PTW-LSU-ID-002",
+    "PTW-LSU-ID-003",
+    "PTW-LSU-ID-004",
+    "PTW-LSU-GRANT-001",
+    "PTW-LSU-GRANT-002",
+    "PTW-LSU-MULTI-001",
+    "PTW-LSU-MULTI-002",
+    "PTW-LSU-ABORT-001",
+    "PTW-LSU-ABORT-002",
+    "PTW-LSU-ABORT-003",
+    "PDE-UPD-020",
+    "PDE-UPD-021",
+    "PDE-UPD-022",
+}
+
+# Not every assertion has an independent cover counter. Gate the cover-capable
+# IDs here, and validate assertion-only IDs through clean logs plus matrix rows.
+LSU_ID_AGGREGATE_SVA_COVER_REQS = {
+    "PTW-SVA-LSUID-001",
+    "PTW-SVA-LSUID-002",
+    "PTW-SVA-LSUID-004",
+    "PTW-SVA-LSUID-006",
+    "PTW-SVA-GRANT-001",
+    "PTW-SVA-GRANT-003",
+    "PTW-SVA-ABDRN-002",
+    "PTW-SVA-ABDRN-003",
+    "PTW-SVA-ABDRN-004",
+    "PTW-SVA-ABDRN-005",
+    "PTW-SVA-PDE-UPD-020",
+    "PTW-SVA-PDE-UPD-021",
+    "PTW-SVA-PDE-UPD-022",
+    "PTW-SVA-PDE-UPD-023",
+    "PTW-SVA-PDE-UPD-024",
+    "PTW-SVA-PDE-UPD-025",
+    "PTW-SVA-PDE-UPD-026",
+    "PTW-SVA-BUSERR-001",
+}
+
+LSU_ID_MATRIX_SVA_REQS = {
+    "PTW-SVA-LSUID-003",
+    "PTW-SVA-LSUID-005",
+    "PTW-SVA-GRANT-002",
+    "PTW-SVA-ABDRN-005",
+}
+
+LSU_ID_REQUIRED_SOURCE_COUNTERS = {
+    "req_rsp_id_match",
+    "two_outstanding",
+    "ooo",
+    "grant_wait",
+    "abort_drain",
+    "buserr_by_id",
+    "invalid_id",
+}
+
+LSU_ID_REQUIRED_PDE_COUNTERS = {
+    "consecutive_l1",
+    "consecutive_l2",
+    "blocked_by_abort_drain",
+}
+
+LSU_ID_OBSOLETE_MARKERS = [
+    ("strict_single_outstanding", re.compile(r"\bstrict_single_outstanding\b", re.IGNORECASE)),
+    ("NO_TAG", re.compile(r"\bNO_TAG\b")),
+    ("response_inorder required", re.compile(r"\bresponse_inorder\s+required\b", re.IGNORECASE)),
+    ("sva_response_inorder", re.compile(r"\bsva_response_inorder\b", re.IGNORECASE)),
+    ("PTW-014-OBSOLETE-OOO", re.compile(r"\bPTW-014-OBSOLETE-OOO\b")),
+]
+
 
 def strip_inline_comment(line: str) -> str:
     out: List[str] = []
@@ -219,6 +337,92 @@ def parse_pde_pmp_coverage(text: str) -> Optional[Dict[str, int]]:
     return cov
 
 
+def parse_int_value(value: str) -> Optional[int]:
+    value = value.strip().rstrip(",;")
+    try:
+        return int(value, 0)
+    except ValueError:
+        return None
+
+
+def parse_int_keyvals(line: str) -> Dict[str, int]:
+    values: Dict[str, int] = {}
+    for key, value in parse_keyvals(line).items():
+        parsed = parse_int_value(value)
+        if parsed is not None:
+            values[key] = parsed
+    return values
+
+
+def parse_lsu_id_coverage(text: str) -> Optional[Dict[str, int]]:
+    cov: Optional[Dict[str, int]] = None
+    for line in text.splitlines():
+        if "PTW_SOURCE_SB_LSU_ID_COVERAGE" not in line:
+            continue
+        cov = parse_int_keyvals(line)
+    return cov
+
+
+def parse_pde_update_contig_coverage(text: str) -> Optional[Dict[str, int]]:
+    cov: Optional[Dict[str, int]] = None
+    for line in text.splitlines():
+        if "PTW_SOURCE_SB_PDE_UPDATE_CONTIG_COVERAGE" not in line:
+            continue
+        cov = parse_int_keyvals(line)
+    return cov
+
+
+def merge_counter_values(dst: Dict[str, int], src: Optional[Dict[str, int]]) -> None:
+    if not src:
+        return
+    for key, value in src.items():
+        if key.endswith("_mask"):
+            dst[key] = dst.get(key, 0) | value
+        elif key.startswith("max_"):
+            dst[key] = max(dst.get(key, 0), value)
+        else:
+            dst[key] = dst.get(key, 0) + value
+
+
+def collect_sva_cover_from_text(text: str) -> Tuple[Set[str], Dict[str, int]]:
+    req_hits: Set[str] = set()
+    named_hits: Dict[str, int] = {}
+    for line in text.splitlines():
+        if "PTW_SVA_COVER" not in line:
+            continue
+        kv = parse_keyvals(line)
+        hits = parse_int_value(kv.get("hits", "0"))
+        if hits is None:
+            continue
+        name = kv.get("name")
+        if name:
+            named_hits[name] = max(named_hits.get(name, 0), hits)
+        if hits <= 0:
+            continue
+        for req_id in kv.get("req", "").split(","):
+            req_id = req_id.strip()
+            if req_id:
+                req_hits.add(req_id)
+    return req_hits, named_hits
+
+
+def check_no_obsolete_lsu_markers(text: str, path: Path) -> List[str]:
+    errors: List[str] = []
+    for marker, pattern in LSU_ID_OBSOLETE_MARKERS:
+        if pattern.search(text):
+            errors.append(f"{path}: obsolete LSU-ID closure marker found: {marker}")
+    return errors
+
+
+def check_no_extra_lsu_violation(text: str, path: Path) -> List[str]:
+    cov = parse_pde_pmp_coverage(text)
+    if cov is None:
+        return [f"{path}: missing PTW_SOURCE_SB_PDE_PMP_COVERAGE/no_extra_lsu evidence"]
+    if cov.get("no_extra_lsu_violation", 0) != 0:
+        return [f"{path}: no_extra_lsu_violation is nonzero"]
+    return []
+
+
 def has_stage8_or_stage9_metadata(text: str) -> bool:
     markers = [
         "PTW_STAGE8_CLOSURE",
@@ -256,16 +460,19 @@ def read_log(log_path: Path) -> Tuple[Optional[str], List[str]]:
     return text, errors
 
 
-def check_p0_log(log_path: Path, test: str) -> List[str]:
+def check_p0_log(log_path: Path, test: str, *, require_lsu_id_coverage: bool = False) -> List[str]:
     text, errors = read_log(log_path)
     if text is None:
         return errors
+    errors.extend(check_no_obsolete_lsu_markers(text, log_path))
     if not has_clean_source_summary(text):
         errors.append(f"{log_path}: missing clean PTW_SOURCE_SB_SUMMARY mismatch=0 pending=0 illegal=0")
     if not has_sva_cover_hit(text):
         errors.append(f"{log_path}: missing PTW_SVA_COVER hits>0")
     if not has_scenario_metadata(text):
         errors.append(f"{log_path}: missing PTW scenario/closure metadata")
+    if require_lsu_id_coverage and parse_lsu_id_coverage(text) is None:
+        errors.append(f"{log_path}: missing PTW_SOURCE_SB_LSU_ID_COVERAGE")
     return errors
 
 
@@ -273,6 +480,7 @@ def check_pde_pmpflg_log(log_path: Path, test: str) -> List[str]:
     text, errors = read_log(log_path)
     if text is None:
         return errors
+    errors.extend(check_no_obsolete_lsu_markers(text, log_path))
 
     expected_marker = PDE_PMPFLG_MARKER_BY_TEST.get(test)
     if expected_marker and expected_marker not in text:
@@ -322,6 +530,7 @@ def check_stage7_log(log_path: Path, test: str, *, list_role: str) -> List[str]:
     text, errors = read_log(log_path)
     if text is None:
         return errors
+    errors.extend(check_no_obsolete_lsu_markers(text, log_path))
 
     if test in PDE_PMPFLG_REQUIRED_TESTS:
         return check_pde_pmpflg_log(log_path, test)
@@ -343,6 +552,35 @@ def check_stage7_log(log_path: Path, test: str, *, list_role: str) -> List[str]:
 
     if "PTW_STAGE7_TEST_SUMMARY" not in text:
         errors.append(f"{log_path}: missing PTW_STAGE7_TEST_SUMMARY")
+    return errors
+
+
+def check_lsu_id_log(log_path: Path, test: str, *, negative: bool = False) -> List[str]:
+    text, errors = read_log(log_path)
+    if text is None:
+        return errors
+    errors.extend(check_no_obsolete_lsu_markers(text, log_path))
+    if not has_clean_source_summary(text, require_stage="7"):
+        errors.append(f"{log_path}: missing clean PTW_SOURCE_SB_SUMMARY")
+    if "PTW_SOURCE_REF_SUMMARY" not in text:
+        errors.append(f"{log_path}: missing PTW_SOURCE_REF_SUMMARY")
+    if not has_scenario_metadata(text):
+        errors.append(f"{log_path}: missing PTW scenario metadata")
+
+    lsu_cov = parse_lsu_id_coverage(text)
+    if lsu_cov is None:
+        errors.append(f"{log_path}: missing PTW_SOURCE_SB_LSU_ID_COVERAGE")
+    elif negative:
+        if lsu_cov.get("invalid_id", 0) <= 0:
+            errors.append(f"{log_path}: invalid response negative test did not hit invalid_id")
+
+    errors.extend(check_no_extra_lsu_violation(text, log_path))
+
+    if negative and not has_sva_req_hit(text, "PTW-SVA-LSUID-006"):
+        errors.append(f"{log_path}: missing PTW_SVA_COVER hits>0 for PTW-SVA-LSUID-006")
+
+    if "PTW_META phase=12" not in text and "ptw_lsu_id_phase12" not in text:
+        errors.append(f"{log_path}: missing Phase12 LSU-ID metadata")
     return errors
 
 
@@ -465,6 +703,111 @@ def validate_closure_csv(rows: List[Dict[str, str]]) -> List[str]:
     return errors
 
 
+def validate_lsu_id_closure_csv(rows: List[Dict[str, str]]) -> List[str]:
+    errors: List[str] = []
+    by_id: Dict[str, Dict[str, str]] = {}
+    duplicates: Set[str] = set()
+    for row in rows:
+        rid = row["requirement_id"]
+        if rid in by_id:
+            duplicates.add(rid)
+        by_id[rid] = row
+
+    missing = sorted(LSU_ID_REQUIRED_MATRIX_IDS - set(by_id.keys()))
+    if missing:
+        errors.append("lsu-id closure csv missing IDs: " + ", ".join(missing))
+    duplicated_lsu = sorted(duplicates & LSU_ID_REQUIRED_MATRIX_IDS)
+    if duplicated_lsu:
+        errors.append("lsu-id closure csv duplicate IDs: " + ", ".join(duplicated_lsu))
+
+    for rid in sorted(LSU_ID_REQUIRED_MATRIX_IDS):
+        row = by_id.get(rid)
+        if not row:
+            continue
+        if not closed_enough(row["status"]):
+            errors.append(f"{rid}: lsu-id matrix row is not closed")
+        if not row["test_name"]:
+            errors.append(f"{rid}: lsu-id matrix row lacks test_name")
+        if not row["source_checker"]:
+            errors.append(f"{rid}: lsu-id matrix row lacks source_checker")
+        if not row["sva_cover"]:
+            errors.append(f"{rid}: lsu-id matrix row lacks sva_cover")
+        if rid == "PTW-LSU-ID-004" and row["illegal_stimulus"] != "yes":
+            errors.append(f"{rid}: invalid response ID row must be marked illegal_stimulus=yes")
+        elif rid != "PTW-LSU-ID-004" and row["illegal_stimulus"] == "yes":
+            errors.append(f"{rid}: legal lsu-id row unexpectedly marked illegal_stimulus=yes")
+
+    matrix_sva_text = "\n".join(row["sva_cover"] for row in rows)
+    missing_matrix_sva = sorted(LSU_ID_MATRIX_SVA_REQS - {
+        req_id for req_id in LSU_ID_MATRIX_SVA_REQS if req_id in matrix_sva_text
+    })
+    if missing_matrix_sva:
+        errors.append(
+            "lsu-id closure csv missing assertion-only SVA evidence IDs: "
+            + ", ".join(missing_matrix_sva)
+        )
+
+    for row in rows:
+        evidence = " ".join([
+            row["source_checker"],
+            row["sva_cover"],
+            row["consumer_evidence"],
+        ])
+        for marker, pattern in LSU_ID_OBSOLETE_MARKERS:
+            if pattern.search(evidence):
+                errors.append(f"{row['requirement_id']}: obsolete marker used as closure evidence: {marker}")
+    return errors
+
+
+def validate_lsu_id_list_hygiene(
+    *,
+    p0_smoke_list: Optional[Path],
+    p0_list: Path,
+    p1_list: Path,
+    p2_list: Path,
+    lsu_id_list: Optional[Path],
+) -> List[str]:
+    errors: List[str] = []
+    p0_tests = set(load_tests(p0_list))
+    p1_tests = set(load_tests(p1_list))
+    p2_tests = set(load_tests(p2_list))
+    p0_smoke_tests = set(load_tests(p0_smoke_list)) if p0_smoke_list is not None else set()
+    lsu_id_tests = set(load_tests(lsu_id_list)) if lsu_id_list is not None else set()
+
+    missing_p0 = sorted(LSU_ID_P0_REQUIRED_TESTS - p0_tests)
+    if missing_p0:
+        errors.append("p0 list missing LSU-ID required tests: " + ", ".join(missing_p0))
+    missing_p1 = sorted(LSU_ID_P1_REQUIRED_TESTS - p1_tests)
+    if missing_p1:
+        errors.append("p1 list missing LSU-ID required tests: " + ", ".join(missing_p1))
+    missing_p2 = sorted(LSU_ID_P2_NEGATIVE_TESTS - p2_tests)
+    if missing_p2:
+        errors.append("p2 list missing LSU-ID negative tests: " + ", ".join(missing_p2))
+
+    for role, tests in [
+        ("p0_smoke", p0_smoke_tests),
+        ("p0_full", p0_tests),
+        ("p1_directed", p1_tests),
+    ]:
+        negative_overlap = sorted(tests & LSU_ID_P2_NEGATIVE_TESTS)
+        if negative_overlap:
+            errors.append(f"{role} list contains P2-only LSU-ID negative tests: {', '.join(negative_overlap)}")
+        legacy_overlap = sorted(tests & LSU_ID_LEGACY_WRAPPER_TESTS)
+        if legacy_overlap:
+            errors.append(f"{role} list contains legacy LSU protocol wrapper tests: {', '.join(legacy_overlap)}")
+
+    if lsu_id_list is not None:
+        legacy_overlap = sorted(lsu_id_tests & LSU_ID_LEGACY_WRAPPER_TESTS)
+        if legacy_overlap:
+            errors.append(f"lsu_id_focused list contains legacy LSU protocol wrapper tests: {', '.join(legacy_overlap)}")
+
+    if lsu_id_list is not None:
+        missing_focused = sorted(LSU_ID_FOCUSED_REQUIRED_TESTS - lsu_id_tests)
+        if missing_focused:
+            errors.append("lsu-id focused list missing tests: " + ", ".join(missing_focused))
+    return errors
+
+
 def parse_report_open_records(report_text: str) -> Dict[str, Dict[str, str]]:
     records: Dict[str, Dict[str, str]] = {}
     for line in report_text.splitlines():
@@ -556,6 +899,7 @@ def check_list_logs(
     seed: str,
     role: str,
     allow_missing: bool = False,
+    require_lsu_id_coverage: bool = False,
 ) -> Tuple[int, List[str]]:
     errors: List[str] = []
     tests = load_tests(list_path)
@@ -566,8 +910,14 @@ def check_list_logs(
         log_path = log_dir / f"{test}_{seed}.log"
         if test in PDE_PMPFLG_REQUIRED_TESTS:
             errs = check_pde_pmpflg_log(log_path, test)
+        elif test in LSU_ID_P2_NEGATIVE_TESTS:
+            errs = check_lsu_id_log(log_path, test, negative=True)
+        elif test in LSU_ID_P0_REQUIRED_TESTS or test in LSU_ID_P1_REQUIRED_TESTS:
+            errs = check_lsu_id_log(log_path, test)
+        elif role == "lsu_id_focused":
+            errs = check_lsu_id_log(log_path, test)
         elif role in {"p0_smoke", "p0_full"}:
-            errs = check_p0_log(log_path, test)
+            errs = check_p0_log(log_path, test, require_lsu_id_coverage=require_lsu_id_coverage)
         elif role in {"p1_directed", "random_stress"}:
             errs = check_stage7_log(log_path, test, list_role=role)
         elif role == "p2_illegal":
@@ -606,12 +956,80 @@ def collect_sva_req_hits_for_list(
     return hit_reqs, errors
 
 
+def collect_lsu_id_aggregate_evidence(
+    *,
+    list_specs: List[Tuple[Path, List[str]]],
+    log_dir: Path,
+) -> Tuple[Dict[str, int], Dict[str, int], Set[str], Dict[str, int], List[str]]:
+    lsu_cov: Dict[str, int] = {}
+    pde_cov: Dict[str, int] = {}
+    sva_req_hits: Set[str] = set()
+    named_sva_hits: Dict[str, int] = {}
+    errors: List[str] = []
+
+    for list_path, seeds in list_specs:
+        tests = load_tests(list_path)
+        for seed in seeds:
+            for test in tests:
+                log_path = log_dir / f"{test}_{seed}.log"
+                if not log_path.is_file():
+                    continue
+                text = log_path.read_text(encoding="utf-8", errors="ignore")
+                errors.extend(check_no_obsolete_lsu_markers(text, log_path))
+                merge_counter_values(lsu_cov, parse_lsu_id_coverage(text))
+                merge_counter_values(pde_cov, parse_pde_update_contig_coverage(text))
+                pde_pmp_cov = parse_pde_pmp_coverage(text)
+                if pde_pmp_cov is not None:
+                    lsu_cov["no_extra_lsu_violation"] = (
+                        lsu_cov.get("no_extra_lsu_violation", 0)
+                        + pde_pmp_cov.get("no_extra_lsu_violation", 0)
+                    )
+                req_hits, name_hits = collect_sva_cover_from_text(text)
+                sva_req_hits.update(req_hits)
+                for name, hits in name_hits.items():
+                    named_sva_hits[name] = max(named_sva_hits.get(name, 0), hits)
+    return lsu_cov, pde_cov, sva_req_hits, named_sva_hits, errors
+
+
+def validate_lsu_id_aggregate_evidence(
+    *,
+    lsu_cov: Dict[str, int],
+    pde_cov: Dict[str, int],
+    sva_req_hits: Set[str],
+    named_sva_hits: Dict[str, int],
+) -> List[str]:
+    errors: List[str] = []
+
+    missing_sva = sorted(LSU_ID_AGGREGATE_SVA_COVER_REQS - sva_req_hits)
+    if missing_sva:
+        errors.append(
+            "lsu-id aggregate logs missing PTW_SVA_COVER hits>0 for: "
+            + ", ".join(missing_sva)
+        )
+
+    for name in ["cp_lsu_two_outstanding", "cp_lsu_ooo_response"]:
+        if named_sva_hits.get(name, 0) <= 0:
+            errors.append(f"lsu-id aggregate logs did not hit {name}")
+
+    for key in sorted(LSU_ID_REQUIRED_SOURCE_COUNTERS):
+        if lsu_cov.get(key, 0) <= 0:
+            errors.append(f"PTW_SOURCE_SB_LSU_ID_COVERAGE aggregate {key} not hit")
+    if lsu_cov.get("no_extra_lsu_violation", 0) != 0:
+        errors.append("PTW_SOURCE_SB_PDE_PMP_COVERAGE aggregate no_extra_lsu_violation is nonzero")
+
+    for key in sorted(LSU_ID_REQUIRED_PDE_COUNTERS):
+        if pde_cov.get(key, 0) <= 0:
+            errors.append(f"PTW_SOURCE_SB_PDE_UPDATE_CONTIG_COVERAGE aggregate {key} not hit")
+    return errors
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="PTW stage-10 signoff gate")
     parser.add_argument("--p0-smoke-list", type=Path)
     parser.add_argument("--p0-list", required=True, type=Path)
     parser.add_argument("--p1-list", required=True, type=Path)
     parser.add_argument("--pde-pmpflg-list", required=True, type=Path)
+    parser.add_argument("--lsu-id-list", type=Path)
     parser.add_argument("--p2-list", required=True, type=Path)
     parser.add_argument("--random-list", required=True, type=Path)
     parser.add_argument("--consumer-list", required=True, type=Path)
@@ -620,6 +1038,7 @@ def main() -> int:
     parser.add_argument("--p1-seed", default="606")
     parser.add_argument("--stage7-seed", default="707")
     parser.add_argument("--pde-pmpflg-seed", action="append")
+    parser.add_argument("--lsu-id-seed", action="append")
     parser.add_argument("--consumer-seed", default="707")
     parser.add_argument("--csv", required=True, type=Path)
     parser.add_argument("--report", required=True, type=Path)
@@ -630,6 +1049,8 @@ def main() -> int:
     errors: List[str] = []
     counts: Dict[str, int] = {}
     pde_pmpflg_seeds = expand_seed_args(args.pde_pmpflg_seed, "606")
+    lsu_id_seeds = expand_seed_args(args.lsu_id_seed, args.p0_seed)
+    enable_lsu_id_gate = args.lsu_id_list is not None
 
     if args.p0_smoke_list is not None:
         counts["p0_smoke"], errs = check_list_logs(
@@ -637,6 +1058,7 @@ def main() -> int:
             log_dir=args.log_dir,
             seed=args.p0_seed,
             role="p0_smoke",
+            require_lsu_id_coverage=enable_lsu_id_gate,
         )
         errors.extend(errs)
 
@@ -651,8 +1073,21 @@ def main() -> int:
             log_dir=args.log_dir,
             seed=seed,
             role=role,
+            require_lsu_id_coverage=enable_lsu_id_gate and role == "p0_full",
         )
         errors.extend(errs)
+
+    if args.lsu_id_list is not None:
+        lsu_count = 0
+        for seed in lsu_id_seeds:
+            lsu_count, errs = check_list_logs(
+                list_path=args.lsu_id_list,
+                log_dir=args.log_dir,
+                seed=seed,
+                role="lsu_id_focused",
+            )
+            errors.extend(errs)
+        counts["lsu_id_focused"] = lsu_count * len(lsu_id_seeds)
 
     pde_count = 0
     for seed in pde_pmpflg_seeds:
@@ -692,10 +1127,40 @@ def main() -> int:
     errors.extend(csv_errors)
     if rows:
         errors.extend(validate_closure_csv(rows))
+        if enable_lsu_id_gate:
+            errors.extend(validate_lsu_id_closure_csv(rows))
         errors.extend(validate_report(args.report, rows))
     else:
         errors.extend(validate_report(args.report, []))
     errors.extend(validate_legacy_freeze(args.legacy, args.report))
+
+    if enable_lsu_id_gate:
+        errors.extend(validate_lsu_id_list_hygiene(
+            p0_smoke_list=args.p0_smoke_list,
+            p0_list=args.p0_list,
+            p1_list=args.p1_list,
+            p2_list=args.p2_list,
+            lsu_id_list=args.lsu_id_list,
+        ))
+        lsu_specs: List[Tuple[Path, List[str]]] = [
+            (args.p0_list, [args.p0_seed]),
+            (args.p1_list, [args.p1_seed]),
+            (args.p2_list, [args.stage7_seed]),
+            (args.lsu_id_list, lsu_id_seeds),
+        ]
+        if args.p0_smoke_list is not None:
+            lsu_specs.append((args.p0_smoke_list, [args.p0_seed]))
+        lsu_cov, pde_cov, lsu_sva_hits, lsu_named_sva_hits, errs = collect_lsu_id_aggregate_evidence(
+            list_specs=lsu_specs,
+            log_dir=args.log_dir,
+        )
+        errors.extend(errs)
+        errors.extend(validate_lsu_id_aggregate_evidence(
+            lsu_cov=lsu_cov,
+            pde_cov=pde_cov,
+            sva_req_hits=lsu_sva_hits,
+            named_sva_hits=lsu_named_sva_hits,
+        ))
 
     if errors:
         print("PTW_STAGE10_SIGNOFF_GATE status=FAIL")
@@ -711,7 +1176,9 @@ def main() -> int:
     print(
         "PTW_STAGE10_SIGNOFF_GATE status=PASS "
         + " ".join(f"{role}_tests={count}" for role, count in sorted(counts.items()))
-        + " source_sb=clean p0_cover=hit pde_pmpflg_cover=hit closure_matrix=frozen report=validated"
+        + " source_sb=clean p0_cover=hit pde_pmpflg_cover=hit"
+        + (" lsu_id_cover=hit lsu_id_negative=isolated" if enable_lsu_id_gate else "")
+        + " closure_matrix=frozen report=validated"
     )
     return 0
 

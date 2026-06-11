@@ -88,6 +88,15 @@
         "regress_name": "ptw_src_pde_pmpflg"
       },
       {
+        "role": "lsu_id_focused",
+        "list": "simu/ptw_lsu_id_grant_list",
+        "seeds": [
+          "606",
+          "707"
+        ],
+        "regress_name": "ptw_src_lsu_id"
+      },
+      {
         "role": "p2_illegal",
         "list": "simu/ptw_p2_illegal_list",
         "seeds": [
@@ -135,6 +144,8 @@
       "simu/ptw_p1_list",
       "--pde-pmpflg-list",
       "simu/ptw_pde_pmpflg_list",
+      "--lsu-id-list",
+      "simu/ptw_lsu_id_grant_list",
       "--p2-list",
       "simu/ptw_p2_illegal_list",
       "--random-list",
@@ -150,6 +161,8 @@
       "--stage7-seed",
       "707",
       "--pde-pmpflg-seed",
+      "606 707",
+      "--lsu-id-seed",
       "606 707",
       "--consumer-seed",
       "707",

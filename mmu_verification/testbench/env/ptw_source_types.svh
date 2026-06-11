@@ -516,6 +516,7 @@ class ptw_src_level_evt_txn extends uvm_sequence_item;
   bit                refill_req;
   bit                page_fault;
   bit                access_fault;
+  bit                abort_drain;
   bit                pmp_vld;
   bit                pmp_grant;
   bit                pmp_deny;
@@ -535,10 +536,10 @@ class ptw_src_level_evt_txn extends uvm_sequence_item;
 
   virtual function string convert2string();
     return $sformatf(
-      "cycle=%0d twu=%0d level=%s type=%s id=0x%02h vpn=0x%07h pte_pa=0x%010h pte=0x%016h mbuf_req=%0b data_vld=%0b refill_req=%0b pf=%0b af=%0b pmp{vld=%0b grant=%0b deny=%0b wait=%0b selected=0x%0h twu_mbuf=0x%02h mbuf=0x%02h} sysmap{hit=%0b flg=0x%02h}",
+      "cycle=%0d twu=%0d level=%s type=%s id=0x%02h vpn=0x%07h pte_pa=0x%010h pte=0x%016h mbuf_req=%0b data_vld=%0b refill_req=%0b pf=%0b af=%0b abort_drain=%0b pmp{vld=%0b grant=%0b deny=%0b wait=%0b selected=0x%0h twu_mbuf=0x%02h mbuf=0x%02h} sysmap{hit=%0b flg=0x%02h}",
       cycle, twu_idx, level.name(), req_type.name(), id, vpn, pte_pa,
       pte_data, mbuf_req, mbuf_data_vld, refill_req, page_fault, access_fault,
-      pmp_vld, pmp_grant, pmp_deny, pmp_wait, selected_pmpflg,
+      abort_drain, pmp_vld, pmp_grant, pmp_deny, pmp_wait, selected_pmpflg,
       twu_mbuf_pmpflg, mbuf_pmpflg, sysmap_hit, sysmap_flg);
   endfunction
 endclass : ptw_src_level_evt_txn
@@ -646,5 +647,55 @@ class ptw_src_drop_txn extends uvm_sequence_item;
       pre_existing_exception_grant);
   endfunction
 endclass : ptw_src_drop_txn
+
+class ptw_src_mem_evt_txn extends uvm_sequence_item;
+  `uvm_object_utils(ptw_src_mem_evt_txn)
+
+  int unsigned           cycle;
+  bit                    req_fire;
+  bit                    rsp_fire;
+  bit                    drop_fire;
+  bit [3:0]              req_id;
+  bit [3:0]              rsp_id;
+  bit [3:0]              mbuf_id;
+  bit [39:0]             addr;
+  bit                    size;
+  bit [63:0]             data;
+  bit                    bus_error;
+  bit                    ooo;
+  bit                    invalid_rsp_id;
+  bit                    rsp_without_pending;
+  bit                    duplicate_id_error;
+  bit                    aborted_before_grant;
+  bit                    abort_drain;
+  bit                    source_key_valid;
+  ptw_src_req_type_e     req_type;
+  logic [PTW_SRC_ID_WIDTH-1:0] source_id;
+  vpn_t                  vpn;
+  int unsigned           grant_wait_cycles;
+  int unsigned           accept_order;
+  int unsigned           response_order;
+
+  function new(string name = "ptw_src_mem_evt_txn");
+    super.new(name);
+    req_type = PTW_SRC_TYPE_UNKNOWN;
+    source_key_valid = 1'b0;
+  endfunction
+
+  virtual function string convert2string();
+    return $sformatf(
+      {"cycle=%0d req_fire=%0b rsp_fire=%0b drop_fire=%0b ",
+       "mbuf_id=0x%0h req_id=0x%0h rsp_id=0x%0h addr=0x%010h size=%0b ",
+       "data=0x%016h bus_error=%0b ooo=%0b invalid_rsp_id=%0b ",
+       "rsp_without_pending=%0b duplicate_id=%0b aborted_before_grant=%0b ",
+       "abort_drain=%0b source_key_valid=%0b source={type=%s,id=0x%02h,vpn=0x%07h} ",
+       "grant_wait=%0d accept_order=%0d response_order=%0d"},
+      cycle, req_fire, rsp_fire, drop_fire, mbuf_id, req_id, rsp_id, addr,
+      size, data, bus_error, ooo, invalid_rsp_id, rsp_without_pending,
+      duplicate_id_error, aborted_before_grant, abort_drain, source_key_valid,
+      req_type.name(), source_id, vpn, grant_wait_cycles, accept_order,
+      response_order);
+  endfunction
+endclass : ptw_src_mem_evt_txn
 
 `endif // PTW_SOURCE_TYPES_SVH

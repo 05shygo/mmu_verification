@@ -540,6 +540,42 @@ class ptw_source_directed_base extends test_base;
     ptw_meta_add_context($sformatf("ptw_mem_delay_by_count count=%0d delay=%0d", accept_count, delay));
   endtask
 
+  virtual task ptw_mem_delay_by_id(bit [3:0] id, int unsigned delay);
+    ptw_mem_delay_by_id_seq seq;
+    seq = ptw_mem_delay_by_id_seq::type_id::create("ptw_mem_delay_by_id_seq");
+    seq.id = id;
+    seq.delay = delay;
+    seq.start(m_env.m_ptw_mem.m_sequencer);
+    ptw_meta_add_context($sformatf("ptw_mem_delay_by_id id=0x%0h delay=%0d", id, delay));
+  endtask
+
+  virtual task ptw_mem_response_delay_by_id(bit [3:0] id, int unsigned delay);
+    ptw_mem_response_delay_by_id_seq seq;
+    seq = ptw_mem_response_delay_by_id_seq::type_id::create("ptw_mem_response_delay_by_id_seq");
+    seq.id = id;
+    seq.delay = delay;
+    seq.start(m_env.m_ptw_mem.m_sequencer);
+    ptw_meta_add_context($sformatf("ptw_mem_response_delay_by_id id=0x%0h delay=%0d", id, delay));
+  endtask
+
+  virtual task ptw_mem_grant_delay_by_count(int unsigned accept_count, int unsigned cycles);
+    ptw_mem_grant_delay_by_count_seq seq;
+    seq = ptw_mem_grant_delay_by_count_seq::type_id::create("ptw_mem_grant_delay_by_count_seq");
+    seq.accept_count = accept_count;
+    seq.cycles = cycles;
+    seq.start(m_env.m_ptw_mem.m_sequencer);
+    ptw_meta_add_context($sformatf("ptw_mem_grant_delay_by_count count=%0d cycles=%0d", accept_count, cycles));
+  endtask
+
+  virtual task ptw_mem_grant_delay_by_id(bit [3:0] id, int unsigned cycles);
+    ptw_mem_grant_delay_by_id_seq seq;
+    seq = ptw_mem_grant_delay_by_id_seq::type_id::create("ptw_mem_grant_delay_by_id_seq");
+    seq.id = id;
+    seq.cycles = cycles;
+    seq.start(m_env.m_ptw_mem.m_sequencer);
+    ptw_meta_add_context($sformatf("ptw_mem_grant_delay_by_id id=0x%0h cycles=%0d", id, cycles));
+  endtask
+
   virtual task ptw_mem_bus_error_by_addr(pa_t pte_pa);
     ptw_mem_bus_error_by_addr_seq seq;
     seq = ptw_mem_bus_error_by_addr_seq::type_id::create("ptw_mem_bus_error_by_addr_seq");
@@ -556,6 +592,186 @@ class ptw_source_directed_base extends test_base;
     seq.enable = 1'b1;
     seq.start(m_env.m_ptw_mem.m_sequencer);
     ptw_meta_add_context($sformatf("ptw_mem_bus_error_by_count count=%0d", accept_count));
+  endtask
+
+  virtual task ptw_mem_bus_error_by_id(bit [3:0] id);
+    ptw_mem_bus_error_by_id_seq seq;
+    seq = ptw_mem_bus_error_by_id_seq::type_id::create("ptw_mem_bus_error_by_id_seq");
+    seq.id = id;
+    seq.enable = 1'b1;
+    seq.start(m_env.m_ptw_mem.m_sequencer);
+    ptw_meta_add_context($sformatf("ptw_mem_bus_error_by_id id=0x%0h", id));
+  endtask
+
+  virtual task ptw_mem_response_order_ooo();
+    ptw_mem_ooo_rsp_seq seq;
+    seq = ptw_mem_ooo_rsp_seq::type_id::create("ptw_mem_response_order_ooo_seq");
+    seq.start(m_env.m_ptw_mem.m_sequencer);
+    ptw_meta_add_context("ptw_mem_response_order_ooo");
+  endtask
+
+  virtual task ptw_mem_force_next_response_id(bit [3:0] id);
+    ptw_mem_force_next_response_id_seq seq;
+    seq = ptw_mem_force_next_response_id_seq::type_id::create("ptw_mem_force_next_response_id_seq");
+    seq.id = id;
+    seq.start(m_env.m_ptw_mem.m_sequencer);
+    ptw_meta_add_context($sformatf("ptw_mem_force_next_response_id id=0x%0h", id));
+  endtask
+
+  virtual task ptw_expect_lsu_req_id(
+    input bit [3:0] id,
+    input pa_t addr,
+    input int unsigned max_cycles = 4096
+  );
+    bit seen;
+
+    seen = 1'b0;
+    if (ptw_probe_vif == null) begin
+      `uvm_error(get_type_name(), "ptw_expect_lsu_req_id: MMU_DUT_PROBES_VIF unavailable")
+      return;
+    end
+
+    repeat (max_cycles) begin
+      @(ptw_probe_vif.mon_cb);
+      if ((ptw_probe_vif.mon_cb.ptw_lsu_data_req_fire === 1'b1)
+          && (ptw_probe_vif.mon_cb.ptw_lsu_data_req_id == id)
+          && (ptw_probe_vif.mon_cb.ptw_lsu_data_req_addr == addr[39:0])) begin
+        seen = 1'b1;
+        break;
+      end
+    end
+
+    if (!seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("ptw_expect_lsu_req_id failed: id=0x%0h addr=0x%010h max_cycles=%0d",
+          id, addr[39:0], max_cycles))
+    end else begin
+      ptw_meta_add_context($sformatf("expect_lsu_req_id id=0x%0h addr=0x%010h observed", id, addr[39:0]));
+    end
+  endtask
+
+  virtual task ptw_expect_lsu_rsp_id(
+    input bit [3:0] id,
+    input int unsigned max_cycles = 4096
+  );
+    bit seen;
+
+    seen = 1'b0;
+    if (ptw_probe_vif == null) begin
+      `uvm_error(get_type_name(), "ptw_expect_lsu_rsp_id: MMU_DUT_PROBES_VIF unavailable")
+      return;
+    end
+
+    repeat (max_cycles) begin
+      @(ptw_probe_vif.mon_cb);
+      if (((ptw_probe_vif.mon_cb.ptw_lsu_data_vld === 1'b1)
+           || (ptw_probe_vif.mon_cb.ptw_lsu_bus_error === 1'b1))
+          && (ptw_probe_vif.mon_cb.ptw_lsu_data_rsp_id == id)) begin
+        seen = 1'b1;
+        break;
+      end
+    end
+
+    if (!seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("ptw_expect_lsu_rsp_id failed: id=0x%0h max_cycles=%0d",
+          id, max_cycles))
+    end else begin
+      ptw_meta_add_context($sformatf("expect_lsu_rsp_id id=0x%0h observed", id));
+    end
+  endtask
+
+  virtual task ptw_expect_abort_drain_no_update(
+    input int unsigned window,
+    input string ctx = "ptw_expect_abort_drain_no_update"
+  );
+    bit seen_abort_drain;
+    bit seen_update;
+
+    seen_abort_drain = 1'b0;
+    seen_update = 1'b0;
+    if (ptw_probe_vif == null) begin
+      `uvm_error(get_type_name(), {ctx, ": MMU_DUT_PROBES_VIF unavailable"})
+      return;
+    end
+
+    repeat (window) begin
+      @(ptw_probe_vif.mon_cb);
+      if (ptw_probe_vif.mon_cb.ptw_abort_drain === 1'b1)
+        seen_abort_drain = 1'b1;
+      if (ptw_probe_vif.mon_cb.pde_cache_update === 1'b1) begin
+        seen_update = 1'b1;
+        `uvm_error(get_type_name(),
+          $sformatf("%s failed: pde_cache_update observed during no-update window level=0x%0h vpn=0x%07h",
+            ctx,
+            ptw_probe_vif.mon_cb.pde_cache_update_level,
+            ptw_probe_vif.mon_cb.pde_cache_update_vpn))
+      end
+    end
+
+    if (!seen_abort_drain)
+      `uvm_error(get_type_name(), {ctx, ": no ptw_abort_drain pulse observed in the checked window"})
+    if (!seen_update)
+      ptw_meta_add_context($sformatf("%s window=%0d no_pde_update=1 abort_drain_seen=%0b",
+        ctx, window, seen_abort_drain));
+  endtask
+
+  virtual task ptw_expect_pde_consecutive_update(
+    input int unsigned level,
+    input int unsigned count,
+    input int unsigned max_cycles = 8192
+  );
+    bit [1:0] target_level;
+    bit seen;
+    bit have_prev;
+    int unsigned cycle;
+    int unsigned prev_cycle;
+    int unsigned run_count;
+
+    if (count == 0)
+      return;
+    if (ptw_probe_vif == null) begin
+      `uvm_error(get_type_name(), "ptw_expect_pde_consecutive_update: MMU_DUT_PROBES_VIF unavailable")
+      return;
+    end
+
+    target_level = (level == 2) ? 2'b10 :
+                   (level == 1) ? 2'b01 :
+                   bit'(level[0]);
+    seen = 1'b0;
+    have_prev = 1'b0;
+    prev_cycle = 0;
+    run_count = 0;
+
+    for (cycle = 0; cycle < max_cycles; cycle++) begin
+      @(ptw_probe_vif.mon_cb);
+      if ((ptw_probe_vif.mon_cb.pde_cache_update === 1'b1)
+          && (ptw_probe_vif.mon_cb.pde_cache_update_level == target_level)) begin
+        if (have_prev && ((cycle == prev_cycle) || (cycle == (prev_cycle + 1))))
+          run_count++;
+        else
+          run_count = 1;
+
+        have_prev = 1'b1;
+        prev_cycle = cycle;
+        if ((ptw_probe_vif.mon_cb.pde_l1_update_vec | ptw_probe_vif.mon_cb.pde_l2_update_vec) == '0)
+          `uvm_error(get_type_name(),
+            $sformatf("ptw_expect_pde_consecutive_update saw zero update_vec level=%0d cycle=%0d",
+              level, cycle))
+        if (run_count >= count) begin
+          seen = 1'b1;
+          break;
+        end
+      end
+    end
+
+    if (!seen) begin
+      `uvm_error(get_type_name(),
+        $sformatf("ptw_expect_pde_consecutive_update failed: level=%0d count=%0d max_cycles=%0d last_run=%0d",
+          level, count, max_cycles, run_count))
+    end else begin
+      ptw_meta_add_context($sformatf("expect_pde_consecutive_update level=%0d count=%0d observed", level, count));
+    end
   endtask
 
   virtual task ptw_mem_same_cycle_abort_data(int unsigned accept_count);

@@ -1180,8 +1180,11 @@ module mmu_l1dtlb_hit_rd_sva #(
   a_abort_blocks_miss: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
     (lsu_mmu_va_vld_x && lsu_mmu_abort_x) |-> !dutlb_miss_vld_x);
 
+  // STAMO itself is not a DTLB miss source.  A concurrent VA retry on pipe1 can
+  // still miss, so keep this assertion scoped to pure STAMO cycles.
   a_stamo_bypass_not_miss: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
-    lsu_mmu_stamo_vld_x |-> (!dutlb_miss_vld_x && !dutlb_miss_vld_short_x));
+    (lsu_mmu_stamo_vld_x && !lsu_mmu_va_vld_x)
+    |-> (!dutlb_miss_vld_x && !dutlb_miss_vld_short_x));
 
   a_stamo_pa_source: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
     (lsu_mmu_stamo_vld_x && mmu_lsu_pa_vld_x) |-> (mmu_lsu_pa_x == lsu_mmu_stamo_pa_x));

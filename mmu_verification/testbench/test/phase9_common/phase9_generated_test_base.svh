@@ -153,6 +153,11 @@ class phase9_generated_test_base extends test_base;
       "mmu_l1itlb_state_mix_vseq":    seq = mmu_l1itlb_state_mix_vseq::type_id::create(seq_name);
       "mmu_l2tlb_bank_page_size_matrix_vseq": seq = mmu_l2tlb_bank_page_size_matrix_vseq::type_id::create(seq_name);
       "mmu_l2tlb_tag_write_read_inv_mix_vseq": seq = mmu_l2tlb_tag_write_read_inv_mix_vseq::type_id::create(seq_name);
+      "mmu_l1dtlb_entry0_wfg_vseq": seq = mmu_l1dtlb_entry0_wfg_vseq::type_id::create(seq_name);
+      "mmu_l1_reset_mid_op_vseq": seq = mmu_l1_reset_mid_op_vseq::type_id::create(seq_name);
+      "mmu_l1dtlb_coverage_vseq":    seq = mmu_l1dtlb_coverage_vseq::type_id::create(seq_name);
+      "mmu_l1dtlb_mb_expt_coverage_vseq": seq = mmu_l1dtlb_mb_expt_coverage_vseq::type_id::create(seq_name);
+      "mmu_l2tlb_pfu_chk_deny_vseq":    seq = mmu_l2tlb_pfu_chk_deny_vseq::type_id::create(seq_name);
       "mmu_satp_hotswap_vseq":        seq = mmu_satp_hotswap_vseq::type_id::create(seq_name);
       "mmu_stress_all_ports_vseq":    seq = mmu_stress_all_ports_vseq::type_id::create(seq_name);
       "mmu_power_gating_vseq":        seq = mmu_power_gating_vseq::type_id::create(seq_name);
@@ -583,6 +588,10 @@ class phase9_generated_test_base extends test_base;
       end
       "sysmap_boundary_seq": begin
         sysmap_boundary_seq seq = sysmap_boundary_seq::type_id::create(seq_name);
+        seq.start(m_env.m_sysmap_cfg.m_sequencer);
+      end
+      "sysmap_pfu_safe_flag_seq": begin
+        sysmap_pfu_safe_flag_seq seq = sysmap_pfu_safe_flag_seq::type_id::create(seq_name);
         seq.start(m_env.m_sysmap_cfg.m_sequencer);
       end
       "sysmap_perm_flag_seq": begin

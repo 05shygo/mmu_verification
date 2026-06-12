@@ -144,3 +144,4 @@ ${TB_DIR}/env/mmu_env_pkg.sv
 # Phase 3: Test package (imports mmu_env_pkg; includes test_base + sanity tests)
 # ---------------------------------------------------------------------------
 ${TB_DIR}/test/test_pkg.sv
++incdir+/test/coverage_tests

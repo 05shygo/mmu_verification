@@ -76,3 +76,7 @@
 `include "test_mmu_l1dtlb_dtlb_reset_state_001.svh"
 `include "test_mmu_l1dtlb_dtlb_plru_whitebox_only_001.svh"
 `include "test_mmu_l1dtlb_dtlb_ref_model_observability_001.svh"
+`include "test_mmu_l1dtlb_cov_hit_sweep.svh"
+`include "test_mmu_l1dtlb_cov_mb_expt.svh"
+`include "test_mmu_l1dtlb_cov_entry0_wfg.svh"
+`include "test_mmu_l1dtlb_cov_reset_mid.svh"

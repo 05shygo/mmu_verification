@@ -900,3 +900,8 @@ class test_l2tlb_p6e_rrpv_debug_pressure extends l2tlb_phase6e_test_base;
 endclass : test_l2tlb_p6e_rrpv_debug_pressure
 
 `endif // L2TLB_PHASE6E_TESTS_SVH
+
+`include "test_mmu_l2tlb_pfu_pmp_deny_chk.svh"
+`include "test_mmu_l1itlb_cov_sweep.svh"
+`include "test_mmu_l2tlb_cov_mb_reqq.svh"
+`include "test_mmu_l2tlb_cov_tag_inv.svh"

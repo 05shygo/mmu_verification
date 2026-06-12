@@ -193,3 +193,19 @@ class sysmap_cfg_coverage_sweep_seq extends sysmap_cfg_base_seq;
 endclass : sysmap_cfg_coverage_sweep_seq
 
 `endif // SYSMAP_CFG_SEQUENCES_SVH
+
+// ── PFU-safe: enable region 0 with flg[4]=0,flg[3]=1 for PFU VA range ─────
+class sysmap_pfu_safe_flag_seq extends sysmap_cfg_base_seq;
+  `uvm_object_utils(sysmap_pfu_safe_flag_seq)
+  function new(string name = "sysmap_pfu_safe_flag_seq"); super.new(name); endfunction
+  virtual task body();
+    sysmap_cfg_txn tr;
+    `uvm_create(tr)
+    foreach (tr.enable[i]) tr.enable[i] = 1'b0;
+    tr.enable[0] = 1'b1;
+    tr.base  [0] = 28'h000_1000;  // VPN 0x1000 = VA 0x10_0000
+    tr.mask  [0] = 28'hFFF_F000;  // 4KB match
+    tr.flg   [0] = 5'b01100;      // bit4=0, bit3=1 (no PFU flag fault)
+    `uvm_send(tr)
+  endtask
+endclass : sysmap_pfu_safe_flag_seq

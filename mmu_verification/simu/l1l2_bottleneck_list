@@ -1,0 +1,37 @@
+# --- L1DTLB hit_rd toggle/condition (hit variants) ---
+test_mmu_l1dtlb_dtlb_hit_001
+test_mmu_l1dtlb_dtlb_hit_002
+test_mmu_l1dtlb_dtlb_huge_001
+test_mmu_l1dtlb_dtlb_huge_002
+test_mmu_l1dtlb_dtlb_hit_rd_perm_mode_matrix_001
+test_mmu_l1dtlb_dtlb_dual_hit_mux_001
+test_mmu_l1dtlb_dtlb_fault_ad_us_sum_001
+test_mmu_l1dtlb_dtlb_fault_overlap_pipe_001
+test_mmu_l1dtlb_dtlb_hit_miss_concurrent_001
+
+# --- L1DTLB expt_cam toggle (fault/expt replay) ---
+test_mmu_l1dtlb_dtlb_access_fault_source_parity_001
+test_mmu_l1dtlb_dtlb_expt_id_map_001
+test_mmu_l1dtlb_dtlb_expt_hit_with_tlb_hit_001
+test_mmu_l1dtlb_dtlb_expt_dual_same_entry_neg_001
+
+# --- L1DTLB install condition + inv wakeup ---
+test_mmu_l1dtlb_dtlb_wakeup_multi_retry_001
+test_mmu_l1dtlb_dtlb_inv_install_same_entry_001
+test_mmu_l1dtlb_dtlb_inv_va8_alias_001
+
+# --- L1ITLB toggle/condition/FSM ---
+test_mmu_l1itlb_itlb_state_mix_001
+
+# --- L2TLB MB FSM (0.78% from 95%) ---
+test_mmu_dir_l2tlb_mb_full_stall
+test_mmu_dir_l2tlb_mb_alloc_on_miss
+test_mmu_dir_l2tlb_mb_dealloc_on_complete
+test_mmu_dir_l2tlb_mb_dup_alloc_prevention
+
+# --- L2TLB invalidation (cg_lsu_inv_done) ---
+test_mmu_dir_l2tlb_inv_all
+test_mmu_dir_l2tlb_inv_asid
+test_mmu_dir_l2tlb_inv_va
+test_mmu_dir_l2tlb_inv_va_asid
+test_mmu_l2tlb_tag_write_read_inv_mix_001

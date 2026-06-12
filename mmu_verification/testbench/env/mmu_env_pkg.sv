@@ -46,6 +46,8 @@ package mmu_env_pkg;
   `include "mmu_env.svh"
   `include "mmu_vseq_lib.svh"  // Phase 8: 14 vseq + mmu_base_vseq
   `include "mmu_l1dtlb_vseq_lib.svh" // L1DTLB directed audit scenarios
+`include "mmu_l1dtlb_coverage_vseq.svh"
+`include "mmu_l2tlb_directed_vseq.svh"
 
 endpackage : mmu_env_pkg
 

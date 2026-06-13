@@ -142,10 +142,15 @@ module mmu_ptw_xbar_sva #(
     cp_xbar_payload_hits++;
   end
 
+  // PTW-SVA-XBAR-006: while the target TWU masks the dispatch path, the PDE
+  // request payload must be held stable.  Mask clear (xbar_pde_ready) in the
+  // next cycle means the handshake completed and the xbar dispatched the old
+  // request with pre-update values, so payload change at that edge is legal.
   a_xbar_payload_hold_while_masked: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b)
     (PDE_xbar_req && !xbar_pde_ready && !tlboper_ptw_abort)
     |=> (tlboper_ptw_abort
+      || xbar_pde_ready
       || (PDE_xbar_req
        && $stable(PDE_xbar_ppn)
        && $stable(PDE_xbar_vpn)

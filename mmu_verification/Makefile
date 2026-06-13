@@ -2620,8 +2620,8 @@ covp: comp
 cov_gen_list:
 	@echo "=== Generating all-tests coverage list ==="
 	@find $(PROJECT_DIR)/testbench/test -name "*.svh" \
-	  -exec grep -hE "uvm_component_utils|uvm_object_utils" {} \; | \
-	  sed 's/.*\(uvm_component_utils\|uvm_object_utils\)(//' | sed 's/).*//' | sort -u | \
+	  -exec grep -hE "uvm_component_utils" {} \; | \
+	  sed 's/.*uvm_component_utils(//' | sed 's/).*//' | sort -u | \
 	  grep -vE '_base$$|_common$$' > $(COV_ALL_LIST)
 	@echo "=== Generated $(COV_ALL_LIST): $$(wc -l < $(COV_ALL_LIST)) tests ==="
 

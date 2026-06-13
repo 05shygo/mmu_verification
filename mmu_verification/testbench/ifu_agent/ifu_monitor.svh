@@ -208,6 +208,21 @@ class ifu_monitor extends uvm_monitor;
       if (m_has_pending && req_seen && !rsp_seen &&
           (cur_va === m_pending_req.va) &&
           (m_pending_req.abort === 1'b0) && (cur_abort === 1'b1)) begin
+        // Emit a compensation drop BEFORE updating the abort flag so that
+        // the credit scoreboard can balance the +1 from the original
+        // non-abort request.  The eventual va_vld drop will produce an
+        // abort-tagged drop that the credit SB skips; without this early
+        // compensation the credit would leak.
+        begin
+          ifu_txn comp_tr = ifu_txn::type_id::create("ifu_abort_comp_mon");
+          comp_tr.va    = m_pending_req.va;
+          comp_tr.abort = 1'b0;  // original abort value → credit SB decrements
+          `uvm_info(get_type_name(),
+            $sformatf("[IFU_ABORT_COMP] mid-flight abort credit compensation: va=0x%010h",
+              {1'b0, cur_va[38:0]}),
+            UVM_MEDIUM)
+          ap_drop.write(comp_tr);
+        end
         m_pending_req.abort = 1'b1;
         `uvm_info(get_type_name(),
           $sformatf("[IFU_ABORT_UPDATE] pending miss marked aborted: va=0x%010h",

@@ -226,6 +226,17 @@ class phase9_generated_test_base extends test_base;
         seq.num_txn = n_txn;
         seq.start(m_env.m_ifu.m_sequencer);
       end
+      "ifu_mapped_va_seq": begin
+        ifu_mapped_va_seq seq = ifu_mapped_va_seq::type_id::create(seq_name);
+        int unsigned npage;
+        npage = (m_nmap > 0) ? m_nmap : 1;
+        seq.m_va_table   = new[npage];
+        seq.m_table_size = npage;
+        for (int unsigned i = 0; i < npage; i++)
+          seq.m_va_table[i] = va_t'(m_va_base) + va_t'(i << 12);
+        seq.num_txn = n_txn;
+        seq.start(m_env.m_ifu.m_sequencer);
+      end
       default:
         `uvm_fatal(get_type_name(), $sformatf("Unknown IFU sequence '%s'", seq_name))
     endcase
@@ -345,6 +356,19 @@ class phase9_generated_test_base extends test_base;
       end
       "sfence_vma_stress_seq": begin
         sfence_vma_stress_seq seq = sfence_vma_stress_seq::type_id::create(seq_name);
+        seq.num_txn = n_txn;
+        seq.start(m_env.m_lsu.m_sequencer);
+      end
+      "lsu_mapped_va_seq": begin
+        lsu_mapped_va_seq seq = lsu_mapped_va_seq::type_id::create(seq_name);
+        int unsigned npage;
+        npage = (m_nmap > 0) ? m_nmap : 1;
+        seq.m_va_table   = new[npage];
+        seq.m_table_size = npage;
+        seq.m_kind       = LSU_PIPE0;
+        seq.m_st_inst    = 1'b0;
+        for (int unsigned i = 0; i < npage; i++)
+          seq.m_va_table[i] = va_t'(m_va_base) + va_t'(i << 12);
         seq.num_txn = n_txn;
         seq.start(m_env.m_lsu.m_sequencer);
       end

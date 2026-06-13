@@ -1350,38 +1350,37 @@ begin
 end 
 
 // &CombBeg; @918
-always_comb
-begin
+always_comb begin
 case (pfu_cur_st[1:0])
-  PFU_IDLE:
-  begin
-    if(l2tlb_pfu_cmplt)
-      if(l2tlb_pfu_acc_fault)
-        pfu_nxt_st[1:0] = PFU_DENY;
-      else
-        pfu_nxt_st[1:0] = PFU_CHK;
-    else
-      pfu_nxt_st[1:0] = PFU_IDLE;
-  end
-  PFU_CHK:
-  begin
-    if(l2tlb_pfu_deny)
-      pfu_nxt_st[1:0] = PFU_DENY;
-    else
-      pfu_nxt_st[1:0] = PFU_OK;
-  end
-  PFU_DENY:
-  begin
-    pfu_nxt_st[1:0] = PFU_IDLE;
-  end
-  PFU_OK:
-  begin
-    pfu_nxt_st[1:0] = PFU_IDLE;
-  end
-  default:
-  begin
-    pfu_nxt_st[1:0] = PFU_IDLE;
-  end
+    PFU_IDLE: 
+    begin
+        if(l2tlb_pfu_cmplt)
+            if(l2tlb_pfu_acc_fault)
+                pfu_nxt_st[1:0] = PFU_DENY;
+            else
+                pfu_nxt_st[1:0] = PFU_CHK;
+        else
+            pfu_nxt_st[1:0] = PFU_IDLE;
+    end
+    PFU_CHK: 
+    begin
+        if(l2tlb_pfu_deny)
+            pfu_nxt_st[1:0] = PFU_DENY;
+        else
+            pfu_nxt_st[1:0] = PFU_OK;
+    end
+    PFU_DENY: 
+    begin
+        pfu_nxt_st[1:0] = PFU_IDLE;
+    end
+    PFU_OK: 
+    begin
+        pfu_nxt_st[1:0] = PFU_IDLE;
+    end
+    default:
+    begin
+        pfu_nxt_st[1:0] = PFU_IDLE;
+    end
 endcase
 // &CombEnd; @950
 end

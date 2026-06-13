@@ -6,71 +6,101 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
   function new(string n = "mmu_l1dtlb_entry0_wfg_vseq"); super.new(n); m_va_base = 39'h10_0000; endfunction
 
   virtual task body();
+    `uvm_info(get_type_name(), "===== entry0_wfg_vseq body START =====", UVM_NONE)
     m_env_h = get_env(); m_lsu_vif = m_env_h.m_lsu.vif; m_misc_vif = m_env_h.m_misc.vif;
     if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
 
-    // Approach: occupy [0][1] with long PTW, dual-alloc [2][3],
-    // [3] enters WFG (gnt1, no bypass). Then free [0], allocate [0]
-    // while [3] still in WFG → bypass_en=0 → [0] enters WFG.
+    // =================================================================
+    // 持续制造双端口LSU miss:
+    //   - 调度器每个周期只能发射1个请求 (round-robin)
+    //   - 双端口每周期分配2个miss → WFG积累速度快于发射速度
+    //   - 当entry[0]完成refill被释放后, 其他entry仍在WFG
+    //   - entry[0]重新分配 → bypass_en=0 → 进入WFG
+    //   - 周期性flush → 覆盖 WFG→IDLE / WFG→ABT
+    // =================================================================
 
-    // Step 1-2: Occupy entries[0] and [1]
-    `uvm_info(get_type_name(), "Step 1-2: occupy [0][1]", UVM_LOW)
-    configure_ptw_delay(4096, 4096);
-    raw_pipe0(va_page(500), 7'd8, 1'b0); wait_lsu_cycles(2);
-    raw_pipe0(va_page(501), 7'd9, 1'b0); wait_lsu_cycles(2);
-    #2000ns;
+    // 初始化页表
+    do_bringup(512, 39'h10_0000);
 
-    // Step 3: Dual-allocate [2][3]. gnt0→[2] bypass→WFC. gnt1→[3]→WFG!
-    `uvm_info(get_type_name(), "Step 3: dual-alloc [2][3]", UVM_LOW)
-    configure_ptw_delay(8192, 8192);
-    raw_pipe01(va_page(502), va_page(503), 7'd10, 7'd11, 1'b0, 1'b0);
-    #2000ns;
+    // --- 阶段1: 中等PTW延迟, 持续双端口miss压力 ---
+    `uvm_info(get_type_name(), "阶段1: 持续双端口miss压力", UVM_LOW)
+    configure_ptw_delay(64, 128);
 
-    // Step 4: Wait for [0] PTW to complete → freed
-    `uvm_info(get_type_name(), "Step 4: wait [0] refill complete", UVM_LOW)
-    #80000ns;
+    // 持续发射64轮双端口miss, 每轮2个miss
+    // 调度器每cycle只能issue 1个, 我们每cycle分配2个
+    // → WFG entry持续积累, entry[0]反复被释放再分配
+    // → 每次重新分配时大概率有其他WFG存在 → bypass_en=0 → WFG
+    for (int round = 0; round < 64; round++) begin
+      raw_pipe01(va_page(round*2), va_page(round*2+1),
+                 7'(round[6:0]*2), 7'(round[6:0]*2+1),
+                 round[0], ~round[0]);
+      wait_lsu_cycles(1);
 
-    // Step 5: [0] is IDLE, [3] should be WFG, credit available
-    // Allocate [0] → bypass_en=0 → [0] enters WFG!
-    `uvm_info(get_type_name(), "Step 5: alloc [0] while bypass disabled", UVM_LOW)
-    raw_pipe0(va_page(600), 7'd20, 1'b0);
-    #200ns;
-
-    // Step 6: Flush → WFG→IDLE or WFG→ABT
-    `uvm_info(get_type_name(), "Step 6: flush", UVM_LOW)
-    raw_rtu_flush();
-    #5000ns;
-
-    // Attempt 2: different timing, occupy [1..7], free [1], dual-alloc [0][1]
-    configure_ptw_delay(1, 4); #50000ns;  // drain
-    
-    `uvm_info(get_type_name(), "Attempt 2: occupy [2..7], free [1], dual [0][1]", UVM_LOW)
-    configure_ptw_delay(2048, 2048);
-    for (int i = 2; i < 8; i++) begin
-      raw_pipe0(va_page(700 + i), 7'(7'd30 + i[6:0]), 1'b0); wait_lsu_cycles(1);
+      // 每8轮flush一次, 捕获WFG→IDLE / WFG→ABT
+      if (round % 8 == 7) begin
+        raw_rtu_flush();
+        wait_lsu_cycles(4);
+      end
     end
-    #3000ns;
-    // [2..7] in WFC. Allocate [0][1] single first:
-    raw_pipe0(va_page(700), 7'd32, 1'b0);  // [0] bypass→WFC
-    #2000ns;
-    // [1] still free, [0] in WFC. Dual-alloc: only [1] free for both gnts?
-    // Actually [0] occupied, [1] free, [2..7] occupied → only [1] free
-    // So single alloc of [1] → bypass→WFC. That doesn't help.
-    // Instead: free [0] first (wait for its PTW)
-    #40000ns;
-    // Now [0] and [1] both free, [2..7] in WFC
-    // Dual-alloc: gnt0→[0](bypass→WFC), gnt1→[1](WFG!)
-    raw_pipe01(va_page(702), va_page(703), 7'd42, 7'd43, 1'b0, 1'b0);
-    #2000ns;
-    // [1] in WFG now. Wait for [0] PTW → free [0]
-    #40000ns;
-    // [0] free, [1] in WFG → alloc [0] → bypass_en=0 → WFG
-    raw_pipe0(va_page(704), 7'd52, 1'b0);
-    #100ns;
-    raw_rtu_flush();
-    #5000ns;
+    #30000ns;
 
-    `uvm_info(get_type_name(), "entry[0] WFG done", UVM_LOW)
+    // --- 阶段2: 长PTW延迟, 确保WFG停留时间更长 ---
+    `uvm_info(get_type_name(), "阶段2: 长PTW + 持续双端口", UVM_LOW)
+    configure_ptw_delay(512, 1024);
+
+    for (int round = 0; round < 32; round++) begin
+      raw_pipe01(va_page(128 + round*2), va_page(129 + round*2),
+                 7'(round[6:0]*2+1), 7'(round[6:0]*2+2),
+                 round[0], ~round[0]);
+      wait_lsu_cycles(1);
+
+      if (round % 6 == 5) begin
+        raw_rtu_flush();
+        wait_lsu_cycles(3);
+      end
+    end
+    #50000ns;
+
+    // --- 阶段3: 短PTW, 高频flush, 捕获更多WFG→IDLE ---
+    `uvm_info(get_type_name(), "阶段3: 短PTW + 高频flush", UVM_LOW)
+    configure_ptw_delay(16, 32);
+
+    for (int round = 0; round < 48; round++) begin
+      raw_pipe01(va_page(256 + round*2), va_page(257 + round*2),
+                 7'(round[6:0]+10), 7'(round[6:0]+20),
+                 1'b0, round[0]);
+      wait_lsu_cycles(1);
+
+      // 更频繁flush
+      if (round % 4 == 3) begin
+        raw_rtu_flush();
+        wait_lsu_cycles(2);
+      end
+    end
+    #20000ns;
+
+    // --- 阶段4: store类型miss, 增加条件覆盖 ---
+    `uvm_info(get_type_name(), "阶段4: store miss + flush", UVM_LOW)
+    configure_ptw_delay(128, 256);
+
+    for (int round = 0; round < 24; round++) begin
+      raw_pipe01(va_page(384 + round*2), va_page(385 + round*2),
+                 7'(round[6:0]+30), 7'(round[6:0]+40),
+                 1'b1, round[0]);
+      wait_lsu_cycles(1);
+
+      if (round % 3 == 2) begin
+        raw_rtu_flush();
+        wait_lsu_cycles(2);
+      end
+    end
+    #30000ns;
+
+    // --- 最终排空 ---
+    configure_ptw_delay(1, 4);
+    #100000ns;
+
+    `uvm_info(get_type_name(), "entry[0] WFG覆盖率序列完成", UVM_LOW)
   endtask
 endclass
 

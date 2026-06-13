@@ -33,6 +33,7 @@ typedef enum int {
   L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX,
   L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX,
   L1DTLB_SCN_L2_REQQ_DEPTH,
+  L1DTLB_SCN_ENTRY0_WFG,
   L1DTLB_SCN_GENERIC_AUDIT
 } l1dtlb_scn_e;
 
@@ -296,6 +297,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_PLRU_WHITEBOX_ONLY_001",
       "DTLB_RESP_NO_IID_T01_001",
       "DTLB_REF_MODEL_OBSERVABILITY_001",
+      "DTLB_ENTRY0_WFG_001",
       "DTLB_SYSMAP_001": begin
         if (id == "DTLB_MB_HIGH_ENTRY_MATRIX_001") begin
           scn = L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX;
@@ -309,6 +311,10 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
           scn = L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX;
           sid = "L1DTLB_TS_HIT_RD_PERM_MODE_MATRIX";
           intent = "hit_rd port condition/toggle matrix across hit, fault, mode, stamo and huge-page paths";
+        end else if (id == "DTLB_ENTRY0_WFG_001") begin
+          scn = L1DTLB_SCN_ENTRY0_WFG;
+          sid = "L1DTLB_TS_ENTRY0_WFG_ROUND_ROBIN";
+          intent = "entry[0] WFG state coverage under round-robin scheduler with continuous dual-port LSU miss pressure";
         end else begin
           scn = L1DTLB_SCN_GENERIC_AUDIT;
           sid = "L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY";
@@ -3724,6 +3730,156 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(20);
   endtask
 
+  // ── Entry[0] WFG state coverage under round-robin scheduler ────────
+  // Fills MB entries with long PTW, then uses dual-port allocation to
+  // create WFG backlog. Under round-robin, entry[0] naturally enters
+  // WFG when re-allocated while other entries are still pending.
+  protected task scenario_entry0_wfg();
+    // =========================================================================
+    // entry[0] WFG state coverage under round-robin scheduler
+    //
+    // Core mechanism:
+    //   In dual-port mode with bypass_en=1, the scheduler bypasses ONLY
+    //   port 0's entry (the older iid).  Port 1's entry enters WFG.
+    //
+    //   For entry[0] to enter WFG: it must be port 1's slot (idx_a).
+    //   This requires port 1 to be "older": older0=0.
+    //   The wrap-around IID comparator yields older0=0 when iid0 > iid1
+    //   (both in the same MSB half, iid0 numerically larger in bits[5:0]).
+    //
+    //   With older0=0: sel1=idx_a=0 (entry[0]), sel0=idx_b.
+    //   Bypass takes sel0 → entry[idx_b]→WFC, entry[0]→WFG.
+    //
+    // Transitions targeted:
+    //   IDLE→WFG : iid trick with dual-port
+    //   WFG→WFC  : scheduler issues on next cycle (no flush)
+    //   WFG→ABT  : flush active same cycle as scheduler issue
+    //   WFG→IDLE : flush active, scheduler cannot issue (no credit)
+    // =========================================================================
+    bit occ_seen;
+    bit state_seen;
+    bit mb_empty;
+    int unsigned va_idx;
+
+    reset_ptw_responder_controls(1, 4);
+    do_bringup(1024, 39'h10_0000);  // Large enough so idx>=512 has valid PTEs
+    va_idx = 512;  // Start beyond TLB-fill range so accesses are TLB misses
+
+    // =====================================================================
+    // Phase 1: IDLE→WFG + WFG→WFC (normal issue, no flush)
+    // When MB is empty: idx_a=0, idx_b=1.
+    // raw_pipe01 with iid0 > iid1: older0=0 → sel1=0, sel0=1.
+    // Bypass takes sel0=1 → entry[1]→WFC.  entry[0]→WFG!
+    // =====================================================================
+    `uvm_info(get_type_name(), "entry0_wfg Phase 1: IDLE→WFG + WFG→WFC", UVM_LOW)
+    for (int iter = 0; iter < 4; iter++) begin
+      configure_ptw_delay(1, 4);
+      wait_l1d_mb_empty($sformatf("e0wfg_p1_drain_%0d", iter), mb_empty, 8192);
+
+      // Moderate PTW
+      configure_ptw_delay(512, 512);
+
+      // Dual-port with iid trick → entry[0]→WFG, entry[1]→bypass→WFC
+      raw_pipe01(va_page(va_idx), va_page(va_idx + 1),
+                 7'(20 + iter), 7'(10 + iter),  // iid0 > iid1
+                 iter[0], ~iter[0]);
+      va_idx += 2;
+
+      // No flush → scheduler issues entry[0] on next cycle → WFG→WFC
+      #20000ns;
+    end
+
+    // =====================================================================
+    // Phase 2: WFG→ABT (flush + issue same cycle)
+    // raw_pipe01 from empty MB → entry[0]→WFG, entry[1]→WFC.
+    // The allocation happens 2 posedges after LSU signals (T1 pipeline).
+    // After raw_pipe01 returns, wait 1 cycle for allocation to complete,
+    // then set flush for the issue cycle → WFG→ABT.
+    // =====================================================================
+    `uvm_info(get_type_name(), "entry0_wfg Phase 2: WFG→ABT", UVM_LOW)
+    for (int iter = 0; iter < 4; iter++) begin
+      configure_ptw_delay(1, 4);
+      wait_l1d_mb_empty($sformatf("e0wfg_p2_drain_%0d", iter), mb_empty, 8192);
+
+      configure_ptw_delay(512, 512);
+
+      raw_pipe01(va_page(va_idx), va_page(va_idx + 1),
+                 7'(50 + iter), 7'(40 + iter),  // iid0 > iid1
+                 1'b0, 1'b1);
+      va_idx += 2;
+
+      // raw_pipe01 returns after LSU signals cleared.
+      // T1 pipeline: miss registers at next posedge, alloc at posedge after.
+      // Need flush active at the posedge where entry[0] is WFG + scheduler issues.
+      // Wait 1 cycle for T1 capture, then set flush for alloc+issue cycle.
+      wait_lsu_cycles(1);
+      m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+      @(m_misc_vif.driver_cb);
+      m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+      wait_lsu_cycles(4);
+    end
+
+    // =====================================================================
+    // Phase 3: WFG→IDLE attempt (flush, no credit for issue)
+    // From empty MB, fire raw_pipe01 → entry[0]→WFG, entry[1]→WFC.
+    // Wait for allocation to complete, then flush with timing that
+    // might catch WFG before issue → WFG→IDLE.
+    // =====================================================================
+    `uvm_info(get_type_name(), "entry0_wfg Phase 3: WFG→IDLE attempt", UVM_LOW)
+    configure_ptw_delay(1, 4);
+    wait_l1d_mb_empty("e0wfg_p3_drain0", mb_empty, 8192);
+
+    configure_ptw_delay(512, 512);
+    raw_pipe01(va_page(va_idx), va_page(va_idx + 1),
+               7'd80, 7'd75, 1'b0, 1'b0);  // iid0 > iid1
+    va_idx += 2;
+    // Flush with various timing to attempt WFG→IDLE
+    wait_lsu_cycles(1);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+    @(m_misc_vif.driver_cb);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+    wait_lsu_cycles(4);
+
+    // =====================================================================
+    // Phase 4: Store-type entry[0] WFG + WFG→WFC
+    // From empty MB, store attribute for condition coverage.
+    // =====================================================================
+    `uvm_info(get_type_name(), "entry0_wfg Phase 4: store miss WFG", UVM_LOW)
+    configure_ptw_delay(1, 4);
+    wait_l1d_mb_empty("e0wfg_p4_drain", mb_empty, 8192);
+
+    configure_ptw_delay(512, 512);
+    raw_pipe01(va_page(va_idx), va_page(va_idx + 1),
+               7'd100, 7'd95, 1'b1, 1'b0);  // iid0 > iid1, store
+    va_idx += 2;
+    #20000ns;
+
+    // =====================================================================
+    // Phase 5: Long PTW, flush race for WFG→ABT
+    // =====================================================================
+    `uvm_info(get_type_name(), "entry0_wfg Phase 5: long PTW WFG→ABT", UVM_LOW)
+    configure_ptw_delay(1, 4);
+    wait_l1d_mb_empty("e0wfg_p5_drain", mb_empty, 8192);
+
+    configure_ptw_delay(4096, 4096);
+    raw_pipe01(va_page(va_idx), va_page(va_idx + 1),
+               7'd110, 7'd105, 1'b0, 1'b1);  // iid0 > iid1
+    va_idx += 2;
+    wait_lsu_cycles(1);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+    @(m_misc_vif.driver_cb);
+    m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+    wait_lsu_cycles(4);
+
+    // =====================================================================
+    // Final drain
+    // =====================================================================
+    configure_ptw_delay(1, 4);
+    #100000ns;
+
+    `uvm_info(get_type_name(), "entry0_wfg scenario done", UVM_LOW)
+  endtask
+
   virtual task body();
     l1dtlb_scn_e decoded;
     string decoded_sid;
@@ -3758,6 +3914,14 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     configure_ptw_delay(1, 4);
     raw_idle();
 
+    // ── Entry[0] WFG coverage under round-robin ──────────────────────────
+    // Strategy: continuously generate dual-port LSU misses.
+    // Under round-robin, the scheduler issues 1 request per cycle.
+    // Dual-port allocates 2 entries per cycle → WFG accumulates faster
+    // than the scheduler can drain. When entry[0] finishes refill and
+    // is freed, other entries are still WFG → bypass_en=0 → entry[0]
+    // enters WFG when re-allocated.
+    // Periodic flush covers WFG→IDLE transitions.
     case (scenario)
       L1DTLB_SCN_SMOKE_P0:         scenario_smoke_p0();
       L1DTLB_SCN_SMOKE_P1:         scenario_smoke_p1();
@@ -3808,6 +3972,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_MB_ENTRY2_STATE_MATRIX: scenario_mb_entry2_state_matrix();
       L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX: scenario_hit_rd_perm_mode_matrix();
       L1DTLB_SCN_L2_REQQ_DEPTH:    scenario_l2_reqq_depth();
+      L1DTLB_SCN_ENTRY0_WFG:       scenario_entry0_wfg();
       default: begin
         if (tc_id == "DTLB_SYSMAP_001")
           scenario_direct_map();

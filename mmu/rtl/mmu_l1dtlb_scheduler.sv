@@ -49,6 +49,7 @@ module mmu_l1dtlb_scheduler #(
 );
 
 localparam EID_WIDTH = $clog2(MB_DEPTH);
+localparam MB_MSB   = MB_DEPTH - 1;
 
 //!************************************************
 //! Credit Counter Management
@@ -58,42 +59,114 @@ logic                          credit_avail;
 logic                          req_fire;
 
 assign credit_avail = (credit_cnt > 0);
-assign req_fire     = dutlb_arb_req; // Assuming ready/valid (no wait on req channel)
+assign req_fire     = dutlb_arb_req;
 
 always_ff @(posedge sched_clk or negedge cpurst_b) begin
     if (!cpurst_b) begin
         credit_cnt <= CREDIT_MAX;
     end else begin
         case ({req_fire, l2tlb_credit_ret})
-            2'b10: credit_cnt <= credit_cnt - 1'b1; // Send only
-            2'b01: credit_cnt <= credit_cnt + 1'b1; // Return only
-            default: credit_cnt <= credit_cnt;      // Both or neither
+            2'b10: credit_cnt <= credit_cnt - 1'b1;
+            2'b01: credit_cnt <= credit_cnt + 1'b1;
+            default: credit_cnt <= credit_cnt;
         endcase
     end
 end
 
 //!************************************************
-//! 1. Miss Buffer Selection (Path A)
+//! 1. Miss Buffer Selection — Round Robin (Path A)
 //!************************************************
 logic       mb_req_vld;
-logic [EID_WIDTH-1:0] mb_req_id;
-logic [MB_DEPTH-1:0]  mb_req_sel_oh;
+logic [EID_WIDTH-1:0]    mb_req_id;
+logic [MB_DEPTH-1:0]     mb_req_sel_oh;
 
-// Find First Ready (Priority Encoder)
-always_comb begin
-    mb_req_vld    = 1'b0;
-    mb_req_id     = '0;
-    mb_req_sel_oh = '0;
-    
-    for (int i = 0; i < MB_DEPTH; i++) begin
-        if (mb_entry_ready[i]) begin
-            mb_req_vld    = 1'b1;
-            mb_req_id     = i[EID_WIDTH-1:0];
-            mb_req_sel_oh[i] = 1'b1;
-            break; // Priority: Index 0 > Index N
-        end
+// Round-robin priority pointer (one-hot)
+logic [MB_DEPTH-1:0]     priority_oh_q;
+logic [MB_DEPTH-1:0]     priority_oh_next;
+
+// Thermometer / intermediate nets
+wire  [MB_DEPTH-1:0]     therm_ptr;
+wire  [MB_DEPTH-1:0]     high_table_mask;
+wire  [MB_DEPTH-1:0]     high_table_therm;
+logic [MB_DEPTH-1:0]     high_table_oh;
+logic [MB_DEPTH-1:0]     no_ptr_mask_therm;
+logic [MB_DEPTH-1:0]     no_ptr_mask_oh;
+logic                    sel_high_table;
+logic                    sel_low_table;
+logic [MB_DEPTH-1:0]     issue_oh;
+logic                    update_en;
+
+// Priority pointer register — rotates left after each issue
+always_ff @(posedge sched_clk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+        priority_oh_q <= {{MB_MSB{1'b0}}, 1'b1}; // reset → point to entry 0
+    end else if (update_en) begin
+        priority_oh_q <= priority_oh_next;
     end
 end
+
+// --- Generate block: thermometer encoding & one-hot extraction ---
+genvar i;
+generate
+    // Thermometer of priority pointer
+    assign therm_ptr[0] = priority_oh_q[0];
+    for (i = 1; i < MB_DEPTH; i = i + 1) begin : gene_ptr_therm
+        assign therm_ptr[i] = therm_ptr[i-1] | priority_oh_q[i];
+    end
+
+    // "High" table = ready entries at or above the priority pointer
+    assign high_table_mask = therm_ptr & mb_entry_ready;
+
+    assign high_table_therm[0] = high_table_mask[0];
+    for (i = 1; i < MB_DEPTH; i = i + 1) begin : gene_high_table_mask_therm
+        assign high_table_therm[i] = high_table_therm[i-1] | high_table_mask[i];
+    end
+
+    assign high_table_oh[0] = high_table_therm[0];
+    for (i = 1; i < MB_DEPTH; i = i + 1) begin : gene_high_table_one_hot
+        assign high_table_oh[i] = high_table_therm[i] & ~high_table_therm[i-1];
+    end
+
+    // "Low" table = ready entries below the priority pointer (wrap-around)
+    assign no_ptr_mask_therm[0] = mb_entry_ready[0];
+    for (i = 1; i < MB_DEPTH; i = i + 1) begin : gene_no_mask_therm
+        assign no_ptr_mask_therm[i] = no_ptr_mask_therm[i-1] | mb_entry_ready[i];
+    end
+
+    assign no_ptr_mask_oh[0] = no_ptr_mask_therm[0];
+    for (i = 1; i < MB_DEPTH; i = i + 1) begin : gene_no_mask_one_hot
+        assign no_ptr_mask_oh[i] = no_ptr_mask_therm[i] & ~no_ptr_mask_therm[i-1];
+    end
+endgenerate
+
+// --- Issue selection (combinational) ---
+assign sel_high_table = |high_table_oh;
+assign sel_low_table  = |no_ptr_mask_oh;
+assign update_en      = credit_avail & (|mb_entry_ready);
+
+always_comb begin
+    casez ({sel_high_table, sel_low_table})
+        2'b00 : issue_oh = {MB_DEPTH{1'b0}};
+        2'b01 : issue_oh = no_ptr_mask_oh;
+        2'b1? : issue_oh = high_table_oh;
+        default : issue_oh = {MB_DEPTH{1'b0}};
+    endcase
+end
+
+// Rotate left: next priority starts one position after the current winner
+assign priority_oh_next = {issue_oh[MB_DEPTH-2:0], issue_oh[MB_DEPTH-1]};
+
+// One-hot to binary index
+always_comb begin
+    mb_req_id = {EID_WIDTH{1'b0}};
+    for (integer j = 0; j < MB_DEPTH; j = j + 1) begin : gene_issue_entry_index
+        if (issue_oh[j])
+            mb_req_id = j[EID_WIDTH-1:0];
+    end
+end
+
+assign mb_req_vld    = |mb_entry_ready;
+assign mb_req_sel_oh = issue_oh;
 
 //!************************************************
 //! 2. Bypass Selection (Path B)

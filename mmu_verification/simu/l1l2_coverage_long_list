@@ -3,3 +3,4 @@ test_mmu_l1dtlb_cov_mb_expt
 test_mmu_l1itlb_cov_sweep
 test_mmu_l2tlb_cov_mb_reqq
 test_mmu_l2tlb_cov_tag_inv
+test_mmu_l1dtlb_cov_entry0_wfg

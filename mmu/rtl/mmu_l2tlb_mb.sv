@@ -164,7 +164,8 @@ module mmu_l2tlb_mb #(
                 .VPN_WIDTH      (VPN_WIDTH),
                 .L1EID_WIDTH    (L1EID_WIDTH),
                 .PTW_TYPE_WIDTH (PTW_TYPE_WIDTH),
-                .QUE_ID_WIDTH   (QUE_ID_WIDTH)
+                .QUE_ID_WIDTH   (QUE_ID_WIDTH),
+                .ENTRY_ID       (i)
             ) x_mb_entry (
                 // Global
                 .cp0_mmu_icg_en     (cp0_mmu_icg_en),
@@ -264,9 +265,11 @@ module mmu_l2tlb_mb #(
 // synopsys translate_off
 logic mmu_itlb_dbg_en;
 int unsigned mmu_itlb_dbg_stuck_cycles;
+logic mmu_l2mb_dbg_en;
 
 initial begin
   mmu_itlb_dbg_en = $test$plusargs("MMU_ITLB_DBG");
+  mmu_l2mb_dbg_en = $test$plusargs("MMU_L2MB_DBG");
 end
 
 always_ff @(posedge reqq_clk or negedge cpurst_b) begin
@@ -312,6 +315,34 @@ always_ff @(posedge reqq_clk or negedge cpurst_b) begin
                entry_out_type[1],
                entry_out_vpn[1],
                entry_out_l1eid[1]);
+    end
+
+    // L2MB array-level debug
+    if (mmu_l2mb_dbg_en) begin
+      if (req_valid)
+        $display("[L2MB_DBG][ARR] t=%0t REQ  is_dtlb=%0b vpn=0x%07h l1eid=0x%0h type=0x%0h",
+                 $time, req_is_dtlb, req_vpn, req_l1eid, req_acc_type);
+      if (|alloc_en_vec)
+        $display("[L2MB_DBG][ARR] t=%0t ALLOC_EN  vec=0x%03h dtlb_alloc_oh=0x%02h dtlb_alloc_idx=0x%0h mb_full=%0b",
+                 $time, alloc_en_vec, dtlb_alloc_oh, dtlb_alloc_index, mb_dtlb_full);
+      if (|entry_grant_vec)
+        $display("[L2MB_DBG][ARR] t=%0t ISSUE_GRANT  vec=0x%03h ffr_oh=0x%03h ptw_ready=%0b entry_ready=%0b",
+                 $time, entry_grant_vec, ffr_oh, ptw_ready, entry_ready);
+      if (|bypass_grant_vec)
+        $display("[L2MB_DBG][ARR] t=%0t BYPASS_GRANT  vec=0x%03h",
+                 $time, bypass_grant_vec);
+      if (fb_valid)
+        $display("[L2MB_DBG][ARR] t=%0t FB  trans_id=0x%0h fb_hit=%0b",
+                 $time, fb_trans_id, fb_hit);
+      if (issue_req)
+        $display("[L2MB_DBG][ARR] t=%0t ISSUE_REQ  issue_vpn=0x%07h issue_eid=0x%02h issue_is_dtlb=%0b entry_ready=%0b req_alloc_valid=%0b",
+                 $time, issue_vpn, issue_eid, issue_is_dtlb, entry_ready, req_alloc_valid);
+      if (tlboper_ptw_abort)
+        $display("[L2MB_DBG][ARR] t=%0t PTW_ABORT  vld=0x%03h rdy=0x%03h",
+                 $time, entry_vld_vec, entry_rdy_vec);
+      if ((entry_vld_vec != '0) && (($time % 1024) == 0))
+        $display("[L2MB_DBG][ARR] t=%0t STATE  vld=0x%03h rdy=0x%03h dealloc=0x%03h ptw_ready=%0b entry_ready=%0b issue_req=%0b",
+                 $time, entry_vld_vec, entry_rdy_vec, entry_dealloc_vec, ptw_ready, entry_ready, issue_req);
     end
   end
 end

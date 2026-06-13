@@ -10,7 +10,8 @@ module mmu_l2tlb_mb_entry#(
     //parameter ASID_WIDTH = 5,
     parameter L1EID_WIDTH  = 3,    // Width for Miss Buffer ID
     parameter QUE_ID_WIDTH = 4,
-    parameter PTW_TYPE_WIDTH = 3     // Width for Request Type
+    parameter PTW_TYPE_WIDTH = 3,     // Width for Request Type
+    parameter ENTRY_ID = 0
 
 
 )(
@@ -182,6 +183,58 @@ module mmu_l2tlb_mb_entry#(
     assign entry_out_l1eid    =   entry_l1eid;
     assign entry_out_type     =   entry_type;
     assign entry_out_queue_id =   entry_queue_id;
+
+// synopsys translate_off
+logic mmu_l2mb_dbg_en;
+logic prev_r_vld;
+logic prev_r_sent;
+
+initial begin
+    mmu_l2mb_dbg_en = $test$plusargs("MMU_L2MB_DBG");
+    prev_r_vld = 1'b0;
+    prev_r_sent = 1'b0;
+end
+
+always @(posedge entry_clk or negedge cpurst_b) begin
+    if (!cpurst_b) begin
+        prev_r_vld <= 1'b0;
+        prev_r_sent <= 1'b0;
+    end else begin
+        prev_r_vld <= r_vld;
+        prev_r_sent <= r_sent;
+    end
+end
+
+always @(posedge reqq_clk) begin
+    if (!mmu_l2mb_dbg_en) begin
+    end else begin
+        if (r_vld && !prev_r_vld)
+            $display("[L2MB_DBG][E%0d] t=%0t r_vld 0->1  alloc_en=%0b bypass_grant=%0b sent=%0b",
+                     ENTRY_ID, $time, entry_alloc_en, bypass_grant, r_sent);
+        if (!r_vld && prev_r_vld)
+            $display("[L2MB_DBG][E%0d] t=%0t r_vld 1->0  clr=%0b dealloc=%0b sent=%0b",
+                     ENTRY_ID, $time, entry_clr, entry_dealloc, r_sent);
+        if (r_sent && !prev_r_sent)
+            $display("[L2MB_DBG][E%0d] t=%0t r_sent 0->1  issue_grant=%0b bypass_grant=%0b alloc_en=%0b",
+                     ENTRY_ID, $time, issue_grant, bypass_grant, entry_alloc_en);
+        if (!r_sent && prev_r_sent)
+            $display("[L2MB_DBG][E%0d] t=%0t r_sent 1->0  sent_clr=%0b abort=%0b dealloc=%0b",
+                     ENTRY_ID, $time, sent_clr, tlboper_ptw_abort, entry_dealloc);
+        if (entry_alloc_en)
+            $display("[L2MB_DBG][E%0d] t=%0t ALLOC  vpn=0x%07h l1eid=0x%0h type=0x%0h bypass_grant=%0b",
+                     ENTRY_ID, $time, alloc_vpn, alloc_l1eid, alloc_type, bypass_grant);
+        if (issue_grant)
+            $display("[L2MB_DBG][E%0d] t=%0t ISSUE_GRANT  vld=%0b sent=%0b rdy=%0b",
+                     ENTRY_ID, $time, r_vld, r_sent, entry_rdy);
+        if (fb_match_id)
+            $display("[L2MB_DBG][E%0d] t=%0t FB_MATCH  fb_hit=%0b vld=%0b sent=%0b",
+                     ENTRY_ID, $time, fb_hit, r_vld, r_sent);
+        if (tlboper_ptw_abort)
+            $display("[L2MB_DBG][E%0d] t=%0t PTW_ABORT  vld=%0b sent=%0b",
+                     ENTRY_ID, $time, r_vld, r_sent);
+    end
+end
+// synopsys translate_on
 
 endmodule
 

@@ -377,12 +377,20 @@ end
 
 assign create_en = |mbuf_grant[3:0] & (!twu_itlb_sel);
 
-always@(posedge mbuf_clk or negedge cpurst_b)
-begin
-  if (!cpurst_b)
-    create_ptr[MBUF_ENTRY_NUM-2:0] <= {{(MBUF_ENTRY_NUM-2){1'b0}}, 1'b1};
-  else if (create_en)
-    create_ptr[MBUF_ENTRY_NUM-2:0] <= {create_ptr[MBUF_ENTRY_NUM-3:0],create_ptr[MBUF_ENTRY_NUM-2]};
+// Combinational find-first-zero on mbuf_entry_vld[7:0] to pick a free DTLB entry.
+// Entries still being processed (vld=1) are skipped.
+always_comb begin
+    casez(mbuf_entry_vld[7:0])
+      8'b???????0 : create_ptr[7:0] = 8'b0000_0001;
+      8'b??????01 : create_ptr[7:0] = 8'b0000_0010;
+      8'b?????011 : create_ptr[7:0] = 8'b0000_0100;
+      8'b????0111 : create_ptr[7:0] = 8'b0000_1000;
+      8'b???01111 : create_ptr[7:0] = 8'b0001_0000;
+      8'b??011111 : create_ptr[7:0] = 8'b0010_0000;
+      8'b?0111111 : create_ptr[7:0] = 8'b0100_0000;
+      8'b01111111 : create_ptr[7:0] = 8'b1000_0000;
+      default     : create_ptr[7:0] = 8'b0000_0000;
+    endcase
 end
 assign mbuf_entry_upd[MBUF_ENTRY_NUM-2:0] = {MBUF_ENTRY_NUM-1{create_en}} & create_ptr[MBUF_ENTRY_NUM-2:0];
 

@@ -453,6 +453,7 @@ PHASE14_SIGNOFF_MATRIX_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/M
 PHASE14_ISSUE_TRACKER     ?= $(PHASE14_ISSUE_TRACKER_DEFAULT)
 PHASE14_SIGNOFF_MATRIX    ?= $(PHASE14_SIGNOFF_MATRIX_DEFAULT)
 PHASE14_EXCLUDE_V4        ?= $(SIMU_DIR)/exclude_v4.do
+PHASE14_EXCLUDE_V4_TGL    ?= $(SIMU_DIR)/exclude_v4.tgl
 PHASE14_URG_REPORT_DIR    ?= $(COV_DIR)/phase14_urgReport
 PHASE14_URG_MERGED_DB     ?= $(COV_DIR)/phase14_merged.vdb
 PHASE14_URG_LOG           ?= $(COV_DIR)/phase14_urg.log
@@ -1510,7 +1511,8 @@ phase14_coverage_merge_parallel:
 		--merged-db "$(PHASE14_URG_MERGED_DB)" \
 		--report-dir "$(PHASE14_URG_REPORT_DIR)" \
 		--log "$(PHASE14_PARALLEL_URG_LOG)" \
-		--batch-size "$(URG_BATCH_SIZE)"
+		--batch-size "$(URG_BATCH_SIZE)" \
+		--elfile "$(PHASE14_EXCLUDE_V4_TGL)"
 
 phase14_gate_sharded:
 	@test -f "$(PHASE14_EXIT_GATE)" || (echo "ERROR: Phase14 exit gate missing: $(PHASE14_EXIT_GATE)"; exit 2)

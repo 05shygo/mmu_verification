@@ -653,6 +653,16 @@ def build_parser() -> argparse.ArgumentParser:
             "Default: auto (set PHASE14_XML_COVERAGE_FALLBACK=never to disable)."
         ),
     )
+    parser.add_argument(
+        "--elfile",
+        default="",
+        help=(
+            "Optional URG exclusion file applied at report time (-elfile). "
+            "Used to honor reviewed coverage exclusions (e.g. simu/exclude_v4.tgl). "
+            "Only structural/unreachable exclusions should be placed here; see "
+            "MMU-P14-ISSUE-022."
+        ),
+    )
     return parser
 
 
@@ -692,9 +702,13 @@ def report_with_optional_context(
     merged_db: Path,
     report_dir: Path,
     log_path: Path,
+    elfile: Optional[Path] = None,
 ) -> int:
+    elfile_args: List[str] = []
+    if elfile and Path(elfile).is_file():
+        elfile_args = ["-elfile", str(elfile)]
     attempts: List[List[str]] = [
-        [urg, "-full64", "-dir", str(merged_db), "-format", "both", "-report", str(report_dir)]
+        [urg, "-full64", "-dir", str(merged_db), *elfile_args, "-format", "both", "-report", str(report_dir)]
     ]
     if has_optional_files(base_db):
         assert base_db is not None
@@ -705,6 +719,7 @@ def report_with_optional_context(
                 "-dir",
                 str(base_db),
                 str(merged_db),
+                *elfile_args,
                 "-format",
                 "both",
                 "-report",
@@ -808,7 +823,9 @@ def main() -> int:
             return run_xml_fallback_report(vdbs, report_dir, merged_db, log_path, "final merge", rc)
         return rc
 
-    rc = report_with_optional_context(args.urg, base_db, merged_db, report_dir, log_path)
+    rc = report_with_optional_context(
+        args.urg, base_db, merged_db, report_dir, log_path, elfile=args.elfile or None
+    )
     if rc != 0:
         print(f"ERROR: URG report generation failed rc={rc} log={log_path}", file=sys.stderr)
         if args.xml_fallback == "auto":

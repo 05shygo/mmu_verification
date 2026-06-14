@@ -86,6 +86,8 @@ Review policy:
 | MMU-P14-ISSUE-017 | RTL/Design Record | L1DTLB expt_wakeup typo (weakup) + SVA port mismatch blocks LSU drain in PMP-deny tests | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-018 | RTL/Design Record | L2TLB PFU refill data race: pfu_pa_buf latches wrong PPN from concurrent PTW completion | Phase 14 | High | Phase14 Closure Owner | Closed | No |
 | MMU-P14-ISSUE-019 | Testbench/Scoreboard | PTW_ORPHAN_COMPLETION: bump_epoch clears m_ptw entries before in-flight completions arrive, misclassifying stale as orphan | Phase 14 | Medium | Phase14 Closure Owner | Closed | No |
+| MMU-P14-ISSUE-021 | Makefile/Gate | Phase14 exit gate coverage parser cherry-picked max-per-module and reported false 100% | Phase 14 | High | Phase14 Closure Owner | Closed | Conditional |
+| MMU-P14-ISSUE-022 | Waiver/Signoff | DUT code coverage below Phase14 thresholds (line/branch/toggle/fsm/assert); closure via reviewed exclusions and targeted tests | Phase 14 | High | Phase14 Closure Owner | Open | Conditional |
 
 ---
 
@@ -1982,13 +1984,154 @@ else if(pfu_idle_st && l2tlb_pfu_pa_load)   // 仅翻译完成时加载
 
 ---
 
+## MMU-P14-ISSUE-021 - Phase14 Exit Gate Coverage Parser Reported False 100%
+
+| Field | Value |
+| --- | --- |
+| Type | Makefile/Gate |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Closed |
+| Blocking | Conditional (reverting it would re-introduce a false signoff) |
+| First observed | 2026-06-14, during `make covp` scope-gate triage |
+| Primary files | `mmu_verification/scripts/phase14_exit_gate.py` |
+| Fix scope | `find_metric` replaced by authoritative column-aligned parser |
+
+### Failure Signature
+
+`make phase14_gate_parallel` / `phase14_exit_check` reported every code-coverage
+metric at 100.00% and printed `PHASE14_EXIT_CHECK: PASS`, while the Synopsys URG
+`dashboard.txt` aggregate was line 95.56% / toggle 70.22% / fsm 80.90%. The
+SignoffMatrix S3 (code coverage) and S5 (assertion) rows recorded `Pass` on this
+false basis.
+
+### Root Cause
+
+`find_metric` rglob-scanned every `.txt`/`.html` file under the URG report
+directory and, for each metric keyword, returned the **maximum** percentage
+matched anywhere (`if ... value > best[0]: best = (value, path)`). Because some
+individual module in the design reaches 100% for each metric, the function
+reported 100% as if it were the design aggregate. This is a parser-integrity
+bug, not a coverage regression: URG's own aggregate was always correct, but the
+gate consumed the wrong number.
+
+### Fix (`phase14_exit_gate.py`)
+
+- removed `find_metric`, `iter_report_texts`, `sanitize`, and the unused
+  `import html`;
+- added `find_dut_instance_coverage` (reads the `u_dut` instance subtree row
+  from `hierarchy.txt` by column-header alignment), `find_dashboard_total`
+  (reads URG `Total Coverage Summary` from `dashboard.txt`), and
+  `resolve_aggregate_coverage`;
+- `check_coverage` maps each metric via `METRIC_COLUMN` to the authoritative
+  aggregate and prints both the DUT-instance view and the total-including-TB
+  view;
+- added `--dut-instance` (default `u_dut`) with graceful fallback to the
+  dashboard total when the instance is absent.
+
+### Verification
+
+Re-running the gate against the unchanged `phase14_urgReport` now reports the
+real DUT numbers and `FAIL`:
+
+```text
+DUT coverage (authoritative): LINE=96.71% BRANCH=94.13% COND=82.63%
+  TOGGLE=72.09% FSM=80.90% ASSERT=86.95% source=hierarchy.txt:u_dut
+line: 96.71% below 99.50% ... toggle: 72.09% below 98.00% ...
+PHASE14_EXIT_CHECK: FAIL (1 failed criterion/criteria)
+```
+
+The underlying coverage gap is tracked separately under MMU-P14-ISSUE-022.
+Closed for the parser fix; Conditional because reverting re-introduces a false
+signoff.
+
+---
+
+## MMU-P14-ISSUE-022 - DUT Code Coverage Below Phase14 Thresholds
+
+| Field | Value |
+| --- | --- |
+| Type | Waiver/Signoff |
+| Severity | High |
+| Owner | Phase14 Closure Owner |
+| Status | Open |
+| Blocking | Conditional (blocks Phase14 signoff until closed; enforced by the S3/S5 coverage criteria in the exit gate) |
+| First observed | 2026-06-14, after MMU-P14-ISSUE-021 exposed the real numbers |
+| Primary evidence | `output/coverage/phase14_urgReport/dashboard.txt`, `.../hierarchy.txt` |
+| Related | MMU-P14-ISSUE-003 (fallback/waiver policy), MMU-P14-ISSUE-021 (gate parser fix) |
+
+### Current Real Numbers (2026-06-14, with reviewed structural exclusions applied)
+
+| Metric | DUT `u_dut` raw | DUT `u_dut` post-exclusion | Total (incl TB) | Threshold | Gap (post-excl) |
+| --- | --- | --- | --- | --- | --- |
+| line | 96.71% | 96.71% | 95.56% | 99.50% | -2.79% |
+| branch | 94.13% | 94.13% | 92.89% | 99.00% | -4.87% |
+| toggle | 72.09% | 72.34% (+0.25%) | 70.43% | 98.00% | -25.66% |
+| fsm | 80.90% | 86.10% (+5.20%) | 86.10% | 99.00% | -12.90% |
+| assert | 86.95% | 86.95% | 87.05% | 100.00% | -13.05% |
+
+The raw column is pre-exclusion; the post-exclusion column reflects
+`simu/exclude_v4.tgl` applied via URG `-elfile` at report time. The toggle
+exclusions remove reset-net and DFT/perf-enable signals (structurally
+unreachable). The FSM exclusions remove 12 reset-path-only transitions
+(transitions whose sole code path is `if(!cpurst_b) state <= IDLE`, verified
+against RTL to have no functional next-state path and no abort-to-IDLE branch
+in the state register). Functional uncovered transitions are NOT excluded.
+
+### Closure Plan
+
+1. `urg -dump full_exclusions` against the merged VDB to enumerate every
+   uncovered object per metric, scoped to the DUT instance subtree.
+2. Triage each uncovered object into:
+   - **Unreachable** (constant driver, tie-off, reset-only, unused/dead port
+     field, reset-path-only FSM transition) → reviewed exclusion in
+     `simu/exclude_v4.do` / `simu/exclude_v4.tgl` with
+     `-comment "MMU-P14-ISSUE-022: <reason>"`, requires second review.
+   - **Reachable but untested** → targeted testcase / directed stimulus.
+3. Re-merge coverage and re-run the gate; iterate until S3/S5 meet threshold or
+   the residual gap is second-reviewed as waived under this issue.
+
+### Closure Progress (2026-06-14)
+
+- **Toggle structural exclusions** (C1.1, COMPLETE): reset nets + DFT/perf
+  enables excluded across 299 DUT instances; +0.25% toggle.
+- **FSM reset-path exclusions** (C1.2, COMPLETE): 12 transitions excluded
+  (ct_mmu_tlboper tlbp/tlbr/tlbwi/tlbwr/tlbiasid/tlbiva + mmu_l2tlb pfu);
+  +5.20% FSM. Each verified in RTL to have no functional path.
+- **FSM functional gaps** (C1.2, IN PROGRESS): 5 transition classes remain
+  uncovered and are NOT excluded (functional paths exist but were not
+  stimulated):
+  - `ct_mmu_tlboper tlbiasid`: IASID_WT->IASID_IDLE (line 603, needs
+    `arb_tlboper_grant && tlb_inv_done` during WT).
+  - `mmu_l2tlb pfu`: PFU_CHK->PFU_DENY (line 1368, needs `l2tlb_pfu_deny`;
+    entangled with MMU-P14-ISSUE-020 L2TLB PFU race).
+  - `mmu_l1itlb ref`: WFG->IDLE (line 755) and WFG->ABT (line 753); need
+    `ifu_mmu_abort` during WFG with `credit_cnt` 0 / non-0 respectively.
+  - `mmu_l1dtlb_mb_entry state_r`: STATE_WFG->STATE_IDLE (line 148, needs
+    `abort_this_cyc` during WFG without simultaneous grant).
+  - `twu ptw`: TWU_1G_CRS->TWU_IDLE and TWU_2M_CRS->TWU_IDLE (line 1206
+    abort path, needs `tlboper_ptw_abort` during crossing check).
+  These are realistic abort/flush-during-miss scenarios; targeted tests are
+  planned (existing tests cover normal and abort-after-grant paths only).
+- **Toggle threshold strategy** (C1.3, NOT STARTED): the residual toggle gap
+  (~-25.66%) is dominated by address/ASID bit coverage (stimulus distribution),
+  not safe structural exclusions. Analysis for RTL/threshold review pending.
+
+### Signoff Decision
+
+Open. The S3/S5 rows in `MMU_Phase14_SignoffMatrix.md` are set to `Open` with
+the real numbers pending closure. Final status (Pass / Waived) requires the
+exclusion/test work above plus second review.
+
+---
+
 ## Phase 14 Signoff Reference
 
 Phase 14 signoff notes should reference this tracker as:
 
 ```text
 Issue tracker: doc/MMU_Phase14_IssueTracker.md
-Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-016, MMU-P14-ISSUE-020
+Open / accepted issues: MMU-P14-ISSUE-001, MMU-P14-ISSUE-002, MMU-P14-ISSUE-003, MMU-P14-ISSUE-004, MMU-P14-ISSUE-005, MMU-P14-ISSUE-016, MMU-P14-ISSUE-020, MMU-P14-ISSUE-022
 ```
 
 Before final signoff, update this table:
@@ -2016,3 +2159,5 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-018 | Closed | `test_ptw_pmp_port_map_concurrent_606`: 45,802→1 UVM errors; LSU_P2/P0 PA mismatch, P6E/P6C errors eliminated; only pre-existing PTW_ORPHAN remains |
 | MMU-P14-ISSUE-019 | Closed | `bump_epoch` m_ptw clear moved to `on_reset` only; STALE path in `on_ptw_completion` now correctly handles in-flight completions after epoch change |
 | MMU-P14-ISSUE-020 | Open | `mmu/rtl/mmu_l2tlb.sv:1402`: `l2tlb_pfu_cmplt` condition-3 races PFU buffer load before PTW walk completes; `pfu_pa_buf` latches stale PPN from previous translation |
+| MMU-P14-ISSUE-021 | Closed | `scripts/phase14_exit_gate.py`: `find_metric` (scan-all-take-max) replaced by authoritative `u_dut`-instance + dashboard-total parser; `--dut-instance` added; gate now reports real DUT numbers and FAILs honestly |
+| MMU-P14-ISSUE-022 | Open | DUT `u_dut` code coverage line 96.71% / branch 94.13% / toggle 72.34% / fsm 86.10% / assert 86.95% below Phase14 thresholds (post structural exclusion); closure via reviewed exclusions (`simu/exclude_v4.do`/`.tgl`) + targeted tests; S3/S5 Open |

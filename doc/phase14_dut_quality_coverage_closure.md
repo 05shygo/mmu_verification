@@ -671,3 +671,177 @@ python3 scripts/phase14_coverage_hotspots.py \
   但不再阻塞当前 85% functional 目标。
 - 最终 signoff 仍必须基于 official Synopsys URG report；本节使用的 XML
   hotspot report 是诊断/趋势证据。
+
+## C1.2 + C1.3 Structural exclusion formalization and toggle/FSM gap analysis
+
+本节记录在 `MMU-P14-ISSUE-022` 下对 official `phase14_merged.vdb` 做的
+结构化排除（toggle + FSM reset-path）以及对剩余 toggle/FSM gap 的分类。
+所有排除仅针对 *structurally-unreachable* 对象；任何 *functional/behavioral*
+uncovered 项均不排除，改为列入后续定向激励工作清单。
+
+参考文档：
+
+- `doc/archive_merged_20260607/MMU_Phase14_IssueTracker.md` (ISSUE-022)
+- `doc/archive_merged_20260607/MMU_Phase14_SignoffMatrix.md` (S3/S5)
+- `simu/exclude_v4.tgl` (applied URG elfile)
+- `simu/exclude_v4.do` (human-readable waiver record + representative
+  `coverage exclude` entries)
+
+### C1.1 Toggle structural exclusions (COMPLETE)
+
+排除类别（both 0->1 and 1->0）：
+
+- `cpurst_b` / `rst_b` / `rst_n`：复位网络；功能场景只有 boot 时 0->1，
+  1->0 不发生。
+- `pad_yy_icg_scan_en`：DFT scan/ICG enable，功能模式恒 0。
+- `hpcp_mmu_cnt_en`：performance-counter enable，验证中 gated/tie。
+
+实现：`simu/exclude_v4.tgl`，299 个 DUT 实例。
+
+测量影响（`phase14_merged.vdb`，URG `V-2023.12-SP2`）：
+
+| Metric | Before | After | Delta |
+| --- | --- | --- | --- |
+| DUT u_dut toggle | 72.09% | 72.34% | +0.25% |
+| line/branch/cond/fsm/assert | unchanged | unchanged | 0 |
+
+结论：reset/DFT 排除是正确且标准的，但只占 raw toggle gap 很小比例。剩余
+toggle gap 主要来自 address/ASID bit coverage（见 C1.3）。
+
+### C1.2 FSM reset-path transition exclusions (COMPLETE)
+
+#### 方法
+
+1. `urg -full_exclusions fsm` 对 `phase14_merged.vdb` 生成 exclusion 模板。
+2. 对每个 uncovered transition，逐个核对 RTL：
+   - 状态寄存器块是否仅有 `reset + functional next-state`（无 abort-to-IDLE 分支）。
+   - 组合 next-state 块的 WFG/WFC/WT/WRTAG case 是否有到 IDLE 的赋值。
+3. 仅当两个条件都确认 *no functional path* 时才排除该 transition。
+
+#### 排除清单（12 个 reset-only transitions）
+
+| Module | FSM | Excluded transition | RTL reset line | Verification |
+| --- | --- | --- | --- | --- |
+| ct_mmu_tlboper | tlbp_cur_st | PWFG->IDLE | 285 | WFG case 仅 grant/stay |
+| ct_mmu_tlboper | tlbr_cur_st | RWFG->IDLE | 345 | WFG case 仅 grant/stay |
+| ct_mmu_tlboper | tlbwi_cur_st | TLBOP_WFG->IDLE | 405 | WFG case 仅 grant/stay |
+| ct_mmu_tlboper | tlbwr_cur_st | TLBWR_WFG->IDLE | 467 | WFG case 仅 grant/stay |
+| ct_mmu_tlboper | tlbwr_cur_st | WRTAG->IDLE | 467 | WRTAG case 仅 complete/stay |
+| ct_mmu_tlboper | tlbiasid_cur_st | IASID_RD->IDLE | 566 | RD case 仅 grant/stay |
+| ct_mmu_tlboper | tlbiasid_cur_st | IASID_WFC->IDLE | 566 | WFC case 仅 WT/NWT/stay |
+| ct_mmu_tlboper | tlbiva_cur_st | IVA_CMP->IDLE | 870 | CMP case 仅 WR/CMPLT/stay |
+| ct_mmu_tlboper | tlbiva_cur_st | IVA_RD->IDLE | 870 | RD case 仅 CMP/stay |
+| ct_mmu_tlboper | tlbiva_cur_st | IVA_WR->IDLE | 870 | WR case 仅 WT/stay |
+| ct_mmu_tlboper | tlbiva_cur_st | IVA_WT->IDLE | 870 | WT case 仅 CMPLT/stay |
+| mmu_l2tlb | pfu_cur_st | PFU_CHK->PFU_IDLE | 1347 | CHK case 仅 DENY/OK |
+
+实现：追加到 `simu/exclude_v4.tgl` 的 INSTANCE blocks（`x_ct_mmu_tlboper`
+和 `x_mmu_l2tlb`），使用 URG elfile `Fsm <name> + Transition <src>-><dst>`
+语法。
+
+测量影响：
+
+| Metric | Before | After | Delta |
+| --- | --- | --- | --- |
+| DUT u_dut FSM | 80.90% | 86.10% | +5.20% |
+| line/branch/cond/toggle/assert | unchanged | unchanged | 0 |
+
+instance-level 确认：`x_ct_mmu_tlboper` 6 个 FSM 中 5 个达到 100%
+（tlbp/tlbr/tlbwi/tlbwr/tlbiva），tlbiasid 达到 87.50%（剩余 1 个 functional
+gap）；`x_mmu_l2tlb pfu` 达到 83.33%（剩余 1 个 functional gap）。
+
+#### 未排除的 functional FSM gaps（需定向激励）
+
+下列 transition 有 functional code path 但当前激励未覆盖，**不排除**，
+列为后续定向 testcase 工作项：
+
+| Module | FSM | Transition | RTL condition | Existing test candidate |
+| --- | --- | --- | --- | --- |
+| ct_mmu_tlboper | tlbiasid | IASID_WT->IASID_IDLE | line 603: `arb_tlboper_grant && tlb_inv_done` | test_mmu_dir_l2tlb_inv_asid |
+| mmu_l2tlb | pfu | PFU_CHK->PFU_DENY | line 1368: `l2tlb_pfu_deny` | 与 ISSUE-020 (L2TLB PFU race) 相关 |
+| mmu_l1itlb | ref | WFG->IDLE | line 755: `ifu_mmu_abort && credit_cnt==0` | 需新增 IFU-abort-during-WFG 场景 |
+| mmu_l1itlb | ref | WFG->ABT | line 753: `ifu_mmu_abort && credit_cnt!=0` | 同上 |
+| mmu_l1dtlb_mb_entry | state_r | STATE_WFG->STATE_IDLE | line 148: `abort_this_cyc && !granted` | 需新增 flush-during-L1D-miss 场景 |
+| twu | ptw | TWU_1G_CRS->TWU_IDLE | line 1206: `tlboper_ptw_abort` during 1G crossing | 需新增 PTW-abort-during-crossing 场景 |
+| twu | ptw | TWU_2M_CRS->TWU_IDLE | line 1206: `tlboper_ptw_abort` during 2M crossing | 同上 |
+
+共性：均为 **abort/flush-during-miss** 场景。当前 regression 覆盖了 normal
+path 和 grant-after-abort path，但未覆盖 abort-before-grant 和 abort-during-
+crossing。这些是真实的 DUT 验证盲区，定向 testcase 可以提升质量。
+
+### C1.3 Toggle gap strategy analysis
+
+#### Toggle gap composition (per-module, top contributors)
+
+基于 `phase14_urgReport/modinfo.txt` 的 module-level toggle 统计：
+
+| Module | Uncovered | Total | Pct | Gap category |
+| --- | --- | --- | --- | --- |
+| mmu_l1itlb | 131 | 385 | 65.97% | VPN/PPN bit coverage (stimulus) |
+| ct_mmu_top | 107 | 342 | 68.71% | address/config bit coverage |
+| mmu_dut_probes_if | 103 | 422 | 75.59% | per-entry VPN bit toggle |
+| ptw | 89 | 214 | 58.41% | address/leaf-type bit coverage |
+| twu | 88 | 275 | 68.00% | CSR/crossing bit coverage |
+| mmu_l2tlb | 68 | 288 | 76.39% | L2 tag/PPN bit coverage |
+| mmu_l1dtlb | 61 | 417 | 85.37% | per-entry VPN bit toggle |
+| axi_if | 46 | 47 | 2.13% | **inactive interface instance** |
+| ct_mmu_regs | 37 | 102 | 63.73% | CP0 reg bit coverage |
+| memory_response_if | 33 | 34 | 2.94% | **inactive interface instance** |
+
+TOP22 合计：992 uncovered / 3574 total = 72.24%。
+
+#### Gap 分类
+
+1. **Inactive interface instances (structural, ~79 bits)**:
+   `axi_if` (46 bits at 2.13%) 和 `memory_response_if` (33 bits at 2.94%)
+   是 verification IP 接口实例，在当前 MMU-only testbench 中不被 DUT 驱动。
+   - 建议：确认这些是 `u_cv_dv_utils_unref_if` 下的未用接口，可加入 elfile
+     exclusion（类似 DFT scan enable），或提升 testbench 驱动这些接口。
+   - 不得在未确认 signoff scope 前 waiver。
+
+2. **Per-entry VPN/PPN bit toggle (stimulus distribution, ~300+ bits)**:
+   `mmu_dut_probes_if`、`mmu_l1itlb`、`mmu_l1dtlb` 的 per-entry VPN bits
+   （如 `l1d_entry_vpn[3][23]`）未双向 toggle，因为特定 TLB entry 的特定
+   address bit 未在两个方向都被命中。
+   - 建议：扩宽 address randomization，确保每个 entry 都见到 0->1 和 1->0
+     的 per-bit toggle。这是激励质量问题，不是结构问题。
+
+3. **CP0/config register bit coverage (~100+ bits)**:
+   `ct_mmu_regs`、`ct_mmu_top` 的配置寄存器位未全部 toggle。
+   - 建议：扩展 CP0 配置 sweep，覆盖所有 MAEE/sysmap/PMP 配置组合。
+
+4. **Real functional bits (needs targeted tests)**:
+   部分未 toggle 的 bit 是功能逻辑位，需要特定场景激励。
+
+#### Toggle threshold 现实性评估
+
+当前 Phase14 S3 要求 toggle >= 98%。对于一个包含大量 multi-bit address field
+（VPN[25:0]、PPN[21:0]、ASID[8:0]）且每个 TLB entry 独立计数的 MMU 设计，
+98% toggle 意味着几乎所有 entry 的所有 address bit 都要双向 toggle——这要求
+极宽的 address randomization 且每个 entry 都要充分填充。
+
+基于当前数据，toggle 98% 需要：
+- 关闭所有 inactive interface 实例（~79 bits，+~1.5%）
+- 每个TLB entry 的所有 VPN/PPN bit 双向 toggle（~300+ bits，+~6%）
+- 所有 CP0 config bit 全 sweep（~100+ bits，+~2%）
+- 剩余 functional bits 定向覆盖
+
+即使全部完成，从 72.34% 提升到 98% 仍需 +25.66%，涉及数千 bit 的覆盖。
+建议提交 RTL/verification lead 评估：
+- (a) 继续扩宽激励，逐步提升；或
+- (b) 将 toggle threshold 分解为 per-module 目标（DUT core 模块 vs interface
+  实例），对 inactive interface 给予 structural waiver。
+
+### 当前 official post-exclusion baseline
+
+```
+DUT u_dut (authoritative, post simu/exclude_v4.tgl):
+  SCORE  LINE   COND   TOGGLE FSM    BRANCH ASSERT
+  86.48  96.71  82.63  72.34  86.10  94.13  86.95
+
+tb_top (total, incl testbench):
+  85.82  95.56  82.83  70.43  86.10  92.89  87.10
+```
+
+所有指标仍低于 Phase14 S3 阈值。后续工作（定向 FSM abort 场景 test +
+toggle stimulus 扩展 + inactive interface 排除）由 ISSUE-022 跟踪。

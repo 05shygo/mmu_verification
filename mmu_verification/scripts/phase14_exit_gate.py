@@ -6,7 +6,6 @@ run simulation by itself.
 """
 
 import argparse
-import html
 import re
 import sys
 from pathlib import Path
@@ -45,6 +44,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--fsm-threshold", type=float, default=99.0)
     parser.add_argument("--functional-threshold", type=float, default=100.0)
     parser.add_argument("--assertion-threshold", type=float, default=100.0)
+    parser.add_argument(
+        "--dut-instance",
+        default="u_dut",
+        help=(
+            "DUT top-level instance name in hierarchy.txt whose subtree is the "
+            "authoritative code-coverage aggregate used by the gate. Default: u_dut."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -212,37 +219,128 @@ def check_exclude_refs(path: Path, issue_ids: set) -> Tuple[bool, List[str]]:
     return ok, details
 
 
-def sanitize(raw_text: str) -> str:
-    no_tags = re.sub(r"<[^>]+>", " ", html.unescape(raw_text))
-    return re.sub(r"\s+", " ", no_tags)
+# --- Authoritative URG aggregate coverage parser -----------------------------
+#
+# The previous implementation scanned every .txt/.html file in the report
+# directory and returned the MAXIMUM percentage found near each metric keyword.
+# That cherry-picked the single best-covered module and reported it as if it
+# were the design aggregate (e.g. it returned 100.00% for every metric while
+# URG's own dashboard total was line 95.56% / toggle 70.22%). That made the
+# gate a false positive and masked real coverage gaps.
+#
+# The replacement reads URG's own aggregate rows by aligning the column header
+# to the data row:
+#   primary   -> the DUT instance subtree (default "u_dut") from hierarchy.txt,
+#                i.e. the actual MMU RTL, excluding UVM testbench code.
+#   secondary -> URG "Total Coverage Summary" from dashboard.txt (incl. TB),
+#                shown as context so reviewers can see both views.
+# URG hierarchy/summary column order is fixed: SCORE LINE COND TOGGLE FSM
+# BRANCH ASSERT [, NAME|GROUP].
+HIER_COLUMN_ORDER = ("SCORE", "LINE", "COND", "TOGGLE", "FSM", "BRANCH", "ASSERT")
+METRIC_COLUMN = {
+    "line": "LINE",
+    "branch": "BRANCH",
+    "toggle": "TOGGLE",
+    "fsm": "FSM",
+    "cond": "COND",
+    "assert": "ASSERT",
+    "assertion": "ASSERT",
+}
 
 
-def iter_report_texts(report_dir: Path) -> Iterable[Tuple[Path, str]]:
-    if not report_dir.is_dir():
-        return []
-    files = [
-        path
-        for path in report_dir.rglob("*")
-        if path.is_file() and path.suffix.lower() in {".txt", ".html", ".htm"}
+def _parse_pct(token: str) -> Optional[float]:
+    if not token or token == "--":
+        return None
+    try:
+        value = float(token)
+    except ValueError:
+        return None
+    return value if 0.0 <= value <= 100.0 else None
+
+
+def _row_to_columns(tokens: Sequence[str], columns: Sequence[str]) -> Dict[str, float]:
+    result: Dict[str, float] = {}
+    for col, tok in zip(columns, tokens):
+        pct = _parse_pct(tok)
+        if pct is not None:
+            result[col] = pct
+    return result
+
+
+def find_dut_instance_coverage(report_dir: Path, dut_instance: str) -> Dict[str, float]:
+    """Return the DUT instance subtree coverage from hierarchy.txt.
+
+    Matches the data row whose trailing instance-name token equals
+    ``dut_instance``. URG hierarchy lists short instance names (not full
+    paths), so the match is unique. Returns an empty dict if not found.
+    """
+    hierarchy = report_dir / "hierarchy.txt"
+    if not hierarchy.is_file():
+        return {}
+    for raw in hierarchy.read_text(encoding="utf-8", errors="ignore").splitlines():
+        tokens = raw.split()
+        if len(tokens) < len(HIER_COLUMN_ORDER) + 1:
+            continue
+        if tokens[-1] != dut_instance:
+            continue
+        return _row_to_columns(tokens[: len(HIER_COLUMN_ORDER)], HIER_COLUMN_ORDER)
+    return {}
+
+
+def find_dashboard_total(report_dir: Path) -> Dict[str, float]:
+    """Return URG 'Total Coverage Summary' aggregate from dashboard.txt.
+
+    Locates the header row (``SCORE ... GROUP``) that follows the
+    'Total Coverage Summary' heading and aligns it to the next numeric row.
+    """
+    dashboard = report_dir / "dashboard.txt"
+    if not dashboard.is_file():
+        return {}
+    lines = dashboard.read_text(encoding="utf-8", errors="ignore").splitlines()
+    start = None
+    for idx, line in enumerate(lines):
+        if line.strip() == "Total Coverage Summary":
+            start = idx
+            break
+    if start is None:
+        return {}
+    header: Optional[Sequence[str]] = None
+    for line in lines[start + 1 : start + 6]:
+        tokens = line.split()
+        if not tokens:
+            continue
+        if header is None:
+            if tokens[0] == "SCORE" and "GROUP" in tokens:
+                header = tokens
+            continue
+        if _parse_pct(tokens[0]) is not None and len(tokens) == len(header):
+            return _row_to_columns(tokens, header)
+    return {}
+
+
+def resolve_aggregate_coverage(
+    report_dir: Path, dut_instance: str
+) -> Tuple[Dict[str, float], Dict[str, float], str]:
+    """Resolve authoritative aggregate coverage for the gate.
+
+    Returns ``(primary, total_context, source_label)``. ``primary`` is the DUT
+    instance subtree when available, otherwise the dashboard total. ``total``
+    is always the dashboard total (may be empty if dashboard.txt is absent).
+    """
+    dut = find_dut_instance_coverage(report_dir, dut_instance)
+    total = find_dashboard_total(report_dir)
+    if dut:
+        return dut, total, f"hierarchy.txt:{dut_instance} (DUT instance subtree)"
+    return total, total, "dashboard.txt:Total Coverage Summary"
+
+
+def _fmt_coverage_row(label: str, values: Dict[str, float], source: str) -> str:
+    cols = ("LINE", "BRANCH", "COND", "TOGGLE", "FSM", "ASSERT")
+    parts = [
+        f"{col}=" + ("--" if values.get(col) is None else f"{values[col]:.2f}%")
+        for col in cols
     ]
-    return [(path, sanitize(path.read_text(encoding="utf-8", errors="ignore"))) for path in files]
-
-
-def find_metric(report_dir: Path, aliases: Sequence[str]) -> Optional[Tuple[float, Path]]:
-    best: Optional[Tuple[float, Path]] = None
-    alias_re = "|".join(re.escape(alias) for alias in aliases)
-    patterns = (
-        re.compile(rf"\b(?:{alias_re})\b[^\d%]{{0,80}}(\d+(?:\.\d+)?)\s*%", re.IGNORECASE),
-        re.compile(rf"\b(?:{alias_re})\b[^\d%]{{0,80}}(\d+(?:\.\d+)?)(?![\d.])", re.IGNORECASE),
-        re.compile(rf"(\d+(?:\.\d+)?)\s*%[^\n]{{0,80}}\b(?:{alias_re})\b", re.IGNORECASE),
-    )
-    for path, text in iter_report_texts(report_dir):
-        for pattern in patterns:
-            for match in pattern.findall(text):
-                value = float(match)
-                if 0.0 <= value <= 100.0 and (best is None or value > best[0]):
-                    best = (value, path)
-    return best
+    return f"{label}: {' '.join(parts)} source={source}"
 
 
 def matrix_allows(matrix: Dict[str, Dict[str, str]], signoff_id: str) -> bool:
@@ -250,30 +348,56 @@ def matrix_allows(matrix: Dict[str, Dict[str, str]], signoff_id: str) -> bool:
     return row.get("status") in WAIVER_STATUS and bool(ISSUE_RE.findall(row.get("issue", "")))
 
 
-def check_coverage(report_dir: Path, matrix: Dict[str, Dict[str, str]], thresholds: Dict[str, Tuple[float, str, Sequence[str]]]) -> Tuple[bool, List[str]]:
+def check_coverage(
+    report_dir: Path,
+    matrix: Dict[str, Dict[str, str]],
+    thresholds: Dict[str, Tuple[float, str, Sequence[str]]],
+    dut_instance: str = "u_dut",
+) -> Tuple[bool, List[str]]:
     ok = True
     details: List[str] = []
     report_ready = report_dir.is_dir() and any(report_dir.rglob("*"))
     if not report_ready:
         ok = False
         details.append(f"URG report missing: {report_dir}")
-    for metric_name, (threshold, signoff_id, aliases) in thresholds.items():
-        located = find_metric(report_dir, aliases) if report_ready else None
-        if located is None:
+    primary, total, source = (
+        resolve_aggregate_coverage(report_dir, dut_instance) if report_ready else ({}, {}, "")
+    )
+    if primary:
+        details.append(_fmt_coverage_row("DUT coverage (authoritative)", primary, source))
+    if total:
+        details.append(
+            _fmt_coverage_row(
+                "Total (incl. testbench)",
+                total,
+                "dashboard.txt:Total Coverage Summary",
+            )
+        )
+    for metric_name, (threshold, signoff_id, _aliases) in thresholds.items():
+        column = METRIC_COLUMN.get(metric_name)
+        value = primary.get(column) if column else None
+        if value is None:
             if matrix_allows(matrix, signoff_id):
-                details.append(f"{metric_name}: waived by {signoff_id}")
+                details.append(f"{metric_name}: waived by {signoff_id} (not reported in authoritative aggregate)")
                 continue
             ok = False
-            details.append(f"{metric_name}: not found and {signoff_id} is not waived")
+            details.append(
+                f"{metric_name}: not found in authoritative aggregate and {signoff_id} is not waived"
+            )
             continue
-        value, source = located
+        total_value = total.get(column)
+        total_note = (
+            f" (total {total_value:.2f}% incl TB)"
+            if total_value is not None and total_value != value
+            else ""
+        )
         if value >= threshold:
-            details.append(f"{metric_name}: {value:.2f}% >= {threshold:.2f}% source={source}")
+            details.append(f"{metric_name}: {value:.2f}% >= {threshold:.2f}% source={source}{total_note}")
         elif matrix_allows(matrix, signoff_id):
-            details.append(f"{metric_name}: {value:.2f}% below {threshold:.2f}% but waived by {signoff_id}")
+            details.append(f"{metric_name}: {value:.2f}% below {threshold:.2f}% but waived by {signoff_id}{total_note}")
         else:
             ok = False
-            details.append(f"{metric_name}: {value:.2f}% below {threshold:.2f}% source={source}")
+            details.append(f"{metric_name}: {value:.2f}% below {threshold:.2f}% source={source}{total_note}")
     return ok, details
 
 
@@ -367,7 +491,7 @@ def main() -> int:
         "fsm": (args.fsm_threshold, "S3", ("fsm", "fsm coverage")),
         "assertion": (args.assertion_threshold, "S5", ("assert", "assertion", "assertion coverage")),
     }
-    coverage_ok, coverage_details = check_coverage(report_dir, matrix, thresholds)
+    coverage_ok, coverage_details = check_coverage(report_dir, matrix, thresholds, args.dut_instance)
     if args.coverage_merge_rc != "0" and not (matrix_allows(matrix, "S3") or matrix_allows(matrix, "S4") or matrix_allows(matrix, "S5")):
         coverage_ok = False
         coverage_details.insert(0, f"coverage merge returned rc={args.coverage_merge_rc}")

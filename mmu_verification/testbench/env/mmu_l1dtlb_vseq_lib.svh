@@ -35,6 +35,7 @@ typedef enum int {
   L1DTLB_SCN_L2_REQQ_DEPTH,
   L1DTLB_SCN_ENTRY0_WFG,
   L1DTLB_SCN_WFG_IDLE_SWEEP,
+  L1DTLB_SCN_IASID_COMPLETION,
   L1DTLB_SCN_GENERIC_AUDIT
 } l1dtlb_scn_e;
 
@@ -300,6 +301,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_REF_MODEL_OBSERVABILITY_001",
       "DTLB_ENTRY0_WFG_001",
       "DTLB_WFG_IDLE_SWEEP_001",
+      "DTLB_IASID_COMPLETION_001",
       "DTLB_SYSMAP_001": begin
         if (id == "DTLB_MB_HIGH_ENTRY_MATRIX_001") begin
           scn = L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX;
@@ -321,6 +323,10 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
           scn = L1DTLB_SCN_WFG_IDLE_SWEEP;
           sid = "L1DTLB_TS_WFG_IDLE_SWEEP";
           intent = "STATE_WFG->STATE_IDLE transition closure via flush-timing sweep (MMU-P14-ISSUE-022)";
+        end else if (id == "DTLB_IASID_COMPLETION_001") begin
+          scn = L1DTLB_SCN_IASID_COMPLETION;
+          sid = "L1DTLB_TS_IASID_COMPLETION";
+          intent = "IASID_WT->IASID_IDLE closure via JTLB pre-population + ASID invalidation (MMU-P14-ISSUE-022)";
         end else begin
           scn = L1DTLB_SCN_GENERIC_AUDIT;
           sid = "L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY";
@@ -3966,10 +3972,103 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     raw_rtu_flush_after_cycles(2);
     wait_lsu_cycles(4);
 
+    // Phase 4: partial-completion re-allocation to target early entries (0-3)
+    // Fill all 8 entries with SHORT PTW, wait for entries 0-3 to complete
+    // (their refills finish first since they were granted first), then
+    // switch to LONG PTW and fire 4 new misses → entries 0-3 re-allocated
+    // with L2TLB busy from entries 4-7 → WFG → flush → IDLE.
+    for (int sweep4 = 0; sweep4 < 8; sweep4++) begin
+      configure_ptw_delay(1, 4);
+      wait_l1d_mb_empty($sformatf("wfg_idle_sweep_p4_drain_%0d", sweep4), mb_empty, 8192);
+
+      // Step 1: fill all 8 entries with short PTW
+      configure_ptw_delay(8, 16);
+      raw_pipe01_contiguous_burst(va_idx + sweep4*20, 4, 7'(sweep4*8 + 100));
+      va_idx += 2;
+
+      // Step 2: wait for early entries (0-3) to complete their refill.
+      // With PTW delay 8-16, entries granted in first 4 cycles complete
+      // in ~12-20 cycles total. Wait ~24 cycles to let 0-3 drain.
+      wait_lsu_cycles(20 + sweep4 * 2);
+
+      // Step 3: switch to LONG PTW — L2TLB now slow for any new requests.
+      // Entries 4-7 may still be completing; L2TLB queue occupied.
+      configure_ptw_delay(4096, 8192);
+
+      // Step 4: fire 4 new misses → allocated to freed entries (0-3 area).
+      // L2TLB busy → these stay in WFG.
+      raw_pipe01_contiguous_burst(va_idx + sweep4*20 + 10, 2, 7'(sweep4*8 + 120));
+      va_idx += 2;
+
+      // Step 5: flush with sweep offset to catch WFG entries
+      raw_rtu_flush_after_cycles(sweep4);
+      wait_lsu_cycles(16);
+    end
+
     // Final drain
     configure_ptw_delay(1, 4);
     #100000ns;
     `uvm_info(get_type_name(), "wfg_idle_sweep done", UVM_LOW)
+  endtask
+
+  // ── IASID completion: target IASID_WT->IASID_IDLE ──────────────────
+  // The transition needs arb_tlboper_grant && tlb_inv_done during IASID_WT.
+  // IASID_WT is only entered when jtlb_tlboper_asid_hit=1 (JTLB has entries
+  // with matching ASID and global=0). Strategy: populate JTLB with many
+  // page walks (same ASID, g=0), then immediately ASID-invalidate without
+  // any intervening INV_ALL. The JTLB scan finds matching entries → IASID_WT.
+  // (MMU-P14-ISSUE-022 FSM functional gap closure)
+  protected task scenario_iasid_completion();
+    bit mb_empty;
+    `uvm_info(get_type_name(), "iasid_completion: targeting IASID_WT->IASID_IDLE", UVM_LOW)
+
+    do_bringup(256, 39'h10_0000);
+
+    // Phase 1: populate JTLB with FEW page walks (minimize invasid_cnt
+    // so tlb_inv_done arrives quickly, increasing probability of coinciding
+    // with arb_tlboper_grant)
+    configure_ptw_delay(16, 32);
+
+    // Many iterations: each fills 1-2 pages then immediately ASID-invalidates
+    for (int iter = 0; iter < 32; iter++) begin
+      // Drain between iterations
+      configure_ptw_delay(1, 4);
+      m_env_h.wait_for_quiescent_midtest($sformatf("iasid_q_%0d", iter), 262144, 4);
+
+      // Fill 1-2 pages to populate JTLB with matching ASID entries
+      configure_ptw_delay(8, 16);
+      fill_page(iter * 3);
+      if (iter % 3 == 0) fill_page(iter * 3 + 1);
+
+      // Immediately ASID-invalidate (no intervening INV_ALL)
+      // JTLB has 1-2 matching entries → asid_hit=1 → IASID_WT
+      // With few entries, tlb_inv_done arrives fast → higher chance of
+      // coinciding with arb_tlboper_grant
+      raw_inv(INV_ASID_ALL, va_page(iter * 3), m_asid);
+    end
+
+    // Phase 2: also try with more JTLB entries for different timing
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("iasid_q_p2", 262144, 4);
+    configure_ptw_delay(16, 32);
+    for (int p = 0; p < 8; p++) begin
+      fill_page(p + 100);
+    end
+    raw_inv(INV_ASID_ALL, va_page(100), m_asid);
+
+    // Phase 3: try raw_inv_pulse without waiting for busy (catches different timing)
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("iasid_q_p3", 262144, 4);
+    configure_ptw_delay(32, 64);
+    for (int p = 0; p < 4; p++) begin
+      fill_page(p + 120);
+    end
+    raw_inv_pulse(INV_ASID_ALL, va_page(120), m_asid, 1'b0, 1'b1);
+
+    // Final drain
+    configure_ptw_delay(1, 4);
+    #100000ns;
+    `uvm_info(get_type_name(), "iasid_completion done", UVM_LOW)
   endtask
 
   virtual task body();
@@ -4066,6 +4165,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_L2_REQQ_DEPTH:    scenario_l2_reqq_depth();
       L1DTLB_SCN_ENTRY0_WFG:       scenario_entry0_wfg();
       L1DTLB_SCN_WFG_IDLE_SWEEP:   scenario_wfg_idle_sweep();
+      L1DTLB_SCN_IASID_COMPLETION: scenario_iasid_completion();
       default: begin
         if (tc_id == "DTLB_SYSMAP_001")
           scenario_direct_map();

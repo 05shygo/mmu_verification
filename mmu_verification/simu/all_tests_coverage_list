@@ -467,3 +467,4 @@ test_twu_pmp_serial
 test_twu_pmp_wait_stall
 test_xbar_1to4_distribution
 test_xbar_twu_round_robin
+test_mmu_l1dtlb_cov_iasid_completion

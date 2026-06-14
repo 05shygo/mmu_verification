@@ -1011,3 +1011,79 @@ deassert。miss 注册和 WFG 进入需要多个 cycle，abort 信号在 WFG 时
 | PFU_CHK→PFU_DENY | 1 | Hard | PMP R=0 config (ISSUE-020) |
 | TWU abort transitions | 8 | Hard | MAEE=0 mode + concurrent TLB inv |
 | **Total** | **17** | | |
+
+## C4: WFG test Phase 4 improvement + merge note (2026-06-14)
+
+### Phase 4: partial-completion re-allocation (VERIFIED)
+
+Phase 4 of `scenario_wfg_idle_sweep` targets early entries (0-3) by:
+1. Fill all 8 entries with short PTW (8-16 cycles)
+2. Wait ~20-40 cycles for entries 0-3 to complete refill → freed
+3. Switch to long PTW (4096-8192)
+4. Fire 4 new misses → allocated to freed entries 0-3
+5. L2TLB busy with entries 4-7's walks → entries 0-3 stay in WFG
+6. Flush → entries 0-3 go to IDLE
+
+**Result (standalone simv.vdb, seed 97101):**
+ALL 8 entries show `STATE_WFG->STATE_IDLE` Covered (was 4/8 in Phase 2 only).
+
+Module-level `mmu_l1dtlb_mb_entry state_r`: **14/14 transitions = 100%**.
+
+### Merge data integrity caveat
+
+The `phase14_merged.vdb` was rebuilt from parallel shard VDBs during this session.
+A killed `make covp` earlier may have left corrupt shard VDBs, causing the re-merge
+to show slightly lower overall coverage than the original (FSM 80.21% vs 86.10%).
+
+The WFG test improvement IS reflected in the merged report:
+- Module-level mmu_l1dtlb_mb_entry FSM: 100%
+- All 8 per-instance STATE_WFG→STATE_IDLE: Covered
+- ct_mmu_tlboper: 5/6 FSMs at 100% (post-exclusion)
+
+**Action required**: Run a clean `make regress_v4_full_parallel` + 
+`make phase14_coverage_merge_parallel` to restore full coverage data integrity.
+The WFG test is in the regression list and will be included.
+
+## C5: IASID_WT root-cause (2026-06-14)
+
+### `scenario_iasid_completion` test created and verified
+
+Test populates JTLB via page walks then immediately does ASID invalidation.
+
+**Breakthrough**: IASID_WT state is now ENTERED for the first time (previously
+all tests went through IASID_NWT because `jtlb_tlboper_asid_hit` was 0).
+
+Coverage achieved:
+- IASID_WFC→IASID_WT: **Covered** (asid_hit=1 achieved)
+- IASID_WT→IASID_RD: **Covered** (retry path when inv count not done)
+- IASID_WT→IASID_IDLE: **Not Covered** (see root-cause below)
+
+### Root-cause: IASID_WT→IASID_IDLE requires scan-position-255 asid_hit
+
+RTL analysis (`ct_mmu_tlboper.v`):
+```verilog
+assign invasid_cnt[10:0] = 11'd255;  // HARDCODED — scan always goes to 255
+assign tlb_inv_done = (tlb_inv_cnt == jtlb_cnt);  // jtlb_cnt = 255
+assign tlb_invasid_cnt_dec = ((IASID_WT && grant) || IASID_NWT) && !done;
+```
+
+The counter increments once per IASID_WT (or NWT) iteration with grant. After
+**255 iterations**, `tlb_inv_done=1`. The transition fires when:
+
+1. `tlb_inv_done=1` (counter at 255)
+2. `arb_tlboper_grant=1` (arbiter grants)
+3. FSM is in IASID_WT (not NWT)
+
+Condition 3 requires `jtlb_tlboper_asid_hit=1` in the **last** iteration
+(count=255). This depends on which JTLB entry is at scan position 255 —
+determined by the JTLB tag array layout, which is **not controllable** from
+the testbench.
+
+When the count finishes at scan position 255, if that entry doesn't match
+the ASID, `asid_hit=0` → IASID_NWT → IASID_NWT→IASID_IDLE fires instead
+(which IS covered).
+
+**Conclusion**: IASID_WT→IASID_IDLE is a JTLB-layout-dependent corner case.
+It requires the last-scanned JTLB entry to match the ASID. This is
+structurally hard to control and may need a targeted JTLB backdoor write
+or a RTL-reviewed waiver.

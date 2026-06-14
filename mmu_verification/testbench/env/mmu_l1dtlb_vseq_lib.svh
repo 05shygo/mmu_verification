@@ -34,6 +34,7 @@ typedef enum int {
   L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX,
   L1DTLB_SCN_L2_REQQ_DEPTH,
   L1DTLB_SCN_ENTRY0_WFG,
+  L1DTLB_SCN_WFG_IDLE_SWEEP,
   L1DTLB_SCN_GENERIC_AUDIT
 } l1dtlb_scn_e;
 
@@ -298,6 +299,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_RESP_NO_IID_T01_001",
       "DTLB_REF_MODEL_OBSERVABILITY_001",
       "DTLB_ENTRY0_WFG_001",
+      "DTLB_WFG_IDLE_SWEEP_001",
       "DTLB_SYSMAP_001": begin
         if (id == "DTLB_MB_HIGH_ENTRY_MATRIX_001") begin
           scn = L1DTLB_SCN_MB_HIGH_ENTRY_MATRIX;
@@ -315,6 +317,10 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
           scn = L1DTLB_SCN_ENTRY0_WFG;
           sid = "L1DTLB_TS_ENTRY0_WFG_ROUND_ROBIN";
           intent = "entry[0] WFG state coverage under round-robin scheduler with continuous dual-port LSU miss pressure";
+        end else if (id == "DTLB_WFG_IDLE_SWEEP_001") begin
+          scn = L1DTLB_SCN_WFG_IDLE_SWEEP;
+          sid = "L1DTLB_TS_WFG_IDLE_SWEEP";
+          intent = "STATE_WFG->STATE_IDLE transition closure via flush-timing sweep (MMU-P14-ISSUE-022)";
         end else begin
           scn = L1DTLB_SCN_GENERIC_AUDIT;
           sid = "L1DTLB_TS_OBS_REFERENCE_MODEL_BOUNDARY";
@@ -3880,6 +3886,92 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     `uvm_info(get_type_name(), "entry0_wfg scenario done", UVM_LOW)
   endtask
 
+  // ── WFG→IDLE sweep: target STATE_WFG->STATE_IDLE via timing sweep ──
+  // The transition needs abort_this_cyc && !(issue_sel && issue_grant).
+  // Strategy: use dual-port raw_pipe01 with iid0 > iid1 (port 1 = entry[0]
+  // is the non-bypass slot → enters WFG). Long PTW delay keeps L2TLB busy
+  // so grants are spaced. Sweep flush timing across offsets.
+  // (MMU-P14-ISSUE-022 FSM functional gap closure)
+  protected task scenario_wfg_idle_sweep();
+    bit mb_empty;
+    int va_idx = 600;
+    `uvm_info(get_type_name(), "wfg_idle_sweep: targeting STATE_WFG->STATE_IDLE", UVM_LOW)
+
+    do_bringup(512, 39'h10_0000);
+
+    // Phase 1: sweep flush timing with dual-port misses
+    // Use iid0 > iid1 so port1 (lower priority) enters WFG
+    for (int sweep = 0; sweep < 24; sweep++) begin
+      configure_ptw_delay(1, 4);
+      wait_l1d_mb_empty($sformatf("wfg_idle_sweep_drain_%0d", sweep), mb_empty, 8192);
+
+      // Long PTW → L2TLB busy → grants spaced out
+      configure_ptw_delay(1024, 2048);
+
+      // Dual-port miss: iid0 > iid1 → port1 is entry[0] → WFG
+      // Fire back-to-back to fill multiple entries
+      for (int m = 0; m < 2; m++) begin
+        raw_pipe01(va_page(va_idx + m*4), va_page(va_idx + m*4 + 2),
+                   7'(sweep*8 + m*2 + 60), 7'(sweep*8 + m*2 + 50),
+                   1'b0, 1'b0);
+        wait_lsu_cycles(1);
+      end
+      va_idx += 10;
+
+      // Flush at sweep offset cycles
+      raw_rtu_flush_after_cycles(sweep);  // 0..23 cycle sweep
+      wait_lsu_cycles(8);
+    end
+
+    // Phase 2: saturate all 8 entries with contiguous burst, sweep flush timing
+    // Use contiguous burst to fire 4 dual-port misses in 4 consecutive cycles.
+    // This creates maximum WFG backlog. The L2TLB grants ~1/cycle, so after
+    // allocation several entries are still in WFG.
+    for (int sweep2 = 0; sweep2 < 12; sweep2++) begin
+      configure_ptw_delay(1, 4);
+      wait_l1d_mb_empty($sformatf("wfg_idle_sweep_p2_drain_%0d", sweep2), mb_empty, 8192);
+      configure_ptw_delay(4096, 8192);
+
+      // Fire 4 pairs (8 misses) in 4 consecutive cycles — fills all MB entries fast
+      raw_pipe01_contiguous_burst(va_idx + sweep2*10, 4, 7'(sweep2*8 + 40));
+      va_idx += 2;
+
+      // Flush at sweep2 offset cycles after burst
+      // Offset 0-11 covers allocation and early grant phases
+      if (sweep2 < 6) begin
+        raw_rtu_flush_after_cycles(sweep2);  // 0..5: during/right after allocation
+      end else begin
+        // Multi-cycle flush for later offsets
+        repeat(sweep2 - 4) @(m_misc_vif.driver_cb);
+        m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+        repeat(3) @(m_misc_vif.driver_cb);
+        m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+      end
+      wait_lsu_cycles(16);
+    end
+
+    // Phase 3: single-port miss with very long PTW + immediate flush
+    // Single entry in WFG, flush before any grant
+    configure_ptw_delay(1, 4);
+    wait_l1d_mb_empty("wfg_idle_sweep_p3_drain", mb_empty, 8192);
+    configure_ptw_delay(8192, 16384);
+
+    raw_pipe0(va_page(va_idx), 7'd250);
+    va_idx += 2;
+    // Immediate flush — entry might be in WFG if L2TLB is busy
+    raw_rtu_flush_after_cycles(0);
+    wait_lsu_cycles(4);
+    raw_rtu_flush_after_cycles(1);
+    wait_lsu_cycles(4);
+    raw_rtu_flush_after_cycles(2);
+    wait_lsu_cycles(4);
+
+    // Final drain
+    configure_ptw_delay(1, 4);
+    #100000ns;
+    `uvm_info(get_type_name(), "wfg_idle_sweep done", UVM_LOW)
+  endtask
+
   virtual task body();
     l1dtlb_scn_e decoded;
     string decoded_sid;
@@ -3973,6 +4065,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_HIT_RD_PERM_MODE_MATRIX: scenario_hit_rd_perm_mode_matrix();
       L1DTLB_SCN_L2_REQQ_DEPTH:    scenario_l2_reqq_depth();
       L1DTLB_SCN_ENTRY0_WFG:       scenario_entry0_wfg();
+      L1DTLB_SCN_WFG_IDLE_SWEEP:   scenario_wfg_idle_sweep();
       default: begin
         if (tc_id == "DTLB_SYSMAP_001")
           scenario_direct_map();

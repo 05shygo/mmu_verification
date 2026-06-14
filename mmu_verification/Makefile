@@ -447,6 +447,7 @@ PHASE14_COVERAGE_HOTSPOTS ?= $(PROJECT_DIR)/scripts/phase14_coverage_hotspots.py
 SCOPE_COVERAGE_GATE     ?= $(PROJECT_DIR)/scripts/scope_coverage_gate.py
 SCOPE_URG_REPORT        ?= $(PROJECT_DIR)/scripts/run_scope_urg_report.sh
 SCOPE_XML_FALLBACK_REPORT ?= $(PROJECT_DIR)/scripts/generate_scope_fallback_report.py
+SCOPE_URG_EXTRACT       ?= $(PROJECT_DIR)/scripts/extract_scope_from_urg.py
 PTW_COV_SIGNOFF_CHECK   ?= $(PROJECT_DIR)/scripts/check_ptw_code_cov_signoff.py
 PHASE14_ISSUE_TRACKER_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_IssueTracker.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_IssueTracker.md))
 PHASE14_SIGNOFF_MATRIX_DEFAULT := $(firstword $(wildcard $(PROJECT_DIR)/../doc/MMU_Phase14_SignoffMatrix.md) $(wildcard $(PROJECT_DIR)/../doc/archive_merged_20260607/MMU_Phase14_SignoffMatrix.md))
@@ -2478,33 +2479,23 @@ cov_all: comp
 
 covp_scope_reports:
 	@test -d "$(PHASE14_URG_MERGED_DB)" || (echo "ERROR: missing merged Phase14 VDB: $(PHASE14_URG_MERGED_DB)"; exit 2)
-	@test -f "$(SCOPE_URG_REPORT)" || (echo "ERROR: scoped URG report helper missing: $(SCOPE_URG_REPORT)"; exit 2)
+	@test -f "$(SCOPE_URG_EXTRACT)" || (echo "ERROR: scope URG extractor missing: $(SCOPE_URG_EXTRACT)"; exit 2)
+	@test -f "$(PHASE14_URG_REPORT_DIR)/modinfo.txt" || (echo "ERROR: missing official URG report modinfo.txt at $(PHASE14_URG_REPORT_DIR); run 'make phase14_coverage_merge_parallel' first"; exit 2)
 	@mkdir -p "$(COV_DIR)"
-	@echo "=== Generating L1TLB filtered report ==="
-	@SCOPE_XML_FALLBACK="$(SCOPE_XML_FALLBACK)" bash "$(SCOPE_URG_REPORT)" \
-	  --urg "$(URG)" \
-	  --input-vdb "$(PHASE14_URG_MERGED_DB)" \
-	  --base-vdb "$(COV_BASE_DB_DIR)" \
-	  --metrics "$(COV_METRICS)" \
-	  --report-dir "$(COVP_L1TLB_URG_REPORT_DIR)" \
-	  --log "$(COVP_L1TLB_URG_LOG)" \
-	  --hier u_dut.u_mmu_l1dtlb \
-	  --hier u_dut.x_mmu_l1itlb \
-	  --fallback-script "$(SCOPE_XML_FALLBACK_REPORT)" \
-	  --fallback-scope L1TLB
-	@test -d "$(COVP_L1TLB_URG_REPORT_DIR)" && find "$(COVP_L1TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L1TLB URG report: $(COVP_L1TLB_URG_REPORT_DIR)"; exit 1)
-	@echo "=== Generating L2TLB filtered report ==="
-	@SCOPE_XML_FALLBACK="$(SCOPE_XML_FALLBACK)" bash "$(SCOPE_URG_REPORT)" \
-	  --urg "$(URG)" \
-	  --input-vdb "$(PHASE14_URG_MERGED_DB)" \
-	  --base-vdb "$(COV_BASE_DB_DIR)" \
-	  --metrics "$(COV_METRICS)" \
-	  --report-dir "$(COVP_L2TLB_URG_REPORT_DIR)" \
-	  --log "$(COVP_L2TLB_URG_LOG)" \
-	  --hier u_dut.x_mmu_l2tlb \
-	  --fallback-script "$(SCOPE_XML_FALLBACK_REPORT)" \
-	  --fallback-scope L2TLB
-	@test -d "$(COVP_L2TLB_URG_REPORT_DIR)" && find "$(COVP_L2TLB_URG_REPORT_DIR)" -type f -print -quit | grep -q . || (echo "ERROR: missing L2TLB URG report: $(COVP_L2TLB_URG_REPORT_DIR)"; exit 1)
+	@echo "=== Extracting L1TLB scope coverage from official URG report (honors simu/exclude_v4.tgl elfile) ==="
+	@mkdir -p "$(COVP_L1TLB_URG_REPORT_DIR)"
+	$(PYTHON) "$(SCOPE_URG_EXTRACT)" \
+	  --urg-report-dir "$(PHASE14_URG_REPORT_DIR)" \
+	  --scope-name L1TLB \
+	  --scope-instances "u_dut.u_mmu_l1dtlb,u_dut.x_mmu_l1itlb" \
+	  --output "$(COVP_L1TLB_URG_REPORT_DIR)/scope_coverage_summary.json"
+	@echo "=== Extracting L2TLB scope coverage from official URG report ==="
+	@mkdir -p "$(COVP_L2TLB_URG_REPORT_DIR)"
+	$(PYTHON) "$(SCOPE_URG_EXTRACT)" \
+	  --urg-report-dir "$(PHASE14_URG_REPORT_DIR)" \
+	  --scope-name L2TLB \
+	  --scope-instances "u_dut.x_mmu_l2tlb" \
+	  --output "$(COVP_L2TLB_URG_REPORT_DIR)/scope_coverage_summary.json"
 
 covp_scope_gates:
 	@test -f "$(SCOPE_COVERAGE_GATE)" || (echo "ERROR: scope coverage gate missing: $(SCOPE_COVERAGE_GATE)"; exit 2)

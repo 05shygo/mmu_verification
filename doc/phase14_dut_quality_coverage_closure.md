@@ -845,3 +845,169 @@ tb_top (total, incl testbench):
 
 所有指标仍低于 Phase14 S3 阈值。后续工作（定向 FSM abort 场景 test +
 toggle stimulus 扩展 + inactive interface 排除）由 ISSUE-022 跟踪。
+
+## C2 Scope coverage report elfile wiring (COMPLETE)
+
+### 问题
+
+`make covp` 的 scope coverage gate (`covp_scope_gates`) 读取
+`l1tlb_urgReport`/`l2tlb_urgReport`，但这两个报告由
+`run_scope_urg_report.sh` 生成，该脚本使用 URG `-hier` 传入 *instance 路径*
+（如 `u_dut.u_mmu_l1dtlb`），而 URG `-hier` 期望的是 *文件*，导致所有 URG
+scoped report 尝试失败（`Error-[URG-OFR] Failed to open file`），最终回退到
+XML fallback report (`generate_scope_fallback_report.py`)。
+
+XML fallback report 直接 OR VDB bitstring，**不** 应用 elfile 排除，也不使用
+URG 的权威覆盖计算。此外 `scope_coverage_gate.py` 的 `find_metric` 回退逻辑
+有与 ISSUE-021 相同的 MAX-across-files bug。
+
+### 修复
+
+新增 `scripts/extract_scope_from_urg.py`：从 **official** `phase14_urgReport`
+（已应用 `simu/exclude_v4.tgl` elfile）的 `modinfo.txt` 提取 per-instance
+covered/total，按 scope instance prefix 聚合，生成与 fallback 兼容的
+`scope_coverage_summary.json`。同时从 `groups.txt` 提取 scope-specific
+functional coverage。
+
+`Makefile` `covp_scope_reports` 目标改为调用 extractor（不再使用 broken
+`-hier` URG flow），输出到与原来相同的 `l1tlb_urgReport`/`l2tlb_urgReport`
+目录，gate 接口不变。
+
+### 结果（L1TLB scope, post-exclusion, authoritative URG）
+
+| Metric | Old (fallback, no elfile) | New (URG extract, with elfile) |
+| --- | --- | --- |
+| line | 97.55% | 97.95% |
+| branch | 96.33% | 96.33% |
+| toggle | 78.73% | 76.47% |
+| fsm | 91.21% | 86.78% |
+| functional | 100.00% | 100.00% |
+| assertion | 100.00% | 100.00% |
+
+toggle/fsm 数值变化是因为 URG 权威计算比 XML fallback 更完整（URG 统计更多
+toggle bit 和 FSM transition），不是回归。所有数值现在来自同一权威源
+（official URG report），并 honor elfile 排除。
+
+L1TLB scope FSM (86.78%) 的 gap 全部是 functional（l1dtlb state_r
+STATE_WFG→STATE_IDLE 和 l1itlb ref WFG→IDLE/ABT），无结构化排除可应用。
+
+## C1.2-followup: WFG→IDLE 定向 test (NEW)
+
+新增 `test_mmu_l1dtlb_cov_wfg_idle_sweep`（`DTLB_WFG_IDLE_SWEEP_001`），
+target `mmu_l1dtlb_mb_entry state_r` 的 `STATE_WFG->STATE_IDLE` transition
+(RTL line 148: `abort_this_cyc && !(issue_sel && issue_grant)`)。
+
+策略：32 次 sweep × 不同 cycle offset 的 flush timing + 长 PTW delay (2048-
+4096 cycles)，使 WFG entry 在未被 L2TLB grant 时看到 flush。现有
+`test_mmu_l1dtlb_cov_entry0_wfg` 也尝试该 transition 但 timing 固定，sweep
+版本增加概率。
+
+文件：
+- `testbench/test/l1dtlb_tests/test_mmu_l1dtlb_cov_wfg_idle_sweep.svh`
+- `testbench/env/mmu_l1dtlb_vseq_lib.svh`: `scenario_wfg_idle_sweep()`
+- `simu/all_tests_coverage_list`: 已添加
+
+**注意**：此 test 需 simulation 验证。如果 sweep 仍未命中，可能需要分析
+L2TLB `issue_grant` 时序以确定更精确的 stimulus（见 ISSUE-022 functional gap
+worklist）。
+
+## C1.2-followup VERIFIED: WFG→IDLE test measured impact (2026-06-14)
+
+`test_mmu_l1dtlb_cov_wfg_idle_sweep` 运行 5 seeds (97101-97105)，全部 PASS。
+VDB 已 merge 到 `phase14_merged.vdb`，official report 已更新。
+
+### 关键 fix
+
+scenario `scenario_wfg_idle_sweep` 的有效 stimulus 是 **contiguous burst**
+（`raw_pipe01_contiguous_burst`），不是 single-port miss。contiguous burst 在
+连续 4 个 cycle 发射 8 个 dual-port miss，填满 L1DTLB miss buffer。L2TLB 的
+grant rate (~1/cycle) 慢于 allocation rate (2/cycle)，所以 burst 后几个 entry
+仍在 WFG。此时 flush 命中 WFG-without-grant → `STATE_WFG->STATE_IDLE`。
+
+### Measured impact (DUT u_dut, post-exclusion + WFG test)
+
+| Metric | Before WFG test | After WFG test | Delta |
+| --- | --- | --- | --- |
+| SCORE | 86.48 | 87.65 | +1.17 |
+| LINE | 96.71 | 96.95 | +0.24 |
+| COND | 82.63 | 82.74 | +0.11 |
+| TOGGLE | 72.34 | 72.38 | +0.04 |
+| **FSM** | **86.10** | **90.91** | **+4.81** |
+| BRANCH | 94.13 | 94.43 | +0.30 |
+| **ASSERT** | **86.95** | **88.50** | **+1.55** |
+
+### Per-instance `STATE_WFG->STATE_IDLE` coverage
+
+| Instance | Covered? |
+| --- | --- |
+| gen_mb_entries[0] | Not Covered (granted before flush) |
+| gen_mb_entries[1] | Not Covered |
+| gen_mb_entries[2] | Not Covered |
+| gen_mb_entries[3] | Not Covered |
+| gen_mb_entries[4] | **Covered** |
+| gen_mb_entries[5] | **Covered** |
+| gen_mb_entries[6] | **Covered** |
+| gen_mb_entries[7] | **Covered** |
+
+entries 4-7 在 burst 后仍处于 WFG（allocation 顺序晚），flush 时被命中。
+entries 0-3 在 flush 前已被 L2TLB grant（→WFC）。后续可用 scheduler saturation
+或更多 burst 深度覆盖前 4 个 entry。
+
+### Remaining uncovered FSM transitions (post WFG test)
+
+| Module | FSM | Transition | Category |
+| --- | --- | --- | --- |
+| mmu_l1dtlb_mb_entry | state_r | STATE_WFG->STATE_IDLE (entries 0-3) | partial: need earlier entry WFG |
+| mmu_l1dtlb_mb_entry | state_r | STATE_WFG->STATE_ABT | functional: flush+grant race |
+| mmu_l1itlb | ref_cur_st | WFG->IDLE, WFG->ABT | functional: need IFU abort during WFG |
+| ct_mmu_tlboper | tlbiasid | IASID_WT->IASID_IDLE | functional: arbiter grant timing |
+| mmu_l2tlb | pfu | PFU_CHK->PFU_DENY | functional: PMP deny (ISSUE-020) |
+| twu | ptw | TWU_1G/2M_CRS->TWU_IDLE | functional: PTW abort during crossing |
+
+## C3: Remaining FSM gap root-cause analysis (2026-06-14)
+
+### TWU crossing states (TWU_1G_CRS / TWU_2M_CRS) never entered
+
+`twu.sv` 的 crossing check 只在 `!cp0_mmu_maee` 时激活：
+```systemverilog
+assign fst_chk_csr_req = fst_chk_vld & fst_chk_leaf_vld & (!cp0_mmu_maee) & ...;
+```
+现有 regression 全部在 MAEE=1 模式下运行 → crossing check 路径被绕过 →
+TWU_CRS 状态从不进入 → 8 个 transition (2 × 4 instances) 不可达。
+
+**Closure**: 需要一个 MAEE=0 (non-MAEE / direct-map) 模式的 page walk test。
+现有 `scenario_direct_map` 可能相关但需要验证是否触发 crossing check。
+
+### IASID_WT state never entered
+
+`ct_mmu_tlboper.v` 的 IASID_WT 只在 `jtlb_tlboper_asid_hit` 时从 IASID_WFC 进入：
+```systemverilog
+IASID_WFC:
+  if(jtlb_tlboper_cmplt && jtlb_tlboper_asid_hit) → IASID_WT
+  else if(jtlb_tlboper_cmplt) → IASID_NWT
+```
+`jtlb_tlboper_asid_hit` 需要 JTLB 中存在匹配 ASID 的 entry。现有 ASID invalidation
+test 没有预先填充 JTLB → asid_hit=0 → 走 IASID_NWT 路径 → IASID_WT 从不进入。
+
+**Closure**: 需要一个 test 先做 page walk 填充 JTLB entry (特定 ASID)，再执行
+ASID invalidation → asid_hit=1 → IASID_WT → IASID_IDLE。
+
+### l1itlb WFG→IDLE / WFG→ABT
+
+`mmu_l1itlb.sv` ref_cur_st WFG 的 abort 路径需要 `ifu_mmu_abort` 在 WFG 状态
+期间保持高。但 IFU driver 只在 request cycle 驱动 `ifu_mmu_abort` 一拍，随后
+deassert。miss 注册和 WFG 进入需要多个 cycle，abort 信号在 WFG 时已撤销。
+
+**Closure**: 需要 raw IFU abort driver 或 multi-cycle abort hold。
+
+### Summary of remaining FSM gaps and closure difficulty
+
+| Gap | Transitions | Difficulty | Approach |
+| --- | --- | --- | --- |
+| mb_entry[0-3] WFG→IDLE | 4 | Medium | L2TLB queue saturation for early entries |
+| mb_entry[1] WFG→ABT | 1 | Medium | Race timing |
+| l1itlb WFG→IDLE/ABT | 2 | Hard | Raw IFU abort driver |
+| IASID_WT→IDLE | 1 | Medium | Pre-populate JTLB before ASID inv |
+| PFU_CHK→PFU_DENY | 1 | Hard | PMP R=0 config (ISSUE-020) |
+| TWU abort transitions | 8 | Hard | MAEE=0 mode + concurrent TLB inv |
+| **Total** | **17** | | |

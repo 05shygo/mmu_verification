@@ -79,4 +79,5 @@
 `include "test_mmu_l1dtlb_cov_hit_sweep.svh"
 `include "test_mmu_l1dtlb_cov_mb_expt.svh"
 `include "test_mmu_l1dtlb_cov_entry0_wfg.svh"
+`include "test_mmu_l1dtlb_cov_wfg_idle_sweep.svh"
 `include "test_mmu_l1dtlb_cov_reset_mid.svh"

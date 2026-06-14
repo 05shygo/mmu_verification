@@ -2116,6 +2116,20 @@ in the state register). Functional uncovered transitions are NOT excluded.
 - **Toggle threshold strategy** (C1.3, NOT STARTED): the residual toggle gap
   (~-25.66%) is dominated by address/ASID bit coverage (stimulus distribution),
   not safe structural exclusions. Analysis for RTL/threshold review pending.
+- **Scope coverage report elfile wiring** (C2, COMPLETE): `make covp` scope
+  gates now read from the official `phase14_urgReport` via
+  `scripts/extract_scope_from_urg.py`, which honors the elfile. The previous
+  broken URG `-hier` flow (which always fell back to XML fallback without
+  elfile) is replaced. L1TLB/L2TLB scope numbers are now authoritative and
+  consistent with the DUT aggregate.
+- **WFG→IDLE targeted test** (C1.2-followup, VERIFIED, +4.81% FSM):
+  `test_mmu_l1dtlb_cov_wfg_idle_sweep` uses contiguous dual-port burst
+  (`raw_pipe01_contiguous_burst`) with long PTW delay and flush-timing sweep.
+  Verified across 5 seeds: `STATE_WFG->STATE_IDLE` covered in 4-5 of 8
+  `gen_mb_entries[*].x_mb_entry` instances. DUT FSM 86.10% → 90.91%;
+  DUT assert 86.95% → 88.50%. Entries 0-3 still need coverage (granted before
+  flush arrives); a follow-up test targeting earlier entries could use
+  scheduler saturation.
 
 ### Signoff Decision
 
@@ -2160,4 +2174,4 @@ Before final signoff, update this table:
 | MMU-P14-ISSUE-019 | Closed | `bump_epoch` m_ptw clear moved to `on_reset` only; STALE path in `on_ptw_completion` now correctly handles in-flight completions after epoch change |
 | MMU-P14-ISSUE-020 | Open | `mmu/rtl/mmu_l2tlb.sv:1402`: `l2tlb_pfu_cmplt` condition-3 races PFU buffer load before PTW walk completes; `pfu_pa_buf` latches stale PPN from previous translation |
 | MMU-P14-ISSUE-021 | Closed | `scripts/phase14_exit_gate.py`: `find_metric` (scan-all-take-max) replaced by authoritative `u_dut`-instance + dashboard-total parser; `--dut-instance` added; gate now reports real DUT numbers and FAILs honestly |
-| MMU-P14-ISSUE-022 | Open | DUT `u_dut` code coverage line 96.71% / branch 94.13% / toggle 72.34% / fsm 86.10% / assert 86.95% below Phase14 thresholds (post structural exclusion); closure via reviewed exclusions (`simu/exclude_v4.do`/`.tgl`) + targeted tests; S3/S5 Open |
+| MMU-P14-ISSUE-022 | Open | DUT `u_dut` code coverage line 96.95% / branch 94.43% / toggle 72.38% / fsm 90.91% / assert 88.50% below Phase14 thresholds (post structural exclusion + WFG→IDLE functional test); closure via reviewed exclusions (`simu/exclude_v4.do`/`.tgl`) + targeted tests; S3/S5 Open |

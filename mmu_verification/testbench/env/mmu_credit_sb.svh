@@ -130,12 +130,12 @@ class mmu_credit_sb extends uvm_scoreboard;
   protected logic [2:0] m_snap_ptw_l2tlb_type;
   protected logic       m_snap_ptw_l1i_ref_cmplt;
   protected logic [8:0] m_snap_ptw_mbuf_entry_vld;
-  protected logic [3:0] m_snap_ptw_mbuf_twu_have;
-  protected logic [3:0] m_snap_ptw_twu_idle;
-  protected logic [3:0] m_snap_ptw_twu_mask;
-  protected logic [3:0] m_snap_ptw_twu_ref_req;
-  protected logic [3:0] m_snap_ptw_twu_pgflt_vec;
-  protected logic [3:0] m_snap_ptw_twu_acc_err_vec;
+  protected logic       m_snap_ptw_mbuf_twu_have;
+  protected logic       m_snap_ptw_twu_idle;
+  protected logic       m_snap_ptw_twu_mask;
+  protected logic       m_snap_ptw_twu_ref_req;
+  protected logic       m_snap_ptw_twu_pgflt_vec;
+  protected logic       m_snap_ptw_twu_acc_err_vec;
   protected logic       m_snap_ptw_fault_any;
   protected logic       m_snap_ptw_pgflt_vld;
   protected logic       m_snap_ptw_acc_err_vld;
@@ -821,12 +821,12 @@ class mmu_credit_sb extends uvm_scoreboard;
           || (m_snap_l2_dtlb_ref_cmplt      === 1'b1)
           || (m_snap_l2tlb_ptw_req          === 1'b1)
           || (m_snap_ptw_mbuf_entry_vld     !== 9'b0)
-          || (m_snap_ptw_mbuf_twu_have      !== 4'b0)
-          || (m_snap_ptw_twu_idle           !== 4'hf)
-          || (m_snap_ptw_twu_mask           !== 4'b0)
-          || (m_snap_ptw_twu_ref_req        !== 4'b0)
-          || (m_snap_ptw_twu_pgflt_vec      !== 4'b0)
-          || (m_snap_ptw_twu_acc_err_vec    !== 4'b0)
+          || (m_snap_ptw_mbuf_twu_have      !== 1'b0)
+          || (m_snap_ptw_twu_idle           !== 1'b1)
+          || (m_snap_ptw_twu_mask           !== 1'b0)
+          || (m_snap_ptw_twu_ref_req        !== 1'b0)
+          || (m_snap_ptw_twu_pgflt_vec      !== 1'b0)
+          || (m_snap_ptw_twu_acc_err_vec    !== 1'b0)
           || (m_snap_ptw_fault_any          === 1'b1)
           || (m_snap_ptw_pgflt_vld          === 1'b1)
           || (m_snap_ptw_acc_err_vld        === 1'b1)
@@ -858,12 +858,12 @@ class mmu_credit_sb extends uvm_scoreboard;
         || (v_probe.l2_dtlb_ref_cmplt   === 1'b1)
         || (v_probe.l2tlb_ptw_req       === 1'b1)
         || (v_probe.ptw_mbuf_entry_vld  !== 9'b0)
-        || (v_probe.ptw_mbuf_twu_have   !== 4'b0)
-        || (v_probe.ptw_twu_idle        !== 4'hf)
-        || (v_probe.ptw_twu_mask        !== 4'b0)
-        || (v_probe.ptw_twu_ref_req     !== 4'b0)
-        || (v_probe.ptw_twu_pgflt_vec   !== 4'b0)
-        || (v_probe.ptw_twu_acc_err_vec !== 4'b0)
+        || (v_probe.ptw_mbuf_twu_have   !== 1'b0)
+        || (v_probe.ptw_twu_idle        !== 1'b1)
+        || (v_probe.ptw_twu_mask        !== 1'b0)
+        || (v_probe.ptw_twu_ref_req     !== 1'b0)
+        || (v_probe.ptw_twu_pgflt_vec   !== 1'b0)
+        || (v_probe.ptw_twu_acc_err_vec !== 1'b0)
         || (v_probe.ptw_fault_any       === 1'b1)
         || (v_probe.ptw_pgflt_vld       === 1'b1)
         || (v_probe.ptw_acc_err_vld     === 1'b1)

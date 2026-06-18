@@ -157,27 +157,15 @@ module ct_mmu_top(
     input logic   [3 :0]  pmp_mmu_flg2,                
     input logic   [3 :0]  pmp_mmu_flg3,                
     input logic   [3 :0]  pmp_mmu_flg4,    
-    // [NEW] Added for PTW extended ports
-    input logic   [3 :0]  pmp_mmu_flg5,
-    input logic   [3 :0]  pmp_mmu_flg6, 
-
-    input logic   [3 :0]  pmp_mmu_flg7,//!!!!!!!!!!!
 
     output logic           mmu_pmp_fetch3,              
     //output logic           mmu_pmp_fetch4,              
-    output logic           mmu_pmp_fetch5,              
-    output logic           mmu_pmp_fetch6,              
-
-    output logic           mmu_pmp_fetch7,  //!!!!!!!!!!!! 
 
     output logic   [27:0]  mmu_pmp_pa0,                  
     output logic   [27:0]  mmu_pmp_pa1,                  
     output logic   [27:0]  mmu_pmp_pa2,                  
     output logic   [27:0]  mmu_pmp_pa3,                  
     output logic   [27:0]  mmu_pmp_pa4,                  
-    output logic   [27:0]  mmu_pmp_pa5,                  
-    output logic   [27:0]  mmu_pmp_pa6,
-    output logic   [27:0]  mmu_pmp_pa7,//!!!!!!!!!!!!!!!!!!!!!!!
 
     input  logic           pmp_regs_update,
     //!*************************************************************************
@@ -199,15 +187,6 @@ module ct_mmu_top(
     logic [4 :0]  sysmap_mmu_flg4;
     logic [4 :0]  sysmap_mmu_flg5;
     logic [4 :0]  sysmap_mmu_flg6;
-    logic [4 :0]  sysmap_mmu_flg7;
-    logic [4 :0]  sysmap_mmu_flg8;
-    logic [4 :0]  sysmap_mmu_flg9;
-    logic [4 :0]  sysmap_mmu_flg10;
-    logic [4 :0]  sysmap_mmu_flg11;
-    logic [4 :0]  sysmap_mmu_flg12;
-    logic [4 :0]  sysmap_mmu_flg13;
-    logic [4 :0]  sysmap_mmu_flg14;
-    logic [4 :0]  sysmap_mmu_flg15;
 
 
 
@@ -218,15 +197,6 @@ module ct_mmu_top(
     logic [7 :0]  sysmap_mmu_hit4;
     logic [7 :0]  sysmap_mmu_hit5;
     logic [7 :0]  sysmap_mmu_hit6;
-    logic [7 :0]  sysmap_mmu_hit7;
-    logic [7 :0]  sysmap_mmu_hit8;
-    logic [7 :0]  sysmap_mmu_hit9;
-    logic [7 :0]  sysmap_mmu_hit10;
-    logic [7 :0]  sysmap_mmu_hit11;
-    logic [7 :0]  sysmap_mmu_hit12;
-    logic [7 :0]  sysmap_mmu_hit13;
-    logic [7 :0]  sysmap_mmu_hit14;
-    logic [7 :0]  sysmap_mmu_hit15;
     // &Regs; @30
     // &Wires; @31
     //==========================================================
@@ -397,8 +367,7 @@ module ct_mmu_top(
     logic        dutlb_xx_mmu_off;
 
     // Sysmap Internal Wires
-    logic [27:0] mmu_sysmap_pa0, mmu_sysmap_pa1, mmu_sysmap_pa2, mmu_sysmap_pa3, mmu_sysmap_pa4, mmu_sysmap_pa5, mmu_sysmap_pa6,mmu_sysmap_pa7;
-    logic [27:0] mmu_sysmap_pa8, mmu_sysmap_pa9, mmu_sysmap_pa10, mmu_sysmap_pa11, mmu_sysmap_pa12, mmu_sysmap_pa13, mmu_sysmap_pa14, mmu_sysmap_pa15;
+    logic [27:0] mmu_sysmap_pa0, mmu_sysmap_pa1, mmu_sysmap_pa2, mmu_sysmap_pa3, mmu_sysmap_pa4, mmu_sysmap_pa5, mmu_sysmap_pa6;
     // Debug & Ctrl
     logic [1:0]  iutlb_top_ref_cur_st;
     logic [2:0]  dutlb_top_ref_cur_st;
@@ -894,57 +863,21 @@ module ct_mmu_top(
         .regs_ptw_satp_ppn          (regs_ptw_satp_ppn),
         .regs_ptw_clr               (regs_ptw_clr),
         
-        // Sysmap Ports 3-6
+        // Sysmap Ports 3/5/6
         .sysmap_mmu_flg3            (sysmap_mmu_flg3),
         .sysmap_mmu_flg5            (sysmap_mmu_flg5), 
         .sysmap_mmu_flg6            (sysmap_mmu_flg6), 
-        .sysmap_mmu_flg7            (sysmap_mmu_flg7),
-        .sysmap_mmu_flg8            (sysmap_mmu_flg8),
-        .sysmap_mmu_flg9            (sysmap_mmu_flg9),
-        .sysmap_mmu_flg10           (sysmap_mmu_flg10),
-        .sysmap_mmu_flg11           (sysmap_mmu_flg11),
-        .sysmap_mmu_flg12           (sysmap_mmu_flg12),
-        .sysmap_mmu_flg13           (sysmap_mmu_flg13),
-        .sysmap_mmu_flg14           (sysmap_mmu_flg14),
-        .sysmap_mmu_flg15           (sysmap_mmu_flg15),
         .sysmap_mmu_hit3            (sysmap_mmu_hit3),
         .sysmap_mmu_hit5            (sysmap_mmu_hit5), 
         .sysmap_mmu_hit6            (sysmap_mmu_hit6), 
-        .sysmap_mmu_hit7            (sysmap_mmu_hit7),
-        .sysmap_mmu_hit8            (sysmap_mmu_hit8),
-        .sysmap_mmu_hit9            (sysmap_mmu_hit9),
-        .sysmap_mmu_hit10           (sysmap_mmu_hit10),
-        .sysmap_mmu_hit11           (sysmap_mmu_hit11),
-        .sysmap_mmu_hit12           (sysmap_mmu_hit12),
-        .sysmap_mmu_hit13           (sysmap_mmu_hit13),
-        .sysmap_mmu_hit14           (sysmap_mmu_hit14),
-        .sysmap_mmu_hit15           (sysmap_mmu_hit15),
         .mmu_sysmap_pa3             (mmu_sysmap_pa3),
         .mmu_sysmap_pa5             (mmu_sysmap_pa5),
         .mmu_sysmap_pa6             (mmu_sysmap_pa6),
-        .mmu_sysmap_pa7             (mmu_sysmap_pa7),
-        .mmu_sysmap_pa8             (mmu_sysmap_pa8),
-        .mmu_sysmap_pa9             (mmu_sysmap_pa9),
-        .mmu_sysmap_pa10            (mmu_sysmap_pa10),
-        .mmu_sysmap_pa11            (mmu_sysmap_pa11),
-        .mmu_sysmap_pa12            (mmu_sysmap_pa12),
-        .mmu_sysmap_pa13            (mmu_sysmap_pa13),
-        .mmu_sysmap_pa14            (mmu_sysmap_pa14),
-        .mmu_sysmap_pa15            (mmu_sysmap_pa15),
-        
-        // PMP Ports 3-6
+
+        // PMP Port 3
         .pmp_mmu_flg3               (pmp_mmu_flg3),
-        .pmp_mmu_flg7               (pmp_mmu_flg7),
-        .pmp_mmu_flg5               (pmp_mmu_flg5), 
-        .pmp_mmu_flg6               (pmp_mmu_flg6), 
         .mmu_pmp_pa3                (mmu_pmp_pa3),
-        .mmu_pmp_pa7                (mmu_pmp_pa7),
-        .mmu_pmp_pa5                (mmu_pmp_pa5),
-        .mmu_pmp_pa6                (mmu_pmp_pa6),
         .mmu_pmp_fetch3             (mmu_pmp_fetch3),
-        .mmu_pmp_fetch7             (mmu_pmp_fetch7),
-        .mmu_pmp_fetch5             (mmu_pmp_fetch5),
-        .mmu_pmp_fetch6             (mmu_pmp_fetch6),
         .pmp_regs_update            (pmp_regs_update),
         // From L2TLB
         .l2tlb_ptw_req              (l2tlb_ptw_req),
@@ -1218,80 +1151,6 @@ module ct_mmu_top(
         .mmu_sysmap_pa_y (mmu_sysmap_pa6),
         .sysmap_mmu_flg_y(sysmap_mmu_flg6),
         .sysmap_mmu_hit_y(sysmap_mmu_hit6)
-    );
-
-    // &ConnRule(s/_y/6/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_6");
-    ct_mmu_sysmap x_ct_mmu_sysmap_7 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa7),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg7),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit7)
-    );
-
-
-    // &ConnRule(s/_y/8/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_8");
-    ct_mmu_sysmap x_ct_mmu_sysmap_8 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa8),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg8),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit8)
-    );
-
-
-    // &ConnRule(s/_y/9/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_9");
-    ct_mmu_sysmap x_ct_mmu_sysmap_9 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa9),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg9),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit9)
-    );
-
-    // &ConnRule(s/_y/10/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_10");
-    ct_mmu_sysmap x_ct_mmu_sysmap_10 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa10),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg10),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit10)
-    );
-
-    // &ConnRule(s/_y/11/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_11");
-    ct_mmu_sysmap x_ct_mmu_sysmap_11 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa11),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg11),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit11)
-    );
-
-    // &ConnRule(s/_y/12/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_12");
-    ct_mmu_sysmap x_ct_mmu_sysmap_12 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa12),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg12),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit12)
-    );
-
-    // &ConnRule(s/_y/13/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_13");
-    ct_mmu_sysmap x_ct_mmu_sysmap_13 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa13),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg13),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit13)
-    );
-
-    // &ConnRule(s/_y/14/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_14");
-    ct_mmu_sysmap x_ct_mmu_sysmap_14 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa14),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg14),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit14)
-    );
-    
-    // &ConnRule(s/_y/15/);
-    // &Instance("ct_mmu_sysmap", "x_ct_mmu_sysmap_15");
-    ct_mmu_sysmap x_ct_mmu_sysmap_15 (
-        .mmu_sysmap_pa_y (mmu_sysmap_pa15),
-        .sysmap_mmu_flg_y(sysmap_mmu_flg15),
-        .sysmap_mmu_hit_y(sysmap_mmu_hit15)
     );
 
     // for dbg

@@ -10,7 +10,7 @@ module mmu_pde_cache_sva #(
     parameter int PTE_LEVEL        = 3,
     parameter int ID_WIDTH         = 7,
     parameter int TYPE_WIDTH       = 3,
-    parameter int L1PDE_ENTRY_NUM  = 16,
+    parameter int L1PDE_ENTRY_NUM  = 8,
     parameter int L2PDE_ENTRY_NUM  = 16
 ) (
     input logic                                      pde_cache_clk,

@@ -5,6 +5,8 @@
 `include "test_ptw_stage7_suite.svh"
 `include "test_ptw_pde_l1_pmp_tag_deny_fst_fault_001.svh"
 `include "test_ptw_pde_l1_pmp_tag_allow_reuse_001.svh"
+`include "test_ptw_l1pde_cache_cov_closure_001.svh"
+`include "test_ptw_l2pde_pde_cache_cov_closure_001.svh"
 `include "test_ptw_pde_l2_pmp_l1_deny_accerr_001.svh"
 `include "test_ptw_pde_l2_pmp_l2_deny_accerr_001.svh"
 `include "test_ptw_pde_pmpflg_propagation_update_001.svh"

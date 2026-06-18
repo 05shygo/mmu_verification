@@ -48,6 +48,36 @@ module tb_top;
   l2tlb_negative_inject_if l2tlb_neg_inject_if_inst (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   mmu_dut_probes_if dut_probes_if   (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
 
+  logic [31:0] pmp_flag_vec;
+  logic [31:0] pmp_flag_vec_q;
+  logic        pmp_regs_update_dut;
+  bit          pmp_regs_update_enable;
+
+  assign pmp_flag_vec = {
+    pmp_if_inst.pmp_mmu_flg7,
+    pmp_if_inst.pmp_mmu_flg6,
+    pmp_if_inst.pmp_mmu_flg5,
+    pmp_if_inst.pmp_mmu_flg4,
+    pmp_if_inst.pmp_mmu_flg3,
+    pmp_if_inst.pmp_mmu_flg2,
+    pmp_if_inst.pmp_mmu_flg1,
+    pmp_if_inst.pmp_mmu_flg0
+  };
+  assign pmp_regs_update_dut = pmp_regs_update_enable
+                             && cpurst_b
+                             && (pmp_flag_vec !== pmp_flag_vec_q);
+
+  initial begin
+    pmp_regs_update_enable = $test$plusargs("MMU_ENABLE_PMP_REGS_UPDATE");
+  end
+
+  always_ff @(posedge forever_cpuclk or negedge cpurst_b) begin
+    if (!cpurst_b)
+      pmp_flag_vec_q <= 32'h7777_7777;
+    else
+      pmp_flag_vec_q <= pmp_flag_vec;
+  end
+
   function automatic bit mmu_tlbop_reset_mode_known(input string mode);
     case (mode)
       "tlbp_wfg",
@@ -305,7 +335,7 @@ module tb_top;
     //------------------------------------------------------------------
     // PMP Interface
     //------------------------------------------------------------------
-    .pmp_regs_update          (1'b0),
+    .pmp_regs_update          (pmp_regs_update_dut),
     .pmp_mmu_flg0             (pmp_if_inst.pmp_mmu_flg0),
     .pmp_mmu_flg1             (pmp_if_inst.pmp_mmu_flg1),
     .pmp_mmu_flg2             (pmp_if_inst.pmp_mmu_flg2),
@@ -829,26 +859,34 @@ module tb_top;
   assign dut_probes_if.pde_cache_acc_err_grant = u_dut.x_ct_mmu_ptw.acc_err_twu_grant[5];
   assign dut_probes_if.pde_l2_entry_acc_err_vec = u_dut.x_ct_mmu_ptw.u_PDE_cache.L2PDE_entry_acc_err;
   assign dut_probes_if.ptw_acc_err_grant_vec = u_dut.x_ct_mmu_ptw.acc_err_twu_grant;
-  genvar tb_pde_i;
+  genvar tb_l1_pde_i;
+  genvar tb_l1_pde_unused_i;
+  genvar tb_l2_pde_i;
   generate
-    for (tb_pde_i = 0; tb_pde_i < 16; tb_pde_i++) begin : gen_pde_pmp_probe_assign
-      assign dut_probes_if.pde_l1_tag_hit_vec[tb_pde_i] =
-          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_pde_i].u_L1PDE_cache.L1PDE_vld
+    for (tb_l1_pde_i = 0; tb_l1_pde_i < 8; tb_l1_pde_i++) begin : gen_l1_pde_pmp_probe_assign
+      assign dut_probes_if.pde_l1_tag_hit_vec[tb_l1_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_l1_pde_i].u_L1PDE_cache.L1PDE_vld
         & (u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_xbar_vpn[26:18]
-           == u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_pde_i].u_L1PDE_cache.L1PDE_tag);
-      assign dut_probes_if.pde_l2_tag_hit_vec[tb_pde_i] =
-          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_vld
+           == u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_l1_pde_i].u_L1PDE_cache.L1PDE_tag);
+      assign dut_probes_if.pde_l1_cached_l1pmpflg_vec[tb_l1_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_l1_pde_i].u_L1PDE_cache.L1PDE_l1pmpflg;
+    end
+    for (tb_l1_pde_unused_i = 8; tb_l1_pde_unused_i < 16; tb_l1_pde_unused_i++) begin : gen_l1_pde_unused_probe_assign
+      assign dut_probes_if.pde_l1_tag_hit_vec[tb_l1_pde_unused_i] = 1'b0;
+      assign dut_probes_if.pde_l1_cached_l1pmpflg_vec[tb_l1_pde_unused_i] = 4'b0;
+    end
+    for (tb_l2_pde_i = 0; tb_l2_pde_i < 16; tb_l2_pde_i++) begin : gen_l2_pde_pmp_probe_assign
+      assign dut_probes_if.pde_l2_tag_hit_vec[tb_l2_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_l2_pde_i].u_L2PDE_cache.L2PDE_vld
         & (u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_xbar_vpn[26:9]
-           == u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_tag);
-      assign dut_probes_if.pde_l1_cached_l1pmpflg_vec[tb_pde_i] =
-          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[tb_pde_i].u_L1PDE_cache.L1PDE_l1pmpflg;
-      assign dut_probes_if.pde_l2_cached_l1pmpflg_vec[tb_pde_i] =
-          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_l1pmpflg;
-      assign dut_probes_if.pde_l2_cached_l2pmpflg_vec[tb_pde_i] =
-          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_pde_i].u_L2PDE_cache.L2PDE_l2pmpflg;
+           == u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_l2_pde_i].u_L2PDE_cache.L2PDE_tag);
+      assign dut_probes_if.pde_l2_cached_l1pmpflg_vec[tb_l2_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_l2_pde_i].u_L2PDE_cache.L2PDE_l1pmpflg;
+      assign dut_probes_if.pde_l2_cached_l2pmpflg_vec[tb_l2_pde_i] =
+          u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[tb_l2_pde_i].u_L2PDE_cache.L2PDE_l2pmpflg;
     end
   endgenerate
-  assign dut_probes_if.pmp_regs_update_probe = 1'b0;
+  assign dut_probes_if.pmp_regs_update_probe = pmp_regs_update_dut;
   // MAEE path/leaf is inferred from per-TWU leaf request outputs because
   // the RTL does not expose a single encoded MAEE-path/leaf signal.
   assign dut_probes_if.maee_leaf_lvl1_hit = u_dut.x_ct_mmu_ptw.twu_one.fst_chk_csr_req
@@ -2100,21 +2138,16 @@ bind mmu_l2tlb_mb mmu_l2tlb_mb_sva    u_l2tlb_mb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
 bind twu          mmu_twu_sva         u_twu_sva   (.*);
 bind ptw          mmu_ptw_top_sva     u_ptw_top_sva (.*);
-bind PDE_cache    mmu_pde_cache_sva   u_pde_cache_sva (
+bind PDE_cache    mmu_pde_cache_sva #(
+  .L1PDE_ENTRY_NUM(L1PDE_ENTRY_NUM),
+  .L2PDE_ENTRY_NUM(L2PDE_ENTRY_NUM)
+) u_pde_cache_sva (
   .*,
   .ptw_abort_drain($root.tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.ptw_abort_drain),
   .ptw_lsu_bus_error_rsp($root.tb_top.ptw_mem_if_inst.lsu_mmu_bus_error),
   .ptw_writeback_req_any(|$root.tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.write_back_req),
   .ptw_writeback_grant_any(|$root.tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.write_back_grant),
   .L1PDE_tag_hit({
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[15].u_L1PDE_cache.L1PDE_tag),
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[14].u_L1PDE_cache.L1PDE_tag),
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[13].u_L1PDE_cache.L1PDE_tag),
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[12].u_L1PDE_cache.L1PDE_tag),
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[11].u_L1PDE_cache.L1PDE_tag),
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[10].u_L1PDE_cache.L1PDE_tag),
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[9].u_L1PDE_cache.L1PDE_tag),
-    (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[8].u_L1PDE_cache.L1PDE_tag),
     (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[7].u_L1PDE_cache.L1PDE_tag),
     (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[6].u_L1PDE_cache.L1PDE_tag),
     (ptw_vpn[VPN_WIDTH-1:(2*VPN_PERLEL)] == u_L1PDE_ent[5].u_L1PDE_cache.L1PDE_tag),
@@ -2143,14 +2176,6 @@ bind PDE_cache    mmu_pde_cache_sva   u_pde_cache_sva (
     (ptw_vpn[VPN_WIDTH-1:VPN_PERLEL] == u_L2PDE_ent[0].u_L2PDE_cache.L2PDE_tag)
   }),
   .L1PDE_l1pmpflg({
-    u_L1PDE_ent[15].u_L1PDE_cache.L1PDE_l1pmpflg,
-    u_L1PDE_ent[14].u_L1PDE_cache.L1PDE_l1pmpflg,
-    u_L1PDE_ent[13].u_L1PDE_cache.L1PDE_l1pmpflg,
-    u_L1PDE_ent[12].u_L1PDE_cache.L1PDE_l1pmpflg,
-    u_L1PDE_ent[11].u_L1PDE_cache.L1PDE_l1pmpflg,
-    u_L1PDE_ent[10].u_L1PDE_cache.L1PDE_l1pmpflg,
-    u_L1PDE_ent[9].u_L1PDE_cache.L1PDE_l1pmpflg,
-    u_L1PDE_ent[8].u_L1PDE_cache.L1PDE_l1pmpflg,
     u_L1PDE_ent[7].u_L1PDE_cache.L1PDE_l1pmpflg,
     u_L1PDE_ent[6].u_L1PDE_cache.L1PDE_l1pmpflg,
     u_L1PDE_ent[5].u_L1PDE_cache.L1PDE_l1pmpflg,
@@ -2203,6 +2228,9 @@ bind twu          mmu_maee_twu_sva    u_maee_twu_sva (.*);
 bind twu          mmu_pmp_twu_sva     u_pmp_twu_sva (.*);
 bind twu          mmu_sysmap_sva      u_sysmap_sva (.*);
 bind ptw_mbuf     mmu_ptw_lsu_protocol_sva u_ptw_lsu_protocol_sva (.*);
-bind pplru        mmu_pde_pplru_sva   u_pde_pplru_sva (.*);
+bind pplru        mmu_pde_pplru_sva #(
+  .PDE_ENTRY_NUM(PDE_ENTRY_NUM),
+  .PDE_INDEX_WIDTH(PDE_INDEX_WIDTH)
+) u_pde_pplru_sva (.*);
 bind ct_mmu_iplru mmu_plru_sva        u_iplru_sva (.*);
 bind ct_mmu_dplru mmu_dplru_sva       u_dplru_sva (.*);

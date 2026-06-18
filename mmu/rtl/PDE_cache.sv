@@ -9,7 +9,7 @@ module PDE_cache #(
     parameter PTE_LEVEL   = 3,                          // Page Table Label
     parameter ID_WIDTH    = 7,
     parameter TYPE_WIDTH  = 3,
-    parameter L1PDE_ENTRY_NUM = 16,
+    parameter L1PDE_ENTRY_NUM = 8,
     parameter L2PDE_ENTRY_NUM = 16,
 
 // VPN width per level
@@ -270,6 +270,8 @@ always@(posedge pde_cache_clk or negedge cpurst_b) begin
 		PDE_cache_acc_err <= 1'b1;
 	else if(PDE_cache_acc_err_grant)
 		PDE_cache_acc_err <= 1'b0;
+	else
+		PDE_cache_acc_err <= PDE_cache_acc_err;
 end
 
 always@(posedge pde_cache_clk or negedge cpurst_b) begin
@@ -279,6 +281,9 @@ always@(posedge pde_cache_clk or negedge cpurst_b) begin
 	end else if(L2PDE_entry_acc_err_vld)begin
 		L2PDE_cache_acc_err_type[TYPE_WIDTH-1:0] <= ptw_type[TYPE_WIDTH-1:0];
 		L2PDE_cache_acc_err_id[ID_WIDTH-1:0] <= ptw_id[ID_WIDTH-1:0];
+	end else begin
+		L2PDE_cache_acc_err_type[TYPE_WIDTH-1:0] <= L2PDE_cache_acc_err_type[TYPE_WIDTH-1:0];
+		L2PDE_cache_acc_err_id[ID_WIDTH-1:0] <= L2PDE_cache_acc_err_id[ID_WIDTH-1:0];
 	end
 end
 
@@ -297,18 +302,20 @@ assign L2PDE_entry_hit_vld = (|L2PDE_entry_hit_idx[L2PDE_ENTRY_NUM-1:0]);
 
 
 always_comb begin
-	L1PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
 	for(int i = 0; i < L1PDE_ENTRY_NUM; i = i + 1) begin
 		if(L1PDE_entry_hit_idx[i])
 			L1PDE_cache_hit_ppn[PPN_WIDTH-1:0] = L1PDE_entry_ppn[i][PPN_WIDTH-1:0];
+		else
+			L1PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
 	end
 end
 
 always_comb begin
-	L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
 	for(int i = 0; i < L2PDE_ENTRY_NUM; i = i + 1) begin
 		if(L2PDE_entry_hit_idx[i])
 			L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = L2PDE_entry_ppn[i][PPN_WIDTH-1:0];
+		else
+			L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
 	end
 end
 
@@ -413,5 +420,3 @@ assign PDE_xbar_req = ptw_req & (!L2PDE_entry_acc_err_vld);
 
 
 endmodule
-
-

@@ -85,6 +85,8 @@ always @(posedge L2PDE_entry_clk or negedge cpurst_b)begin
 		L2PDE_vld <= 1'b0;
 	else if(L2PDE_entry_upd) 
 		L2PDE_vld <= 1'b1;
+	else
+		L2PDE_vld <= L2PDE_vld;
 end
 
 
@@ -102,6 +104,11 @@ always @(posedge L2PDE_entry_clk or negedge cpurst_b)begin
 		L2PDE_ppn[PPN_WIDTH-1:0] <= L2PDE_upd_ppn[PPN_WIDTH-1:0];
 		L2PDE_l1pmpflg[3:0] <= L2PDE_upd_l1pmpflg[3:0];
 		L2PDE_l2pmpflg[3:0] <= L2PDE_upd_l2pmpflg[3:0];
+	end else begin
+		L2PDE_tag[TAG_WIDTH-1:0] <= L2PDE_tag[TAG_WIDTH-1:0];
+		L2PDE_ppn[PPN_WIDTH-1:0] <= L2PDE_ppn[PPN_WIDTH-1:0];
+		L2PDE_l1pmpflg[3:0] <= L2PDE_l1pmpflg[3:0];
+		L2PDE_l2pmpflg[3:0] <= L2PDE_l2pmpflg[3:0];
 	end
 end
 
@@ -144,7 +151,6 @@ assign L2PDE_entry_ppn = L2PDE_ppn;
 assign L2PDE_entry_hit = L2PDE_hit;
 assign L2PDE_entry_acc_err = L2PDE_acc_err;
 endmodule
-
 
 
 

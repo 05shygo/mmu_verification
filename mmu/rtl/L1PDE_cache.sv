@@ -80,6 +80,8 @@ always @(posedge L1PDE_entry_clk or negedge cpurst_b)begin
 		L1PDE_vld <= 1'b0;
 	else if(L1PDE_entry_upd) 
 		L1PDE_vld <= 1'b1;
+	else
+		L1PDE_vld <= L1PDE_vld;
 end
 
 
@@ -95,6 +97,10 @@ always @(posedge L1PDE_entry_clk or negedge cpurst_b)begin
 		L1PDE_tag[TAG_WIDTH-1:0] <= L1PDE_upd_vpn[TAG_WIDTH-1:0];
 		L1PDE_ppn[PPN_WIDTH-1:0] <= L1PDE_upd_ppn[PPN_WIDTH-1:0];
 		L1PDE_l1pmpflg[3:0] <= L1PDE_upd_l1pmpflg[3:0];
+	end else begin
+		L1PDE_tag[TAG_WIDTH-1:0] <= L1PDE_tag[TAG_WIDTH-1:0];
+		L1PDE_ppn[PPN_WIDTH-1:0] <= L1PDE_ppn[PPN_WIDTH-1:0];
+		L1PDE_l1pmpflg[3:0] <= L1PDE_l1pmpflg[3:0];
 	end
 end
 
@@ -128,7 +134,6 @@ assign L1PDE_entry_ppn = L1PDE_ppn;
 assign L1PDE_entry_hit = L1PDE_hit;
 
 endmodule
-
 
 
 

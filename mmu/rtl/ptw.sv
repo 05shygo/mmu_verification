@@ -9,7 +9,7 @@ module ptw #(
     parameter PTE_LEVEL   = 3,                          // Page Table Label
     parameter ID_WIDTH    = 7,
     parameter TYPE_WIDTH  = 3,
-    parameter L1PDE_ENTRY_NUM = 16,
+    parameter L1PDE_ENTRY_NUM = 8,
     parameter L2PDE_ENTRY_NUM = 16,
     parameter MBUF_ID_WIDTH = 4,
 
@@ -1367,4 +1367,3 @@ end
 //
 
 endmodule
-

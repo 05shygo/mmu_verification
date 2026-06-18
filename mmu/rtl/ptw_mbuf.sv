@@ -232,7 +232,7 @@ assign lsu_mmu_bus_error_entry[MBUF_ENTRY_NUM-1:0] = {MBUF_ENTRY_NUM{lsu_mmu_bus
 //==============================================================================
 assign twu_itlb_sel = twu_mbuf_req & (twu_mbuf_type[TYPE_WIDTH-1:0] == 3'b011);
 assign mbuf_grant = twu_mbuf_req & (!ptw_abort_drain);
-
+/*
 always_comb begin
 	case(mbuf_grant)
 		1'b1 : begin
@@ -253,6 +253,13 @@ always_comb begin
 		end
 	endcase
 end
+*/
+assign mbuf_upd_padder[PADDR_WIDTH-1:0] = twu_mbuf_paddr[PADDR_WIDTH-1:0];
+assign mbuf_upd_vpn[VPN_WIDTH-1:0] = twu_mbuf_vpn[VPN_WIDTH-1:0];
+assign mbuf_upd_type[TYPE_WIDTH-1:0] = twu_mbuf_type[TYPE_WIDTH-1:0];
+assign mbuf_upd_id[ID_WIDTH-1:0] = twu_mbuf_id[ID_WIDTH-1:0];
+assign mbuf_upd_lvl[PTE_LEVEL-1:0] = twu_mbuf_lvl[PTE_LEVEL-1:0];
+assign mbuf_upd_pmpflg[7:0] = twu_mbuf_pmpflg[7:0];
 
 assign create_en = mbuf_grant & (!twu_itlb_sel);
 

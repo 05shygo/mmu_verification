@@ -24,7 +24,6 @@ module twu #(
 //!******************************************
     input  logic                   forever_cpuclk,
     input  logic                   cpurst_b,
-    input  logic [3:0]             twu_idx,
     input  logic                   refill_arb_twu_grant,
 
 //!******************************************
@@ -85,7 +84,6 @@ module twu #(
     output logic [TYPE_WIDTH-1:0]  twu_mbuf_type,
     output logic [ID_WIDTH-1:0]    twu_mbuf_id,
     output logic [PTE_LEVEL-1:0]   twu_mbuf_lvl,
-    output logic [3:0]             twu_mbuf_twu_idx,
     output logic [7:0]             twu_mbuf_pmpflg,
 //output logic		twu_mbuf_mask,
 
@@ -1320,8 +1318,6 @@ assign mmu_sysmap_pax2[PPN_WIDTH-1:0] = twu_sysmap_adderx2[PPN_WIDTH+11:12];
 
 assign twu_mbuf_lvl[PTE_LEVEL-1:0] = {fst_pmp_mbuf_req,scd_pmp_mbuf_req,thd_pmp_mbuf_req};
 assign twu_mbuf_req = |twu_mbuf_lvl[PTE_LEVEL-1:0];
-assign twu_mbuf_twu_idx[3:0] = twu_idx[3:0];
-
 always_comb begin
 	case(twu_mbuf_lvl[PTE_LEVEL-1:0])
 		3'b001	: begin

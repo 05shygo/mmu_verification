@@ -579,92 +579,90 @@ class ptw_source_monitor extends uvm_monitor;
   endtask
 
   protected task sample_level_events();
-    for (int unsigned twu = 0; twu < 4; twu++) begin
-      bit event_seen;
-      logic [2:0] pmp_vld_vec;
-      logic [2:0] pmp_grant_vec;
-      logic [2:0] pmp_deny_fire_vec;
+    bit event_seen;
+    logic [2:0] pmp_vld_vec;
+    logic [2:0] pmp_grant_vec;
+    logic [2:0] pmp_deny_fire_vec;
 
-      pmp_vld_vec = v_probe.mon_cb.p13_pmp_vld_vec[twu];
-      pmp_grant_vec = v_probe.mon_cb.p13_pmp_grant_vec[twu];
-      pmp_deny_fire_vec = pmp_vld_vec & pmp_grant_vec
-                         & v_probe.mon_cb.p13_pmp_deny_vec[twu];
-      event_seen = (v_probe.mon_cb.ptw_twu_mbuf_req[twu] === 1'b1)
-                || (v_probe.mon_cb.ptw_mbuf_twu_data_vld[twu] === 1'b1)
-                || (v_probe.mon_cb.ptw_twu_ref_req[twu] === 1'b1)
-                || (v_probe.mon_cb.ptw_twu_pgflt_vec[twu] === 1'b1)
-                || (v_probe.mon_cb.ptw_twu_acc_err_vec[twu] === 1'b1)
-                || (|pmp_vld_vec)
-                || (|pmp_grant_vec)
-                || (|pmp_deny_fire_vec)
-                || (|v_probe.mon_cb.p13_pmp_wait_vec[twu]);
+    pmp_vld_vec = v_probe.mon_cb.p13_pmp_vld_vec;
+    pmp_grant_vec = v_probe.mon_cb.p13_pmp_grant_vec;
+    pmp_deny_fire_vec = pmp_vld_vec & pmp_grant_vec
+                       & v_probe.mon_cb.p13_pmp_deny_vec;
+    event_seen = (v_probe.mon_cb.ptw_twu_mbuf_req === 1'b1)
+              || (v_probe.mon_cb.ptw_mbuf_twu_data_vld === 1'b1)
+              || (v_probe.mon_cb.ptw_twu_ref_req === 1'b1)
+              || (v_probe.mon_cb.ptw_twu_pgflt_vec === 1'b1)
+              || (v_probe.mon_cb.ptw_twu_acc_err_vec === 1'b1)
+              || (|pmp_vld_vec)
+              || (|pmp_grant_vec)
+              || (|pmp_deny_fire_vec)
+              || (|v_probe.mon_cb.p13_pmp_wait_vec);
 
-      if (event_seen) begin
-        ptw_src_level_evt_txn tr;
-        int unsigned lvl_idx;
-        logic [2:0] level_vec;
+    if (event_seen) begin
+      ptw_src_level_evt_txn tr;
+      int unsigned lvl_idx;
+      logic [2:0] level_vec;
 
-        tr = ptw_src_level_evt_txn::type_id::create("ptw_level_evt");
-        tr.cycle = m_cycle;
-        tr.twu_idx = twu;
-        if (v_probe.mon_cb.ptw_mbuf_twu_data_vld[twu] === 1'b1) begin
-          // Data return identity is carried by the selected mbuf entry.  The
-          // per-TWU twu_mbuf_* signals can already hold the next memory request.
-          tr.req_type = cast_req_type(v_probe.mon_cb.ptw_mbuf_twu_type);
-          tr.id = v_probe.mon_cb.ptw_mbuf_twu_id;
-          tr.vpn = v_probe.mon_cb.ptw_mbuf_twu_vpn;
-          tr.pte_pa = '0;
-        end else begin
-          tr.req_type = cast_req_type(v_probe.mon_cb.ptw_twu_mbuf_type[twu]);
-          tr.id = v_probe.mon_cb.ptw_twu_mbuf_id[twu];
-          tr.vpn = v_probe.mon_cb.ptw_twu_mbuf_vpn[twu];
-          tr.pte_pa = v_probe.mon_cb.ptw_twu_mbuf_paddr[twu];
-        end
-        tr.mbuf_req = v_probe.mon_cb.ptw_twu_mbuf_req[twu];
-        tr.mbuf_data_vld = v_probe.mon_cb.ptw_mbuf_twu_data_vld[twu];
-        tr.refill_req = v_probe.mon_cb.ptw_twu_ref_req[twu];
-        tr.page_fault = v_probe.mon_cb.ptw_twu_pgflt_vec[twu];
-        tr.access_fault = v_probe.mon_cb.ptw_twu_acc_err_vec[twu];
-        tr.abort_drain = ((v_probe.mon_cb.ptw_abort_drain === 1'b1)
-                       || (v_probe.mon_cb.ptw_abort_flop === 1'b1))
-                       && tr.mbuf_data_vld;
-        tr.pmp_vld = |pmp_vld_vec;
-        tr.pmp_grant = |pmp_grant_vec;
-        tr.pmp_deny = |pmp_deny_fire_vec;
-        tr.pmp_wait = |v_probe.mon_cb.p13_pmp_wait_vec[twu];
-        if (tr.pmp_vld || tr.pmp_grant || tr.pmp_deny)
-          tr.selected_pmpflg = v_probe.mon_cb.p13_pmp_flg_vec[twu];
-        tr.twu_mbuf_pmpflg = v_probe.mon_cb.ptw_twu_mbuf_pmpflg[twu];
-        tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
-        tr.sysmap_hit = |v_probe.mon_cb.p13_sysmap_hit_vec[twu];
-        tr.sysmap_flg = v_probe.mon_cb.p13_sysmap_flg_vec[twu];
-
-        if (tr.mbuf_data_vld)
-          level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
-        else
-          level_vec = v_probe.mon_cb.ptw_twu_mbuf_lvl[twu];
-        if (level_vec == 3'b000)
-          level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
-        if ((level_vec == 3'b000) && (|pmp_vld_vec))
-          level_vec = pmp_vld_vec;
-        if ((level_vec == 3'b000) && (|pmp_deny_fire_vec))
-          level_vec = pmp_deny_fire_vec;
-        tr.level = level_from_onehot(level_vec);
-
-        lvl_idx = (tr.level == PTW_SRC_LEVEL_FST) ? 2
-                : (tr.level == PTW_SRC_LEVEL_SCD) ? 1
-                : (tr.level == PTW_SRC_LEVEL_THD) ? 0
-                : 0;
-        if (tr.mbuf_data_vld)
-          tr.pte_data = v_probe.mon_cb.ptw_mbuf_twu_data;
-        if ((tr.req_type == PTW_SRC_TYPE_UNKNOWN)
-            && ptw_src_is_legal_req_type(v_probe.mon_cb.p13_pmp_type_vec[twu][lvl_idx]))
-          tr.req_type = cast_req_type(v_probe.mon_cb.p13_pmp_type_vec[twu][lvl_idx]);
-
-        m_level_count++;
-        ap_level.write(tr);
-        `uvm_info(get_type_name(), {"PTW_LEVEL_EVT ", tr.convert2string()}, UVM_HIGH)
+      tr = ptw_src_level_evt_txn::type_id::create("ptw_level_evt");
+      tr.cycle = m_cycle;
+      tr.twu_idx = 0;
+      if (v_probe.mon_cb.ptw_mbuf_twu_data_vld === 1'b1) begin
+        // Data return identity is carried by the selected mbuf entry.  The
+        // twu_mbuf_* signals can already hold the next memory request.
+        tr.req_type = cast_req_type(v_probe.mon_cb.ptw_mbuf_twu_type);
+        tr.id = v_probe.mon_cb.ptw_mbuf_twu_id;
+        tr.vpn = v_probe.mon_cb.ptw_mbuf_twu_vpn;
+        tr.pte_pa = '0;
+      end else begin
+        tr.req_type = cast_req_type(v_probe.mon_cb.ptw_twu_mbuf_type);
+        tr.id = v_probe.mon_cb.ptw_twu_mbuf_id;
+        tr.vpn = v_probe.mon_cb.ptw_twu_mbuf_vpn;
+        tr.pte_pa = v_probe.mon_cb.ptw_twu_mbuf_paddr;
       end
+      tr.mbuf_req = v_probe.mon_cb.ptw_twu_mbuf_req;
+      tr.mbuf_data_vld = v_probe.mon_cb.ptw_mbuf_twu_data_vld;
+      tr.refill_req = v_probe.mon_cb.ptw_twu_ref_req;
+      tr.page_fault = v_probe.mon_cb.ptw_twu_pgflt_vec;
+      tr.access_fault = v_probe.mon_cb.ptw_twu_acc_err_vec;
+      tr.abort_drain = ((v_probe.mon_cb.ptw_abort_drain === 1'b1)
+                     || (v_probe.mon_cb.ptw_abort_flop === 1'b1))
+                     && tr.mbuf_data_vld;
+      tr.pmp_vld = |pmp_vld_vec;
+      tr.pmp_grant = |pmp_grant_vec;
+      tr.pmp_deny = |pmp_deny_fire_vec;
+      tr.pmp_wait = |v_probe.mon_cb.p13_pmp_wait_vec;
+      if (tr.pmp_vld || tr.pmp_grant || tr.pmp_deny)
+        tr.selected_pmpflg = v_probe.mon_cb.p13_pmp_flg_vec;
+      tr.twu_mbuf_pmpflg = v_probe.mon_cb.ptw_twu_mbuf_pmpflg;
+      tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
+      tr.sysmap_hit = |v_probe.mon_cb.p13_sysmap_hit_vec;
+      tr.sysmap_flg = v_probe.mon_cb.p13_sysmap_flg_vec;
+
+      if (tr.mbuf_data_vld)
+        level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
+      else
+        level_vec = v_probe.mon_cb.ptw_twu_mbuf_lvl;
+      if (level_vec == 3'b000)
+        level_vec = v_probe.mon_cb.ptw_mbuf_twu_lvl_vec;
+      if ((level_vec == 3'b000) && (|pmp_vld_vec))
+        level_vec = pmp_vld_vec;
+      if ((level_vec == 3'b000) && (|pmp_deny_fire_vec))
+        level_vec = pmp_deny_fire_vec;
+      tr.level = level_from_onehot(level_vec);
+
+      lvl_idx = (tr.level == PTW_SRC_LEVEL_FST) ? 2
+              : (tr.level == PTW_SRC_LEVEL_SCD) ? 1
+              : (tr.level == PTW_SRC_LEVEL_THD) ? 0
+              : 0;
+      if (tr.mbuf_data_vld)
+        tr.pte_data = v_probe.mon_cb.ptw_mbuf_twu_data;
+      if ((tr.req_type == PTW_SRC_TYPE_UNKNOWN)
+          && ptw_src_is_legal_req_type(v_probe.mon_cb.p13_pmp_type_vec[lvl_idx]))
+        tr.req_type = cast_req_type(v_probe.mon_cb.p13_pmp_type_vec[lvl_idx]);
+
+      m_level_count++;
+      ap_level.write(tr);
+      `uvm_info(get_type_name(), {"PTW_LEVEL_EVT ", tr.convert2string()}, UVM_HIGH)
     end
   endtask
 

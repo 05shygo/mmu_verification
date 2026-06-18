@@ -29,10 +29,9 @@ module mbuf_entry #(
     input  logic [VPN_WIDTH-1:0]      mbuf_upd_vpn,
     input  logic [TYPE_WIDTH-1:0]     mbuf_upd_type,
     input  logic [ID_WIDTH-1:0]       mbuf_upd_id,
-    input  logic [3:0]                mbuf_upd_twu_idx,
     input  logic [PTE_LEVEL-1:0]      mbuf_upd_lvl,
     input  logic [7:0]                mbuf_upd_pmpflg,
-    input  logic [3:0][PTE_LEVEL-1:0] twu_data_ready,
+    input  logic [PTE_LEVEL-1:0]      twu_data_ready,
     input  logic                      write_back_grant,
     input  logic                      mbuf_entry_bus_err_req_mask,
     input  logic                      mbuf_bus_error_grant,
@@ -45,7 +44,6 @@ module mbuf_entry #(
     output logic [VPN_WIDTH-1:0]      mbuf_entry_vpn,
     output logic [TYPE_WIDTH-1:0]     mbuf_entry_type,
     output logic [ID_WIDTH-1:0]       mbuf_entry_id,
-    output logic [3:0]                mbuf_entry_twu_idx,
     output logic [PTE_LEVEL-1:0]      mbuf_entry_lvl,
     output logic [7:0]                mbuf_entry_pmpflg,
     output logic [63:0]               mbuf_entry_data,
@@ -60,10 +58,8 @@ logic [PADDR_WIDTH-1:0] mbuf_padder      ;                      //
 logic [VPN_WIDTH-1:0]   mbuf_vpn         ;                      //
 logic [TYPE_WIDTH-1:0]  mbuf_type        ;
 logic [ID_WIDTH-1:0]    mbuf_id          ;                      //
-logic [3:0]             mbuf_twu_idx     ;                      //
 logic [PTE_LEVEL-1:0]   mbuf_lvl         ;                      //
 logic [63:0]            mbuf_lsu_data    ;
-logic [1:0]             idx              ;
 logic                   mbuf_get         ;
 logic                   mbuf_bus_err_flop;
 logic                   mbuf_entry_clk_en;
@@ -173,14 +169,12 @@ always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
 		mbuf_vpn[VPN_WIDTH-1:0] <= {VPN_WIDTH{1'b0}};
 		mbuf_type[TYPE_WIDTH-1:0] <= {TYPE_WIDTH{1'b0}};
 		mbuf_id[ID_WIDTH-1:0] <= {ID_WIDTH{1'b0}};
-		mbuf_twu_idx[3:0] <= 4'b0;
 		mbuf_lvl[PTE_LEVEL-1:0] <= {PTE_LEVEL{1'b0}};
     end else if(mbuf_entry_upd)begin
 		mbuf_padder[PADDR_WIDTH-1:0] <= mbuf_upd_padder[PADDR_WIDTH-1:0];
 		mbuf_vpn[VPN_WIDTH-1:0] <= mbuf_upd_vpn[VPN_WIDTH-1:0];
 		mbuf_type[TYPE_WIDTH-1:0] <= mbuf_upd_type[TYPE_WIDTH-1:0];
 		mbuf_id[ID_WIDTH-1:0] <= mbuf_upd_id[ID_WIDTH-1:0];
-		mbuf_twu_idx[3:0] <= mbuf_upd_twu_idx[3:0];
 		mbuf_lvl[PTE_LEVEL-1:0] <= mbuf_upd_lvl[PTE_LEVEL-1:0];
 	end
 end
@@ -192,18 +186,9 @@ always_ff @(posedge mbuf_entry_clk or negedge cpurst_b)begin
         mbuf_lsu_data[63:0] <= lsu_mmu_data[63:0];
 end
 
-always_comb begin
-    case(mbuf_twu_idx[3:0])
-        4'b0001 : idx = 2'b00;
-        4'b0010 : idx = 2'b01;
-        4'b0100 : idx = 2'b10;
-        4'b1000 : idx = 2'b11;
-        default : idx = 2'b00;
-    endcase
-end
 assign write_back_req = mbuf_vld
                       & (!mbuf_all_clr)
-                      & (|(twu_data_ready[idx][PTE_LEVEL-1:0] & mbuf_lvl[PTE_LEVEL-1:0]))
+                      & (|(twu_data_ready[PTE_LEVEL-1:0] & mbuf_lvl[PTE_LEVEL-1:0]))
                       & ((mbuf_on & lsu_mmu_data_routed) | mbuf_get);
 assign bus_err_write_back_req = mbuf_vld
                               & (!mbuf_all_clr)
@@ -218,7 +203,6 @@ assign mbuf_entry_on = mbuf_on;
 assign mbuf_entry_vpn = mbuf_vpn[VPN_WIDTH-1:0];
 assign mbuf_entry_type = mbuf_type[TYPE_WIDTH-1:0];
 assign mbuf_entry_id = mbuf_id[ID_WIDTH-1:0];
-assign mbuf_entry_twu_idx = mbuf_twu_idx[3:0];
 assign mbuf_entry_lvl = mbuf_lvl[PTE_LEVEL-1:0];
 assign mbuf_entry_pmpflg = mbuf_pmpflg[7:0];
 assign mbuf_entry_data = mbuf_get ? mbuf_lsu_data[63:0] : lsu_mmu_data[63:0];

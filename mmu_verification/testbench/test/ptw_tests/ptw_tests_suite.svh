@@ -83,3 +83,5 @@
 `include "test_mmu_arb_multi_twu_fairness.svh"
 `include "test_mmu_arb_vpn_match_tag_din.svh"
 `include "test_mmu_arb_pgs_bank_select.svh"
+`include "test_ptw_l2pde_cache_cond_toggle_cov.svh"
+`include "test_ptw_l1pde_cache_cond_toggle_cov.svh"

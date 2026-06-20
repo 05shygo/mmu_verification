@@ -619,7 +619,7 @@ class test_ptw_p0_pde_mbuf_pmp_matrix extends ptw_stage6_p0_base;
     ptw_setup_sv39(STAGE6_ROOT_PPN + 28'h52, STAGE6_ROOT_ASID + 16'h52, PRIV_S, 1'b0, 1'b0, 1'b1);
     stage6_map_leaf(.va(va), .level(0), .pa(pa), .req_type(PTW_SRC_TYPE_LOAD), .id(6'h24),
       .kind("4k_leaf_before_pmp_deny"), .r(1), .w(1), .x(0), .a(1), .d(1));
-    ptw_pmp_deny_ptw_reads(4'b1111);
+    ptw_pmp_deny_ptw_reads(1'b1);
     ptw_meta_set_expected("PTW PTE PA PMP deny terminates as access fault without refill");
     stage6_drive_req(PTW_SRC_TYPE_LOAD, va, 6'h24);
     stage6_finish_scenario("stage6_pmp_fst_deny_access_fault");

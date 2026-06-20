@@ -274,7 +274,7 @@ class ptw_pde_pmpflg_stage9_base extends ptw_pde_pmpflg_stage8_base;
         end
       end
 
-      if ((ptw_probe_vif.mon_cb.ptw_acc_err_grant_vec[5] === 1'b1)
+      if ((ptw_probe_vif.mon_cb.ptw_acc_err_grant_vec[2] === 1'b1)
           && (ptw_probe_vif.mon_cb.ptw_l2tlb_ref_acc_err === 1'b1)) begin
         last_visible_type = ptw_probe_vif.mon_cb.ptw_l2tlb_type;
         last_visible_id = ptw_probe_vif.mon_cb.ptw_l2tlb_id;

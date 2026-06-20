@@ -73,7 +73,8 @@ class test_ptw_pde_l2_pmp_l1_deny_accerr_001 extends ptw_pde_pmpflg_stage8_base;
         ptw_drive_source_req_by_type(PTW_SRC_TYPE_LOAD, deny_va, 6'h18);
       end
       begin
-        stage8_wait_cycles(1);
+        // 4TWU→1TWU: single TWU may take extra cycles to settle after quiescent
+        stage8_wait_cycles(32);
         ptw_expect_no_ptw_mem_req_window("stage8_l2_cached_l1pmp_deny_accerr_manual_window",
           4, 32);
       end

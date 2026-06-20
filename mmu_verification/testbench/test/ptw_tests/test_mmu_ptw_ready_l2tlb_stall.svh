@@ -51,7 +51,7 @@ class test_mmu_ptw_ready_l2tlb_stall extends phase12_generated_test_base;
       end
       begin
         #200ns;
-        phase12_set_pmp_deny_ptw_reads(4'b1111);
+        phase12_set_pmp_deny_ptw_reads(1'b1);
         #300ns;
         phase12_set_pmp_allow_all();
         repeat (4)

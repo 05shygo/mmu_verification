@@ -134,22 +134,20 @@ endclass : pmp_flg_raw_seq
 class pmp_flg_deny_ptw_rd_seq extends pmp_base_seq;
   `uvm_object_utils(pmp_flg_deny_ptw_rd_seq)
 
-  rand bit [3:0] deny_twu_mask;  // twu_one/two/three/four -> ports 3/5/6/7
-  constraint c_deny_nonzero { deny_twu_mask != 4'b0000; }
+  rand bit        deny_twu;  // single TWU port 3 (4TWU→1TWU: was deny_twu_mask[3:0])
+  constraint c_deny_active { deny_twu == 1'b1; }  // must set to have effect
 
   function new(string name = "pmp_flg_deny_ptw_rd_seq");
     super.new(name);
-    deny_twu_mask = 4'b1111;
+    deny_twu = 1'b1;
   endfunction
 
   virtual task body();
     pmp_txn tr;
     `uvm_create(tr)
     foreach (tr.flg[i]) tr.flg[i] = 4'h7;
-    tr.flg[3] = deny_twu_mask[0] ? 4'h6 : 4'h7;
-    tr.flg[5] = deny_twu_mask[1] ? 4'h6 : 4'h7;
-    tr.flg[6] = deny_twu_mask[2] ? 4'h6 : 4'h7;
-    tr.flg[7] = deny_twu_mask[3] ? 4'h6 : 4'h7;
+    tr.flg[3] = deny_twu ? 4'h6 : 4'h7;
+    // Ports 5/6/7 removed (4TWU→1TWU): only port 3 (single TWU) remains
     `uvm_send(tr)
   endtask
 endclass : pmp_flg_deny_ptw_rd_seq

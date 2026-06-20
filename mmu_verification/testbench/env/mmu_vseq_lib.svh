@@ -27,6 +27,22 @@ function automatic bit [27:0] mmu_vseq_vabuf(input va_t va);
   return va64[38:11];
 endfunction
 
+function automatic bit [6:0] mmu_vseq_lsu_slot_id(
+  input int unsigned idx,
+  input lsu_kind_e    kind
+);
+  bit [6:0] slot_id;
+  int unsigned lane;
+
+  lane = idx % 6;
+  case (kind)
+    LSU_PIPE0: slot_id = lane * 2;
+    LSU_PIPE1: slot_id = (lane * 2) + 1;
+    default:   slot_id = idx % 12;
+  endcase
+  return slot_id;
+endfunction
+
 class mmu_vseq_ifu_rr_seq extends ifu_base_seq;
   `uvm_object_utils(mmu_vseq_ifu_rr_seq)
   va_t m_va_table[];
@@ -101,11 +117,10 @@ class mmu_vseq_lsu_rr_seq extends lsu_base_seq;
       automatic bit [27:0] va2_local = mmu_vseq_va2(m_va_table[idx]);
       automatic bit [27:0] vabuf_local = mmu_vseq_vabuf(m_va_table[idx]);
       // Phase12 PTW/DTLB pressure tests model a small set of in-flight LSU slots.
-      // Leaving iid fully random creates non-architectural alias/noise on the
-      // busy/wakeup + expt_CAM ownership path. Keep pipe0/pipe1 on stable,
-      // low-collision slot ids while still varying age/order with i.
+      // Repeated requests to the same VA must keep a stable iid; otherwise a
+      // non-owner replay can sit in front of the owner on the expt/MB path.
       automatic bit [6:0] slot_id;
-      slot_id = ((i * 2) + ((m_kind == LSU_PIPE1) ? 1 : 0)) % 12;
+      slot_id = mmu_vseq_lsu_slot_id(idx, m_kind);
       `uvm_create(tr)
       tr.c_kind_default.constraint_mode(0);
       if (m_zero_idle) begin
@@ -290,7 +305,7 @@ class mmu_vseq_lsu_interleave3_seq extends lsu_base_seq;
       bit [63:0]    va64;
       bit [27:0]    va2_local;
       bit [27:0]    vabuf_local;
-      slot_id = i % 12;
+      slot_id = mmu_vseq_lsu_slot_id(idx, knd);
       `uvm_create(tr)
       tr.c_kind_default.constraint_mode(0);
       va64 = mmu_vseq_va64(m_va_table[idx]);
@@ -394,11 +409,12 @@ class mmu_vseq_l2tlb_fine_lsu_mix_seq extends lsu_base_seq;
       idx1 = (m_table_size > 0) ? ((i * 4 + 1) % m_table_size) : 0;
       idx2 = (m_table_size > 0) ? ((i * 4 + 2) % m_table_size) : 0;
       idx3 = (m_table_size > 0) ? ((i * 4 + 3) % m_table_size) : 0;
-      load_id  = i % 12;
-      store_id = (i + 6) % 12;
+      load_id  = mmu_vseq_lsu_slot_id(idx1, LSU_PIPE0);
+      store_id = mmu_vseq_lsu_slot_id(idx2, LSU_PIPE1);
       inv_kind_sel = (i[0]) ? INV_ASID_ALL : INV_VA_ASID;
 
-      send_pipe_req(LSU_PIPE2, m_va_table[idx0], 1'b0, i % 12);
+      send_pipe_req(LSU_PIPE2, m_va_table[idx0], 1'b0,
+                    mmu_vseq_lsu_slot_id(idx0, LSU_PIPE2));
       send_pipe_req(LSU_PIPE0, m_va_table[idx1], 1'b0, load_id);
       send_pipe_req(LSU_PIPE1, m_va_table[idx2], 1'b1, store_id);
       if (m_enable_busy_inv && (i < m_inv_limit)

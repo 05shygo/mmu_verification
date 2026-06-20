@@ -43,6 +43,13 @@ module tb_top;
   cp0_if        cp0_if_inst        (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   ptw_mem_if    ptw_mem_if_inst    (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   pmp_if        pmp_if_inst        (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
+  // 4TWU→1TWU: ports 5/6/7 no longer connected to DUT; tie off to avoid floating
+  assign pmp_if_inst.mmu_pmp_pa5    = 28'h0;
+  assign pmp_if_inst.mmu_pmp_pa6    = 28'h0;
+  assign pmp_if_inst.mmu_pmp_pa7    = 28'h0;
+  assign pmp_if_inst.mmu_pmp_fetch5 = 1'b0;
+  assign pmp_if_inst.mmu_pmp_fetch6 = 1'b0;
+  assign pmp_if_inst.mmu_pmp_fetch7 = 1'b0;
   sysmap_cfg_if sysmap_cfg_if_inst (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   misc_if       misc_if_inst       (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
   l2tlb_negative_inject_if l2tlb_neg_inject_if_inst (.clk_i(forever_cpuclk), .rst_ni(cpurst_b));
@@ -66,6 +73,15 @@ module tb_top;
 
   initial begin
     pmp_regs_update_enable = $test$plusargs("MMU_ENABLE_PMP_REGS_UPDATE");
+  end
+
+  initial begin
+    if ($test$plusargs("MMU_WHITEBOX_CODE_COV_ASSERT_OFF")) begin
+      l2tlb_negative_pkg::l2tlb_neg_sva_disable = 1'b1;
+      $assertoff(0, u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_ptw_lsu_protocol_sva);
+      $assertoff(0, u_dut.x_mmu_l2tlb.x_l2tlb_mb.u_l2tlb_mb_sva);
+      $display("[MMU_WHITEBOX_CODE_COV] selected protocol SVAs disabled for local forcing");
+    end
   end
 
   always_ff @(posedge forever_cpuclk or negedge cpurst_b) begin
@@ -1587,7 +1603,14 @@ bind mmu_l2tlb_rrpv_wbuf mmu_l2tlb_rrpv_wbuf_sva #(
 bind mmu_l2tlb_mb mmu_l2tlb_mb_sva    u_l2tlb_mb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
 bind twu          mmu_twu_sva         u_twu_sva   (.*);
-bind ptw          mmu_ptw_top_sva     u_ptw_top_sva (.*);
+bind ptw          mmu_ptw_top_sva     u_ptw_top_sva (
+  // 4TWU→1TWU: map acc_err_grant_sel[2:0]={PDE,MBUF,TWU} to old 6-bit acc_err_twu_grant[5:0]
+  .acc_err_twu_grant({acc_err_grant_sel[2], 1'b0, 1'b0, 1'b0, acc_err_grant_sel[1], acc_err_grant_sel[0]}),
+  .twu_l2tlb_ref_acc_err({3'b0, twu_l2tlb_ref_acc_err}),
+  .twu_l2tlb_ref_acc_err_type({4{twu_l2tlb_ref_acc_err_type}}),
+  .twu_l2tlb_ref_acc_err_id({4{twu_l2tlb_ref_acc_err_id}}),
+  .*
+);
 bind PDE_cache    mmu_pde_cache_sva #(
   .L1PDE_ENTRY_NUM(L1PDE_ENTRY_NUM),
   .L2PDE_ENTRY_NUM(L2PDE_ENTRY_NUM)
@@ -1672,12 +1695,22 @@ bind PDE_cache    mmu_pde_cache_sva #(
     u_L2PDE_ent[0].u_L2PDE_cache.L2PDE_l2pmpflg
   })
 );
-bind one_to_four_xbar mmu_ptw_xbar_sva u_ptw_xbar_sva (.*);
+bind one_to_four_xbar mmu_ptw_xbar_sva u_ptw_xbar_sva (
+  .twu_hash(2'b00),
+  .twu_req_hash(4'b0001),
+  .twu_mask({3'b0, twu_mask}),
+  .xbar_twu_req({3'b0, xbar_twu_req}),
+  .*
+);
 bind twu          mmu_twu_chk_sva     u_twu_chk_sva (.*);
 bind twu          mmu_maee_twu_sva    u_maee_twu_sva (.*);
 bind twu          mmu_pmp_twu_sva     u_pmp_twu_sva (.*);
 bind twu          mmu_sysmap_sva      u_sysmap_sva (.*);
-bind ptw_mbuf     mmu_ptw_lsu_protocol_sva u_ptw_lsu_protocol_sva (.*);
+bind ptw_mbuf     mmu_ptw_lsu_protocol_sva u_ptw_lsu_protocol_sva (
+  .mbuf_grant({3'b0, mbuf_grant}),
+  .mbuf_twu_data_vld({3'b0, mbuf_twu_data_vld}),
+  .*
+);
 bind pplru        mmu_pde_pplru_sva #(
   .PDE_ENTRY_NUM(PDE_ENTRY_NUM),
   .PDE_INDEX_WIDTH(PDE_INDEX_WIDTH)

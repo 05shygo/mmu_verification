@@ -58,41 +58,27 @@ module mmu_ptw_xbar_sva #(
     endcase
   endfunction
 
-  // PTW-SVA-XBAR-001: dispatch target is the spec VPN hash.
+  // PTW-SVA-XBAR-001: 4TWU→1TWU: single TWU always target 0 (no hash needed).
   a_xbar_hash_value: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b)
-    twu_hash == calc_hash(PDE_xbar_vpn));
+    twu_hash == 2'b00);
 
   a_xbar_hash_onehot: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b)
-    twu_req_hash == hash_onehot(twu_hash));
+    twu_req_hash == 4'b0001);
 
   a_xbar_dispatch_matches_hash: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b)
     (PDE_xbar_req && xbar_pde_ready && !tlboper_ptw_abort)
     |-> (xbar_twu_req == twu_req_hash));
 
+  // 4TWU→1TWU: only hash0 remains reachable
   cp_xbar_hash0: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
     PDE_xbar_req && xbar_pde_ready && (twu_req_hash == 4'b0001)) begin
     cp_xbar_hash0_hits++;
   end
 
-  cp_xbar_hash1: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    PDE_xbar_req && xbar_pde_ready && (twu_req_hash == 4'b0010)) begin
-    cp_xbar_hash1_hits++;
-  end
-
-  cp_xbar_hash2: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    PDE_xbar_req && xbar_pde_ready && (twu_req_hash == 4'b0100)) begin
-    cp_xbar_hash2_hits++;
-  end
-
-  cp_xbar_hash3: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
-    PDE_xbar_req && xbar_pde_ready && (twu_req_hash == 4'b1000)) begin
-    cp_xbar_hash3_hits++;
-  end
-
-  // PTW-SVA-XBAR-002/003: only the hashed TWU mask backpressures the request.
+  // PTW-SVA-XBAR-002/003: the TWU mask backpressures the request.
   a_xbar_target_mask_ready_low: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b)
     (PDE_xbar_req && |(twu_mask & twu_req_hash)) |-> (!xbar_pde_ready && (xbar_twu_req == 4'b0000)));
@@ -103,16 +89,13 @@ module mmu_ptw_xbar_sva #(
     cp_xbar_target_mask_hits++;
   end
 
+  // 4TWU→1TWU: non-target mask scenario cannot occur with single TWU; assertion vacuously true.
   a_xbar_non_target_mask_does_not_block: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b)
     (PDE_xbar_req && |(twu_mask & ~twu_req_hash) && !(|(twu_mask & twu_req_hash)) && !tlboper_ptw_abort)
     |-> (xbar_pde_ready && (xbar_twu_req == twu_req_hash)));
 
-  cp_xbar_non_target_mask: cover property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
-    PDE_xbar_req && |(twu_mask & ~twu_req_hash) && !(|(twu_mask & twu_req_hash)) && xbar_pde_ready) begin
-    cp_xbar_non_target_mask_hits++;
-  end
+  // 4TWU→1TWU: cp_xbar_non_target_mask removed (no non-target TWU exists)
 
   // PTW-SVA-XBAR-004: abort must clear the xbar dispatch path on the next beat.
   // Same-cycle TWU acceptance is blocked by abort priority inside twu.

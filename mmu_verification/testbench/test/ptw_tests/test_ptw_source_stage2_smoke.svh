@@ -139,7 +139,7 @@ class test_ptw_source_stage2_smoke extends ptw_source_directed_base;
           .r(1), .w(1), .x(0), .u(0), .g(0), .a(1), .d(1)))
       `uvm_fatal(get_type_name(), "stage2_access_fault map failed")
     ptw_meta_add_level(PTW_SRC_TYPE_LOAD, 4, va, 0, raw_pte, pte_pa, "4k_leaf_before_pmp_deny");
-    ptw_pmp_deny_ptw_reads(4'b1111);
+    ptw_pmp_deny_ptw_reads(1'b1);
     ptw_meta_set_expected("access_fault_fst_pmp_deny");
     ptw_drive_lsu_load(va, 4);
     ptw_quiescent_wait("stage2_access_fault_fst_pmp_deny");

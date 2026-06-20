@@ -71,6 +71,67 @@ class phase12_generated_test_base extends phase9_generated_test_base;
           ctx))
   endtask
 
+  protected function string phase12_twu_path(input string sig);
+    return {"$root.tb_top.u_dut.x_ct_mmu_ptw.twu_one.", sig};
+  endfunction
+
+  protected virtual task phase12_hdl_force_value(
+    input string         path,
+    input uvm_hdl_data_t value,
+    input string         ctx
+  );
+    if (!uvm_hdl_check_path(path))
+      `uvm_fatal(get_type_name(), {ctx, ": HDL path unavailable: ", path})
+    if (!uvm_hdl_force(path, value))
+      `uvm_fatal(get_type_name(), {ctx, ": failed to force: ", path})
+  endtask
+
+  protected virtual task phase12_hdl_release_value(
+    input string path,
+    input string ctx
+  );
+    if (!uvm_hdl_release(path))
+      `uvm_fatal(get_type_name(), {ctx, ": failed to release: ", path})
+  endtask
+
+  protected virtual task phase12_hdl_deposit_value(
+    input string         path,
+    input uvm_hdl_data_t value,
+    input string         ctx
+  );
+    if (!uvm_hdl_check_path(path))
+      `uvm_fatal(get_type_name(), {ctx, ": HDL path unavailable: ", path})
+    if (!uvm_hdl_deposit(path, value))
+      `uvm_fatal(get_type_name(), {ctx, ": failed to deposit: ", path})
+  endtask
+
+  protected virtual task phase12_twu_force_value(
+    input string         sig,
+    input uvm_hdl_data_t value,
+    input string         ctx
+  );
+    phase12_hdl_force_value(phase12_twu_path(sig), value, ctx);
+  endtask
+
+  protected virtual task phase12_twu_release_value(
+    input string sig,
+    input string ctx
+  );
+    phase12_hdl_release_value(phase12_twu_path(sig), ctx);
+  endtask
+
+  protected virtual task phase12_twu_deposit_value(
+    input string         sig,
+    input uvm_hdl_data_t value,
+    input string         ctx
+  );
+    phase12_hdl_deposit_value(phase12_twu_path(sig), value, ctx);
+  endtask
+
+  protected virtual task phase12_twu_wait_cycles(input int unsigned cycles = 1);
+    repeat (cycles) #10ns;
+  endtask
+
   protected virtual task phase12_cp0_tlb_allinv(
     input bit wait_before = 1'b0,
     input bit wait_after  = 1'b0
@@ -111,7 +172,7 @@ class phase12_generated_test_base extends phase9_generated_test_base;
   endtask
 
   protected virtual task phase12_set_pmp_deny_ptw_reads(
-    input bit [3:0] deny_twu_mask = 4'b1111,
+    input bit       deny_twu = 1'b1,  // single TWU (4TWU→1TWU: was deny_twu_mask[3:0])
     input bit       deny_read_perm = 1'b0
   );
     bit [3:0] raw_flg[8];
@@ -123,10 +184,8 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     // into access faults, so the default keeps R allowed and denies W/X only.
     // Tests whose intent is PTW access-error injection pass deny_read_perm.
     deny_flg = deny_read_perm ? 4'h6 : 4'h1;
-    raw_flg[3] = deny_twu_mask[0] ? deny_flg : 4'h7;
-    raw_flg[5] = deny_twu_mask[1] ? deny_flg : 4'h7;
-    raw_flg[6] = deny_twu_mask[2] ? deny_flg : 4'h7;
-    raw_flg[7] = deny_twu_mask[3] ? deny_flg : 4'h7;
+    raw_flg[3] = deny_twu ? deny_flg : 4'h7;
+    // Ports 5/6/7 removed (4TWU→1TWU): only port 3 (single TWU) remains
     phase12_set_pmp_raw(raw_flg);
   endtask
 
@@ -229,11 +288,10 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     #200ns;
   endtask
 
-  // twu.sv twu_mask |= fst_pmp_wait|scd_pmp_wait|thd_pmp_wait|... ; fst_pmp_wait is
+  // twu.sv twu_mask |= fst_pmp_wait|scd_pmp_wait|thd_pmp_wait ; fst_pmp_wait is
   // fst_pmp_vld & !fst_pmp_grant when PTW table walk waits on PMP for that TWU.
-  // one_to_four_xbar: xbar_pde_ready = ~(&twu_mask[3:0]); PTW ptw_jtlb_ready follows that.
-  // To pull ptw_jtlb_ready low we need all four TWUs with twu_mask==1 concurrently — drive
-  // four independent miss sources (IFU + LSU_PIPE0/1/2) in parallel under full PTW-read PMP deny.
+  // one_to_four_xbar: xbar_pde_ready = ~twu_mask; PTW ptw_jtlb_ready follows that.
+  // 4TWU→1TWU: only one TWU exists; drive single miss source under full PTW-read PMP deny.
   protected virtual task phase12_concurrent_four_twus_under_full_pmp_deny(
     input va_t region_base,
     input int npage = 22,
@@ -241,7 +299,7 @@ class phase12_generated_test_base extends phase9_generated_test_base;
   );
     phase12_cp0_tlb_allinv();
     #150ns;
-    phase12_set_pmp_deny_ptw_reads(4'b1111);
+    phase12_set_pmp_deny_ptw_reads(1'b1);
     #120ns;
     fork
       phase12_drive_ifu_rr(region_base,                  npage, n_txn);

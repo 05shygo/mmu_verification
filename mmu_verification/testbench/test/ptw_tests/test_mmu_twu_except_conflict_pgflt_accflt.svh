@@ -57,7 +57,7 @@ class test_mmu_twu_except_conflict_pgflt_accflt extends phase12_generated_test_b
     // Keep page-fault and access-error entries attributable by iid/vpn so the
     // translation scoreboard can validate the DTLB exception replay model.
     phase12_cp0_tlb_allinv(1'b1, 1'b1);
-    phase12_set_pmp_deny_ptw_reads(4'b1111, 1'b1);
+    phase12_set_pmp_deny_ptw_reads(1'b1, 1'b1);
     phase12_config_ptw_responder(32, 72, 0);
     phase12_drive_lsu_rr(39'h10_1000, 1, 1, LSU_PIPE0, 1'b0, 1'b1);
     phase12_wait_for_quiescent("phase12_except_conflict_accerr", 1048576, 16);

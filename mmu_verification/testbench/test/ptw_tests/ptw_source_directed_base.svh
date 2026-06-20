@@ -387,14 +387,14 @@ class ptw_source_directed_base extends test_base;
     ptw_meta_add_context("pmp=allow_all");
   endtask
 
-  virtual task ptw_pmp_deny_ptw_reads(bit [3:0] deny_twu_mask = 4'b1111);
+  virtual task ptw_pmp_deny_ptw_reads(bit deny_twu = 1'b1);
     pmp_flg_deny_ptw_rd_seq seq;
     seq = pmp_flg_deny_ptw_rd_seq::type_id::create("ptw_pmp_deny_ptw_rd_seq");
-    seq.deny_twu_mask = deny_twu_mask;
+    seq.deny_twu = deny_twu;
     seq.start(m_env.m_pmp.m_sequencer);
     if ((m_env != null) && (m_env.m_ref != null))
       m_env.m_ref.sync_shadow_state();
-    ptw_meta_add_context($sformatf("pmp=deny_ptw_read deny_twu_mask=0x%0h", deny_twu_mask));
+    ptw_meta_add_context($sformatf("pmp=deny_ptw_read deny_twu=%0b", deny_twu));
   endtask
 
   protected virtual task ptw_config_page_table_pmp_region(

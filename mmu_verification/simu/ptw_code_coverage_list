@@ -64,6 +64,8 @@ test_mmu_twu_except_conflict_pgflt_accflt
 test_mmu_mbuf_ready_gate_no_early_vld
 test_mmu_mbuf_have_no_resend
 test_mmu_mbuf_multi_twu_independent_ready
+test_ptw_mbuf_cond_toggle_cov
+test_mbuf_entry_line_cond_branch_cov +MMU_WHITEBOX_CODE_COV_ASSERT_OFF
 test_mmu_arb_grant_onehot_check
 test_mmu_arb_refill_except_priority
 test_mmu_arb_multi_twu_fairness
@@ -73,6 +75,13 @@ test_mmu_arb_pgs_bank_select
 # Phase13 PMP/TWU and SysMap stimulus that reaches PTW RTL paths
 test_ptw_pmp_before_lsu
 test_ptw_pmp_deny_stop
+test_twu_pmp_wait_line_cov
+test_twu_branch_default_cov
+test_twu_fsm_abort_cov
+test_twu_condition_pmp_cov
+test_twu_condition_pagefault_cov
+test_twu_condition_arb_cov
+test_twu_toggle_cov
 test_ptw_pmp_pa_1g
 test_ptw_pmp_pa_2m
 test_ptw_pmp_pa_4k

@@ -234,8 +234,10 @@ class ifu_driver extends uvm_driver #(ifu_txn);
         if (!watchdog_hit)
           break;
       end
-      @(vif.driver_cb);
+      // Deassert in the same clocking event that observed pavld.  Waiting one
+      // more cycle leaves a valid tail that can start a duplicate stale walk.
       vif.driver_cb.ifu_mmu_va_vld <= 1'b0;
+      vif.driver_cb.ifu_mmu_abort  <= 1'b0;
     end
   endtask
 

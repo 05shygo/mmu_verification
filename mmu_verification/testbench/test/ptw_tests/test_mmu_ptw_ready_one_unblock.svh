@@ -36,7 +36,7 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
     if (m_enable_sv39_4k_bringup)
       do_sv39_4k_bringup();
 
-    phase12_set_pmp_deny_ptw_reads(4'b1111);
+    phase12_set_pmp_deny_ptw_reads(1'b1);
 
     fork
       begin
@@ -47,9 +47,9 @@ class test_mmu_ptw_ready_one_unblock extends phase12_generated_test_base;
       end
       begin
         #250ns;
-        phase12_set_pmp_deny_ptw_reads(4'b1110);
+        phase12_set_pmp_deny_ptw_reads(1'b1);
         #250ns;
-        phase12_set_pmp_deny_ptw_reads(4'b1100);
+        phase12_set_pmp_deny_ptw_reads(1'b1);
         #250ns;
         phase12_set_pmp_allow_all();
       end

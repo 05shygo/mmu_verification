@@ -51,7 +51,7 @@ class test_mmu_twu_idle_implies_no_mask extends phase12_generated_test_base;
       end
       begin
         #250ns;
-        phase12_set_pmp_deny_ptw_reads(4'b0011);
+        phase12_set_pmp_deny_ptw_reads(1'b1);
         #200ns;
         phase12_set_pmp_allow_all();
       end

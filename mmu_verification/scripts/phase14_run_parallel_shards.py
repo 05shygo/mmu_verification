@@ -559,6 +559,11 @@ def run_one(
             ]
             if args.cov_baseline_stamp:
                 cmd.append(f"COV_BASELINE_STAMP={args.cov_baseline_stamp}")
+            # Propagate PLUS_ARGS from environment for whitebox test SVA protection
+            import os
+            pa = os.environ.get("PLUS_ARGS", "")
+            if pa:
+                cmd.append(f"PLUS_ARGS={pa}")
 
             mode = "w" if attempt == 1 else "a"
             started = time.monotonic()

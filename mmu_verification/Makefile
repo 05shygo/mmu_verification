@@ -2581,6 +2581,7 @@ covp: comp
 	  PHASE14_LIST=$(COV_ALL_LIST) \
 	  PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)" \
 	  PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS)
+		  
 	@echo "=== Merging parallel VDBs → full MMU report ==="
 	@$(MAKE) phase14_coverage_merge_parallel
 	@$(MAKE) covp_scope_reports
@@ -2610,12 +2611,87 @@ covp: comp
 	@echo "L2TLB:    $(COVP_L2TLB_URG_REPORT_DIR)"
 	@echo "PTW:      $(PTW_COV_ROOT)/urgReport"
 
+
+# ── SVA assertion coverage: functional tests only, no $assertoff ──
+
+# ── Full coverage: covp (COND/TOGGLE) + covp_sva (ASSERT) → merged report ──
+covp_full: comp cov_gen_list
+	@echo "============================================================"
+	@echo "  Phase 1/2: covp with whitebox tests (COND/TOGGLE focus)"
+	@echo "============================================================"
+	@export PLUS_ARGS="+MMU_WHITEBOX_CODE_COV_ASSERT_OFF"; \
+	 echo "=== covp: $$(wc -l < $(COV_ALL_LIST)) tests × $(words $(COV_PARALLEL_SEEDS)) seeds ==="; \
+	 $(MAKE) regress_v4_full_parallel \
+	   PHASE14_LIST=$(COV_ALL_LIST) \
+	   PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)" \
+	   PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS) \
+	   COV_DB_DIR=$(COV_DB_DIR) \
+	   PLUS_ARGS="+MMU_WHITEBOX_CODE_COV_ASSERT_OFF"
+	@echo "=== Phase 1 VDB saved ==="
+	@cp -a $(COV_DB_DIR) $(COV_DIR)/covp_phase1_cond_tgl.vdb 2>/dev/null || true
+	@echo ""
+	@echo "============================================================"
+	@echo "  Phase 2/2: functional tests only (ASSERT focus)"
+	@echo "============================================================"
+	@if [ -f "$(SIMU_DIR)/whitebox_tests_list" ]; then \
+	  cp $(COV_ALL_LIST) $(COV_ALL_LIST).sva_tmp; \
+	  for t in $$(cat $(SIMU_DIR)/whitebox_tests_list); do \
+	    sed -i "/^$$$$t$$$$/d" $(COV_ALL_LIST).sva_tmp; \
+	  done; \
+	  tests=$$(wc -l < $(COV_ALL_LIST).sva_tmp); \
+	  echo "=== covp_sva: $$tests functional tests × $(words $(COV_PARALLEL_SEEDS)) seeds (SVA active) ==="; \
+	  $(MAKE) regress_v4_full_parallel \
+	    PHASE14_LIST=$(COV_ALL_LIST).sva_tmp \
+	    PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)" \
+	    PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS) \
+	    COV_DB_DIR=$(COV_DB_DIR); \
+	  rm -f $(COV_ALL_LIST).sva_tmp; \
+	else \
+	  echo "ERROR: whitebox_tests_list not found"; \
+	  exit 1; \
+	fi
+	@echo ""
+	@echo "============================================================"
+	@echo "  Merging and generating unified report"
+	@echo "============================================================"
+	@$(MAKE) phase14_coverage_merge_parallel
+	@$(MAKE) covp_scope_reports
+	@echo ""
+	@echo "=== covp_full done ==="
+	@echo "Unified report: $(PHASE14_URG_REPORT_DIR)"
+	@echo "Covers: LINE + COND + TOGGLE + BRANCH + FSM + ASSERT"
+
+covp_sva: comp cov_gen_list
+	@echo "=== covp_sva: filtering out whitebox tests for full SVA coverage ==="
+	@if [ -f "$(SIMU_DIR)/whitebox_tests_list" ]; then \
+	  cp $(COV_ALL_LIST) $(COV_ALL_LIST).sva_tmp; \
+	  for t in $$(cat $(SIMU_DIR)/whitebox_tests_list); do \
+	    sed -i "/^$$$$t$$$$/d" $(COV_ALL_LIST).sva_tmp; \
+	  done; \
+	  tests=$$(wc -l < $(COV_ALL_LIST).sva_tmp); \
+	  echo "=== covp_sva: $$tests functional tests × $(words $(COV_PARALLEL_SEEDS)) seeds (no whitebox, no \$assertoff) ==="; \
+	  $(MAKE) regress_v4_full_parallel \
+	    PHASE14_LIST=$(COV_ALL_LIST).sva_tmp \
+	    PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)" \
+	    PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS); \
+	  rm -f $(COV_ALL_LIST).sva_tmp; \
+	else \
+	  echo "ERROR: whitebox_tests_list not found"; \
+	fi
+	@echo "=== Merging parallel VDBs → full MMU SVA report ==="
+	@$(MAKE) phase14_coverage_merge_parallel
+
 cov_gen_list:
 	@echo "=== Generating all-tests coverage list ==="
 	@find $(PROJECT_DIR)/testbench/test -name "*.svh" \
 	  -exec grep -hE "uvm_component_utils" {} \; | \
 	  sed 's/.*uvm_component_utils(//' | sed 's/).*//' | sort -u | \
-	  grep -vE '_base$$|_common$$' > $(COV_ALL_LIST)
+	  grep -vE '_base$$|_common$$' > $(COV_ALL_LIST).tmp
+	@if [ -f "$(SIMU_DIR)/whitebox_tests_list" ]; then \
+	  grep -vFf $(SIMU_DIR)/whitebox_tests_list $(COV_ALL_LIST).tmp > $(COV_ALL_LIST) 2>/dev/null || mv $(COV_ALL_LIST).tmp $(COV_ALL_LIST); \
+	else \
+	  mv $(COV_ALL_LIST).tmp $(COV_ALL_LIST); \
+	fi
 	@echo "=== Generated $(COV_ALL_LIST): $$(wc -l < $(COV_ALL_LIST)) tests ==="
 
 #===============================================================================

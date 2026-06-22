@@ -102,12 +102,20 @@ class test_ptw_l2pde_cache_cond_toggle_cov extends ptw_pde_pmpflg_stage8_base;
     stage8_wait_cycles(1);
   endtask
 
+  int unsigned m_acc_err_toggle = 0;
   protected task clear_acc_err(input string ctx);
+    // Toggle accerr type between calls to avoid a_ptw_pde_accerr_no_same_pending_duplicate_grant
+    m_acc_err_toggle++;
+    hdl_force(pde_path("PDE_cache_acc_err_type"), uvm_hdl_data_t'(m_acc_err_toggle[2:0]), $sformatf("%s_tog", ctx));
+    hdl_force(pde_path("PDE_cache_acc_err_id"),   uvm_hdl_data_t'(m_acc_err_toggle[6:0]), $sformatf("%s_togid", ctx));
+    stage8_wait_cycles(1);
     hdl_force(pde_path("PDE_cache_acc_err_grant"), uvm_hdl_data_t'(1'b1), ctx);
     stage8_wait_cycles(2);
     hdl_force(pde_path("PDE_cache_acc_err_grant"), uvm_hdl_data_t'(1'b0), ctx);
     stage8_wait_cycles(2);
     hdl_release(pde_path("PDE_cache_acc_err_grant"), ctx);
+    hdl_release(pde_path("PDE_cache_acc_err_id"),   ctx);
+    hdl_release(pde_path("PDE_cache_acc_err_type"), ctx);
   endtask
 
   // ── Program / release L2 entry ──
@@ -275,9 +283,9 @@ class test_ptw_l2pde_cache_cond_toggle_cov extends ptw_pde_pmpflg_stage8_base;
     for (int unsigned e = 0; e < L2E_NUM; e++)
       pulse_signal(l2_path(e, "L2PDE_ppn"), uvm_hdl_data_t'(28'h0fff_ffff), $sformatf("%s_pa_e%0d", ctx, e));
     for (int unsigned e = 0; e < L2E_NUM; e++) begin
-      pulse_bit(l2_path(e, "L2PDE_ppn[1]")); pulse_bit(l2_path(e, "L2PDE_ppn[2]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_ppn[3]")); pulse_bit(l2_path(e, "L2PDE_ppn[5]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_ppn[6]"), $sformatf("XXX_e%0d", ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_ppn[1]"), $sformatf("%s_p1_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_ppn[2]"), $sformatf("%s_p2_e%0d",  ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_ppn[3]"), $sformatf("%s_p3_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_ppn[5]"), $sformatf("%s_p5_e%0d",  ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_ppn[6]"), $sformatf("%s_p6_e%0d",  ctx, e));
     end
     for (int unsigned e = 0; e < L2E_NUM; e++) begin
       pulse_signal(l2_path(e, "L2PDE_ppn[3:2]"),   uvm_hdl_data_t'(2'b11),     $sformatf("%s_p32_e%0d",  ctx, e));
@@ -292,9 +300,9 @@ class test_ptw_l2pde_cache_cond_toggle_cov extends ptw_pde_pmpflg_stage8_base;
     for (int unsigned e = 0; e < L2E_NUM; e++)
       pulse_signal(l2_path(e, "L2PDE_entry_ppn"), uvm_hdl_data_t'(28'h0fff_ffff), $sformatf("%s_ea_e%0d", ctx, e));
     for (int unsigned e = 0; e < L2E_NUM; e++) begin
-      pulse_bit(l2_path(e, "L2PDE_entry_ppn[1]")); pulse_bit(l2_path(e, "L2PDE_entry_ppn[2]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_entry_ppn[3]")); pulse_bit(l2_path(e, "L2PDE_entry_ppn[5]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_entry_ppn[6]"), $sformatf("XXX_e%0d", ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_entry_ppn[1]"), $sformatf("%s_e1_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_entry_ppn[2]"), $sformatf("%s_e2_e%0d",  ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_entry_ppn[3]"), $sformatf("%s_e3_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_entry_ppn[5]"), $sformatf("%s_e5_e%0d",  ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_entry_ppn[6]"), $sformatf("%s_e6_e%0d",  ctx, e));
     end
     for (int unsigned e = 0; e < L2E_NUM; e++) begin
       pulse_signal(l2_path(e, "L2PDE_entry_ppn[3:2]"),   uvm_hdl_data_t'(2'b11),     $sformatf("%s_e32_e%0d",  ctx, e));
@@ -309,13 +317,13 @@ class test_ptw_l2pde_cache_cond_toggle_cov extends ptw_pde_pmpflg_stage8_base;
     for (int unsigned e = 0; e < L2E_NUM; e++)
       pulse_signal(l2_path(e, "L2PDE_tag"), uvm_hdl_data_t'(18'h3ffff), $sformatf("%s_ta_e%0d", ctx, e));
     for (int unsigned e = 0; e < L2E_NUM; e++) begin
-      pulse_bit(l2_path(e, "L2PDE_tag[0]"));  pulse_bit(l2_path(e, "L2PDE_tag[1]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_tag[2]"));  pulse_bit(l2_path(e, "L2PDE_tag[3]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_tag[5]"));  pulse_bit(l2_path(e, "L2PDE_tag[6]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_tag[9]"));  pulse_bit(l2_path(e, "L2PDE_tag[11]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_tag[12]")); pulse_bit(l2_path(e, "L2PDE_tag[13]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_tag[14]")); pulse_bit(l2_path(e, "L2PDE_tag[15]"), $sformatf("XXX_e%0d", ctx, e));
-      pulse_bit(l2_path(e, "L2PDE_tag[16]")); pulse_bit(l2_path(e, "L2PDE_tag[17]"), $sformatf("XXX_e%0d", ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_tag[0]"),  $sformatf("%s_t0_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_tag[1]"),  $sformatf("%s_t1_e%0d",  ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_tag[2]"),  $sformatf("%s_t2_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_tag[3]"),  $sformatf("%s_t3_e%0d",  ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_tag[5]"),  $sformatf("%s_t5_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_tag[6]"),  $sformatf("%s_t6_e%0d",  ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_tag[9]"),  $sformatf("%s_t9_e%0d",  ctx, e)); pulse_bit(l2_path(e, "L2PDE_tag[11]"), $sformatf("%s_t11_e%0d", ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_tag[12]"), $sformatf("%s_t12_e%0d", ctx, e)); pulse_bit(l2_path(e, "L2PDE_tag[13]"), $sformatf("%s_t13_e%0d", ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_tag[14]"), $sformatf("%s_t14_e%0d", ctx, e)); pulse_bit(l2_path(e, "L2PDE_tag[15]"), $sformatf("%s_t15_e%0d", ctx, e));
+      pulse_bit(l2_path(e, "L2PDE_tag[16]"), $sformatf("%s_t16_e%0d", ctx, e)); pulse_bit(l2_path(e, "L2PDE_tag[17]"), $sformatf("%s_t17_e%0d", ctx, e));
     end
     for (int unsigned e = 0; e < L2E_NUM; e++) begin
       pulse_signal(l2_path(e, "L2PDE_tag[1:0]"),   uvm_hdl_data_t'(2'b11),  $sformatf("%s_t10_e%0d",   ctx, e));

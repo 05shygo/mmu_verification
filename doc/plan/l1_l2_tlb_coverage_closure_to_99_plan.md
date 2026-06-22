@@ -913,12 +913,38 @@ A0 vseq 基类扩展 ──► B1..Bn ──► E1
 - Pre-existing compile bug fixed in passing: `testbench/test/ptw_tests/test_ptw_l2pde_cache_cond_toggle_cov.svh` had several single-arg `pulse_bit(...)` callsites; restored the missing `ctx` argument.
 
 ### TASK L1DTLB-T01 — PARTIAL Evidence (not yet signed off)
+- Commit: 1f97e9b on main.
 - Files: `testbench/env/mmu_l1dtlb_coverage_vseq.svh` (new vseq `mmu_l1dtlb_entry_sweep_vseq`), `testbench/test/l1dtlb_tests/test_mmu_l1dtlb_cov_entry_sweep.svh` (new test wrapper), `testbench/test/l1dtlb_tests/l1dtlb_tests_suite.svh` (include added), `testbench/test/phase9_common/phase9_generated_test_base.svh` (vseq name registered).
 - Pre-existing bug fixed: `test_mmu_l1dtlb_cov_hit_sweep.svh` and `test_mmu_l1dtlb_cov_mb_expt.svh` test wrappers never pushed their vseq name to `m_vseq_names`, so the vseq actually never ran; restored the push so both wrappers now run their intended vseq.
 - Single-test PASS: `make run_cov TEST_NAME=test_mmu_l1dtlb_cov_entry_sweep SEED=97101` exits 0, UVM_ERROR=0, UVM_FATAL=0.
 - URG single-test SVA hit counts for `a_va8_inv_clears_matching_entry[N]`: entry[0] hit=8.
-- Baseline phase14 already covers entry[0] (40) and entry[1] (20).  This vseq alone has not yet added NEW entry coverage (still investigating why the DTLB PLRU only fills entry[0] under the bulk-install cadence — likely an L2TLB-set pressure effect since all 16 sweep VPNs map to the same L2TLB set).
-- **STATUS: PARTIAL — needs more investigation to cover entries 2..15 before signing off.**
+- Baseline phase14 already covers entry[0] (40) and entry[1] (20).  This vseq alone has not yet added NEW entry coverage.
+
+### Page-table-pressure blocker (affects both L1DTLB-T01 and L2TLB-T01)
+- Symptom: when 8+ unique VPNs that share `vpn[1]=vpn[2]=0` are accessed in
+  succession, the PTW walk for VPNs 2..N returns `pte=0` (page fault) even
+  though `map_4k` wrote valid PTEs for them.
+- Diagnostic: the responder log shows the L0 PTE address computed by PTW
+  as `l0_ppn*4096 + vpn[0]*8` with `l0_ppn=0`, meaning the L1 PTE that
+  PTW read returned a NULL pointer to L0 — despite `map_4k` having written
+  a non-null L1 PTE.
+- Hypothesis: the PTW's L1 PTE read races with something that temporarily
+  clears the page-table memory (or the responder's view of it) for VPNs
+  beyond the first.  The first VPN (va_page(0)) always succeeds; subsequent
+  VPNs fault.  This explains why baseline coverage only ever covers
+  entry[0] and entry[1] (single-VPN patterns).
+- Workaround attempts that did NOT solve it:
+  * Tighter / looser PTW delay (4-8, 16-32, 64-96, 128-256 cycles).
+  * raw_pipe0 vs send_lsu_item via fill_page vs dual-port raw_pipe01.
+  * Single-install+inv loop vs bulk-install+bulk-inv.
+  * `wait_for_quiescent_midtest` between each install.
+  * Pages beyond bringup range (page_idx >= 512) so L2TLB set is fresh.
+- Next step: enable `MMU_LOG_LEVEL=HIGH` PTW responder trace and verify
+  the L1 PTE address the DUT drives on the second walk; if it differs
+  from `l1_ppn*4096`, the page-table builder's addressing assumption is
+  wrong for VPNs >256.  If it matches but returns 0, there's a memory
+  model race.  May require design-team/IP-owner clarification.
+- **STATUS: PARTIAL — blocked on page-table-pressure root cause.**
 
 每项完成后更新本文档对应 checkbox，并附: PR/commit hash、urg report 路径、SVA 命中证据、scoreboard 报告路径。
 

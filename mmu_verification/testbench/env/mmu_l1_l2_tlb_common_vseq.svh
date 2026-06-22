@@ -256,6 +256,39 @@ class mmu_l2tlb_common_vseq extends l1dtlb_directed_vseq;
     wait_lsu_cycles(8);
   endtask
 
+  // -----------------------------------------------------------------------
+  // assert_mid_test_reset: signal the tb_top reset injector that a real
+  // cpurst_b 1->0->1 pulse is desired mid-test.  tb_top.sv watches the
+  // probe_if.tlbop_reset_inject_active flag (under +MMU_TLBOP_RESET_MODE)
+  // and performs the actual reset; this task synchronises the handshake.
+  // If no +MMU_TLBOP_RESET_MODE plusarg was supplied, the task falls back
+  // to a no-op + warning so the test still runs to completion.
+  // (Duplicated from mmu_l1_tlb_common_vseq so L2TLB vseqs can use it.)
+  // -----------------------------------------------------------------------
+  protected task assert_mid_test_reset();
+    if (m_probe_vif == null) begin
+      `uvm_warning(get_type_name(),
+        "m_probe_vif null; assert_mid_test_reset cannot arm handshake — skipping")
+      return;
+    end
+    m_probe_vif.tlbop_reset_inject_active = 1'b1;
+    `uvm_info(get_type_name(),
+      "mid-test reset request armed; waiting for tb_top handshake (or timeout)", UVM_LOW)
+    fork
+      begin
+        wait (m_probe_vif.tlbop_reset_inject_done == 1'b1);
+        wait_lsu_cycles(4);
+      end
+      begin : reset_to_timeout
+        repeat (16384) @(m_probe_vif.mon_cb);
+        `uvm_warning(get_type_name(),
+          "mid-test reset did not complete within window; ensure +MMU_TLBOP_RESET_MODE is set on the test")
+      end
+    join_any
+    disable fork;
+    m_probe_vif.tlbop_reset_inject_active = 1'b0;
+  endtask
+
 endclass : mmu_l2tlb_common_vseq
 
 `endif // MMU_L1_L2_TLB_COMMON_VSEQ_SVH

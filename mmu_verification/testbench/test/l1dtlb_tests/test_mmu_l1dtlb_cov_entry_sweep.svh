@@ -12,15 +12,11 @@ class test_mmu_l1dtlb_cov_entry_sweep extends l1dtlb_directed_test_base;
   virtual function string get_l1dtlb_tc_id(); return "L1DTLB_COV_ENTRY_SWEEP"; endfunction
   virtual function void setup_plan();
     super.setup_plan();
-    // The actual scenario runs through the dedicated vseq (registered in
-    // phase9_generated_test_base::start_vseq_by_name).  We deliberately do
-    // NOT use a known l1dtlb tc_id so that run_test_body() takes the
-    // phase9 default vseq-name path and dispatches our vseq.
     p9_seq_desc = "mmu_l1dtlb_entry_sweep_vseq";
     m_vseq_names.push_back("mmu_l1dtlb_entry_sweep_vseq");
     p9_checker = "translation_sb,l1dtlb_spec_sb,whitebox_cg,l1dtlb_sva";
-    num_txn = 64;
-    timeout_ns = 120_000_000;
+    num_txn = 512;
+    timeout_ns = 240_000_000;
   endfunction
 endclass
 `endif

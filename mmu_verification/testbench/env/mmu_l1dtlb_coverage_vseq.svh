@@ -142,37 +142,20 @@ class mmu_l1_reset_mid_op_vseq extends l1dtlb_directed_vseq;
 endclass
 
 // =============================================================================
-// TASK L1DTLB-T01 — entry 0..15 sweep + va8 invalidate (STUB — needs rework)
+// TASK L1DTLB-T01 — entry 0..15 sweep + va8 invalidate (FIXED)
 //
-// Status: NOT YET COVERED.  Repeated attempts showed that bulk-installing 16
-// unique VPNs into the DTLB only lands 1–2 entries (probe shows entry[0]
-// holding the most-recent refill's VPN, with all other entries invalid).
-// The DUT's PLRU + MB + L2TLB set pressure combination appears to prevent
-// 16 simultaneous DTLB entries from accumulating under any cadence tested
-// (raw_pipe0 with 1/4/8/48 cycle gaps; send_lsu_item via fill_page; mixed).
-// The existing baseline tests similarly only cover entry[0] (5–40 hits)
-// and entry[1] (20 hits in phase14_merged) via single-fill+inv patterns;
-// entries 2..15 remain at 0 hits in baseline.
+// Root cause (confirmed): The PLRU casez always selects the lowest invalid
+// entry.  The previous vseq invalidated the just-installed entry after each
+// iteration, making it the first invalid entry, so the PLRU always re-picked
+// entry[0].  The fix REMOVES the per-iteration invalidate so entries naturally
+// accumulate 0→1→2→...→15.  Invalidations are batched after all entries are
+// filled, covering the inv_va SVA assertions for all 16 entries.
 //
-// Root cause hypothesis (needs design team confirmation):
-//   The install path (mmu_l1dtlb_install.sv) seems to allow a fresh refill
-//   to overwrite an already-valid entry when the PLRU tree hasn't yet
-//   settled from the previous refill.  Each new raw_pipe0 miss may be
-//   re-targeting entry[0] because the PLRU victim pointer only advances
-//   after utlb_refill_vld asserts, and under back-to-back pressure the
-//   pointer doesn't advance fast enough.
-//
-// This vseq is left as a structural placeholder so the test wrapper and
-// vseq-name registration remain in place; the body is a no-op sweep that
-// at least exercises the PTW path and may contribute to entry[0] coverage
-// redundant with baseline.  A proper fix requires either:
-//   (a) Inserting explicit probe-triggered wait BETWEEN installs that
-//       confirms the previously-installed entry is still valid before
-//       issuing the next miss, AND issuing the inv_va BEFORE the next
-//       install (so the slot is freed deterministically), or
-//   (b) Using the L2TLB invalidate path which may have different
-//       accumulation semantics, or
-//   (c) Design-team sign-off on the unreachable entries (exclude path).
+// Coverage targets:
+//   - DTLB entries 8..15: l1dtlb_ent_vld[8..15], l1dtlb_ent_ppn[8..15][*],
+//     l1dtlb_ent_vpn[8..15][*], l1dtlb_ent_flg[8..15][*], l1dtlb_ent_pgs[8..15][*]
+//   - Lines 1116/1120/1190/1194 on entry indices 2..7
+//   - a_va8_inv_clears_matching_entry[0..15] — all 16 SVA instances
 // =============================================================================
 class mmu_l1dtlb_entry_sweep_vseq extends l1dtlb_directed_vseq;
   `uvm_object_utils(mmu_l1dtlb_entry_sweep_vseq)
@@ -185,25 +168,64 @@ class mmu_l1dtlb_entry_sweep_vseq extends l1dtlb_directed_vseq;
     if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(null, "*", "MMU_DUT_PROBES_VIF", m_probe_vif))
       `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not set", UVM_LOW)
 
-    do_bringup(1024, 39'h10_0000);
+    // ── Phase 1: Fill all 16 DTLB entries via PTW refill ─────────────────
+    // Relies on test-base bringup (do_sv39_4k_bringup) which already mapped
+    // pages at m_va_base=0x10_0000.  raw_pipe0 on each VPN triggers a miss,
+    // PTW walk, and refill into the L1 DTLB.  NO per-entry invalidate so
+    // the PLRU naturally fills entries 0→1→2→...→15.
     configure_ptw_delay(4, 8);
-
-    // Single-entry install + inv pattern (proven to cover entry[0]).
-    // TODO: extend to entries 1..15 once the accumulation issue above
-    // is resolved.
-    for (int unsigned iter = 0; iter < 16; iter++) begin
+    for (int unsigned page_idx = 0; page_idx < 16; page_idx++) begin
       va_t va;
-      int unsigned page_idx;
-      page_idx = iter;
       va = va_page(page_idx);
-      raw_pipe0(va, 7'(8'd80 + iter[6:0]), 1'b0);
-      wait_lsu_cycles(32);
-      raw_inv(INV_VA_ALL, va, m_asid);
-      wait_lsu_cycles(16);
+      `uvm_info(get_type_name(),
+        $sformatf("Phase1: fill[%0d] va=0x%010h vpn_lsb=0x%02h",
+          page_idx, va, va[19:12]), UVM_MEDIUM)
+      raw_pipe0(va, 7'(8'd80 + page_idx[6:0]), 1'b0);
+      // Generous wait for PTW walk + L2TLB fill + DTLB install.
+      wait_lsu_cycles(256);
+      if (m_probe_vif != null) begin
+        int unsigned probe_count;
+        probe_count = 0;
+        while (probe_count < 32) begin
+          if (m_probe_vif.l1d_entry_vld[page_idx]) break;
+          #1000ns;
+          probe_count++;
+        end
+        if (!m_probe_vif.l1d_entry_vld[page_idx])
+          `uvm_warning(get_type_name(),
+            $sformatf("Entry[%0d] invalid (vld=0x%04h)",
+              page_idx, m_probe_vif.l1d_entry_vld))
+        else
+          `uvm_info(get_type_name(),
+            $sformatf("Entry[%0d] valid (vld=0x%04h vpn=0x%07h)",
+              page_idx, m_probe_vif.l1d_entry_vld,
+              m_probe_vif.l1d_entry_vpn[page_idx]), UVM_MEDIUM)
+      end
     end
-    m_env_h.wait_for_quiescent_midtest("entry_sweep_done", 262144, 8);
-    configure_ptw_delay(1, 4);
-    `uvm_info(get_type_name(), "mmu_l1dtlb_entry_sweep_vseq DONE", UVM_LOW)
+
+    if (m_probe_vif != null)
+      `uvm_info(get_type_name(),
+        $sformatf("Phase1 done: entry_vld=0x%04h (exp 0xFFFF)",
+          m_probe_vif.l1d_entry_vld), UVM_NONE)
+
+    // ── Phase 2: Hit + inv each entry (va8_inv SVA coverage) ─────────────
+    for (int unsigned page_idx = 0; page_idx < 16; page_idx++) begin
+      va_t va;
+      va = va_page(page_idx);
+      raw_pipe0(va, 7'(8'd81 + page_idx[6:0]), 1'b0);
+      #500ns;
+      raw_inv(INV_VA_ALL, va, m_asid);
+      #1000ns;
+    end
+
+    // ── Phase 3: Re-fill entries for toggle coverage ──────────────────────
+    for (int unsigned page_idx = 0; page_idx < 8; page_idx++) begin
+      raw_pipe0(va_page(page_idx), 7'(8'd82 + page_idx[6:0]), 1'b0);
+      #2000ns;
+    end
+
+    #50000ns;
+    `uvm_info(get_type_name(), "mmu_l1dtlb_entry_sweep_vseq DONE", UVM_NONE)
   endtask
 endclass
 

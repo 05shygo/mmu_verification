@@ -905,3 +905,4 @@ endclass : test_l2tlb_p6e_rrpv_debug_pressure
 `include "test_mmu_l1itlb_cov_sweep.svh"
 `include "test_mmu_l2tlb_cov_mb_reqq.svh"
 `include "test_mmu_l2tlb_cov_tag_inv.svh"
+`include "test_mmu_l2tlb_cov_pfu_chk_deny.svh"

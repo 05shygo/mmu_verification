@@ -10,33 +10,17 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     m_env_h = get_env(); m_lsu_vif = m_env_h.m_lsu.vif; m_misc_vif = m_env_h.m_misc.vif;
     if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
 
-    // =================================================================
-    // 持续制造双端口LSU miss:
-    //   - 调度器每个周期只能发射1个请求 (round-robin)
-    //   - 双端口每周期分配2个miss → WFG积累速度快于发射速度
-    //   - 当entry[0]完成refill被释放后, 其他entry仍在WFG
-    //   - entry[0]重新分配 → bypass_en=0 → 进入WFG
-    //   - 周期性flush → 覆盖 WFG→IDLE / WFG→ABT
-    // =================================================================
-
-    // 初始化页表
     do_bringup(512, 39'h10_0000);
 
-    // --- 阶段1: 中等PTW延迟, 持续双端口miss压力 ---
     `uvm_info(get_type_name(), "阶段1: 持续双端口miss压力", UVM_LOW)
     configure_ptw_delay(64, 128);
 
-    // 持续发射64轮双端口miss, 每轮2个miss
-    // 调度器每cycle只能issue 1个, 我们每cycle分配2个
-    // → WFG entry持续积累, entry[0]反复被释放再分配
-    // → 每次重新分配时大概率有其他WFG存在 → bypass_en=0 → WFG
     for (int round = 0; round < 64; round++) begin
       raw_pipe01(va_page(round*2), va_page(round*2+1),
                  7'(round[6:0]*2), 7'(round[6:0]*2+1),
                  round[0], ~round[0]);
       wait_lsu_cycles(1);
 
-      // 每8轮flush一次, 捕获WFG→IDLE / WFG→ABT
       if (round % 8 == 7) begin
         raw_rtu_flush();
         wait_lsu_cycles(4);
@@ -44,7 +28,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #30000ns;
 
-    // --- 阶段2: 长PTW延迟, 确保WFG停留时间更长 ---
     `uvm_info(get_type_name(), "阶段2: 长PTW + 持续双端口", UVM_LOW)
     configure_ptw_delay(512, 1024);
 
@@ -61,7 +44,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #50000ns;
 
-    // --- 阶段3: 短PTW, 高频flush, 捕获更多WFG→IDLE ---
     `uvm_info(get_type_name(), "阶段3: 短PTW + 高频flush", UVM_LOW)
     configure_ptw_delay(16, 32);
 
@@ -71,7 +53,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
                  1'b0, round[0]);
       wait_lsu_cycles(1);
 
-      // 更频繁flush
       if (round % 4 == 3) begin
         raw_rtu_flush();
         wait_lsu_cycles(2);
@@ -79,8 +60,7 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #20000ns;
 
-    // --- 阶段4: store类型miss, 增加条件覆盖 ---
-    `uvm_info(get_type_name(), "阶段4: store miss + flush", UVM_LOW)
+    `uvm_info(get_type_name(), "阶段4: store类型miss", UVM_LOW)
     configure_ptw_delay(128, 256);
 
     for (int round = 0; round < 24; round++) begin
@@ -96,7 +76,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #30000ns;
 
-    // --- 最终排空 ---
     configure_ptw_delay(1, 4);
     #100000ns;
 
@@ -159,6 +138,72 @@ class mmu_l1_reset_mid_op_vseq extends l1dtlb_directed_vseq;
       for (int i = 0; i < 4; i++) begin raw_pipe0(va_page(cycle*4+i+500), 7'(7'd50+i[6:0]), 1'b0); #100ns; end
       #10000ns;
     end
+  endtask
+endclass
+
+// =============================================================================
+// TASK L1DTLB-T01 — entry 0..15 sweep + va8 invalidate (STUB — needs rework)
+//
+// Status: NOT YET COVERED.  Repeated attempts showed that bulk-installing 16
+// unique VPNs into the DTLB only lands 1–2 entries (probe shows entry[0]
+// holding the most-recent refill's VPN, with all other entries invalid).
+// The DUT's PLRU + MB + L2TLB set pressure combination appears to prevent
+// 16 simultaneous DTLB entries from accumulating under any cadence tested
+// (raw_pipe0 with 1/4/8/48 cycle gaps; send_lsu_item via fill_page; mixed).
+// The existing baseline tests similarly only cover entry[0] (5–40 hits)
+// and entry[1] (20 hits in phase14_merged) via single-fill+inv patterns;
+// entries 2..15 remain at 0 hits in baseline.
+//
+// Root cause hypothesis (needs design team confirmation):
+//   The install path (mmu_l1dtlb_install.sv) seems to allow a fresh refill
+//   to overwrite an already-valid entry when the PLRU tree hasn't yet
+//   settled from the previous refill.  Each new raw_pipe0 miss may be
+//   re-targeting entry[0] because the PLRU victim pointer only advances
+//   after utlb_refill_vld asserts, and under back-to-back pressure the
+//   pointer doesn't advance fast enough.
+//
+// This vseq is left as a structural placeholder so the test wrapper and
+// vseq-name registration remain in place; the body is a no-op sweep that
+// at least exercises the PTW path and may contribute to entry[0] coverage
+// redundant with baseline.  A proper fix requires either:
+//   (a) Inserting explicit probe-triggered wait BETWEEN installs that
+//       confirms the previously-installed entry is still valid before
+//       issuing the next miss, AND issuing the inv_va BEFORE the next
+//       install (so the slot is freed deterministically), or
+//   (b) Using the L2TLB invalidate path which may have different
+//       accumulation semantics, or
+//   (c) Design-team sign-off on the unreachable entries (exclude path).
+// =============================================================================
+class mmu_l1dtlb_entry_sweep_vseq extends l1dtlb_directed_vseq;
+  `uvm_object_utils(mmu_l1dtlb_entry_sweep_vseq)
+  function new(string n = "mmu_l1dtlb_entry_sweep_vseq"); super.new(n); m_va_base = 39'h10_0000; endfunction
+
+  virtual task body();
+    `uvm_info(get_type_name(), "===== mmu_l1dtlb_entry_sweep_vseq START =====", UVM_NONE)
+    m_env_h = get_env(); m_lsu_vif = m_env_h.m_lsu.vif; m_misc_vif = m_env_h.m_misc.vif;
+    if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
+    if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(null, "*", "MMU_DUT_PROBES_VIF", m_probe_vif))
+      `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not set", UVM_LOW)
+
+    do_bringup(1024, 39'h10_0000);
+    configure_ptw_delay(4, 8);
+
+    // Single-entry install + inv pattern (proven to cover entry[0]).
+    // TODO: extend to entries 1..15 once the accumulation issue above
+    // is resolved.
+    for (int unsigned iter = 0; iter < 16; iter++) begin
+      va_t va;
+      int unsigned page_idx;
+      page_idx = iter;
+      va = va_page(page_idx);
+      raw_pipe0(va, 7'(8'd80 + iter[6:0]), 1'b0);
+      wait_lsu_cycles(32);
+      raw_inv(INV_VA_ALL, va, m_asid);
+      wait_lsu_cycles(16);
+    end
+    m_env_h.wait_for_quiescent_midtest("entry_sweep_done", 262144, 8);
+    configure_ptw_delay(1, 4);
+    `uvm_info(get_type_name(), "mmu_l1dtlb_entry_sweep_vseq DONE", UVM_LOW)
   endtask
 endclass
 

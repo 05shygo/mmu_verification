@@ -82,3 +82,4 @@
 `include "test_mmu_l1dtlb_cov_wfg_idle_sweep.svh"
 `include "test_mmu_l1dtlb_cov_iasid_completion.svh"
 `include "test_mmu_l1dtlb_cov_reset_mid.svh"
+`include "test_mmu_l1dtlb_cov_entry_sweep.svh"

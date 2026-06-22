@@ -10,33 +10,17 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     m_env_h = get_env(); m_lsu_vif = m_env_h.m_lsu.vif; m_misc_vif = m_env_h.m_misc.vif;
     if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
 
-    // =================================================================
-    // 持续制造双端口LSU miss:
-    //   - 调度器每个周期只能发射1个请求 (round-robin)
-    //   - 双端口每周期分配2个miss → WFG积累速度快于发射速度
-    //   - 当entry[0]完成refill被释放后, 其他entry仍在WFG
-    //   - entry[0]重新分配 → bypass_en=0 → 进入WFG
-    //   - 周期性flush → 覆盖 WFG→IDLE / WFG→ABT
-    // =================================================================
-
-    // 初始化页表
     do_bringup(512, 39'h10_0000);
 
-    // --- 阶段1: 中等PTW延迟, 持续双端口miss压力 ---
     `uvm_info(get_type_name(), "阶段1: 持续双端口miss压力", UVM_LOW)
     configure_ptw_delay(64, 128);
 
-    // 持续发射64轮双端口miss, 每轮2个miss
-    // 调度器每cycle只能issue 1个, 我们每cycle分配2个
-    // → WFG entry持续积累, entry[0]反复被释放再分配
-    // → 每次重新分配时大概率有其他WFG存在 → bypass_en=0 → WFG
     for (int round = 0; round < 64; round++) begin
       raw_pipe01(va_page(round*2), va_page(round*2+1),
                  7'(round[6:0]*2), 7'(round[6:0]*2+1),
                  round[0], ~round[0]);
       wait_lsu_cycles(1);
 
-      // 每8轮flush一次, 捕获WFG→IDLE / WFG→ABT
       if (round % 8 == 7) begin
         raw_rtu_flush();
         wait_lsu_cycles(4);
@@ -44,7 +28,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #30000ns;
 
-    // --- 阶段2: 长PTW延迟, 确保WFG停留时间更长 ---
     `uvm_info(get_type_name(), "阶段2: 长PTW + 持续双端口", UVM_LOW)
     configure_ptw_delay(512, 1024);
 
@@ -61,7 +44,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #50000ns;
 
-    // --- 阶段3: 短PTW, 高频flush, 捕获更多WFG→IDLE ---
     `uvm_info(get_type_name(), "阶段3: 短PTW + 高频flush", UVM_LOW)
     configure_ptw_delay(16, 32);
 
@@ -71,7 +53,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
                  1'b0, round[0]);
       wait_lsu_cycles(1);
 
-      // 更频繁flush
       if (round % 4 == 3) begin
         raw_rtu_flush();
         wait_lsu_cycles(2);
@@ -79,8 +60,7 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #20000ns;
 
-    // --- 阶段4: store类型miss, 增加条件覆盖 ---
-    `uvm_info(get_type_name(), "阶段4: store miss + flush", UVM_LOW)
+    `uvm_info(get_type_name(), "阶段4: store类型miss", UVM_LOW)
     configure_ptw_delay(128, 256);
 
     for (int round = 0; round < 24; round++) begin
@@ -96,7 +76,6 @@ class mmu_l1dtlb_entry0_wfg_vseq extends l1dtlb_directed_vseq;
     end
     #30000ns;
 
-    // --- 最终排空 ---
     configure_ptw_delay(1, 4);
     #100000ns;
 
@@ -159,6 +138,94 @@ class mmu_l1_reset_mid_op_vseq extends l1dtlb_directed_vseq;
       for (int i = 0; i < 4; i++) begin raw_pipe0(va_page(cycle*4+i+500), 7'(7'd50+i[6:0]), 1'b0); #100ns; end
       #10000ns;
     end
+  endtask
+endclass
+
+// =============================================================================
+// TASK L1DTLB-T01 — entry 0..15 sweep + va8 invalidate (FIXED)
+//
+// Root cause (confirmed): The PLRU casez always selects the lowest invalid
+// entry.  The previous vseq invalidated the just-installed entry after each
+// iteration, making it the first invalid entry, so the PLRU always re-picked
+// entry[0].  The fix REMOVES the per-iteration invalidate so entries naturally
+// accumulate 0→1→2→...→15.  Invalidations are batched after all entries are
+// filled, covering the inv_va SVA assertions for all 16 entries.
+//
+// Coverage targets:
+//   - DTLB entries 8..15: l1dtlb_ent_vld[8..15], l1dtlb_ent_ppn[8..15][*],
+//     l1dtlb_ent_vpn[8..15][*], l1dtlb_ent_flg[8..15][*], l1dtlb_ent_pgs[8..15][*]
+//   - Lines 1116/1120/1190/1194 on entry indices 2..7
+//   - a_va8_inv_clears_matching_entry[0..15] — all 16 SVA instances
+// =============================================================================
+class mmu_l1dtlb_entry_sweep_vseq extends l1dtlb_directed_vseq;
+  `uvm_object_utils(mmu_l1dtlb_entry_sweep_vseq)
+  function new(string n = "mmu_l1dtlb_entry_sweep_vseq"); super.new(n); m_va_base = 39'h10_0000; endfunction
+
+  virtual task body();
+    `uvm_info(get_type_name(), "===== mmu_l1dtlb_entry_sweep_vseq START =====", UVM_NONE)
+    m_env_h = get_env(); m_lsu_vif = m_env_h.m_lsu.vif; m_misc_vif = m_env_h.m_misc.vif;
+    if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
+    if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(null, "*", "MMU_DUT_PROBES_VIF", m_probe_vif))
+      `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not set", UVM_LOW)
+
+    // ── Phase 1: Fill all 16 DTLB entries via PTW refill ─────────────────
+    // Relies on test-base bringup (do_sv39_4k_bringup) which already mapped
+    // pages at m_va_base=0x10_0000.  raw_pipe0 on each VPN triggers a miss,
+    // PTW walk, and refill into the L1 DTLB.  NO per-entry invalidate so
+    // the PLRU naturally fills entries 0→1→2→...→15.
+    configure_ptw_delay(4, 8);
+    for (int unsigned page_idx = 0; page_idx < 16; page_idx++) begin
+      va_t va;
+      va = va_page(page_idx);
+      `uvm_info(get_type_name(),
+        $sformatf("Phase1: fill[%0d] va=0x%010h vpn_lsb=0x%02h",
+          page_idx, va, va[19:12]), UVM_MEDIUM)
+      raw_pipe0(va, 7'(8'd80 + page_idx[6:0]), 1'b0);
+      // Generous wait for PTW walk + L2TLB fill + DTLB install.
+      wait_lsu_cycles(256);
+      if (m_probe_vif != null) begin
+        int unsigned probe_count;
+        probe_count = 0;
+        while (probe_count < 32) begin
+          if (m_probe_vif.l1d_entry_vld[page_idx]) break;
+          #1000ns;
+          probe_count++;
+        end
+        if (!m_probe_vif.l1d_entry_vld[page_idx])
+          `uvm_warning(get_type_name(),
+            $sformatf("Entry[%0d] invalid (vld=0x%04h)",
+              page_idx, m_probe_vif.l1d_entry_vld))
+        else
+          `uvm_info(get_type_name(),
+            $sformatf("Entry[%0d] valid (vld=0x%04h vpn=0x%07h)",
+              page_idx, m_probe_vif.l1d_entry_vld,
+              m_probe_vif.l1d_entry_vpn[page_idx]), UVM_MEDIUM)
+      end
+    end
+
+    if (m_probe_vif != null)
+      `uvm_info(get_type_name(),
+        $sformatf("Phase1 done: entry_vld=0x%04h (exp 0xFFFF)",
+          m_probe_vif.l1d_entry_vld), UVM_NONE)
+
+    // ── Phase 2: Hit + inv each entry (va8_inv SVA coverage) ─────────────
+    for (int unsigned page_idx = 0; page_idx < 16; page_idx++) begin
+      va_t va;
+      va = va_page(page_idx);
+      raw_pipe0(va, 7'(8'd81 + page_idx[6:0]), 1'b0);
+      #500ns;
+      raw_inv(INV_VA_ALL, va, m_asid);
+      #1000ns;
+    end
+
+    // ── Phase 3: Re-fill entries for toggle coverage ──────────────────────
+    for (int unsigned page_idx = 0; page_idx < 8; page_idx++) begin
+      raw_pipe0(va_page(page_idx), 7'(8'd82 + page_idx[6:0]), 1'b0);
+      #2000ns;
+    end
+
+    #50000ns;
+    `uvm_info(get_type_name(), "mmu_l1dtlb_entry_sweep_vseq DONE", UVM_NONE)
   endtask
 endclass
 

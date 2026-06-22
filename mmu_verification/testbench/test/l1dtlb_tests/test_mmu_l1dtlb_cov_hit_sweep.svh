@@ -7,6 +7,9 @@ class test_mmu_l1dtlb_cov_hit_sweep extends l1dtlb_directed_test_base;
   virtual function void setup_plan();
     super.setup_plan();
     p9_seq_desc = "mmu_l1dtlb_coverage_vseq";
+    // Without this push, the default phase9 run_test_body() path would
+    // only run misc_init_seq and exit without ever starting the vseq.
+    m_vseq_names.push_back("mmu_l1dtlb_coverage_vseq");
     num_txn = 256;
     timeout_ns = 80_000_000;
   endfunction

@@ -59,3 +59,13 @@ coverage exclude -scope /tb_top/u_dut -togglenode {hpcp_mmu_cnt_en} -comment "MM
 coverage exclude -scope /tb_top/u_dut/x_ct_mmu_tlboper -fsmstate {tlbp_cur_st} -trans {PWFG->IDLE} -comment "MMU-P14-ISSUE-022: reset-path-only FSM transition; no functional next-state path; full list in simu/exclude_v4.tgl"
 coverage exclude -scope /tb_top/u_dut/x_ct_mmu_tlboper -fsmstate {tlbiva_cur_st} -trans {IVA_CMP->IVA_IDLE} -comment "MMU-P14-ISSUE-022: reset-path-only FSM transition; no functional next-state path; full list in simu/exclude_v4.tgl"
 coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -fsmstate {pfu_cur_st} -trans {PFU_CHK->PFU_IDLE} -comment "MMU-P14-ISSUE-022: reset-path-only FSM transition; PFU_CHK has only ->DENY/->OK, no functional IDLE path; full list in simu/exclude_v4.tgl"
+# ---- L2TLB LINE/COND/BRANCH structural waivers (2026-06-22) ----
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -line 1382 -comment "MMU-P14-ISSUE-022: default FSM branch; 2-bit FSM with 4 explicit states exhausts all encodings; full waiver in doc/l2tlb_uvm_review/l2tlb_covp_waivers.md"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -cond 553 1 -comment "MMU-P14-ISSUE-022: rrpv_write_ptw combo 0 1 1 (req=0 with write=1 impossible); protocol constraint"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -cond 555 1 -comment "MMU-P14-ISSUE-022: rrpv_write_tlboper combo 0 1 1 1 (req=0 with TLBop write impossible); protocol constraint"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -cond 869 1 -comment "MMU-P14-ISSUE-022: final_tlb_hit combo 1 1 0 (final_par_fail=1'b0 stub at line 865)"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -cond 870 1 -comment "MMU-P14-ISSUE-022: final_tlb_hit_mult combo 1 1 1 0 (final_par_fail=1'b0 stub)"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -cond 872 1 -comment "MMU-P14-ISSUE-022: l2tlb_miss combo 0 1 (final_par_fail=1'b0 stub)"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -cond 1167 1 -comment "MMU-P14-ISSUE-022: final_l1tlb_cmplt combo 1 1 0 1 (final_par_fail=1'b0 stub)"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -cond 1186 1 -comment "MMU-P14-ISSUE-022: l2tlb_l1itlb_pgflt combo 0 1 1 1 (false comb path: vld=0 with miss=1)"
+coverage exclude -scope /tb_top/u_dut/x_mmu_l2tlb -branch 1354 1 -comment "MMU-P14-ISSUE-022: default case branch; 2-bit FSM exhausts all encodings"

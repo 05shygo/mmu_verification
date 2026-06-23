@@ -1186,8 +1186,11 @@ module mmu_l1dtlb_hit_rd_sva #(
     (lsu_mmu_stamo_vld_x && !lsu_mmu_va_vld_x)
     |-> (!dutlb_miss_vld_x && !dutlb_miss_vld_short_x));
 
+  // RTL (mmu_l1dtlb_hit_rd.sv:267): dutlb_stamo_pre_sel = lsu_mmu_stamo_vld_x & !dutlb_expt_match.
+  // When expt_match=1, STAMO path is disabled and PA comes from exception handler.
+  // Assertion must exclude expt_match case to avoid false failure.
   a_stamo_pa_source: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
-    (lsu_mmu_stamo_vld_x && mmu_lsu_pa_vld_x) |-> (mmu_lsu_pa_x == lsu_mmu_stamo_pa_x));
+    (lsu_mmu_stamo_vld_x && mmu_lsu_pa_vld_x && !expt_match_x) |-> (mmu_lsu_pa_x == lsu_mmu_stamo_pa_x));
 
   a_access_fault_known_payload: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
     mmu_lsu_access_fault_x |-> !$isunknown({mmu_lsu_pa_x, mmu_pmp_pa_x}));

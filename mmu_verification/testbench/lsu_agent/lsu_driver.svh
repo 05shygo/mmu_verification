@@ -46,6 +46,10 @@ class lsu_driver extends uvm_driver #(lsu_txn);
   protected int unsigned m_p2_rsp_watchdog_cycles;
   protected int unsigned m_inv_busy_wait_cycles;
   protected int unsigned m_inv_done_watchdog_cycles;
+  protected bit          m_pipeline_mode;
+  protected int unsigned m_pipe0_inflight;
+  protected int unsigned m_max_pipe0_inflight;
+  protected bit          m_pipe0_skip_preamble;
 
   // Mutual exclusion between pipe0 and pipe1: the DUT's L1 DTLB lookup logic
   // shares resources between the two pipes.  Asserting va0_vld and va1_vld on
@@ -87,6 +91,12 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     void'($value$plusargs("LSU_INV_BUSY_WAIT_CYCLES=%0d", m_inv_busy_wait_cycles));
     void'($value$plusargs("LSU_INV_DONE_WATCHDOG_CYCLES=%0d", m_inv_done_watchdog_cycles));
     void'($value$plusargs("LSU_INV_RSP_WATCHDOG_CYCLES=%0d", m_inv_done_watchdog_cycles));
+    m_pipeline_mode = 1'b0;
+    void'($value$plusargs("MMU_LSU_PIPELINE_MODE=%0b", m_pipeline_mode));
+    m_max_pipe0_inflight = 16;
+    void'($value$plusargs("LSU_MAX_PIPE0_INFLIGHT=%0d", m_max_pipe0_inflight));
+    m_pipe0_inflight = 0;
+    m_pipe0_skip_preamble = 1'b0;
     if (m_retry_probe_cycles == 0)
       m_retry_probe_cycles = 1;
     if (m_rsp_watchdog_cycles == 0)
@@ -326,7 +336,7 @@ class lsu_driver extends uvm_driver #(lsu_txn);
         || (vif.driver_cb.mmu_lsu_access_fault1 === 1'b1);
   endfunction
 
-  protected task _pulse_pipe0_req(lsu_txn tr);
+  protected task _pulse_pipe0_req(lsu_txn tr, bit keep_vld = 1'b0);
     m_dtlb_mutex.get(1);
     vif.driver_cb.lsu_mmu_va0_vld  <= 1'b1;
     vif.driver_cb.lsu_mmu_va0      <= tr.va;
@@ -335,8 +345,10 @@ class lsu_driver extends uvm_driver #(lsu_txn);
     vif.driver_cb.lsu_mmu_abort0   <= tr.abort;
     vif.driver_cb.lsu_mmu_vabuf0   <= tr.vabuf;
     @(vif.driver_cb);
-    vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
-    vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
+    if (!keep_vld) begin
+      vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+      vif.driver_cb.lsu_mmu_abort0  <= 1'b0;
+    end
     m_dtlb_mutex.put(1);
   endtask
 
@@ -365,15 +377,45 @@ class lsu_driver extends uvm_driver #(lsu_txn);
       _get_kind(LSU_PIPE0, tr);
       m_pipe0_busy = 1'b1;
       `uvm_info(get_type_name(), {"Pipe0: ", tr.convert2string()}, UVM_DEBUG)
-      repeat (tr.idle_cycles) @(vif.driver_cb);
+      if (m_pipe0_skip_preamble) begin
+        // Pipeline mode continuation: skip idle drive to keep va0_vld=1
+        m_pipe0_skip_preamble = 1'b0;
+      end else begin
+        repeat (tr.idle_cycles) @(vif.driver_cb);
+        vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
+        @(vif.driver_cb);
+      end
 
-      vif.driver_cb.lsu_mmu_va0_vld <= 1'b0;
-      @(vif.driver_cb);
-
-      _pulse_pipe0_req(tr);
+      _pulse_pipe0_req(tr, m_pipeline_mode);
       if (tr.abort == 1'b1) begin
         @(vif.driver_cb);
         m_pipe0_busy = 1'b0;
+        continue;
+      end
+
+      if (m_pipeline_mode && m_pipe0_inflight < m_max_pipe0_inflight) begin
+        m_pipe0_skip_preamble = 1'b1;
+        m_pipe0_busy = 1'b0;
+        m_pipe0_inflight++;
+        fork
+          automatic lsu_txn tmp = tr;
+          begin : p0_pipe_rsp
+            bit rsp; rsp = 1'b0;
+            while (!rsp) begin
+              @(vif.driver_cb);
+              if (vif.driver_cb.mmu_lsu_pa0_vld === 1'b1
+                  || vif.driver_cb.mmu_lsu_page_fault0 === 1'b1
+                  || vif.driver_cb.mmu_lsu_access_fault0 === 1'b1) begin
+                rsp = 1'b1;
+                tmp.pa = vif.driver_cb.mmu_lsu_pa0;
+                tmp.pgflt = vif.driver_cb.mmu_lsu_page_fault0;
+                tmp.access_fault = vif.driver_cb.mmu_lsu_access_fault0;
+                tmp.sec = vif.driver_cb.mmu_lsu_sec0;
+              end
+            end
+            m_pipe0_inflight--;
+          end
+        join_none
         continue;
       end
 

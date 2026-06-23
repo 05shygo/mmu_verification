@@ -15,8 +15,9 @@ class test_mmu_l2tlb_cov_pfu_chk_deny extends l2tlb_phase6e_test_base;
     timeout_ns = 60_000_000;
     m_enable_sv39_4k_bringup = 1'b1;
     m_run_misc_init = 1'b1;
+    // PMP deny is now applied INSIDE the vseq (after entry installs, before PFU).
+    // Sysmap safe flags are still applied pre-vseq to prevent sysmap faults.
     m_sysmap_seq_names.push_back("sysmap_pfu_safe_flag_seq");
-    m_pmp_seq_names.push_back("pmp_flg_deny_pfu_seq");
     m_vseq_names.push_back("mmu_l2tlb_pfu_fullpath_vseq");
   endfunction
 endclass

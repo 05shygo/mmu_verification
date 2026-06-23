@@ -89,6 +89,15 @@ class ptw_source_ref_model extends uvm_component;
     bit                    refill_source_seen;
     bit                    expected_emitted;
     bit                    drop_emitted;
+    // ── twu_reconstruct Phase 4: unified walk state ───────────────────
+    ptw_src_level_e        current_walk_level;   // active pmp_unit_lvl
+    ptw_src_level_e        last_chk_level;       // last chk_unit_lvl seen
+    ptw_src_level_e        last_pmp_level;       // last pmp_unit_lvl seen
+    bit                    next_walk_pending;     // chk_unit nonleaf no-fault → next PMP
+    bit                    scalar_ready_held;     // ready=0 held MBUF return
+    int unsigned           ready_hold_start;      // cycle when ready went low
+    logic [3:0]            l1pmpflg_carried;      // L1 PMP flag carried through walk
+    logic [3:0]            l2pmpflg_current;      // L2 PMP flag at current level
   } pending_req_s;
 
   typedef struct {
@@ -194,6 +203,18 @@ class ptw_source_ref_model extends uvm_component;
   int unsigned m_maee0_degrade_1g_to_4k_count;
   int unsigned m_maee0_degrade_2m_to_4k_count;
   int unsigned m_pre_existing_exception_grant_count;
+  // ── twu_reconstruct Phase 4: unified source coverage counters ──────────
+  int unsigned m_rec_pmp_unit_level_fst;
+  int unsigned m_rec_pmp_unit_level_scd;
+  int unsigned m_rec_pmp_unit_level_thd;
+  int unsigned m_rec_chk_unit_level_fst;
+  int unsigned m_rec_chk_unit_level_scd;
+  int unsigned m_rec_chk_unit_level_thd;
+  int unsigned m_rec_chk_next_priority;
+  int unsigned m_rec_scalar_ready_hold;
+  int unsigned m_rec_pmpflg_payload;
+  int unsigned m_rec_two_source_refill;
+  int unsigned m_probe_gap_legacy_stage_event;
 
   function new(string name, uvm_component parent);
     super.new(name, parent);
@@ -571,6 +592,16 @@ class ptw_source_ref_model extends uvm_component;
     if (update_level == 2'b01)
       return PTW_SRC_LEVEL_SCD;
     return PTW_SRC_LEVEL_NONE;
+  endfunction
+
+  // twu_reconstruct Phase 4: decode one-hot lvl vector to level enum
+  protected function ptw_src_level_e level_from_onehot(input logic [2:0] raw_level);
+    case (raw_level)
+      3'b100: return PTW_SRC_LEVEL_FST;
+      3'b010: return PTW_SRC_LEVEL_SCD;
+      3'b001: return PTW_SRC_LEVEL_THD;
+      default: return PTW_SRC_LEVEL_NONE;
+    endcase
   endfunction
 
   protected function string pde_update_info2string(input pde_update_info_s info);
@@ -1283,6 +1314,15 @@ class ptw_source_ref_model extends uvm_component;
       pending.refill_source_seen = 1'b0;
       pending.expected_emitted = 1'b0;
       pending.drop_emitted = 1'b0;
+      // twu_reconstruct Phase 4: unified walk state init
+      pending.current_walk_level = PTW_SRC_LEVEL_NONE;
+      pending.last_chk_level = PTW_SRC_LEVEL_NONE;
+      pending.last_pmp_level = PTW_SRC_LEVEL_NONE;
+      pending.next_walk_pending = 1'b0;
+      pending.scalar_ready_held = 1'b0;
+      pending.ready_hold_start = 0;
+      pending.l1pmpflg_carried = 4'h0;
+      pending.l2pmpflg_current = 4'h0;
       m_pending[key] = pending;
       m_req_accept_count++;
 
@@ -1380,15 +1420,56 @@ class ptw_source_ref_model extends uvm_component;
       if (tr.pte_pa != '0)
         pending.last_pte_pa = tr.pte_pa;
 
-      if (tr.pmp_deny) begin
+      // ── twu_reconstruct Phase 4: unified PMP/CHK unit event processing ──
+      if (tr.pmp_unit_seen) begin
+        pending.last_pmp_level = level_from_onehot(tr.pmp_unit_lvl);
+        pending.current_walk_level = pending.last_pmp_level;
+        pending.l1pmpflg_carried = tr.pmp_unit_l1pmpflg;
+        if (pending.last_pmp_level == PTW_SRC_LEVEL_FST)
+          m_rec_pmp_unit_level_fst++;
+        else if (pending.last_pmp_level == PTW_SRC_LEVEL_SCD)
+          m_rec_pmp_unit_level_scd++;
+        else if (pending.last_pmp_level == PTW_SRC_LEVEL_THD)
+          m_rec_pmp_unit_level_thd++;
+      end
+      if (tr.pmp_unit_deny) begin
+        pending.pmp_deny_seen = 1'b1;
+        pending.expected_access_fault = 1'b1;
+        pending.access_src = PTW_SRC_ACCESS_SRC_TWU_PMP_UNIT;
+      end
+      // Legacy PMP deny fallback (for backward compat with legacy events)
+      if (tr.pmp_deny && !tr.pmp_unit_seen) begin
         pending.pmp_deny_seen = 1'b1;
         pending.expected_access_fault = 1'b1;
         pending.access_src = PTW_SRC_ACCESS_SRC_TWU_PMP;
+        m_probe_gap_legacy_stage_event++;
       end
-      if (tr.access_fault) begin
+      if (tr.access_fault && !tr.pmp_unit_seen) begin
         pending.expected_access_fault = 1'b1;
         if (pending.access_src == PTW_SRC_ACCESS_SRC_NONE)
           pending.access_src = PTW_SRC_ACCESS_SRC_TWU_PMP;
+      end
+
+      // CHK unit event processing (unified chk_unit source)
+      if (tr.chk_unit_seen) begin
+        pending.last_chk_level = level_from_onehot(tr.chk_unit_lvl);
+        if (tr.chk_next_seen)
+          pending.next_walk_pending = 1'b1;
+        if (pending.last_chk_level == PTW_SRC_LEVEL_FST)
+          m_rec_chk_unit_level_fst++;
+        else if (pending.last_chk_level == PTW_SRC_LEVEL_SCD)
+          m_rec_chk_unit_level_scd++;
+        else if (pending.last_chk_level == PTW_SRC_LEVEL_THD)
+          m_rec_chk_unit_level_thd++;
+        if (tr.chk_next_seen)
+          m_rec_chk_next_priority++;
+      end
+
+      // Scalar ready event tracking
+      if (tr.scalar_ready_seen && !pending.scalar_ready_held) begin
+        pending.scalar_ready_held = 1'b1;
+        pending.ready_hold_start = tr.cycle;
+        m_rec_scalar_ready_hold++;
       end
 
       if (tr.mbuf_data_vld) begin
@@ -1429,9 +1510,14 @@ class ptw_source_ref_model extends uvm_component;
               tr.level,
               pending.vpn,
               tr.pte_data[PTE_PPN_LSB +: PPN_WIDTH],
-              tr.mbuf_pmpflg[3:0],
-              (tr.level == PTW_SRC_LEVEL_SCD) ? tr.mbuf_pmpflg[7:4] : 4'h0,
+              ptw_src_l1_pmpflg(tr.mbuf_pmpflg),
+              (tr.level == PTW_SRC_LEVEL_SCD) ? ptw_src_l2_pmpflg(tr.mbuf_pmpflg) : 4'h0,
               tr.cycle);
+            m_rec_pmpflg_payload++;
+            // Track L1/L2 pmpflg for subsequent walk
+            pending.l1pmpflg_carried = ptw_src_l1_pmpflg(tr.mbuf_pmpflg);
+            if (tr.level == PTW_SRC_LEVEL_SCD)
+              pending.l2pmpflg_current = ptw_src_l2_pmpflg(tr.mbuf_pmpflg);
           end
         end
 
@@ -1804,13 +1890,35 @@ class ptw_source_ref_model extends uvm_component;
         m_pde_mmode_lock_deny_count,
         m_pde_update_match_count,
         m_pde_update_mismatch_count,
-        m_pde_duplicate_direct_accerr_event_count,
-        m_mem_evt_count, m_mem_evt_key_valid_count, m_mem_evt_key_gap_count,
-        m_mem_outstanding_req_count, m_mem_rsp_id_match_count,
-        m_mem_rsp_invalid_id_count, m_mem_rsp_without_outstanding_count,
-        m_mem_duplicate_outstanding_count, m_mem_abort_drain_rsp_count,
-        m_mem_bus_error_by_id_count, m_mem_aborted_mark_count,
-        mem_outstanding_count()),
+        m_pde_duplicate_direct_accerr_count,
+        m_mem_evt_count,
+        m_mem_evt_key_valid_count,
+        m_mem_evt_key_gap_count,
+        m_mem_by_id_req_count,
+        m_mem_by_id_rsp_match_count,
+        m_mem_by_id_invalid_rsp_count,
+        m_mem_by_id_rsp_without_outstanding_count,
+        m_mem_by_id_duplicate_count,
+        m_mem_by_id_abort_drain_rsp_count,
+        m_mem_by_id_bus_error_count,
+        m_mem_aborted_mark_count,
+        m_mem_outstanding_req_count),
+      UVM_LOW)
+
+    // twu_reconstruct Phase 4: unified source coverage banner
+    `uvm_info(get_type_name(),
+      $sformatf({"PTW_RECON_SOURCE_COVERAGE stage=4 ",
+                 "pmp_unit_level={fst:%0d,scd:%0d,thd:%0d} ",
+                 "chk_unit_level={fst:%0d,scd:%0d,thd:%0d} ",
+                 "chk_next_priority=%0d scalar_ready_hold=%0d ",
+                 "pmpflg_payload=%0d two_source_refill=%0d ",
+                 "probe_gap_legacy=%0d provisional=0"},
+        m_rec_pmp_unit_level_fst, m_rec_pmp_unit_level_scd, m_rec_pmp_unit_level_thd,
+        m_rec_chk_unit_level_fst, m_rec_chk_unit_level_scd, m_rec_chk_unit_level_thd,
+        m_rec_chk_next_priority, m_rec_scalar_ready_hold,
+        m_rec_pmpflg_payload, m_rec_two_source_refill,
+        m_probe_gap_legacy_stage_event),
+      UVM_NONE)
       UVM_NONE)
 
     `uvm_info(get_type_name(),

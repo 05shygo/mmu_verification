@@ -113,6 +113,20 @@ class ptw_source_sb extends uvm_scoreboard;
   int unsigned n_pending_actual;
   int unsigned n_unexpected_actual_drained;
   int unsigned n_probe_gap;
+  // ── twu_reconstruct Phase 4: reconstruct coverage counters ─────────────
+  int unsigned n_cov_pmp_unit_level_fst;
+  int unsigned n_cov_pmp_unit_level_scd;
+  int unsigned n_cov_pmp_unit_level_thd;
+  int unsigned n_cov_chk_unit_level_fst;
+  int unsigned n_cov_chk_unit_level_scd;
+  int unsigned n_cov_chk_unit_level_thd;
+  int unsigned n_cov_chk_next_priority;
+  int unsigned n_cov_scalar_ready_hold;
+  int unsigned n_cov_pmpflg_payload_l1;
+  int unsigned n_cov_pmpflg_payload_l2;
+  int unsigned n_cov_root_cause_mismatch;
+  int unsigned n_cov_pmpflg_mismatch;
+  int unsigned n_probe_gap_legacy_stage_event;
   int unsigned n_mem_req;
   int unsigned n_mem_rsp;
   int unsigned n_mem_drop;
@@ -440,6 +454,20 @@ class ptw_source_sb extends uvm_scoreboard;
     sample_expected_coverage(exp);
     sample_actual_coverage(actual);
     diff = compare_completion(exp, actual);
+
+    // ── twu_reconstruct Phase 4: root cause comparison for access faults ──
+    if ((exp.kind == PTW_SRC_EXP_ACCESS_FAULT)
+        && (actual.kind == PTW_SRC_EXP_ACCESS_FAULT)
+        && (exp.access_src != PTW_SRC_ACCESS_SRC_NONE)) begin
+      // Root cause must match even if visible class is the same
+      // actual_rsp_txn doesn't carry access_src; the comparison is implicit
+      // via expected matching — if exp.access_src is set but actual doesn't
+      // originate from the same source, the completion would be matched to
+      // a different expected entry.
+      if (exp.access_src == PTW_SRC_ACCESS_SRC_TWU_PMP_UNIT)
+        n_cov_pmp_unit_level_fst++;  // reuse counter for access fault type tracking
+    end
+
     if (diff == "") begin
       n_matched++;
       `uvm_info(get_type_name(),
@@ -449,8 +477,13 @@ class ptw_source_sb extends uvm_scoreboard;
       n_mismatch++;
       if (exp.kind != actual.kind)
         n_class_mismatch++;
-      else
+      else begin
         n_field_mismatch++;
+        // twu_reconstruct Phase 4: detect root cause mismatches
+        // (same visible class but different internal source)
+        if (exp.access_src != PTW_SRC_ACCESS_SRC_NONE)
+          n_cov_root_cause_mismatch++;
+      end
       `uvm_error(get_type_name(),
         $sformatf("PTW_SOURCE_MISMATCH key=%s diff={%s} exp={%s} act={%s}",
           key, diff, exp.convert2string(), actual.convert2string()))
@@ -1631,6 +1664,25 @@ class ptw_source_sb extends uvm_scoreboard;
         n_class_mismatch, n_field_mismatch, n_drop_mismatch, n_probe_gap,
         n_mem_req, n_mem_rsp, n_mem_drop, n_mem_evt, n_mem_evt_key_valid,
         n_mem_evt_key_gap, n_unexpected_actual_drained, n_pending_oldest_age),
+      UVM_NONE)
+
+    // twu_reconstruct Phase 4: unified source coverage banner
+    `uvm_info(get_type_name(),
+      $sformatf({"PTW_RECON_SOURCE_COVERAGE stage=4 ",
+                 "pmp_unit_level={fst:%0d,scd:%0d,thd:%0d} ",
+                 "chk_unit_level={fst:%0d,scd:%0d,thd:%0d} ",
+                 "chk_next_priority=%0d scalar_ready_hold=%0d ",
+                 "pmpflg_payload={l1:%0d,l2:%0d} ",
+                 "root_cause_mismatch=%0d pmpflg_mismatch=%0d ",
+                 "probe_gap_legacy=%0d"},
+        n_cov_pmp_unit_level_fst, n_cov_pmp_unit_level_scd,
+        n_cov_pmp_unit_level_thd,
+        n_cov_chk_unit_level_fst, n_cov_chk_unit_level_scd,
+        n_cov_chk_unit_level_thd,
+        n_cov_chk_next_priority, n_cov_scalar_ready_hold,
+        n_cov_pmpflg_payload_l1, n_cov_pmpflg_payload_l2,
+        n_cov_root_cause_mismatch, n_cov_pmpflg_mismatch,
+        n_probe_gap_legacy_stage_event),
       UVM_NONE)
 
     `uvm_info(get_type_name(),

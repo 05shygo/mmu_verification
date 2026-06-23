@@ -332,6 +332,33 @@ module mmu_ptw_top_sva #(
     cp_pde_accerr_no_dup_hits++;
   end
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // twu_reconstruct Phase 3: unified TWU fault/refill source assertions
+  //
+  // Old:  TWU acc fault from 3 parallel PMP stages (fst/scd/thd_pmp)
+  //       TWU page fault from 3 parallel CHK stages (fst/scd/thd_chk)
+  //       Refill from 4 sources (fst_chk + scd_chk + thd_chk + csr)
+  // New:  TWU acc fault from single pmp_unit
+  //       TWU page fault from single chk_unit
+  //       Refill from 2 sources (chk_unit_refill + csr_refill)
+  //
+  // acc_err_twu_grant mapping (4TWU→1TWU):
+  //   [5] = PDE direct, [4:3] unused, [2] = MBUF bus error, [1:0] = TWU
+  // New TWU acc_err: single-bit from pmp_unit, mapped to acc_err_twu_grant[0]
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // acc_err_twu_grant is now 6-bit with only 3 active sources
+  a_ptw_accerr_single_twu_source: assert property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    $onehot0(acc_err_twu_grant));
+
+  // MBUF bus error routes from mbuf entry to visible access fault
+  a_ptw_mbuf_bus_error_route: assert property (@(posedge ptw_clk)
+    disable iff (!cpurst_b)
+    mbuf_bus_error |-> (ptw_l2tlb_ref_acc_err
+                     && (ptw_l2tlb_type == mbuf_bus_error_type)
+                     && (ptw_l2tlb_id == mbuf_bus_error_id)));
+
   final begin
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_req_ready_hold req=PTW-SVA-REQ-001 hits=%0d", cp_req_ready_hold_hits);
     $display("PTW_SVA_COVER module=mmu_ptw_top_sva name=cp_ptw_req_reselect_under_backpressure req=PTW-SVA-REQ-001 hits=%0d", cp_req_reselect_under_backpressure_hits);

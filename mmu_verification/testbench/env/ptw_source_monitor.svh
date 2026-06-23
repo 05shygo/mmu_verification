@@ -27,6 +27,8 @@ class ptw_source_monitor extends uvm_monitor;
   uvm_analysis_port #(ptw_src_pde_evt_txn)    ap_pde;
   uvm_analysis_port #(ptw_src_drop_txn)       ap_drop;
   uvm_analysis_port #(ptw_src_mem_evt_txn)    ap_mem_evt;
+  // twu_reconstruct Phase 2: ready event port
+  uvm_analysis_port #(ptw_src_ready_evt_txn)  ap_ready;
 
   int unsigned m_cycle;
   int unsigned m_req_accept_count;
@@ -50,6 +52,18 @@ class ptw_source_monitor extends uvm_monitor;
   int unsigned m_mem_rsp_evt_count;
   int unsigned m_mem_drop_evt_count;
   int unsigned m_mem_key_gap_count;
+  // twu_reconstruct Phase 2: unified unit counters
+  int unsigned m_pmp_unit_count;
+  int unsigned m_chk_unit_count;
+  int unsigned m_chk_next_count;
+  int unsigned m_ready_evt_count;
+  int unsigned m_ready_hold_count;
+  int unsigned m_ready_release_count;
+  int unsigned m_l1pmpflg_capture_count;
+  // Ready hold tracking
+  bit          m_ready_prev;
+  int unsigned m_ready_hold_cycles;
+  bit          m_ready_released_this_hold;
   bit          m_prev_pde_cache_acc_err_vld;
 
   typedef struct {
@@ -95,6 +109,16 @@ class ptw_source_monitor extends uvm_monitor;
     m_mem_rsp_evt_count = 0;
     m_mem_drop_evt_count = 0;
     m_mem_key_gap_count = 0;
+    m_pmp_unit_count = 0;
+    m_chk_unit_count = 0;
+    m_chk_next_count = 0;
+    m_ready_evt_count = 0;
+    m_ready_hold_count = 0;
+    m_ready_release_count = 0;
+    m_l1pmpflg_capture_count = 0;
+    m_ready_prev = 1'b1;
+    m_ready_hold_cycles = 0;
+    m_ready_released_this_hold = 1'b0;
     m_prev_pde_cache_acc_err_vld = 1'b0;
     foreach (m_mbuf_source_valid_by_id[i]) begin
       m_mbuf_source_valid_by_id[i] = 1'b0;
@@ -120,6 +144,7 @@ class ptw_source_monitor extends uvm_monitor;
     ap_pde        = new("ap_pde",        this);
     ap_drop       = new("ap_drop",       this);
     ap_mem_evt    = new("ap_mem_evt",    this);
+    ap_ready      = new("ap_ready",      this);  // twu_reconstruct Phase 2
 
     if (!uvm_config_db #(mmu_top_cfg)::get(this, "", "m_cfg", m_cfg))
       m_cfg = mmu_top_cfg::type_id::create("m_cfg");
@@ -146,6 +171,9 @@ class ptw_source_monitor extends uvm_monitor;
 
       if (v_probe.rst_ni !== 1'b1) begin
         m_prev_pde_cache_acc_err_vld = 1'b0;
+        m_ready_prev = 1'b1;
+        m_ready_hold_cycles = 0;
+        m_ready_released_this_hold = 1'b0;
         emit_reset_mem_drops();
         clear_mbuf_source_map();
         clear_mem_channel_state();
@@ -156,7 +184,13 @@ class ptw_source_monitor extends uvm_monitor;
       sample_req_accept();
       sample_memory_events();
       sample_context();
-      sample_level_events();
+      // twu_reconstruct Phase 2: split level events into unified unit samples
+      sample_pmp_unit_events();
+      sample_chk_unit_events();
+      sample_mbuf_return_events();
+      sample_ready_events();
+      sample_l1pmpflg_payload_events();
+      sample_legacy_level_events();
       sample_pde_events();
       sample_abort_and_drops();
       sample_completion();
@@ -578,7 +612,9 @@ class ptw_source_monitor extends uvm_monitor;
     end
   endtask
 
-  protected task sample_level_events();
+  // DEPRECATED by twu_reconstruct Phase 2 — replaced by split unified functions.
+  // Kept for reference only; no longer called from run_phase().
+  protected task _deprecated_sample_level_events();
     bit event_seen;
     logic [2:0] pmp_vld_vec;
     logic [2:0] pmp_grant_vec;
@@ -757,6 +793,255 @@ class ptw_source_monitor extends uvm_monitor;
 
     m_prev_pde_cache_acc_err_vld =
       (v_probe.mon_cb.pde_cache_acc_err_vld === 1'b1);
+  endtask
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // twu_reconstruct Phase 2: split level event sampling — unified unit probes
+  // ═══════════════════════════════════════════════════════════════════════
+
+  protected task sample_pmp_unit_events();
+    bit vld, wait_v, deny, mbuf_req;
+    vld      = (v_probe.mon_cb.twu_pmp_unit_vld === 1'b1);
+    wait_v   = (v_probe.mon_cb.twu_pmp_unit_wait === 1'b1);
+    deny     = (v_probe.mon_cb.twu_pmp_unit_deny === 1'b1);
+    mbuf_req = (v_probe.mon_cb.twu_pmp_unit_mbuf_req === 1'b1);
+
+    if (vld || wait_v || deny || mbuf_req) begin
+      ptw_src_level_evt_txn tr;
+      tr = ptw_src_level_evt_txn::type_id::create("ptw_level_evt_pmp");
+      tr.cycle = m_cycle;
+      tr.twu_idx = 0;
+      tr.pmp_unit_seen = 1'b1;
+
+      // PMP unit payload from unified probes
+      tr.pmp_unit_lvl      = v_probe.mon_cb.twu_pmp_unit_lvl;
+      tr.pmp_unit_type     = v_probe.mon_cb.twu_pmp_unit_type;
+      tr.pmp_unit_id       = v_probe.mon_cb.twu_pmp_unit_id;
+      tr.pmp_unit_vpn      = v_probe.mon_cb.twu_pmp_unit_vpn;
+      tr.pmp_unit_pa       = v_probe.mon_cb.twu_pmp_unit_pa;
+      tr.pmp_unit_pmpflg   = v_probe.mon_cb.twu_pmp_unit_pmpflg;
+      tr.pmp_unit_l1pmpflg = v_probe.mon_cb.twu_pmp_unit_l1pmpflg;
+      tr.pmp_unit_deny     = deny;
+      tr.pmp_unit_wait     = wait_v;
+      tr.pmp_unit_mbuf_req = mbuf_req;
+
+      // Populate legacy PMP fields for backward compat
+      tr.pmp_vld = vld;
+      tr.pmp_grant = vld && !deny;
+      tr.pmp_deny = deny;
+      tr.pmp_wait = wait_v;
+      tr.selected_pmpflg = tr.pmp_unit_pmpflg;
+
+      // Derive request type and level from pmp_unit
+      if (ptw_src_is_legal_req_type(tr.pmp_unit_type))
+        tr.req_type = cast_req_type(tr.pmp_unit_type);
+      tr.vpn = tr.pmp_unit_vpn;
+      tr.id   = tr.pmp_unit_id;
+      tr.pte_pa = tr.pmp_unit_pa;
+      tr.level = level_from_onehot({tr.pmp_unit_lvl[2], tr.pmp_unit_lvl[1],
+                                    tr.pmp_unit_lvl[0]});
+      if (tr.level == PTW_SRC_LEVEL_NONE)
+        tr.level = PTW_SRC_LEVEL_THD; // legacy compat: map to thd
+
+      // pmpflg payload
+      tr.twu_mbuf_pmpflg = v_probe.mon_cb.ptw_twu_mbuf_pmpflg;
+      tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
+
+      m_pmp_unit_count++;
+      m_level_count++;
+      ap_level.write(tr);
+      `uvm_info(get_type_name(), {"PTW_LEVEL_EVT(pmp_unit) ", tr.convert2string()}, UVM_HIGH)
+    end
+  endtask
+
+  protected task sample_chk_unit_events();
+    bit vld, wait_v, leaf_vld, page_flt, refill_req, csr_req;
+    bit chk_next;
+
+    vld       = (v_probe.mon_cb.twu_chk_unit_vld === 1'b1);
+    wait_v    = (v_probe.mon_cb.twu_chk_unit_wait === 1'b1);
+    leaf_vld  = (v_probe.mon_cb.twu_chk_unit_leaf_vld === 1'b1);
+    page_flt  = (v_probe.mon_cb.twu_chk_unit_page_flt === 1'b1);
+    refill_req = (v_probe.mon_cb.twu_chk_unit_refill_req === 1'b1);
+    csr_req   = (v_probe.mon_cb.twu_chk_unit_csr_req === 1'b1);
+    chk_next  = vld && !leaf_vld && !page_flt;
+
+    if (vld || wait_v || page_flt || refill_req || csr_req) begin
+      ptw_src_level_evt_txn tr;
+      tr = ptw_src_level_evt_txn::type_id::create("ptw_level_evt_chk");
+      tr.cycle = m_cycle;
+      tr.twu_idx = 0;
+      tr.chk_unit_seen = 1'b1;
+
+      // CHK unit payload from unified probes
+      tr.chk_unit_lvl       = v_probe.mon_cb.twu_chk_unit_lvl;
+      tr.chk_unit_type      = v_probe.mon_cb.twu_chk_unit_type;
+      tr.chk_unit_id        = v_probe.mon_cb.twu_chk_unit_id;
+      tr.chk_unit_vpn       = v_probe.mon_cb.twu_chk_unit_vpn;
+      tr.chk_unit_data      = v_probe.mon_cb.twu_chk_unit_data;
+      tr.chk_unit_flg       = v_probe.mon_cb.twu_chk_unit_flg;
+      tr.chk_unit_leaf_vld  = leaf_vld;
+      tr.chk_unit_page_flt  = page_flt;
+      tr.chk_unit_refill_req = refill_req;
+      tr.chk_unit_csr_req   = csr_req;
+      tr.chk_unit_wait      = wait_v;
+
+      if (chk_next) begin
+        tr.chk_next_seen = 1'b1;
+        m_chk_next_count++;
+      end
+
+      // Derive request type and level from chk_unit
+      if (ptw_src_is_legal_req_type(tr.chk_unit_type))
+        tr.req_type = cast_req_type(tr.chk_unit_type);
+      tr.vpn = tr.chk_unit_vpn;
+      tr.id   = tr.chk_unit_id;
+      tr.level = level_from_onehot({tr.chk_unit_lvl[2], tr.chk_unit_lvl[1],
+                                    tr.chk_unit_lvl[0]});
+      if (tr.level == PTW_SRC_LEVEL_NONE)
+        tr.level = PTW_SRC_LEVEL_THD;
+
+      // CHK outcomes
+      tr.page_fault  = page_flt;
+      tr.refill_req  = refill_req;
+
+      // pmpflg payload
+      tr.twu_mbuf_pmpflg = v_probe.mon_cb.ptw_twu_mbuf_pmpflg;
+      tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
+
+      m_chk_unit_count++;
+      m_level_count++;
+      ap_level.write(tr);
+      `uvm_info(get_type_name(), {"PTW_LEVEL_EVT(chk_unit) ", tr.convert2string()}, UVM_HIGH)
+    end
+  endtask
+
+  protected task sample_mbuf_return_events();
+    if (v_probe.mon_cb.ptw_mbuf_twu_data_vld === 1'b1) begin
+      ptw_src_level_evt_txn tr;
+      tr = ptw_src_level_evt_txn::type_id::create("ptw_level_evt_mbuf");
+      tr.cycle = m_cycle;
+      tr.twu_idx = 0;
+      tr.mbuf_data_vld = 1'b1;
+      tr.mbuf_req = v_probe.mon_cb.ptw_twu_mbuf_req;
+
+      tr.req_type = cast_req_type(v_probe.mon_cb.ptw_mbuf_twu_type);
+      tr.id = v_probe.mon_cb.ptw_mbuf_twu_id;
+      tr.vpn = v_probe.mon_cb.ptw_mbuf_twu_vpn;
+      tr.pte_data = v_probe.mon_cb.ptw_mbuf_twu_data;
+      tr.level = level_from_onehot(v_probe.mon_cb.ptw_mbuf_twu_lvl_vec);
+
+      tr.abort_drain = ((v_probe.mon_cb.ptw_abort_drain === 1'b1)
+                     || (v_probe.mon_cb.ptw_abort_flop === 1'b1));
+
+      tr.twu_mbuf_pmpflg = v_probe.mon_cb.ptw_twu_mbuf_pmpflg;
+      tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
+
+      m_level_count++;
+      ap_level.write(tr);
+      `uvm_info(get_type_name(), {"PTW_LEVEL_EVT(mbuf) ", tr.convert2string()}, UVM_HIGH)
+    end
+  endtask
+
+  protected task sample_ready_events();
+    bit cur_ready;
+    bit ready_fell;
+    bit ready_rose;
+
+    cur_ready = (v_probe.mon_cb.ptw_twu_data_ready === 1'b1);
+    ready_fell = m_ready_prev && !cur_ready;
+    ready_rose = !m_ready_prev && cur_ready;
+
+    if (ready_fell) begin
+      m_ready_hold_cycles = 1;
+      m_ready_released_this_hold = 1'b0;
+      m_ready_hold_count++;
+    end else if (!cur_ready && m_ready_prev) begin
+      m_ready_hold_cycles = 1;
+    end else if (!cur_ready) begin
+      m_ready_hold_cycles++;
+    end
+
+    if (ready_rose) begin
+      m_ready_release_count++;
+      m_ready_released_this_hold = 1'b1;
+    end
+
+    // Emit ready event on transition or when MBUF data is held behind ready=0
+    if (ready_fell || ready_rose ||
+        (!cur_ready && v_probe.mon_cb.ptw_mbuf_twu_have)) begin
+      ptw_src_ready_evt_txn tr;
+      tr = ptw_src_ready_evt_txn::type_id::create("ptw_ready_evt");
+      tr.cycle = m_cycle;
+      tr.ready = cur_ready;
+      tr.returned_level = level_from_onehot(v_probe.mon_cb.ptw_mbuf_twu_lvl_vec);
+      tr.mbuf_have = v_probe.mon_cb.ptw_mbuf_twu_have;
+      tr.chk_wait = (v_probe.mon_cb.twu_chk_unit_wait === 1'b1);
+      tr.hold_cycles = m_ready_hold_cycles;
+      tr.released_once = m_ready_released_this_hold;
+
+      m_ready_evt_count++;
+      ap_ready.write(tr);
+      `uvm_info(get_type_name(), {"PTW_READY_EVT ", tr.convert2string()}, UVM_HIGH)
+    end
+
+    m_ready_prev = cur_ready;
+  endtask
+
+  protected task sample_l1pmpflg_payload_events();
+    // Capture l1pmpflg on PDE→xbar→TWU→PMP path
+    if (v_probe.mon_cb.pde_xbar_l1pmpflg != 4'h0 ||
+        v_probe.mon_cb.xbar_twu_l1pmpflg != 4'h0 ||
+        v_probe.mon_cb.twu_pmp_unit_l1pmpflg != 4'h0) begin
+      m_l1pmpflg_capture_count++;
+      `uvm_info(get_type_name(),
+        $sformatf("PTW_L1PMPFLG_PAYLOAD cycle=%0d pde_xbar=0x%0h xbar_twu=0x%0h pmp_unit_l1=0x%0h twu_mbuf=0x%02h mbuf_twu=0x%02h",
+          m_cycle,
+          v_probe.mon_cb.pde_xbar_l1pmpflg,
+          v_probe.mon_cb.xbar_twu_l1pmpflg,
+          v_probe.mon_cb.twu_pmp_unit_l1pmpflg,
+          v_probe.mon_cb.ptw_twu_mbuf_pmpflg,
+          v_probe.mon_cb.ptw_mbuf_twu_pmpflg),
+        UVM_HIGH)
+    end
+  endtask
+
+  // twu_reconstruct Phase 2: legacy compat — preserves old p13_pmp_*_vec sampling
+  // for backward compat; new code should use the split unified unit functions above.
+  protected task sample_legacy_level_events();
+    // Emit a legacy level event only when legacy p13_pmp vector has activity
+    // but the unified pmp_unit did NOT already trigger (avoids double-counting)
+    if (v_probe.mon_cb.twu_pmp_unit_vld === 1'b1) return; // already covered by pmp_unit
+
+    // Fallback: old-style MBUF/refill/twu_mbuf_wait events not covered above
+    if ((v_probe.mon_cb.ptw_twu_mbuf_req === 1'b1)
+        || (v_probe.mon_cb.ptw_twu_ref_req === 1'b1)
+        || (v_probe.mon_cb.ptw_twu_pgflt_vec === 1'b1)
+        || (v_probe.mon_cb.ptw_twu_acc_err_vec === 1'b1)
+        || (|v_probe.mon_cb.p13_pmp_wait_vec)) begin
+      ptw_src_level_evt_txn tr;
+      tr = ptw_src_level_evt_txn::type_id::create("ptw_level_evt_legacy");
+      tr.cycle = m_cycle;
+      tr.twu_idx = 0;
+      tr.req_type = cast_req_type(v_probe.mon_cb.ptw_twu_mbuf_type);
+      tr.id = v_probe.mon_cb.ptw_twu_mbuf_id;
+      tr.vpn = v_probe.mon_cb.ptw_twu_mbuf_vpn;
+      tr.pte_pa = v_probe.mon_cb.ptw_twu_mbuf_paddr;
+      tr.mbuf_req = v_probe.mon_cb.ptw_twu_mbuf_req;
+      tr.refill_req = v_probe.mon_cb.ptw_twu_ref_req;
+      tr.page_fault = v_probe.mon_cb.ptw_twu_pgflt_vec;
+      tr.access_fault = v_probe.mon_cb.ptw_twu_acc_err_vec;
+      tr.level = level_from_onehot(v_probe.mon_cb.ptw_twu_mbuf_lvl);
+      if (tr.level == PTW_SRC_LEVEL_NONE)
+        tr.level = PTW_SRC_LEVEL_THD;
+
+      tr.twu_mbuf_pmpflg = v_probe.mon_cb.ptw_twu_mbuf_pmpflg;
+      tr.mbuf_pmpflg = v_probe.mon_cb.ptw_mbuf_twu_pmpflg;
+
+      m_level_count++;
+      ap_level.write(tr);
+      `uvm_info(get_type_name(), {"PTW_LEVEL_EVT(legacy) ", tr.convert2string()}, UVM_HIGH)
+    end
   endtask
 
   protected task sample_abort_and_drops();
@@ -954,7 +1239,10 @@ class ptw_source_monitor extends uvm_monitor;
                  "pde_pmpflg_update=%0d pde_l1_deny_miss=%0d ",
                  "pde_direct_accerr=%0d gap_abort_bus_error=%0d ",
                  "gap_pre_existing_exception=%0d mem_evt=%0d mem_req_evt=%0d ",
-                 "mem_rsp_evt=%0d mem_drop_evt=%0d mem_key_gap=%0d provisional=1"},
+                 "mem_rsp_evt=%0d mem_drop_evt=%0d mem_key_gap=%0d ",
+                 "rec_pmp_unit=%0d rec_chk_unit=%0d rec_chk_next=%0d ",
+                 "rec_ready=%0d rec_ready_hold=%0d rec_ready_release=%0d ",
+                 "rec_l1pmpflg=%0d provisional=1"},
         m_req_accept_count, m_actual_rsp_count, m_refill_count,
         m_page_fault_count, m_access_fault_count, m_abort_count, m_drop_count,
         m_ctx_count, m_level_count, m_pde_count, m_pending.num(),
@@ -963,11 +1251,13 @@ class ptw_source_monitor extends uvm_monitor;
         m_gap_abort_bus_error_count,
         m_gap_pre_existing_exception_count, m_mem_evt_count,
         m_mem_req_evt_count, m_mem_rsp_evt_count, m_mem_drop_evt_count,
-        m_mem_key_gap_count),
+        m_mem_key_gap_count, m_pmp_unit_count, m_chk_unit_count,
+        m_chk_next_count, m_ready_evt_count, m_ready_hold_count,
+        m_ready_release_count, m_l1pmpflg_capture_count),
       UVM_NONE)
 
     `uvm_info(get_type_name(),
-      "PTW_SOURCE_CLOSURE component=monitor stage=3 status=provisional actual_probe_only=1",
+      "PTW_SOURCE_CLOSURE component=monitor stage=3 status=provisional actual_probe_only=1 rec_pmp_unit_chk_unit_ready_pmpflg=1",
       UVM_NONE)
   endfunction
 

@@ -1208,7 +1208,6 @@ always_ff@(posedge twu_clk or negedge cpurst_b) begin
 		twu_pgflt_id[ID_WIDTH-1:0] <= chk_unit_id[ID_WIDTH-1:0];
 	end
 end
-assign
 assign twu_l2tlb_ref_pgflt = twu_pgflt_vld;
 assign twu_l2tlb_ref_pgflt_type[TYPE_WIDTH-1:0] = twu_pgflt_type[TYPE_WIDTH-1:0];
 assign twu_l2tlb_ref_pgflt_id[ID_WIDTH-1:0] = twu_pgflt_id[ID_WIDTH-1:0];

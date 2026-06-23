@@ -103,7 +103,8 @@ typedef enum int unsigned {
 
 typedef enum int unsigned {
   PTW_SRC_ACCESS_SRC_NONE               = 0,
-  PTW_SRC_ACCESS_SRC_TWU_PMP            = 1,
+  PTW_SRC_ACCESS_SRC_TWU_PMP            = 1,  // legacy alias — use TWU_PMP_UNIT for new code
+  PTW_SRC_ACCESS_SRC_TWU_PMP_UNIT       = 1,  // twu_reconstruct: unified pmp_unit single-source
   PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR     = 2,
   PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY = 3,
   PTW_SRC_ACCESS_SRC_UNMODELED          = 4
@@ -219,7 +220,8 @@ function automatic string ptw_src_access_src_name(
 );
   case (access_src)
     PTW_SRC_ACCESS_SRC_NONE:               return "NONE";
-    PTW_SRC_ACCESS_SRC_TWU_PMP:            return "TWU_PMP";
+    PTW_SRC_ACCESS_SRC_TWU_PMP:            return "TWU_PMP";             // legacy alias
+    PTW_SRC_ACCESS_SRC_TWU_PMP_UNIT:       return "TWU_PMP_UNIT";        // twu_reconstruct: unified
     PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR:     return "MBUF_BUS_ERROR";
     PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY: return "PDE_CACHE_PMP_DENY";
     PTW_SRC_ACCESS_SRC_UNMODELED:          return "UNMODELED";
@@ -331,6 +333,55 @@ function automatic string ptw_src_page_size_name(input logic [2:0] page_size);
     default:        return "none";
   endcase
 endfunction
+
+// ── twu_reconstruct Phase 2: pmpflg payload helpers ──────────────────────
+// twu_mbuf_pmpflg[3:0] = 一级页表 PMP flag (L1)
+// twu_mbuf_pmpflg[7:4] = 二级页表 PMP flag (L2)
+// These helpers enforce the fixed bit-slice interpretation for all consumers.
+
+function automatic logic [3:0] ptw_src_l1_pmpflg(input logic [7:0] mbuf_pmpflg);
+  return mbuf_pmpflg[3:0];
+endfunction
+
+function automatic logic [3:0] ptw_src_l2_pmpflg(input logic [7:0] mbuf_pmpflg);
+  return mbuf_pmpflg[7:4];
+endfunction
+
+function automatic logic [7:0] ptw_src_make_mbuf_pmpflg(
+  input logic [3:0] l1_pmpflg,
+  input logic [3:0] l2_pmpflg
+);
+  return {l2_pmpflg, l1_pmpflg};
+endfunction
+
+// ── twu_reconstruct Phase 2: ready event transaction ─────────────────────
+class ptw_src_ready_evt_txn extends uvm_sequence_item;
+  `uvm_object_utils(ptw_src_ready_evt_txn)
+
+  int unsigned       cycle;
+  bit                ready;            // scalar twu_data_ready value
+  ptw_src_level_e    returned_level;   // level of MBUF data being returned
+  bit                mbuf_have;        // MBUF has data pending
+  bit                chk_wait;         // CHK unit is waiting (ready low cause)
+  int unsigned       hold_cycles;      // consecutive cycles ready was low
+  bit                released_once;     // ready returned high after hold
+
+  function new(string name = "ptw_src_ready_evt_txn");
+    super.new(name);
+    ready = 1'b1;
+    returned_level = PTW_SRC_LEVEL_NONE;
+    mbuf_have = 1'b0;
+    chk_wait = 1'b0;
+    hold_cycles = 0;
+    released_once = 1'b0;
+  endfunction
+
+  virtual function string convert2string();
+    return $sformatf(
+      "cycle=%0d ready=%0b returned_level=%s mbuf_have=%0b chk_wait=%0b hold_cycles=%0d released_once=%0b",
+      cycle, ready, returned_level.name(), mbuf_have, chk_wait, hold_cycles, released_once);
+  endfunction
+endclass : ptw_src_ready_evt_txn
 
 class ptw_src_req_accept_txn extends uvm_sequence_item;
   `uvm_object_utils(ptw_src_req_accept_txn)
@@ -517,30 +568,93 @@ class ptw_src_level_evt_txn extends uvm_sequence_item;
   bit                page_fault;
   bit                access_fault;
   bit                abort_drain;
+  // Legacy PMP fields (compat — prefer unified unit fields below)
   bit                pmp_vld;
   bit                pmp_grant;
   bit                pmp_deny;
   bit                pmp_wait;
-  bit                sysmap_hit;
-  logic [4:0]        sysmap_flg;
+  logic [3:0]        selected_pmpflg;
+  // pmpflg payload
   logic [7:0]        twu_mbuf_pmpflg;
   logic [7:0]        mbuf_pmpflg;
-  logic [3:0]        selected_pmpflg;
+  // Sysmap
+  bit                sysmap_hit;
+  logic [4:0]        sysmap_flg;
+
+  // ── twu_reconstruct Phase 2: unified unit event markers ──────────────
+  bit                pmp_unit_seen;
+  bit                chk_unit_seen;
+  bit                chk_next_seen;
+  bit                scalar_ready_seen;
+  // PMP unit payload
+  logic [2:0]        pmp_unit_lvl;
+  logic [2:0]        pmp_unit_type;
+  logic [PTW_SRC_ID_WIDTH-1:0] pmp_unit_id;
+  logic [26:0]       pmp_unit_vpn;
+  logic [39:0]       pmp_unit_pa;
+  logic [3:0]        pmp_unit_pmpflg;
+  logic [3:0]        pmp_unit_l1pmpflg;
+  bit                pmp_unit_deny;
+  bit                pmp_unit_wait;
+  bit                pmp_unit_mbuf_req;
+  // CHK unit payload
+  logic [2:0]        chk_unit_lvl;
+  logic [2:0]        chk_unit_type;
+  logic [PTW_SRC_ID_WIDTH-1:0] chk_unit_id;
+  logic [26:0]       chk_unit_vpn;
+  logic [63:0]       chk_unit_data;
+  logic [8:0]        chk_unit_flg;
+  bit                chk_unit_leaf_vld;
+  bit                chk_unit_page_flt;
+  bit                chk_unit_refill_req;
+  bit                chk_unit_csr_req;
+  bit                chk_unit_wait;
 
   function new(string name = "ptw_src_level_evt_txn");
     super.new(name);
     twu_mbuf_pmpflg = 8'h00;
     mbuf_pmpflg = 8'h00;
     selected_pmpflg = 4'h0;
+    pmp_unit_seen = 1'b0;
+    chk_unit_seen = 1'b0;
+    chk_next_seen = 1'b0;
+    scalar_ready_seen = 1'b0;
+    pmp_unit_lvl = 3'b000;
+    pmp_unit_type = 3'b000;
+    pmp_unit_id = '0;
+    pmp_unit_vpn = '0;
+    pmp_unit_pa = '0;
+    pmp_unit_pmpflg = 4'h0;
+    pmp_unit_l1pmpflg = 4'h0;
+    pmp_unit_deny = 1'b0;
+    pmp_unit_wait = 1'b0;
+    pmp_unit_mbuf_req = 1'b0;
+    chk_unit_lvl = 3'b000;
+    chk_unit_type = 3'b000;
+    chk_unit_id = '0;
+    chk_unit_vpn = '0;
+    chk_unit_data = '0;
+    chk_unit_flg = '0;
+    chk_unit_leaf_vld = 1'b0;
+    chk_unit_page_flt = 1'b0;
+    chk_unit_refill_req = 1'b0;
+    chk_unit_csr_req = 1'b0;
+    chk_unit_wait = 1'b0;
   endfunction
 
   virtual function string convert2string();
     return $sformatf(
-      "cycle=%0d twu=%0d level=%s type=%s id=0x%02h vpn=0x%07h pte_pa=0x%010h pte=0x%016h mbuf_req=%0b data_vld=%0b refill_req=%0b pf=%0b af=%0b abort_drain=%0b pmp{vld=%0b grant=%0b deny=%0b wait=%0b selected=0x%0h twu_mbuf=0x%02h mbuf=0x%02h} sysmap{hit=%0b flg=0x%02h}",
+      "cycle=%0d twu=%0d level=%s type=%s id=0x%02h vpn=0x%07h pte_pa=0x%010h pte=0x%016h mbuf_req=%0b data_vld=%0b refill_req=%0b pf=%0b af=%0b abort_drain=%0b pmp{vld=%0b grant=%0b deny=%0b wait=%0b selected=0x%0h twu_mbuf=0x%02h mbuf=0x%02h} sysmap{hit=%0b flg=0x%02h} pmp_unit{lvl=%0d type=%0d id=0x%02h vpn=0x%07h pa=0x%010h pmpflg=0x%0h l1pmpflg=0x%0h deny=%0b wait=%0b mbuf_req=%0b} chk_unit{lvl=%0d type=%0d id=0x%02h vpn=0x%07h data=0x%016h flg=0x%03h leaf=%0b pf=%0b refill=%0b csr=%0b wait=%0b}",
       cycle, twu_idx, level.name(), req_type.name(), id, vpn, pte_pa,
       pte_data, mbuf_req, mbuf_data_vld, refill_req, page_fault, access_fault,
       abort_drain, pmp_vld, pmp_grant, pmp_deny, pmp_wait, selected_pmpflg,
-      twu_mbuf_pmpflg, mbuf_pmpflg, sysmap_hit, sysmap_flg);
+      twu_mbuf_pmpflg, mbuf_pmpflg, sysmap_hit, sysmap_flg,
+      pmp_unit_lvl, pmp_unit_type, pmp_unit_id, pmp_unit_vpn,
+      pmp_unit_pa, pmp_unit_pmpflg, pmp_unit_l1pmpflg,
+      pmp_unit_deny, pmp_unit_wait, pmp_unit_mbuf_req,
+      chk_unit_lvl, chk_unit_type, chk_unit_id, chk_unit_vpn,
+      chk_unit_data, chk_unit_flg, chk_unit_leaf_vld, chk_unit_page_flt,
+      chk_unit_refill_req, chk_unit_csr_req, chk_unit_wait);
   endfunction
 endclass : ptw_src_level_evt_txn
 

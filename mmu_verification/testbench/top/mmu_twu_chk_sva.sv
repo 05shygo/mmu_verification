@@ -1,6 +1,7 @@
 // =============================================================================
-// PTW TWU CHK SVA - Stage 5
-// Bind target: twu
+// PTW TWU CHK SVA - twu_reconstruct Phase 3 (rewritten)
+// Bind target: twu  (unified chk_unit + scalar twu_data_ready)
+// Replaces old fst/scd/thd_chk_* 3-stage SVA with unified chk_unit_* checks.
 // =============================================================================
 `timescale 1ns/1ps
 
@@ -19,82 +20,41 @@ module mmu_twu_chk_sva #(
     input logic [1:0]            cp0_mmu_mpp,
     input logic                  cp0_mmu_mprv,
     input logic [1:0]            cp0_yy_priv_mode,
-    input logic [1:0]            cp0_priv_mode,
-    input logic                  fst_chk_vld,
-    input logic [VPN_WIDTH-1:0]  fst_chk_vpn,
-    input logic [TYPE_WIDTH-1:0] fst_chk_type,
-    input logic [ID_WIDTH-1:0]   fst_chk_id,
-    input logic [DATA_WIDTH-1:0] fst_chk_data,
-    input logic [8:0]            fst_chk_flg,
-    input logic                  fst_chk_page_flt,
-    input logic                  fst_chk_leaf_vld,
-    input logic                  fst_chk_refill_req,
-    input logic                  fst_chk_csr_req,
-    input logic                  fst_chk_wait,
-    input logic                  fst_chk_fetch_type,
-    input logic                  fst_chk_load_type,
-    input logic                  fst_chk_store_type,
-    input logic                  fst_chk_cp0_user_mode,
-    input logic                  fst_chk_cp0_supv_mode,
-    input logic                  scd_chk_vld,
-    input logic [VPN_WIDTH-1:0]  scd_chk_vpn,
-    input logic [TYPE_WIDTH-1:0] scd_chk_type,
-    input logic [ID_WIDTH-1:0]   scd_chk_id,
-    input logic [DATA_WIDTH-1:0] scd_chk_data,
-    input logic [8:0]            scd_chk_flg,
-    input logic                  scd_chk_page_flt,
-    input logic                  scd_chk_leaf_vld,
-    input logic                  scd_chk_refill_req,
-    input logic                  scd_chk_csr_req,
-    input logic                  scd_chk_wait,
-    input logic                  scd_chk_fetch_type,
-    input logic                  scd_chk_load_type,
-    input logic                  scd_chk_store_type,
-    input logic                  scd_chk_cp0_user_mode,
-    input logic                  scd_chk_cp0_supv_mode,
-    input logic                  thd_chk_vld,
-    input logic [VPN_WIDTH-1:0]  thd_chk_vpn,
-    input logic [TYPE_WIDTH-1:0] thd_chk_type,
-    input logic [ID_WIDTH-1:0]   thd_chk_id,
-    input logic [DATA_WIDTH-1:0] thd_chk_data,
-    input logic [8:0]            thd_chk_flg,
-    input logic                  thd_chk_page_flt,
-    input logic                  thd_chk_refill_req,
-    input logic                  thd_chk_wait,
-    input logic                  thd_chk_fetch_type,
-    input logic                  thd_chk_load_type,
-    input logic                  thd_chk_store_type,
-    input logic                  thd_chk_cp0_user_mode,
-    input logic                  thd_chk_cp0_supv_mode,
-    input logic                  scd_pmp_wait,
-    input logic                  thd_pmp_wait,
-    input logic                  refill_fst_chk_grant,
-    input logic                  refill_scd_chk_grant,
-    input logic                  refill_thd_chk_grant,
-    input logic                  pgflt_fst_chk_grant,
-    input logic                  pgflt_scd_chk_grant,
-    input logic                  pgflt_thd_chk_grant,
-    input logic                  fst_csr_grant,
-    input logic                  scd_csr_grant,
+    // ── twu_reconstruct: unified CHK unit ports ──────────────────────────
+    input logic                  chk_unit_vld,
+    input logic [VPN_WIDTH-1:0]  chk_unit_vpn,
+    input logic [TYPE_WIDTH-1:0] chk_unit_type,
+    input logic [ID_WIDTH-1:0]   chk_unit_id,
+    input logic [DATA_WIDTH-1:0] chk_unit_data,
+    input logic [8:0]            chk_unit_flg,
+    input logic [2:0]            chk_unit_lvl,        // one-hot: [2]=FST [1]=SCD [0]=THD
+    input logic                  chk_unit_leaf_vld,
+    input logic                  chk_unit_page_flt,
+    input logic                  chk_unit_refill_req,
+    input logic                  chk_unit_csr_req,
+    input logic                  chk_unit_wait,
+    input logic                  chk_unit_fetch_type,
+    input logic                  chk_unit_load_type,
+    input logic                  chk_unit_store_type,
+    input logic                  chk_unit_cp0_user_mode,
+    input logic                  chk_unit_cp0_supv_mode,
+    // ── twu_reconstruct: scalar ready ────────────────────────────────────
+    input logic                  twu_data_ready,
+    // ── Grant / outcome signals ──────────────────────────────────────────
+    input logic                  pgflt_chk_unit_grant,
+    input logic                  refill_chk_unit_grant,
+    input logic                  chk_unit_csr_grant,
     input logic                  twu_l2tlb_ref_pgflt,
-    input logic                  twu_arb_ref_req,
-    input logic [2:0]            twu_data_ready
+    input logic                  twu_arb_ref_req
 );
 
   localparam logic [2:0] PTW_TYPE_FETCH = 3'b011;
   localparam logic [2:0] PTW_TYPE_PREF  = 3'b100;
 
-  int unsigned cp_chk_leaf_write_only_hits;
-  int unsigned cp_chk_nonleaf_level_hits;
-  int unsigned cp_chk_fetch_hits;
-  int unsigned cp_chk_load_hits;
-  int unsigned cp_chk_store_hits;
-  int unsigned cp_chk_pfu_hits;
-  int unsigned cp_chk_us_sum_hits;
-  int unsigned cp_chk_huge_align_hits;
-  int unsigned cp_chk_no_side_effect_hits;
-  int unsigned cp_chk_wait_hold_hits;
-  int unsigned cp_chk_rsw_reserved_seen_hits;
+  // Level decode helpers from one-hot chk_unit_lvl
+  function automatic bit is_fst(); return chk_unit_lvl[2]; endfunction
+  function automatic bit is_scd(); return chk_unit_lvl[1]; endfunction
+  function automatic bit is_thd(); return chk_unit_lvl[0]; endfunction
 
   function automatic logic [8:0] decode_flg(input logic [DATA_WIDTH-1:0] data);
     decode_flg = {data[9:6], data[4:0]};
@@ -116,175 +76,226 @@ module mmu_twu_chk_sva #(
     huge2m_misaligned = (data[18:10] != 9'b0);
   endfunction
 
-  // PTW-SVA-CHK-001/002: leaf and non-leaf level classification.
-  a_chk_fst_leaf_decode: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    fst_chk_vld |-> (fst_chk_leaf_vld == leaf_from_flg(fst_chk_flg)));
+  // ── Cover hit counters ──────────────────────────────────────────────────
+  int unsigned cp_chk_unit_level;
+  int unsigned cp_chk_leaf_write_only;
+  int unsigned cp_chk_nonleaf_level;
+  int unsigned cp_chk_fetch;
+  int unsigned cp_chk_load;
+  int unsigned cp_chk_store;
+  int unsigned cp_chk_pfu;
+  int unsigned cp_chk_us_sum;
+  int unsigned cp_chk_huge_align;
+  int unsigned cp_chk_no_side_effect;
+  int unsigned cp_chk_wait_hold;
+  int unsigned cp_chk_rsw_reserved;
+  int unsigned cp_chk_csr_refill_mutex;
+  int unsigned cp_chk_pgflt_no_next;
 
-  a_chk_scd_leaf_decode: assert property (@(posedge twu_clk)
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-001: FLG decode matches raw data @ chk_unit_vld
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_flg_decode: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    scd_chk_vld |-> (scd_chk_leaf_vld == leaf_from_flg(scd_chk_flg)));
+    chk_unit_vld |-> (chk_unit_flg == decode_flg(chk_unit_data)));
 
-  a_chk_flg_decode_matches_raw: assert property (@(posedge twu_clk)
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-002: leaf decode from PTE flags
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_leaf_decode: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld |-> (fst_chk_flg == decode_flg(fst_chk_data)))
-    and (scd_chk_vld |-> (scd_chk_flg == decode_flg(scd_chk_data)))
-    and (thd_chk_vld |-> (thd_chk_flg == decode_flg(thd_chk_data))));
+    chk_unit_vld |-> (chk_unit_leaf_vld == leaf_from_flg(chk_unit_flg)));
 
-  a_chk_write_only_faults: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && write_only_fault(fst_chk_flg, cp0_mmu_mxr) |-> fst_chk_page_flt)
-    and (scd_chk_vld && scd_chk_leaf_vld && write_only_fault(scd_chk_flg, cp0_mmu_mxr) |-> scd_chk_page_flt)
-    and (thd_chk_vld && write_only_fault(thd_chk_flg, cp0_mmu_mxr) |-> thd_chk_page_flt));
-
-  cp_chk_leaf_write_only: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && write_only_fault(fst_chk_flg, cp0_mmu_mxr))
-    || (scd_chk_vld && scd_chk_leaf_vld && write_only_fault(scd_chk_flg, cp0_mmu_mxr))
-    || (thd_chk_vld && write_only_fault(thd_chk_flg, cp0_mmu_mxr))) begin
-    cp_chk_leaf_write_only_hits++;
+  cp_chk_unit_level_cover: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b)
+    chk_unit_vld && (is_fst() || is_scd() || is_thd())) begin
+    cp_chk_unit_level++;
   end
 
-  a_chk_fst_scd_pointer_not_page_fault: assert property (@(posedge twu_clk)
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-003: write-only leaf → page fault at all levels
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_write_only_fault: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_flg[0] && !fst_chk_flg[1] && !fst_chk_flg[2] && !fst_chk_flg[3])
-    |-> (!fst_chk_leaf_vld && !fst_chk_page_flt));
+    chk_unit_vld && chk_unit_leaf_vld && write_only_fault(chk_unit_flg, cp0_mmu_mxr)
+    |-> chk_unit_page_flt);
 
-  a_chk_scd_pointer_not_page_fault: assert property (@(posedge twu_clk)
+  cp_chk_leaf_write_only_p: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (scd_chk_vld && scd_chk_flg[0] && !scd_chk_flg[1] && !scd_chk_flg[2] && !scd_chk_flg[3])
-    |-> (!scd_chk_leaf_vld && !scd_chk_page_flt));
-
-  a_chk_thd_nonleaf_faults: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    (thd_chk_vld && thd_chk_flg[0] && !thd_chk_flg[1] && !thd_chk_flg[3])
-    |-> thd_chk_page_flt);
-
-  cp_chk_nonleaf_level: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && !fst_chk_leaf_vld && !fst_chk_page_flt)
-    || (scd_chk_vld && !scd_chk_leaf_vld && !scd_chk_page_flt)
-    || (thd_chk_vld && thd_chk_flg[0] && !thd_chk_flg[1] && !thd_chk_flg[3] && thd_chk_page_flt)) begin
-    cp_chk_nonleaf_level_hits++;
+    chk_unit_vld && chk_unit_leaf_vld && write_only_fault(chk_unit_flg, cp0_mmu_mxr)) begin
+    cp_chk_leaf_write_only++;
   end
 
-  // PTW-SVA-CHK-003/004/005/006/007/008: permission and huge-page guards.
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-004: non-leaf pointer check — FST/SCD no page fault for pointer
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_nonleaf_pointer_not_fault: assert property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_vld && chk_unit_flg[0] && !chk_unit_flg[1]
+    && !chk_unit_flg[2] && !chk_unit_flg[3] && !is_thd()
+    |-> (!chk_unit_leaf_vld && !chk_unit_page_flt));
+
+  // THD non-leaf must page fault
+  a_chk_thd_nonleaf_fault: assert property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_vld && chk_unit_flg[0] && !chk_unit_flg[1] && !chk_unit_flg[3] && is_thd()
+    |-> chk_unit_page_flt);
+
+  cp_chk_nonleaf_level_p: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    (chk_unit_vld && !chk_unit_leaf_vld && !chk_unit_page_flt && !is_thd())
+    || (chk_unit_vld && is_thd() && chk_unit_page_flt)) begin
+    cp_chk_nonleaf_level++;
+  end
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-005: permission checks — fetch needs X, load needs R, store needs W+D
+  // ══════════════════════════════════════════════════════════════════════════
   a_chk_fetch_needs_x: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && fst_chk_fetch_type && !fst_chk_flg[3] |-> fst_chk_page_flt)
-    and (scd_chk_vld && scd_chk_leaf_vld && scd_chk_fetch_type && !scd_chk_flg[3] |-> scd_chk_page_flt)
-    and (thd_chk_vld && thd_chk_fetch_type && !thd_chk_flg[3] |-> thd_chk_page_flt));
-
-  cp_chk_fetch: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_fetch_type) || (scd_chk_vld && scd_chk_fetch_type) || (thd_chk_vld && thd_chk_fetch_type)) begin
-    cp_chk_fetch_hits++;
-  end
+    chk_unit_vld && chk_unit_leaf_vld && chk_unit_fetch_type && !chk_unit_flg[3]
+    |-> chk_unit_page_flt);
 
   a_chk_load_needs_r_or_mxr_x: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && fst_chk_load_type && !fst_chk_flg[1] && !(cp0_mmu_mxr && fst_chk_flg[3]) |-> fst_chk_page_flt)
-    and (scd_chk_vld && scd_chk_leaf_vld && scd_chk_load_type && !scd_chk_flg[1] && !(cp0_mmu_mxr && scd_chk_flg[3]) |-> scd_chk_page_flt)
-    and (thd_chk_vld && thd_chk_load_type && !thd_chk_flg[1] && !(cp0_mmu_mxr && thd_chk_flg[3]) |-> thd_chk_page_flt));
-
-  cp_chk_load: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_load_type) || (scd_chk_vld && scd_chk_load_type) || (thd_chk_vld && thd_chk_load_type)) begin
-    cp_chk_load_hits++;
-  end
+    chk_unit_vld && chk_unit_leaf_vld && chk_unit_load_type
+    && !chk_unit_flg[1] && !(cp0_mmu_mxr && chk_unit_flg[3])
+    |-> chk_unit_page_flt);
 
   a_chk_store_needs_w_d: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && fst_chk_store_type && (!fst_chk_flg[2] || !fst_chk_flg[6]) |-> fst_chk_page_flt)
-    and (scd_chk_vld && scd_chk_leaf_vld && scd_chk_store_type && (!scd_chk_flg[2] || !scd_chk_flg[6]) |-> scd_chk_page_flt)
-    and (thd_chk_vld && thd_chk_store_type && (!thd_chk_flg[2] || !thd_chk_flg[6]) |-> thd_chk_page_flt));
+    chk_unit_vld && chk_unit_leaf_vld && chk_unit_store_type
+    && (!chk_unit_flg[2] || !chk_unit_flg[6])
+    |-> chk_unit_page_flt);
 
-  cp_chk_store: cover property (@(posedge twu_clk)
+  cp_chk_fetch_p: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_store_type) || (scd_chk_vld && scd_chk_store_type) || (thd_chk_vld && thd_chk_store_type)) begin
-    cp_chk_store_hits++;
-  end
+    chk_unit_vld && chk_unit_fetch_type) begin cp_chk_fetch++; end
 
-  cp_chk_pfu_no_rxd: cover property (@(posedge twu_clk)
+  cp_chk_load_p: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    ((fst_chk_vld && fst_chk_type == PTW_TYPE_PREF)
-     || (scd_chk_vld && scd_chk_type == PTW_TYPE_PREF)
-     || (thd_chk_vld && thd_chk_type == PTW_TYPE_PREF))) begin
-    cp_chk_pfu_hits++;
-  end
+    chk_unit_vld && chk_unit_load_type) begin cp_chk_load++; end
 
+  cp_chk_store_p: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_vld && chk_unit_store_type) begin cp_chk_store++; end
+
+  cp_chk_pfu_p: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_vld && (chk_unit_type == PTW_TYPE_PREF)) begin cp_chk_pfu++; end
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-006: U/S page permission rules
+  // ══════════════════════════════════════════════════════════════════════════
   a_chk_user_supervisor_rules: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && ((fst_chk_flg[4] && fst_chk_cp0_supv_mode && !cp0_mmu_sum) || (!fst_chk_flg[4] && fst_chk_cp0_user_mode)) |-> fst_chk_page_flt)
-    and (scd_chk_vld && scd_chk_leaf_vld && ((scd_chk_flg[4] && scd_chk_cp0_supv_mode && !cp0_mmu_sum) || (!scd_chk_flg[4] && scd_chk_cp0_user_mode)) |-> scd_chk_page_flt)
-    and (thd_chk_vld && ((thd_chk_flg[4] && thd_chk_cp0_supv_mode && !cp0_mmu_sum) || (!thd_chk_flg[4] && thd_chk_cp0_user_mode)) |-> thd_chk_page_flt));
+    chk_unit_vld && chk_unit_leaf_vld
+    && ((chk_unit_flg[4] && chk_unit_cp0_supv_mode && !cp0_mmu_sum)
+        || (!chk_unit_flg[4] && chk_unit_cp0_user_mode))
+    |-> chk_unit_page_flt);
 
-  cp_chk_us_sum: cover property (@(posedge twu_clk)
+  cp_chk_us_sum_p: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (cp0_priv_mode == (cp0_mmu_mprv ? cp0_mmu_mpp : cp0_yy_priv_mode))
-    && ((fst_chk_vld && fst_chk_page_flt) || (scd_chk_vld && scd_chk_page_flt) || (thd_chk_vld && thd_chk_page_flt))) begin
-    cp_chk_us_sum_hits++;
+    chk_unit_vld && chk_unit_page_flt) begin cp_chk_us_sum++; end
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-007: huge page alignment fault → page fault, no refill/CSR
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_huge_align_fault: assert property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_vld && chk_unit_leaf_vld
+    && ((is_fst() && huge1g_misaligned(chk_unit_data))
+        || (is_scd() && huge2m_misaligned(chk_unit_data)))
+    |-> (chk_unit_page_flt && !chk_unit_refill_req && !chk_unit_csr_req));
+
+  cp_chk_huge_align_p: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_vld && chk_unit_leaf_vld
+    && ((is_fst() && huge1g_misaligned(chk_unit_data))
+        || (is_scd() && huge2m_misaligned(chk_unit_data)))) begin
+    cp_chk_huge_align++;
   end
 
-  a_chk_huge_align_faults_before_refill: assert property (@(posedge twu_clk)
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-008: page fault → no refill, no CSR, no next walk side-effect
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_page_fault_no_side_effect: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && huge1g_misaligned(fst_chk_data) |-> (fst_chk_page_flt && !fst_chk_refill_req && !fst_chk_csr_req))
-    and (scd_chk_vld && scd_chk_leaf_vld && huge2m_misaligned(scd_chk_data) |-> (scd_chk_page_flt && !scd_chk_refill_req && !scd_chk_csr_req)));
+    chk_unit_vld && chk_unit_page_flt
+    |-> (!chk_unit_refill_req && !chk_unit_csr_req));
 
-  cp_chk_huge_align: cover property (@(posedge twu_clk)
+  cp_chk_no_side_effect_p: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_leaf_vld && huge1g_misaligned(fst_chk_data))
-    || (scd_chk_vld && scd_chk_leaf_vld && huge2m_misaligned(scd_chk_data))) begin
-    cp_chk_huge_align_hits++;
+    chk_unit_vld && chk_unit_page_flt && !chk_unit_refill_req && !chk_unit_csr_req) begin
+    cp_chk_no_side_effect++;
   end
 
-  // PTW-SVA-CHK-011 and WAIT family: page faults and waits do not leak side effects.
-  a_chk_page_fault_no_refill_or_csr: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && fst_chk_page_flt |-> (!fst_chk_refill_req && !fst_chk_csr_req))
-    and (scd_chk_vld && scd_chk_page_flt |-> (!scd_chk_refill_req && !scd_chk_csr_req))
-    and (thd_chk_vld && thd_chk_page_flt |-> !thd_chk_refill_req));
-
-  cp_chk_no_side_effect: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
-    ((fst_chk_vld && fst_chk_page_flt && !fst_chk_refill_req && !fst_chk_csr_req)
-     || (scd_chk_vld && scd_chk_page_flt && !scd_chk_refill_req && !scd_chk_csr_req)
-     || (thd_chk_vld && thd_chk_page_flt && !thd_chk_refill_req))) begin
-    cp_chk_no_side_effect_hits++;
-  end
-
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-009: wait holds CHK payload stable
+  // ══════════════════════════════════════════════════════════════════════════
   a_chk_wait_holds_payload: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b)
-    (fst_chk_wait && !tlboper_ptw_abort |=> (tlboper_ptw_abort || (fst_chk_vld && $stable(fst_chk_vpn) && $stable(fst_chk_type) && $stable(fst_chk_id) && $stable(fst_chk_data))))
-    and (scd_chk_wait && !tlboper_ptw_abort |=> (tlboper_ptw_abort || (scd_chk_vld && $stable(scd_chk_vpn) && $stable(scd_chk_type) && $stable(scd_chk_id) && $stable(scd_chk_data))))
-    and (thd_chk_wait && !tlboper_ptw_abort |=> (tlboper_ptw_abort || (thd_chk_vld && $stable(thd_chk_vpn) && $stable(thd_chk_type) && $stable(thd_chk_id) && $stable(thd_chk_data)))));
+    chk_unit_wait && !tlboper_ptw_abort
+    |=> (tlboper_ptw_abort
+      || (chk_unit_vld && $stable(chk_unit_vpn) && $stable(chk_unit_type)
+          && $stable(chk_unit_id) && $stable(chk_unit_data))));
 
-  cp_chk_wait_hold: cover property (@(posedge twu_clk)
+  cp_chk_wait_hold_p: cover property (@(posedge twu_clk)
     disable iff (!cpurst_b)
-    (fst_chk_wait || scd_chk_wait || thd_chk_wait) && !tlboper_ptw_abort) begin
-    cp_chk_wait_hold_hits++;
-  end
+    chk_unit_wait && !tlboper_ptw_abort) begin cp_chk_wait_hold++; end
 
-  cp_chk_rsw_high_reserved_seen: cover property (@(posedge twu_clk)
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-010: CSR/refill mutual exclusion
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_csr_refill_mutex: assert property (@(posedge twu_clk)
     disable iff (!cpurst_b || tlboper_ptw_abort)
-    (fst_chk_vld && (|fst_chk_data[63:38] || |fst_chk_data[9:8]))
-    || (scd_chk_vld && (|scd_chk_data[63:38] || |scd_chk_data[9:8]))
-    || (thd_chk_vld && (|thd_chk_data[63:38] || |thd_chk_data[9:8]))) begin
-    cp_chk_rsw_reserved_seen_hits++;
+    !(chk_unit_csr_req && chk_unit_refill_req));
+
+  cp_chk_csr_refill_mutex_p: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_csr_req ^ chk_unit_refill_req) begin cp_chk_csr_refill_mutex++; end
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-011: page fault accepted → no subsequent next-level PMP/refill
+  // ══════════════════════════════════════════════════════════════════════════
+  a_chk_pgflt_no_next_walk: assert property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    pgflt_chk_unit_grant |-> (!chk_unit_refill_req && !chk_unit_csr_req
+                              && twu_l2tlb_ref_pgflt && !twu_arb_ref_req));
+
+  cp_chk_pgflt_no_next_p: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    pgflt_chk_unit_grant && !chk_unit_refill_req && !chk_unit_csr_req) begin
+    cp_chk_pgflt_no_next++;
   end
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW-SVA-CHK-012: RSW/high-reserved field observation (provisional)
+  // ══════════════════════════════════════════════════════════════════════════
+  cp_chk_rsw_reserved_p: cover property (@(posedge twu_clk)
+    disable iff (!cpurst_b || tlboper_ptw_abort)
+    chk_unit_vld && (|chk_unit_data[63:38] || |chk_unit_data[9:8])) begin
+    cp_chk_rsw_reserved++;
+  end
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // PTW_SVA_COVER report
+  // ══════════════════════════════════════════════════════════════════════════
   final begin
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_leaf_write_only req=PTW-SVA-CHK-001 hits=%0d", cp_chk_leaf_write_only_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_nonleaf_level req=PTW-SVA-CHK-002 hits=%0d", cp_chk_nonleaf_level_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_fetch req=PTW-SVA-CHK-003 hits=%0d", cp_chk_fetch_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_load req=PTW-SVA-CHK-004 hits=%0d", cp_chk_load_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_store req=PTW-SVA-CHK-005 hits=%0d", cp_chk_store_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_pfu_no_rxd req=PTW-SVA-CHK-006 hits=%0d", cp_chk_pfu_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_us_sum req=PTW-SVA-CHK-007 hits=%0d", cp_chk_us_sum_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_huge_align req=PTW-SVA-CHK-008 hits=%0d", cp_chk_huge_align_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_no_side_effect req=PTW-SVA-CHK-011 hits=%0d", cp_chk_no_side_effect_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_wait_hold req=PTW-SVA-WAIT-001,PTW-SVA-WAIT-002,PTW-SVA-WAIT-003,PTW-SVA-WAIT-004,PTW-SVA-WAIT-005 hits=%0d", cp_chk_wait_hold_hits);
-    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_rsw_high_reserved_seen req=PTW-SVA-CHK-009 hits=%0d provisional=1", cp_chk_rsw_reserved_seen_hits);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_unit_level req=PTW-SVA-CHK-001,PTW-RECON-SVA-CHK-UNIT hits=%0d", cp_chk_unit_level);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_leaf_write_only req=PTW-SVA-CHK-003 hits=%0d", cp_chk_leaf_write_only);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_nonleaf_level req=PTW-SVA-CHK-002,PTW-SVA-CHK-004 hits=%0d", cp_chk_nonleaf_level);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_fetch req=PTW-SVA-CHK-005 hits=%0d", cp_chk_fetch);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_load req=PTW-SVA-CHK-005 hits=%0d", cp_chk_load);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_store req=PTW-SVA-CHK-005 hits=%0d", cp_chk_store);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_pfu req=PTW-SVA-CHK-005 hits=%0d", cp_chk_pfu);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_us_sum req=PTW-SVA-CHK-006 hits=%0d", cp_chk_us_sum);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_huge_align req=PTW-SVA-CHK-007 hits=%0d", cp_chk_huge_align);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_no_side_effect req=PTW-SVA-CHK-008 hits=%0d", cp_chk_no_side_effect);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_wait_hold req=PTW-SVA-CHK-009 hits=%0d", cp_chk_wait_hold);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_rsw_reserved req=PTW-SVA-CHK-012 hits=%0d provisional=1", cp_chk_rsw_reserved);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_csr_refill_mutex req=PTW-SVA-CHK-010 hits=%0d", cp_chk_csr_refill_mutex);
+    $display("PTW_SVA_COVER module=mmu_twu_chk_sva name=cp_chk_pgflt_no_next req=PTW-SVA-CHK-011 hits=%0d", cp_chk_pgflt_no_next);
   end
 
 endmodule

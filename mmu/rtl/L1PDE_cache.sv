@@ -26,7 +26,8 @@ module L1PDE_cache #(
     input  logic [3:0]           L1PDE_upd_l1pmpflg,
     output logic [PPN_WIDTH-1:0] L1PDE_entry_ppn,
     output logic                 L1PDE_entry_vld,
-    output logic                 L1PDE_entry_hit
+    output logic                 L1PDE_entry_hit,
+    output logic [3:0]           L1PDE_entry_l1pmpflg
     //output logic                 L1PDE_miss_because_pmp
 );
 
@@ -132,6 +133,7 @@ assign L1PDE_entry_before_upd_hit = L1PDE_vld & (L1PDE_entry_before_upd_vpn[TAG_
 assign L1PDE_entry_vld = L1PDE_vld;
 assign L1PDE_entry_ppn = L1PDE_ppn;
 assign L1PDE_entry_hit = L1PDE_hit;
+assign L1PDE_entry_l1pmpflg[3:0] = L1PDE_l1pmpflg[3:0];
 
 endmodule
 

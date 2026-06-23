@@ -31,7 +31,7 @@ module mbuf_entry #(
     input  logic [ID_WIDTH-1:0]       mbuf_upd_id,
     input  logic [PTE_LEVEL-1:0]      mbuf_upd_lvl,
     input  logic [7:0]                mbuf_upd_pmpflg,
-    input  logic [PTE_LEVEL-1:0]      twu_data_ready,
+    input  logic                      twu_data_ready,
     input  logic                      write_back_grant,
     input  logic                      mbuf_entry_bus_err_req_mask,
     input  logic                      mbuf_bus_error_grant,
@@ -188,7 +188,7 @@ end
 
 assign write_back_req = mbuf_vld
                       & (!mbuf_all_clr)
-                      & (|(twu_data_ready[PTE_LEVEL-1:0] & mbuf_lvl[PTE_LEVEL-1:0]))
+                      & twu_data_ready
                       & ((mbuf_on & lsu_mmu_data_routed) | mbuf_get);
 assign bus_err_write_back_req = mbuf_vld
                               & (!mbuf_all_clr)

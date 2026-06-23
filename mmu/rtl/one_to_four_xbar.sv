@@ -35,6 +35,7 @@ module one_to_four_xbar #(
     input  logic                  L2PDE_xbar_hit_vld,
     input  logic                  L1PDE_xbar_hit_vld,
     input  logic [PPN_WIDTH-1:0]  PDE_xbar_ppn,
+    input  logic [3:0]            PDE_xbar_l1pmpflg,
     input  logic [VPN_WIDTH-1:0]  PDE_xbar_vpn,
     input  logic [TYPE_WIDTH-1:0] PDE_xbar_type,
     input  logic [ID_WIDTH-1:0]   PDE_xbar_id,
@@ -45,6 +46,7 @@ module one_to_four_xbar #(
     output logic                  xbar_twu_req,
     output logic [PTE_LEVEL-2:0]  xbar_twu_hit_level,
     output logic [PPN_WIDTH-1:0]  xbar_twu_ppn,
+    output logic [3:0]            xbar_twu_l1pmpflg,
     output logic [VPN_WIDTH-1:0]  xbar_twu_vpn,
     output logic [TYPE_WIDTH-1:0] xbar_twu_type,
     output logic [ID_WIDTH-1:0]   xbar_twu_id,
@@ -68,6 +70,7 @@ assign xbar_twu_req = twu_req;
 
 assign xbar_twu_hit_level[PTE_LEVEL-2:0] = {L1PDE_xbar_hit_vld,L2PDE_xbar_hit_vld};
 assign xbar_twu_ppn[PPN_WIDTH-1:0] = PDE_xbar_ppn[PPN_WIDTH-1:0];
+assign xbar_twu_l1pmpflg[3:0] = PDE_xbar_l1pmpflg[3:0];
 assign xbar_twu_vpn[VPN_WIDTH-1:0] = PDE_xbar_vpn[VPN_WIDTH-1:0];
 assign xbar_twu_type[TYPE_WIDTH-1:0] = PDE_xbar_type[TYPE_WIDTH-1:0];
 assign xbar_twu_id[ID_WIDTH-1:0] = PDE_xbar_id[ID_WIDTH-1:0];

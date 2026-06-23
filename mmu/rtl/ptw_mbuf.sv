@@ -81,7 +81,7 @@ module ptw_mbuf #(
     output logic [3:0]                  mbuf_cache_upd_l2pmpflg,
 
     input  logic                        tlboper_ptw_abort,
-    input  logic [PTE_LEVEL-1:0]        twu_data_ready,
+    input  logic                        twu_data_ready,
     output logic                        mbuf_entry_on_vld,
     output logic                        mbuf_bus_error,
     output logic [TYPE_WIDTH-1:0]       mbuf_bus_error_type,

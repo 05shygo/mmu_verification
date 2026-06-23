@@ -53,9 +53,12 @@ class mmu_env_cg_whitebox extends uvm_component;
   int unsigned wb_twu_ref_cnt;
   int unsigned wb_twu_pgflt_cnt;
   int unsigned wb_twu_acc_err_cnt;
-  int unsigned wb_twu_ready_s0;
-  int unsigned wb_twu_ready_s1;
-  int unsigned wb_twu_ready_s2;
+  // twu_reconstruct Phase 2: scalar ready replaces per-stage s0/s1/s2
+  bit          wb_twu_ready_scalar;
+  int unsigned wb_twu_ready_low_cycles;
+  int unsigned wb_twu_ready_s0;       // DEPRECATED compat
+  int unsigned wb_twu_ready_s1;       // DEPRECATED compat
+  int unsigned wb_twu_ready_s2;       // DEPRECATED compat
   int unsigned wb_mbuf_have_cnt;
   bit          wb_ptw_pgflt_vld;
   bit          wb_ptw_acc_err_vld;
@@ -313,13 +316,23 @@ class mmu_env_cg_whitebox extends uvm_component;
     }
   endgroup
 
-  // --- Phase 12: cg_twu_data_ready_per_stage ---------------------------------
+  // --- twu_reconstruct Phase 2: cg_twu_scalar_ready_by_return_level -------------
+  covergroup cg_twu_scalar_ready_by_return_level;
+    option.per_instance = 1;
+    cp_ready_state: coverpoint wb_twu_ready_scalar { bins high = {1}; bins low = {0}; }
+    cp_returned_level: coverpoint wb_mbuf_lvl iff (wb_mbuf_lvl != 3'b000) {
+      bins fst = {3'b100}; bins scd = {3'b010}; bins thd = {3'b001};
+    }
+    cp_have_cnt: coverpoint wb_mbuf_have_cnt { bins z = {0}; bins one = {1}; }
+    cx_ready_level: cross cp_ready_state, cp_returned_level;
+  endgroup
+
+  // DEPRECATED — kept for legacy reference only; not used for signoff
   covergroup cg_twu_data_ready_per_stage;
     option.per_instance = 1;
     cp_stage0: coverpoint wb_twu_ready_s0 { bins z = {0}; bins one = {1}; }
     cp_stage1: coverpoint wb_twu_ready_s1 { bins z = {0}; bins one = {1}; }
     cp_stage2: coverpoint wb_twu_ready_s2 { bins z = {0}; bins one = {1}; }
-    cp_have_cnt: coverpoint wb_mbuf_have_cnt { bins z = {0}; bins one = {1}; }
   endgroup
 
   // Grant type is inferred from PTW priority and response outputs:
@@ -385,6 +398,16 @@ class mmu_env_cg_whitebox extends uvm_component;
     cx_level_result: cross cp_level, cp_result;
   endgroup
 
+  // twu_reconstruct Phase 2: unified PMP unit level×result covergroup
+  covergroup cg_pmp_unit_level_result with function sample(int unsigned level, int unsigned result, bit mbuf_req);
+    option.per_instance = 1;
+    cp_level: coverpoint level { bins fst = {0}; bins scd = {1}; bins thd = {2}; }
+    cp_result: coverpoint result { bins pass = {1}; bins deny = {2}; bins wait_seen = {3}; }
+    cp_mbuf: coverpoint mbuf_req { bins issued = {1}; }
+    cx_level_result: cross cp_level, cp_result;
+  endgroup
+
+  // DEPRECATED — kept for legacy reference; replaced by cg_pmp_unit_level_result
   covergroup cg_pmp_grant_level with function sample(logic [2:0] grant);
     option.per_instance = 1;
     cp_grant: coverpoint grant {
@@ -415,6 +438,32 @@ class mmu_env_cg_whitebox extends uvm_component;
     cp_level: coverpoint level { bins fst = {0}; bins scd = {1}; bins thd = {2}; }
     cp_mask_cnt: coverpoint mask_cnt { bins one = {1}; }
     cp_all_mask: coverpoint all_mask { bins no = {0}; bins yes = {1}; }
+  endgroup
+
+  // ── twu_reconstruct Phase 2: cg_l1pmpflg_payload_path ──────────────────
+  covergroup cg_l1pmpflg_payload_path with function sample(
+    bit pde_hit, bit xbar_valid, bit pmp_consume, bit mbuf_payload
+  );
+    option.per_instance = 1;
+    cp_pde_hit:    coverpoint pde_hit    { bins hit = {1}; }
+    cp_xbar_valid: coverpoint xbar_valid { bins valid = {1}; }
+    cp_pmp_consume: coverpoint pmp_consume { bins consumed = {1}; }
+    cp_mbuf_payload: coverpoint mbuf_payload { bins valid = {1}; }
+    cx_path: cross cp_pde_hit, cp_xbar_valid, cp_pmp_consume;
+  endgroup
+
+  // ── twu_reconstruct Phase 2: cg_twu_visible_class_mutex ────────────────
+  covergroup cg_twu_visible_class_mutex with function sample(
+    bit pmp_accerr, bit chk_pgflt, bit chk_refill, bit csr_refill,
+    bit mbuf_bus_error, bit pde_direct
+  );
+    option.per_instance = 1;
+    cp_pmp_accerr:    coverpoint pmp_accerr    { bins fire = {1}; }
+    cp_chk_pgflt:     coverpoint chk_pgflt     { bins fire = {1}; }
+    cp_chk_refill:    coverpoint chk_refill    { bins fire = {1}; }
+    cp_csr_refill:    coverpoint csr_refill    { bins fire = {1}; }
+    cp_mbuf_buserror: coverpoint mbuf_bus_error { bins fire = {1}; }
+    cp_pde_direct:    coverpoint pde_direct    { bins fire = {1}; }
   endgroup
 
   covergroup cg_ptw_pmp_port_map with function sample(int unsigned twu_idx, int unsigned port_id, bit pa_seen, int unsigned acc_kind, bit fetch_sideband);
@@ -629,6 +678,10 @@ class mmu_env_cg_whitebox extends uvm_component;
     cg_pmp_pa_format             = new();
     cg_pmp_deny_by_level         = new();
     cg_twu_mask_cause            = new();
+    cg_pmp_unit_level_result     = new();
+    cg_twu_scalar_ready_by_return_level = new();
+    cg_l1pmpflg_payload_path     = new();
+    cg_twu_visible_class_mutex   = new();
     cg_ptw_pmp_port_map          = new();
     cg_sysmap_flg_per_region     = new();
     cg_sysmap_cross_1g           = new();
@@ -671,12 +724,15 @@ class mmu_env_cg_whitebox extends uvm_component;
       cg_twu_idle_vs_mask_state.sample();
       cg_xbar_hit_level.sample();
       cg_twu_except_while_arb_busy.sample();
-      cg_twu_data_ready_per_stage.sample();
+      // twu_reconstruct Phase 2: scalar ready replaces per-stage
+      cg_twu_scalar_ready_by_return_level.sample();
+      cg_twu_data_ready_per_stage.sample();  // DEPRECATED compat
       cg_arb_grant_type.sample();
       cg_ptw_arb_pgs_type.sample();
       cg_maee_leaf_level.sample();
       cg_maee_path.sample();
       sample_phase13_covergroups();
+      sample_reconstruct_covergroups();
       wb_sample_cycles++;
     end
   endtask
@@ -684,21 +740,22 @@ class mmu_env_cg_whitebox extends uvm_component;
   virtual function void final_phase(uvm_phase phase);
     super.final_phase(phase);
     `uvm_info(get_type_name(),
-      $sformatf("whitebox_cg summary: sampled_cycles=%0d ptw_ready=%0.2f twu_idle_mask=%0.2f xbar_hit=%0.2f twu_except_busy=%0.2f twu_stage_ready=%0.2f arb_grant=%0.2f arb_pgs=%0.2f maee_leaf=%0.2f maee_path=%0.2f",
+      $sformatf("whitebox_cg summary: sampled_cycles=%0d ptw_ready=%0.2f twu_idle_mask=%0.2f xbar_hit=%0.2f twu_except_busy=%0.2f twu_scalar_ready=%0.2f arb_grant=%0.2f arb_pgs=%0.2f maee_leaf=%0.2f maee_path=%0.2f",
         wb_sample_cycles,
         cg_ptw_ready_transition.get_inst_coverage(),
         cg_twu_idle_vs_mask_state.get_inst_coverage(),
         cg_xbar_hit_level.get_inst_coverage(),
         cg_twu_except_while_arb_busy.get_inst_coverage(),
-        cg_twu_data_ready_per_stage.get_inst_coverage(),
+        cg_twu_scalar_ready_by_return_level.get_inst_coverage(),
         cg_arb_grant_type.get_inst_coverage(),
         cg_ptw_arb_pgs_type.get_inst_coverage(),
         cg_maee_leaf_level.get_inst_coverage(),
         cg_maee_path.get_inst_coverage()),
       UVM_LOW)
     `uvm_info(get_type_name(),
-      $sformatf("phase13_whitebox_cg summary: pmp_result=%0.2f pmp_grant=%0.2f pmp_pa=%0.2f pmp_deny=%0.2f twu_mask=%0.2f pmp_port=%0.2f sysmap_flg=%0.2f cross1g=%0.2f cross2m=%0.2f degrade=%0.2f sysmap_pa=%0.2f sysmap_4twu=%0.2f default=%0.2f",
+      $sformatf("phase13_whitebox_cg summary: pmp_result=%0.2f pmp_unit_level=%0.2f pmp_grant=%0.2f pmp_pa=%0.2f pmp_deny=%0.2f twu_mask=%0.2f pmp_port=%0.2f sysmap_flg=%0.2f cross1g=%0.2f cross2m=%0.2f degrade=%0.2f sysmap_pa=%0.2f sysmap_4twu=%0.2f default=%0.2f rec_l1pmpflg=%0.2f rec_visible_mutex=%0.2f",
         cg_pmp_per_level_result.get_inst_coverage(),
+        cg_pmp_unit_level_result.get_inst_coverage(),
         cg_pmp_grant_level.get_inst_coverage(),
         cg_pmp_pa_format.get_inst_coverage(),
         cg_pmp_deny_by_level.get_inst_coverage(),
@@ -710,7 +767,9 @@ class mmu_env_cg_whitebox extends uvm_component;
         cg_sysmap_degrade_pgs.get_inst_coverage(),
         cg_sysmap_pa_align.get_inst_coverage(),
         cg_sysmap_4twu_concurrent.get_inst_coverage(),
-        cg_sysmap_default_flag.get_inst_coverage()),
+        cg_sysmap_default_flag.get_inst_coverage(),
+        cg_l1pmpflg_payload_path.get_inst_coverage(),
+        cg_twu_visible_class_mutex.get_inst_coverage()),
       UVM_LOW)
   endfunction
 
@@ -835,6 +894,44 @@ class mmu_env_cg_whitebox extends uvm_component;
 
     if (active_sysmap_cnt != 0)
       cg_sysmap_4twu_concurrent.sample(active_sysmap_cnt, sysmap_port_map_ok);
+
+    // twu_reconstruct Phase 2: also sample unified PMP unit result
+    if ((v_probe.twu_pmp_unit_vld === 1'b1) || (v_probe.twu_pmp_unit_wait === 1'b1)) begin
+      int unsigned u_level;
+      int unsigned u_result;
+      u_level = (v_probe.twu_pmp_unit_lvl[2]) ? 0 :
+                (v_probe.twu_pmp_unit_lvl[1]) ? 1 : 2;
+      u_result = 0;
+      if (v_probe.twu_pmp_unit_wait)
+        u_result = 3;
+      else if (v_probe.twu_pmp_unit_deny)
+        u_result = 2;
+      else if (v_probe.twu_pmp_unit_vld)
+        u_result = 1;
+      if (u_result != 0)
+        cg_pmp_unit_level_result.sample(u_level, u_result, v_probe.twu_pmp_unit_mbuf_req);
+    end
+  endfunction
+
+  // ── twu_reconstruct Phase 2: unified reconstruct coverage sampling ─────
+  virtual function void sample_reconstruct_covergroups();
+    // l1pmpflg payload path
+    cg_l1pmpflg_payload_path.sample(
+      (v_probe.pde_l1_hit_vld === 1'b1),
+      (v_probe.xbar_twu_l1pmpflg != 4'h0),
+      (v_probe.twu_pmp_unit_l1pmpflg != 4'h0),
+      (v_probe.ptw_twu_mbuf_pmpflg != 8'h00)
+    );
+
+    // visible class mutex
+    cg_twu_visible_class_mutex.sample(
+      v_probe.twu_access_src_pmp_unit,
+      (v_probe.twu_chk_unit_page_flt === 1'b1),
+      (v_probe.twu_chk_unit_refill_req === 1'b1),
+      (v_probe.p13_csr_refill_req_vec === 1'b1),
+      v_probe.ptw_access_src_mbuf_bus_error,
+      v_probe.ptw_access_src_pde_direct
+    );
   endfunction
 
   function logic [6:0] f_l1d_mb_states_seen(
@@ -960,9 +1057,11 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_twu_ref_cnt          = int'(v_probe.ptw_twu_ref_req);
     wb_twu_pgflt_cnt        = int'(v_probe.ptw_twu_pgflt_vec);
     wb_twu_acc_err_cnt      = int'(v_probe.ptw_twu_acc_err_vec);
-    wb_twu_ready_s0         = cnt_twu_stage(v_probe.ptw_twu_data_ready, 0);
-    wb_twu_ready_s1         = cnt_twu_stage(v_probe.ptw_twu_data_ready, 1);
-    wb_twu_ready_s2         = cnt_twu_stage(v_probe.ptw_twu_data_ready, 2);
+    // twu_reconstruct Phase 2: scalar ready replaces per-stage
+    wb_twu_ready_scalar     = (v_probe.ptw_twu_data_ready === 1'b1);
+    wb_twu_ready_s0         = cnt_twu_stage(v_probe.ptw_twu_data_ready_legacy_vec, 0);
+    wb_twu_ready_s1         = cnt_twu_stage(v_probe.ptw_twu_data_ready_legacy_vec, 1);
+    wb_twu_ready_s2         = cnt_twu_stage(v_probe.ptw_twu_data_ready_legacy_vec, 2);
     wb_mbuf_have_cnt        = int'(v_probe.ptw_mbuf_twu_have);
     wb_ptw_pgflt_vld        = v_probe.ptw_pgflt_vld;
     wb_ptw_acc_err_vld      = v_probe.ptw_acc_err_vld;
@@ -983,6 +1082,7 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_ptw_activity         = (wb_twu_ref_cnt != 0)
                             || (wb_twu_pgflt_cnt != 0)
                             || (wb_twu_acc_err_cnt != 0)
+                            || !wb_twu_ready_scalar
                             || (wb_twu_ready_s0 != 0)
                             || (wb_twu_ready_s1 != 0)
                             || (wb_twu_ready_s2 != 0)

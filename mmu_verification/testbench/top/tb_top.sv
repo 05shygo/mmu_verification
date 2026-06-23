@@ -669,16 +669,46 @@ module tb_top;
   assign dut_probes_if.ptw_fault_any     = u_dut.x_ct_mmu_ptw.pgflt_vld
                                          | u_dut.x_ct_mmu_ptw.acc_err_vld;
   assign dut_probes_if.ptw_jtlb_ready    = u_dut.x_ct_mmu_ptw.ptw_jtlb_ready;
+  // twu_reconstruct Phase 1: idle derived from unified pmp_unit/chk_unit/csr_idle
   assign dut_probes_if.ptw_twu_idle =
-      ~(u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vld
-       | u_dut.x_ct_mmu_ptw.twu_one.fst_chk_vld
-       | u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vld
-       | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_vld
-       | u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_vld
-       | u_dut.x_ct_mmu_ptw.twu_one.thd_chk_vld
+      ~(u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_vld
+       | u_dut.x_ct_mmu_ptw.twu_one.chk_unit_vld
        | (~u_dut.x_ct_mmu_ptw.twu_one.csr_idle));
   assign dut_probes_if.ptw_twu_mask       = u_dut.x_ct_mmu_ptw.twu_mask;
   assign dut_probes_if.ptw_twu_data_ready = u_dut.x_ct_mmu_ptw.twu_data_ready;
+  // DEPRECATED compat alias — RTL is 1bit scalar; packed to 3bit for legacy code only
+  assign dut_probes_if.ptw_twu_data_ready_legacy_vec = {2'b0, u_dut.x_ct_mmu_ptw.twu_data_ready};
+
+  // ── twu_reconstruct Phase 1: unified PMP unit probe connections ────────
+  assign dut_probes_if.twu_pmp_unit_vld      = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_vld;
+  assign dut_probes_if.twu_pmp_unit_wait     = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_wait;
+  assign dut_probes_if.twu_pmp_unit_deny     = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_deny;
+  assign dut_probes_if.twu_pmp_unit_mbuf_req = u_dut.x_ct_mmu_ptw.twu_one.pmp_mbuf_req;
+  assign dut_probes_if.twu_pmp_unit_lvl      = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_lvl;
+  assign dut_probes_if.twu_pmp_unit_type     = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_type;
+  assign dut_probes_if.twu_pmp_unit_id       = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_id;
+  assign dut_probes_if.twu_pmp_unit_vpn      = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_vpn;
+  assign dut_probes_if.twu_pmp_unit_pa       = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_pa;
+  assign dut_probes_if.twu_pmp_unit_ppn      = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_ppn;
+  assign dut_probes_if.twu_pmp_unit_pmpflg   = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_pmpflg;
+  assign dut_probes_if.twu_pmp_unit_l1pmpflg = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_l1pmpflg;
+
+  // ── twu_reconstruct Phase 1: unified CHK unit probe connections ────────
+  assign dut_probes_if.twu_chk_unit_vld        = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_vld;
+  assign dut_probes_if.twu_chk_unit_wait       = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_wait;
+  assign dut_probes_if.twu_chk_unit_lvl        = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_lvl;
+  assign dut_probes_if.twu_chk_unit_type       = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_type;
+  assign dut_probes_if.twu_chk_unit_id         = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_id;
+  assign dut_probes_if.twu_chk_unit_vpn        = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_vpn;
+  assign dut_probes_if.twu_chk_unit_data       = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_data;
+  assign dut_probes_if.twu_chk_unit_flg        = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_flg;
+  assign dut_probes_if.twu_chk_unit_leaf_vld   = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_leaf_vld;
+  assign dut_probes_if.twu_chk_unit_page_flt   = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_page_flt;
+  assign dut_probes_if.twu_chk_unit_refill_req = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_req;
+  assign dut_probes_if.twu_chk_unit_csr_req    = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_csr_req;
+  assign dut_probes_if.twu_chk_unit_refill_pgs  = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_pgs;
+  assign dut_probes_if.twu_chk_unit_refill_tag  = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_tag;
+  assign dut_probes_if.twu_chk_unit_refill_data = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_data;
   assign dut_probes_if.ptw_mbuf_twu_have  = |u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld;
   assign dut_probes_if.ptw_mbuf_entry_vld = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_vld;
   assign dut_probes_if.ptw_twu_ref_req   = u_dut.x_ct_mmu_ptw.twu_arb_ref_req;
@@ -761,6 +791,18 @@ module tb_top;
   assign dut_probes_if.ptw_twu_mbuf_lvl  = u_dut.x_ct_mmu_ptw.twu_mbuf_lvl;
   assign dut_probes_if.ptw_twu_mbuf_pmpflg = u_dut.x_ct_mmu_ptw.twu_mbuf_pmpflg;
   assign dut_probes_if.ptw_mbuf_twu_pmpflg = u_dut.x_ct_mmu_ptw.mbuf_twu_pmpflg;
+
+  // ── twu_reconstruct Phase 1: L1 PMP flag payload path probe connections ─
+  assign dut_probes_if.pde_xbar_l1pmpflg = u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_xbar_l1pmpflg;
+  assign dut_probes_if.xbar_twu_l1pmpflg = u_dut.x_ct_mmu_ptw.xbar_twu_l1pmpflg;
+
+  // ── twu_reconstruct Phase 1: access fault root cause probe connections ──
+  assign dut_probes_if.twu_access_src_pmp_unit =
+      u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_deny && u_dut.x_ct_mmu_ptw.twu_one.acc_err_pmp_unit_grant;
+  assign dut_probes_if.ptw_access_src_mbuf_bus_error =
+      |u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_bus_err_flop;
+  assign dut_probes_if.ptw_access_src_pde_direct =
+      u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_cache_acc_err_vld;
   assign dut_probes_if.ptw_mbuf_entry_pmpflg = u_dut.x_ct_mmu_ptw.u_ptw_mbuf.mbuf_entry_pmpflg;
   assign dut_probes_if.pde_cache_req     = u_dut.x_ct_mmu_ptw.u_PDE_cache.PDE_xbar_req;
   assign dut_probes_if.pde_cache_ready   = u_dut.x_ct_mmu_ptw.u_PDE_cache.pde_cache_ready;
@@ -819,26 +861,33 @@ module tb_top;
     end
   endgenerate
   assign dut_probes_if.pmp_regs_update_probe = pmp_regs_update_dut;
-  // MAEE path/leaf is inferred from per-TWU leaf request outputs because
-  // the RTL does not expose a single encoded MAEE-path/leaf signal.
-  assign dut_probes_if.maee_leaf_lvl1_hit = u_dut.x_ct_mmu_ptw.twu_one.fst_chk_csr_req
-                                          | u_dut.x_ct_mmu_ptw.twu_one.fst_chk_refill_req;
-  assign dut_probes_if.maee_leaf_lvl2_hit = u_dut.x_ct_mmu_ptw.twu_one.scd_chk_csr_req
-                                          | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_refill_req;
-  assign dut_probes_if.maee_leaf_lvl3_hit = u_dut.x_ct_mmu_ptw.twu_one.thd_chk_refill_req;
-  assign dut_probes_if.maee_csr_path_hit  = u_dut.x_ct_mmu_ptw.twu_one.fst_chk_csr_req
-                                          | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_csr_req;
-  assign dut_probes_if.maee_refill_path_hit = u_dut.x_ct_mmu_ptw.twu_one.fst_chk_refill_req
-                                            | u_dut.x_ct_mmu_ptw.twu_one.scd_chk_refill_req
-                                            | u_dut.x_ct_mmu_ptw.twu_one.thd_chk_refill_req;
-  assign dut_probes_if.p13_pmp_vld_vec      = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_vld,   u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_vld,   u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_vld};
-  assign dut_probes_if.p13_pmp_grant_vec    = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_grant, u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_grant, u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_grant};
-  assign dut_probes_if.p13_pmp_deny_vec     = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_deny,  u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_deny,  u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_deny};
-  assign dut_probes_if.p13_pmp_wait_vec     = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_wait,  u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_wait,  u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_wait};
-  assign dut_probes_if.p13_pmp_mbuf_req_vec = {u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_mbuf_req, u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_mbuf_req, u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_mbuf_req};
-  assign dut_probes_if.p13_pmp_type_vec[2]  = u_dut.x_ct_mmu_ptw.twu_one.fst_pmp_type;
-  assign dut_probes_if.p13_pmp_type_vec[1]  = u_dut.x_ct_mmu_ptw.twu_one.scd_pmp_type;
-  assign dut_probes_if.p13_pmp_type_vec[0]  = u_dut.x_ct_mmu_ptw.twu_one.thd_pmp_type;
+  // twu_reconstruct Phase 1: MAEE path/leaf decoded from unified chk_unit_lvl
+  // chk_unit_lvl is one-hot: bit[2]=FST(1G), bit[1]=SCD(2M), bit[0]=THD(4K)
+  assign dut_probes_if.maee_leaf_lvl1_hit =
+      (u_dut.x_ct_mmu_ptw.twu_one.chk_unit_csr_req
+       | u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_req)
+      && u_dut.x_ct_mmu_ptw.twu_one.chk_unit_lvl[2];  // FST → 1G leaf
+  assign dut_probes_if.maee_leaf_lvl2_hit =
+      (u_dut.x_ct_mmu_ptw.twu_one.chk_unit_csr_req
+       | u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_req)
+      && u_dut.x_ct_mmu_ptw.twu_one.chk_unit_lvl[1];  // SCD → 2M leaf
+  assign dut_probes_if.maee_leaf_lvl3_hit =
+      u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_req
+      && u_dut.x_ct_mmu_ptw.twu_one.chk_unit_lvl[0];  // THD → 4K leaf (direct refill only)
+  assign dut_probes_if.maee_csr_path_hit  = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_csr_req;
+  assign dut_probes_if.maee_refill_path_hit = u_dut.x_ct_mmu_ptw.twu_one.chk_unit_refill_req;
+  // twu_reconstruct Phase 1: legacy p13_pmp_*_vec — compat_unified_only, do NOT use for signoff
+  // These pack the unified pmp_unit signals into old 3-stage vectors for legacy code compatibility.
+  // FST/SCD slots are tied to 0; only THD slot carries real data from pmp_unit.
+  // New code MUST use twu_pmp_unit_* probes directly.
+  assign dut_probes_if.p13_pmp_vld_vec      = {1'b0, 1'b0, u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_vld};
+  assign dut_probes_if.p13_pmp_grant_vec    = {1'b0, 1'b0, ~u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_deny};
+  assign dut_probes_if.p13_pmp_deny_vec     = {1'b0, 1'b0, u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_deny};
+  assign dut_probes_if.p13_pmp_wait_vec     = {1'b0, 1'b0, u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_wait};
+  assign dut_probes_if.p13_pmp_mbuf_req_vec = {1'b0, 1'b0, u_dut.x_ct_mmu_ptw.twu_one.pmp_mbuf_req};
+  assign dut_probes_if.p13_pmp_type_vec[2]  = 1'b0;
+  assign dut_probes_if.p13_pmp_type_vec[1]  = 1'b0;
+  assign dut_probes_if.p13_pmp_type_vec[0]  = u_dut.x_ct_mmu_ptw.twu_one.pmp_unit_type;
   assign dut_probes_if.p13_pmp_flg_vec      = pmp_if_inst.pmp_mmu_flg3;
   assign dut_probes_if.p13_pmp_pa_vec       = pmp_if_inst.mmu_pmp_pa3;
   assign dut_probes_if.p13_pmp_fetch_vec    = pmp_if_inst.mmu_pmp_fetch3;
@@ -1256,6 +1305,9 @@ module tb_top;
               "ptw={abort:%0b abort_flop:%0b abort_drain:%0b jtlb_ready:%0b mbuf_vld:0x%03h mbuf_on:0x%03h mbuf_get:0x%03h mbuf_have:0x%0h ",
               "hold{v:%0b ptr:0x%03h sel:0x%03h on:0x%03h pend:0x%03h resp:0x%03h data_rsp:0x%03h berr_rsp:0x%03h} ",
               "twu_idle:0x%0h twu_mask:0x%0h twu_ref:0x%0h twu_mbuf_req:0x%0h pgflt:0x%0h acc:0x%0h ",
+              // twu_reconstruct Phase 1: unified unit diag fields
+              "pmp_unit{v:%0b w:%0b deny:%0b lvl:%0d} chk_unit{v:%0b w:%0b lvl:%0d leaf:%0b pf:%0b refill:%0b csr:%0b} ",
+              "ready:%0b xbar_l1flg:0x%0h ",
               "l2ptw_req:%0b/id:0x%02h/type:0x%0h/vpn:0x%07h cmplt:%0b data_vld:%0b} ",
               "tlbop={fsm{p:%0d r:%0d wi:%0d wr:%0d asid:%0d all:%0b} arb_req:%0b write:%0b grant:%0b ",
               "regs_cmplt:%0b l2_cmplt:%0b utlb_clr:%0b utlb_inv_va_req:%0b tlbiva_st:%0d} ",
@@ -1311,6 +1363,20 @@ module tb_top;
       dut_probes_if.ptw_twu_mbuf_req,
       dut_probes_if.ptw_twu_pgflt_vec,
       dut_probes_if.ptw_twu_acc_err_vec,
+      // twu_reconstruct Phase 1: unified unit diag values
+      dut_probes_if.twu_pmp_unit_vld,
+      dut_probes_if.twu_pmp_unit_wait,
+      dut_probes_if.twu_pmp_unit_deny,
+      dut_probes_if.twu_pmp_unit_lvl,
+      dut_probes_if.twu_chk_unit_vld,
+      dut_probes_if.twu_chk_unit_wait,
+      dut_probes_if.twu_chk_unit_lvl,
+      dut_probes_if.twu_chk_unit_leaf_vld,
+      dut_probes_if.twu_chk_unit_page_flt,
+      dut_probes_if.twu_chk_unit_refill_req,
+      dut_probes_if.twu_chk_unit_csr_req,
+      dut_probes_if.ptw_twu_data_ready,
+      dut_probes_if.xbar_twu_l1pmpflg,
       dut_probes_if.l2tlb_ptw_req,
       dut_probes_if.l2tlb_ptw_id,
       dut_probes_if.l2tlb_ptw_type,
@@ -1602,7 +1668,11 @@ bind mmu_l2tlb_rrpv_wbuf mmu_l2tlb_rrpv_wbuf_sva #(
 ) u_l2tlb_rrpv_wbuf_sva (.*);
 bind mmu_l2tlb_mb mmu_l2tlb_mb_sva    u_l2tlb_mb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
-bind twu          mmu_twu_sva         u_twu_sva   (.*);
+// twu_reconstruct Phase 3: SVA must be rewritten for unified pmp_unit/chk_unit architecture
+// Bind entry points ready — mmu_twu_sva, mmu_twu_chk_sva, mmu_maee_twu_sva, mmu_pmp_twu_sva
+// need new port lists using pmp_unit_* / chk_unit_* / scalar twu_data_ready.
+// DO NOT bind with constant-tied ports — this causes false pass.
+// bind twu          mmu_twu_sva         u_twu_sva   (.*);
 bind ptw          mmu_ptw_top_sva     u_ptw_top_sva (
   // 4TWU→1TWU: map acc_err_grant_sel[2:0]={PDE,MBUF,TWU} to old 6-bit acc_err_twu_grant[5:0]
   .acc_err_twu_grant({acc_err_grant_sel[2], 1'b0, 1'b0, 1'b0, acc_err_grant_sel[1], acc_err_grant_sel[0]}),
@@ -1700,12 +1770,18 @@ bind one_to_four_xbar mmu_ptw_xbar_sva u_ptw_xbar_sva (
   .twu_req_hash(4'b0001),
   .twu_mask({3'b0, twu_mask}),
   .xbar_twu_req({3'b0, xbar_twu_req}),
+  // twu_reconstruct Phase 3: l1pmpflg payload
+  .PDE_xbar_l1pmpflg(PDE_xbar_l1pmpflg),
+  .xbar_twu_l1pmpflg(xbar_twu_l1pmpflg),
   .*
 );
-bind twu          mmu_twu_chk_sva     u_twu_chk_sva (.*);
-bind twu          mmu_maee_twu_sva    u_maee_twu_sva (.*);
-bind twu          mmu_pmp_twu_sva     u_pmp_twu_sva (.*);
-bind twu          mmu_sysmap_sva      u_sysmap_sva (.*);
+// twu_reconstruct Phase 3: SVAs must be rewritten for new unified architecture
+// Bind entry points ready — see Phase 3 plan for port list requirements.
+// DO NOT bind with constant-tied ports — this causes false pass.
+// bind twu          mmu_twu_chk_sva     u_twu_chk_sva (.*);
+// bind twu          mmu_maee_twu_sva    u_maee_twu_sva (.*);
+// bind twu          mmu_pmp_twu_sva     u_pmp_twu_sva (.*);
+// bind twu          mmu_sysmap_sva      u_sysmap_sva (.*);
 bind ptw_mbuf     mmu_ptw_lsu_protocol_sva u_ptw_lsu_protocol_sva (
   .mbuf_grant({3'b0, mbuf_grant}),
   .mbuf_twu_data_vld({3'b0, mbuf_twu_data_vld}),

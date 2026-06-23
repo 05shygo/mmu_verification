@@ -236,7 +236,41 @@ interface mmu_dut_probes_if (
   wire         ptw_jtlb_ready;
   wire         ptw_twu_idle;
   wire         ptw_twu_mask;
-  wire [2:0]   ptw_twu_data_ready;
+  wire         ptw_twu_data_ready;        // 1bit scalar (twu_reconstruct: was [2:0])
+  wire [2:0]   ptw_twu_data_ready_legacy_vec; // DEPRECATED compat alias — do NOT use for signoff
+
+  // ── twu_reconstruct Phase 1: unified PMP unit probes ─────────────────
+  // Replaces old 3-stage fst/scd/thd PMP vector probes.
+  wire         twu_pmp_unit_vld;
+  wire         twu_pmp_unit_wait;
+  wire         twu_pmp_unit_deny;
+  wire         twu_pmp_unit_mbuf_req;
+  wire [2:0]   twu_pmp_unit_lvl;
+  wire [2:0]   twu_pmp_unit_type;
+  wire [PTW_ID_WIDTH-1:0] twu_pmp_unit_id;
+  wire [26:0]  twu_pmp_unit_vpn;
+  wire [39:0]  twu_pmp_unit_pa;
+  wire [27:0]  twu_pmp_unit_ppn;
+  wire [3:0]   twu_pmp_unit_pmpflg;
+  wire [3:0]   twu_pmp_unit_l1pmpflg;
+
+  // ── twu_reconstruct Phase 1: unified CHK unit probes ─────────────────
+  // Replaces old 3-stage fst/scd/thd CHK vector probes.
+  wire         twu_chk_unit_vld;
+  wire         twu_chk_unit_wait;
+  wire [2:0]   twu_chk_unit_lvl;
+  wire [2:0]   twu_chk_unit_type;
+  wire [PTW_ID_WIDTH-1:0] twu_chk_unit_id;
+  wire [26:0]  twu_chk_unit_vpn;
+  wire [63:0]  twu_chk_unit_data;
+  wire [8:0]   twu_chk_unit_flg;
+  wire         twu_chk_unit_leaf_vld;
+  wire         twu_chk_unit_page_flt;
+  wire         twu_chk_unit_refill_req;
+  wire         twu_chk_unit_csr_req;
+  wire [2:0]   twu_chk_unit_refill_pgs;
+  wire [47:0]  twu_chk_unit_refill_tag;   // TAG_WIDTH = 1+VPN+ASID+PGS+1
+  wire [41:0]  twu_chk_unit_refill_data;  // RDATA_WIDTH = PPN+FLG
   wire         ptw_mbuf_twu_have;
   wire [8:0]   ptw_mbuf_entry_vld;
   wire         ptw_twu_ref_req;
@@ -369,6 +403,15 @@ interface mmu_dut_probes_if (
   wire [15:0][3:0] pde_l2_cached_l2pmpflg_vec;
   wire [7:0]   ptw_twu_mbuf_pmpflg;
   wire [7:0]   ptw_mbuf_twu_pmpflg;
+
+  // ── twu_reconstruct Phase 1: L1 PMP flag payload path probes ─────────
+  wire [3:0]   pde_xbar_l1pmpflg;       // PDE cache → xbar L1 flag
+  wire [3:0]   xbar_twu_l1pmpflg;       // xbar → TWU L1 flag
+
+  // ── twu_reconstruct Phase 1: access fault root cause probes ──────────
+  wire         twu_access_src_pmp_unit;      // TWU PMP unit deny → access fault
+  wire         ptw_access_src_mbuf_bus_error; // MBUF bus error → access fault
+  wire         ptw_access_src_pde_direct;     // PDE cache direct accerr → access fault
   wire [8:0][7:0] ptw_mbuf_entry_pmpflg;
   wire         pde_cache_acc_err_vld;
   wire [2:0]   pde_cache_acc_err_type;
@@ -526,6 +569,22 @@ interface mmu_dut_probes_if (
     input l2mb_entry_vpn, l2mb_entry_l1eid, l2mb_entry_type, l2mb_entry_queue_id, l2mb_entry_sent;
     input ptw_xbar_hit_lvl, ptw_mbuf_twu_lvl, ptw_fault_any;
     input ptw_jtlb_ready, ptw_twu_idle, ptw_twu_mask, ptw_twu_data_ready;
+    input ptw_twu_data_ready_legacy_vec;
+    // twu_reconstruct Phase 1: unified PMP unit probes
+    input twu_pmp_unit_vld, twu_pmp_unit_wait, twu_pmp_unit_deny, twu_pmp_unit_mbuf_req;
+    input twu_pmp_unit_lvl, twu_pmp_unit_type, twu_pmp_unit_id;
+    input twu_pmp_unit_vpn, twu_pmp_unit_pa, twu_pmp_unit_ppn;
+    input twu_pmp_unit_pmpflg, twu_pmp_unit_l1pmpflg;
+    // twu_reconstruct Phase 1: unified CHK unit probes
+    input twu_chk_unit_vld, twu_chk_unit_wait;
+    input twu_chk_unit_lvl, twu_chk_unit_type, twu_chk_unit_id;
+    input twu_chk_unit_vpn, twu_chk_unit_data, twu_chk_unit_flg;
+    input twu_chk_unit_leaf_vld, twu_chk_unit_page_flt;
+    input twu_chk_unit_refill_req, twu_chk_unit_csr_req;
+    input twu_chk_unit_refill_pgs, twu_chk_unit_refill_tag, twu_chk_unit_refill_data;
+    // twu_reconstruct Phase 1: l1pmpflg payload path and root cause probes
+    input pde_xbar_l1pmpflg, xbar_twu_l1pmpflg;
+    input twu_access_src_pmp_unit, ptw_access_src_mbuf_bus_error, ptw_access_src_pde_direct;
     input ptw_mbuf_twu_have, ptw_mbuf_entry_vld;
     input ptw_twu_ref_req, ptw_twu_pgflt_vec, ptw_twu_acc_err_vec;
     input ptw_pgflt_vld, ptw_acc_err_vld, ptw_l2tlb_ref_pgflt, ptw_l2tlb_ref_acc_err;

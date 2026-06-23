@@ -183,6 +183,8 @@ class phase9_generated_test_base extends test_base;
       "mmu_l2tlb_sva_closure_vseq":           seq = mmu_l2tlb_sva_closure_vseq::type_id::create(seq_name);
       "mmu_l2tlb_mb_cond_vseq":               seq = mmu_l2tlb_mb_cond_vseq::type_id::create(seq_name);
       "mmu_l2tlb_toggle_sweep_vseq":          seq = mmu_l2tlb_toggle_sweep_vseq::type_id::create(seq_name);
+      "mmu_l2tlb_sva_targeted_vseq":          seq = mmu_l2tlb_sva_targeted_vseq::type_id::create(seq_name);
+      "mmu_l2tlb_sva_oneshot_vseq":           seq = mmu_l2tlb_sva_oneshot_vseq::type_id::create(seq_name);
       "mmu_satp_hotswap_vseq":        seq = mmu_satp_hotswap_vseq::type_id::create(seq_name);
       "mmu_stress_all_ports_vseq":    seq = mmu_stress_all_ports_vseq::type_id::create(seq_name);
       "mmu_power_gating_vseq":        seq = mmu_power_gating_vseq::type_id::create(seq_name);

@@ -1,0 +1,9 @@
+-line /tb_top/u_dut/x_mmu_l2tlb 1382
+-cond /tb_top/u_dut/x_mmu_l2tlb 553 1
+-cond /tb_top/u_dut/x_mmu_l2tlb 555 1
+-cond /tb_top/u_dut/x_mmu_l2tlb 869 1
+-cond /tb_top/u_dut/x_mmu_l2tlb 870 1
+-cond /tb_top/u_dut/x_mmu_l2tlb 872 1
+-cond /tb_top/u_dut/x_mmu_l2tlb 1167 1
+-cond /tb_top/u_dut/x_mmu_l2tlb 1186 1
+-branch /tb_top/u_dut/x_mmu_l2tlb 1354 1

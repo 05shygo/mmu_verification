@@ -171,15 +171,21 @@ class mmu_l2tlb_common_vseq extends l1dtlb_directed_vseq;
   endtask
 
   // -----------------------------------------------------------------------
-  // raw_pipe2: prefetch-unit (pipe2) VA pulse — same as
-  // mmu_l2tlb_pfu_chk_deny_vseq.raw_pipe2.  Duplicated here so this base
-  // class is self-contained (PFU deny test uses it directly).
+  // raw_pipe2: prefetch-unit (pipe2) VPN pulse.
+  //
+  // IMPORTANT: lsu_mmu_va2[26:0] is the VPN (VA[38:12]), NOT the raw VA.
+  // The DUT's ct_lsu_pfu module normally drives this with pfu_mmu_req_vpn,
+  // but the testbench overrides it via the LSU interface.  We must drive
+  // the correct 27-bit VPN in bits [26:0], with bit [27] as zero padding.
+  // The old implementation drove va[27:0] (raw VA bits) which does NOT
+  // match the stored L2TLB tag VPN = VA[38:12], causing PFU to always miss.
   // -----------------------------------------------------------------------
   protected task raw_pipe2(va_t va);
     raw_idle();
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_va2_vld <= 1'b1;
-    m_lsu_vif.driver_cb.lsu_mmu_va2     <= va[27:0];
+    // Drive VPN = VA[38:12] in lsu_mmu_va2[26:0], zero in bit[27]
+    m_lsu_vif.driver_cb.lsu_mmu_va2     <= {1'b0, va[38:12]};
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
   endtask

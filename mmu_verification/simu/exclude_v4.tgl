@@ -55,7 +55,27 @@
 //         INSTANCE block. Each active `Fsm <name> "<chk>"` + `Transition` pair
 //         excludes that transition in the preceding INSTANCE block. ANNOTATION
 //         lines are retained for source traceability.
+//
+// NOTE: Line/Cond/Branch/FSM waivers are tracked in the Phase14 Issue Tracker
+// and doc/l2tlb_uvm_review/l2tlb_covp_waivers.md — they are NOT expressed in
+// this elfile because URG requires a scope file (-cm_scope) for structured
+// coverage types, and the current VDB was compiled without it.
 // =============================================================================
+//
+// ═══════════════════════════════════════════════════════════════════════════════
+// L2TLB structural waivers (paper-tracked, NOT excluded from URG scoring):
+//   mmu_l2tlb line  1382 : default FSM branch (2-bit FSM 4 states exhaust all)
+//   mmu_l2tlb cond  553  : combo 0 1 1 (req=0 with write=1 impossible)
+//   mmu_l2tlb cond  555  : combo 0 1 1 1 (req=0 with TLBop write impossible)
+//   mmu_l2tlb cond  869  : combo 1 1 0 (final_par_fail = 1'b0 stub at line 865)
+//   mmu_l2tlb cond  870  : combo 1 1 1 0 (same par_fail stub)
+//   mmu_l2tlb cond  872  : combo 0 1 (same par_fail stub)
+//   mmu_l2tlb cond  1167 : combo 1 1 0 1 (same par_fail stub)
+//   mmu_l2tlb cond  1186 : combo 0 1 1 1 (false combinational: vld=0,miss=1)
+//   mmu_l2tlb fsm   pfu_cur_st PFU_CHK->PFU_IDLE (reset-only path, no functional)
+//   mmu_l2tlb branch 1354 : default case (same reason as line 1382)
+// ═══════════════════════════════════════════════════════════════════════════════
+//
 // CHECKSUM: "715530975 445175681"
 // ANNOTATION: "ModuleName: mmu_l1dtlb"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb

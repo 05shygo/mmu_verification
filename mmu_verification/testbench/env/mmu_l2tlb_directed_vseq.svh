@@ -10,12 +10,12 @@ class mmu_l2tlb_pfu_chk_deny_vseq extends l1dtlb_directed_vseq;
     m_va_base  = 39'h10_0000;
   endfunction
 
-  // Drive a PFU (pipe2) request — lsu_mmu_va2 = VA[27:0] (28-bit)
+  // Drive a PFU (pipe2) request — lsu_mmu_va2[26:0] = VPN = VA[38:12]
   protected task raw_pipe2(va_t va);
     raw_idle();
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_va2_vld  <= 1'b1;
-    m_lsu_vif.driver_cb.lsu_mmu_va2      <= va[27:0];  // VA low 28 bits
+    m_lsu_vif.driver_cb.lsu_mmu_va2      <= {1'b0, va[38:12]};  // VPN in bits [26:0]
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
   endtask
@@ -81,7 +81,7 @@ class mmu_l2tlb_pfu_chk_via_clean_entry_vseq extends l1dtlb_directed_vseq;
     raw_idle();
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_va2_vld  <= 1'b1;
-    m_lsu_vif.driver_cb.lsu_mmu_va2      <= va[27:0];
+    m_lsu_vif.driver_cb.lsu_mmu_va2      <= {1'b0, va[38:12]};  // VPN
     @(m_lsu_vif.driver_cb);
     m_lsu_vif.driver_cb.lsu_mmu_va2_vld <= 1'b0;
   endtask

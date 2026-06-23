@@ -302,21 +302,19 @@ assign L2PDE_entry_hit_vld = (|L2PDE_entry_hit_idx[L2PDE_ENTRY_NUM-1:0]);
 
 
 always_comb begin
-	for(int i = 0; i < L1PDE_ENTRY_NUM; i = i + 1) begin
-		if(L1PDE_entry_hit_idx[i])
-			L1PDE_cache_hit_ppn[PPN_WIDTH-1:0] = L1PDE_entry_ppn[i][PPN_WIDTH-1:0];
-		else
-			L1PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
-	end
+	L1PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
+		for(int i = 0; i < L1PDE_ENTRY_NUM; i = i + 1) begin
+			if(L1PDE_entry_hit_idx[i])
+				L1PDE_cache_hit_ppn[PPN_WIDTH-1:0] = L1PDE_entry_ppn[i][PPN_WIDTH-1:0];
+		end
 end
 
 always_comb begin
-	for(int i = 0; i < L2PDE_ENTRY_NUM; i = i + 1) begin
-		if(L2PDE_entry_hit_idx[i])
-			L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = L2PDE_entry_ppn[i][PPN_WIDTH-1:0];
-		else
-			L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
-	end
+	L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
+		for(int i = 0; i < L2PDE_ENTRY_NUM; i = i + 1) begin
+			if(L2PDE_entry_hit_idx[i])
+				L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = L2PDE_entry_ppn[i][PPN_WIDTH-1:0];
+		end
 end
 
 always_comb begin

@@ -60,6 +60,7 @@ module PDE_cache #(
     output logic                  L2PDE_xbar_hit_vld,
     output logic                  L1PDE_xbar_hit_vld,
     output logic [PPN_WIDTH-1:0]  PDE_xbar_ppn,
+	output logic [3:0]            PDE_xbar_l1pmpflg,
     output logic [VPN_WIDTH-1:0]  PDE_xbar_vpn,
     output logic [TYPE_WIDTH-1:0] PDE_xbar_type,
     output logic [ID_WIDTH-1:0]   PDE_xbar_id,
@@ -86,12 +87,14 @@ logic                                      ptw_req                ;
 logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_entry_upd        ;
 logic [L2PDE_ENTRY_NUM-1:0]                L2PDE_entry_upd        ;
 logic [L1PDE_ENTRY_NUM-1:0][PPN_WIDTH-1:0] L1PDE_entry_ppn        ;
+logic [L1PDE_ENTRY_NUM-1:0][3:0]           L1PDE_entry_l1pmpflg   ;
 logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_entry_vld        ;
 logic [L1PDE_ENTRY_NUM-1:0]                L1PDE_entry_hit        ;
 logic [L2PDE_ENTRY_NUM-1:0][PPN_WIDTH-1:0] L2PDE_entry_ppn        ;
 logic [L2PDE_ENTRY_NUM-1:0]                L2PDE_entry_vld        ;
 logic [L2PDE_ENTRY_NUM-1:0]                L2PDE_entry_hit        ;
 logic [PPN_WIDTH-1:0]                      L1PDE_cache_hit_ppn    ;
+logic [3:0]                                L1PDE_cache_hit_l1pmpflg;
 logic [PPN_WIDTH-1:0]                      L2PDE_cache_hit_ppn    ;
 logic [PPN_WIDTH-1:0]                      PDE_cache_fin_ppn      ;
 logic                                      L1PDE_entry_hit_vld    ;
@@ -210,7 +213,8 @@ generate
 
 		.L1PDE_entry_ppn				(L1PDE_entry_ppn[L1PDE_ent] ),
 		.L1PDE_entry_vld				(L1PDE_entry_vld[L1PDE_ent]	),
-		.L1PDE_entry_hit                (L1PDE_entry_hit[L1PDE_ent]	)
+		.L1PDE_entry_hit                (L1PDE_entry_hit[L1PDE_ent]	),
+		.L1PDE_entry_l1pmpflg			(L1PDE_entry_l1pmpflg[L1PDE_ent]	)
 	//	.L1PDE_miss_because_pmp         (L1PDE_miss_because_pmp[L1PDE_ent]	)
 		);
 	end
@@ -310,6 +314,14 @@ always_comb begin
 end
 
 always_comb begin
+	L1PDE_cache_hit_l1pmpflg[3:0] = {4{1'b0}};
+		for(int i = 0; i < L1PDE_ENTRY_NUM; i = i + 1) begin
+			if(L1PDE_entry_hit_idx[i])
+				L1PDE_cache_hit_l1pmpflg[3:0] = L1PDE_entry_l1pmpflg[i][3:0];
+		end
+end
+
+always_comb begin
 	L2PDE_cache_hit_ppn[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
 		for(int i = 0; i < L2PDE_ENTRY_NUM; i = i + 1) begin
 			if(L2PDE_entry_hit_idx[i])
@@ -393,6 +405,7 @@ assign L2PDE_entry_upd[L2PDE_ENTRY_NUM-1:0] = plru_L2PDE_ref_num[L2PDE_ENTRY_NUM
 assign L2PDE_xbar_hit_vld = L2PDE_entry_hit_vld;
 assign L1PDE_xbar_hit_vld = L1PDE_entry_hit_vld & (~L2PDE_entry_hit_vld);
 assign PDE_xbar_ppn[PPN_WIDTH-1:0] = PDE_cache_fin_ppn[PPN_WIDTH-1:0];
+assign PDE_xbar_l1pmpflg[3:0] = L1PDE_cache_hit_l1pmpflg[3:0];
 assign PDE_xbar_vpn[VPN_WIDTH-1:0] = ptw_vpn[VPN_WIDTH-1:0];
 assign PDE_xbar_type[TYPE_WIDTH-1:0] = ptw_type[TYPE_WIDTH-1:0];
 assign PDE_xbar_id[ID_WIDTH-1:0] = ptw_id[ID_WIDTH-1:0];

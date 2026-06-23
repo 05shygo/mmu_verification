@@ -164,6 +164,7 @@ logic [7:0]            mbuf_twu_pmpflg;
 logic                  L2PDE_xbar_hit_vld;
 logic                  L1PDE_xbar_hit_vld;
 logic [PPN_WIDTH-1:0]  PDE_xbar_ppn      ;
+logic [3:0]            PDE_xbar_l1pmpflg ;
 logic [VPN_WIDTH-1:0]  PDE_xbar_vpn      ;
 logic [TYPE_WIDTH-1:0] PDE_xbar_type     ;
 logic [ID_WIDTH-1:0]   PDE_xbar_id       ;
@@ -173,6 +174,7 @@ logic                  twu_cache_stop    ;
 logic                        xbar_twu_req              ;
 logic [PTE_LEVEL-2:0]        xbar_twu_hit_level        ;
 logic [PPN_WIDTH-1:0]        xbar_twu_ppn              ;
+logic [3:0]                  xbar_twu_l1pmpflg         ;
 logic [VPN_WIDTH-1:0]        xbar_twu_vpn              ;
 logic [TYPE_WIDTH-1:0]       xbar_twu_type             ;
 logic [ID_WIDTH-1:0]         xbar_twu_id               ;
@@ -215,7 +217,7 @@ logic [ID_WIDTH-1:0]       mbuf_bus_error_id  ;
 logic                      PDE_cache_acc_err_vld;
 logic [TYPE_WIDTH-1:0]     PDE_cache_acc_err_type;
 logic [ID_WIDTH-1:0]       PDE_cache_acc_err_id;
-logic [PTE_LEVEL-1:0]      twu_data_ready     ;
+logic                      twu_data_ready     ;
 logic                      pgflt_vld          ;
 logic                      acc_err_vld        ;
 logic                      ref_vld            ;
@@ -312,6 +314,7 @@ PDE_cache #(
 .L2PDE_xbar_hit_vld					(L2PDE_xbar_hit_vld	),
 .L1PDE_xbar_hit_vld					(L1PDE_xbar_hit_vld	),
 .PDE_xbar_ppn						(PDE_xbar_ppn		),
+.PDE_xbar_l1pmpflg						(PDE_xbar_l1pmpflg	),
 .PDE_xbar_vpn						(PDE_xbar_vpn		),
 .PDE_xbar_type						(PDE_xbar_type		),
 .PDE_xbar_id						(PDE_xbar_id		),
@@ -353,6 +356,7 @@ one_to_four_xbar #(
 .L2PDE_xbar_hit_vld					(L2PDE_xbar_hit_vld	),
 .L1PDE_xbar_hit_vld					(L1PDE_xbar_hit_vld	),
 .PDE_xbar_ppn						(PDE_xbar_ppn		),
+.PDE_xbar_l1pmpflg					(PDE_xbar_l1pmpflg	),
 .PDE_xbar_vpn						(PDE_xbar_vpn		),
 .PDE_xbar_type						(PDE_xbar_type		),
 .PDE_xbar_id						(PDE_xbar_id		),
@@ -360,6 +364,7 @@ one_to_four_xbar #(
 .xbar_twu_req						(xbar_twu_req		),
 .xbar_twu_hit_level					(xbar_twu_hit_level	),
 .xbar_twu_ppn						(xbar_twu_ppn		),
+.xbar_twu_l1pmpflg                  (xbar_twu_l1pmpflg     ),
 .xbar_twu_vpn						(xbar_twu_vpn		),
 .xbar_twu_type						(xbar_twu_type		),
 .xbar_twu_id						(xbar_twu_id		),
@@ -403,6 +408,7 @@ twu #(
 .xbar_twu_req						(xbar_twu_req					),
 .xbar_twu_hit_level					(xbar_twu_hit_level				),
 .xbar_twu_ppn						(xbar_twu_ppn					),
+.xbar_twu_l1pmpflg                  (xbar_twu_l1pmpflg				),
 .xbar_twu_vpn						(xbar_twu_vpn					),
 .xbar_twu_type						(xbar_twu_type					),
 .xbar_twu_id						(xbar_twu_id					),
@@ -457,10 +463,10 @@ twu #(
                                      
 .twu_mask							(twu_mask						),
 //.twu_idle							(twu_idle[0]					),
-.twu_data_ready                     (twu_data_ready[PTE_LEVEL-1:0]     	),
+.twu_data_ready                     (twu_data_ready     	        ),
 //.mbuf_twu_have                      (mbuf_twu_have[0]           	),
 .acc_err_twu_grant                  (acc_err_grant_sel[0]			),
-.pgflt_twu_grant                    (pgflt_twu_grant  			)
+.pgflt_twu_grant                    (pgflt_twu_grant  			    )
 );
 
 

@@ -477,77 +477,14 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 
 // CHECKSUM: "1868003565 2573401655"
 // ANNOTATION: "ModuleName: twu"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_four
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3307571137 1570758056"
-// ANNOTATION: "ModuleName: mmu_twu_chk_sva"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_four.u_twu_chk_sva
-//
-Toggle cpurst_b "logic cpurst_b"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_four.x_twu_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "1868003565 2573401655"
-// ANNOTATION: "ModuleName: twu"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_one
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 
-// CHECKSUM: "3307571137 1570758056"
-// ANNOTATION: "ModuleName: mmu_twu_chk_sva"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_one.u_twu_chk_sva
-//
-Toggle cpurst_b "logic cpurst_b"
-
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_one.x_twu_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "1868003565 2573401655"
-// ANNOTATION: "ModuleName: twu"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_three
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3307571137 1570758056"
-// ANNOTATION: "ModuleName: mmu_twu_chk_sva"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_three.u_twu_chk_sva
-//
-Toggle cpurst_b "logic cpurst_b"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_three.x_twu_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "1868003565 2573401655"
-// ANNOTATION: "ModuleName: twu"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_two
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3307571137 1570758056"
-// ANNOTATION: "ModuleName: mmu_twu_chk_sva"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_two.u_twu_chk_sva
-//
-Toggle cpurst_b "logic cpurst_b"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_two.x_twu_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
 
@@ -587,84 +524,6 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[0].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[10].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[10].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[11].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[11].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[12].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[12].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[13].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[13].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[14].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[14].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[15].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[15].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
 
@@ -759,31 +618,6 @@ INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[7].u_L1PDE_cache.x_L
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
 
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[8].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[8].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
-
-// CHECKSUM: "3053222257 1686454934"
-// ANNOTATION: "ModuleName: L1PDE_cache"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[9].u_L1PDE_cache
-//
-Toggle cpurst_b "logic cpurst_b"
-Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
-
-// CHECKSUM: "3180432209 4157145974"
-// ANNOTATION: "ModuleName: gated_clk_cell"
-INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[9].u_L1PDE_cache.x_L1PDE_entry_gateclk
-//
-Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
 
 // CHECKSUM: "2866780506 3854493644"
 // ANNOTATION: "ModuleName: pplru"

@@ -5,7 +5,7 @@
         lsu__abort0/1 的本质：LSU 在同一拍仍然把 VA/ID 发给 MMU，但告诉 MMU“这次 AG 请求不要产生有状态后果”。它主要防止一个已经要 stall、restart、异常或 flush 的 load/store 去触发 DTLB miss/refill、匹配旧 refill 异常，或把错误异常算到这条指令上。
             lsu__abort0/1为1时，这个请求不会进入miss buffer（不启动refill流程），也不会触发异常信号的上报（不释放异常阵列的entry）
     mmu回给lsu的weakup信号和busy信号
-        weakup：当l1dtlb要进行回填时（把页面的数据写入tlb entry中）或lsu发来的请求在异常阵列中hit时，拉高weakup信号
+        weakup：当l1dtlb要进行回填时（把页面的数据写入tlb entry中）或miss buffer中有任意entry处于page fault或access fault状态时，拉高weakup信号
         busy:当l1dtlb的miss buffer任意miss buffer entry valid时，拉高。意味着只要有miss正在refill，busy信号就拉高
     
     

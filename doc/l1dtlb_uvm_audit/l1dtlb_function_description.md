@@ -8,7 +8,7 @@
         lsu__abort0/1 的本质：LSU 在同一拍仍然把 VA/ID 发给 MMU，但告诉 MMU“这次 AG 请求不要产生有状态后果”。它主要防止一个已经要 stall、restart、异常或 flush 的 load/store 去触发 DTLB miss/refill、匹配旧 refill 异常，或把错误异常算到这条指令上。
             lsu__abort0/1为1时，这个请求不会进入miss buffer（不启动refill流程），也不会触发异常信号的上报（不释放异常阵列的entry）
 ### 1.2 LSU Wakeup and Busy Signals
-        weakup：当l1dtlb要进行回填时（把页面的数据写入tlb entry中）或lsu发来的请求在异常阵列中hit时，拉高weakup信号
+        weakup：当l1dtlb要进行回填时（把页面的数据写入tlb entry中）或miss buffer中有任意entry处于page fault或access fault状态时，拉高weakup信号（广播12'hfff）
         busy:当l1dtlb的miss buffer任意miss buffer entry valid时，拉高。意味着只要有miss正在refill，busy信号就拉高
     
     
@@ -638,7 +638,7 @@
         | L1DTLB-AUD-007 | 双pipe不同4K page miss但只剩一个free MB | 1.3, Q-L1DTLB-005, Q-L1DTLB-024 | 仅一个MB entry空闲，两个pipe miss不同VPN，IID年龄含wrap边界 | older IID赢得allocation，younger request不分配 | F2.16, TC-GAP-DTLB-003 | N/A | allocated entry IID/VPN和未分配pipe的drop/no-response行为 | add | missing_test | 新增directed test | 现有random没有强制old-vs-young或IID wrap边界。 |
         | L1DTLB-AUD-008 | MB full drop/retry | 1.3, Q-L1DTLB-037, Q-L1DTLB-080 | 8个MB entry全valid，新TLB/expt-CAM miss到达 | 不分配新MB entry，LSU依靠busy/wakeup/replay协议重试 | F2.3, DTLB_MB_001, DTLB_MB_002, TC-GAP-DTLB-003 | mmu_ptw_thrash_vseq | MB full=8 bin、无allocation、LSU drop/retry观察 | modify | weak_check | 修改coverage和directed stimulus | 当前whitebox cg_l1dtlb没有MB full=8 bin，需要精确full场景和coverage。 |
         | L1DTLB-AUD-009 | mmu_lsu_tlb_busy语义 | 1.2, Q-L1DTLB-012, Q-L1DTLB-013 | 任意MB entry valid，包括occupancy=1 | mmu_lsu_tlb_busy拉高；它不是MB full指示，也不全局阻止LSU发请求 | Row 15, F2.18, PTW-031, TC-GAP-DTLB-007 | 未看到独立l1dtlb wrapper，plan中有mb_full seq描述 | cross tlb_busy和MB occupancy 1..8以及LSU request | modify | wrong_expected | 修改plan/test intent | 将“busy只在full时拉高”或“mb_full seq”类期望改为“任意MB valid即busy”，新增DTLB_BUSY_ANY_INFLIGHT_001。 |
-        | L1DTLB-AUD-010 | wakeup broadcast语义 | 1.2, Q-L1DTLB-010, Q-L1DTLB-011 | TLB install或exception array replay completion发生 | mmu_lsu_tlb_wakeup[11:0]为broadcast，只有12'hfff或12'h000，不是per pipe、per IID或per entry | Row 15, F2.17, F4.23, TC-GAP-DTLB-006 | 未看到已实现L1DTLB wrapper | LSU monitor采样tlb_wakeup；top probe观察install/expt事件 | add | missing_test | 新增directed test | 分别增加install-wakeup和expt-wakeup测试，不检查onehot/per-entry语义。 |
+        | L1DTLB-AUD-010 | wakeup语义（v2: l1dtlb_function_description.txt line 8） | 1.2, Q-L1DTLB-010, Q-L1DTLB-011 | refill/install 正在执行，或 MB 中有任意 entry 处于 pgflt/acflt 状态 | mmu_lsu_tlb_wakeup[11:0]为broadcast全0/全1；拉高条件：refill写入TLB entry OR MB有pgflt/acflt entry（l1dtlb_function_description.txt line 8） | Row 15, F2.17, F4.23, TC-GAP-DTLB-006 | No implemented L1DTLB wrapper | LSU monitor采样tlb_wakeup；top probe观察install/expt/mb_fault事件 | add | missing_test | 新增directed test | 需验证 install-wakeup / expt-wakeup / mb_fault-wakeup 三类场景。scoreboard phase6f 已增加 mb_fault_src。 |
         | L1DTLB-AUD-011 | abort hit response允许返回 | 1.1, Q-L1DTLB-003, Q-L1DTLB-004 | va_vld=1、abort=1且TLB hit | DTLB可以仍返回T0 PA/attr，LSU自行丢弃；abort不等价于所有输出清零 | DTLB_ABORT_001 | lsu_abort_seq | 观察hit+abort response，而不仅是无污染 | split | weak_check | 拆分测试点 | abort测试应拆为hit+abort、miss+abort、expt+abort三类独立期望。 |
         | L1DTLB-AUD-012 | abort miss不分配、不refill | 1.1, Q-L1DTLB-004 | abort=1且该请求本来会miss | 不分配MB，不发L2 request，不进入stateful refill flow | DTLB_ABORT_001, TC-BUG-WFG-ABT-001 | lsu_abort_seq | MB valid delta和L2 request probe | modify | weak_check | 修改stimulus/check | 现有sequence会驱动abort，但不保证miss/no-allocation被观测。 |
         | L1DTLB-AUD-013 | abort不消费exception array | 1.1, Q-L1DTLB-004 | aborted request命中pending expt-CAM entry | 不向该aborted request报告page/access fault，expt entry不因abort释放 | DTLB_ABORT_001, v7.4 expt lifecycle plan | 无directed wrapper | expt-CAM write/match/clear probe和LSU fault signal | add | missing_test | 新增directed test | 这是独立abort语义，不应隐藏在普通abort smoke中。 |
@@ -817,7 +817,7 @@
         | L1DTLB_SVA_A014 | assert | Q008, Q018, AUD-015, AUD-026, AUD-062 | top/expt | page_fault和access_fault输出均为1-cycle pulse；exception array page fault replay为T0 pulse，exception array access fault replay为下一拍T1 pulse。 |
         | L1DTLB_SVA_A015 | assert | Q009, Q016, AUD-015, AUD-046, AUD-048 | hit_rd/top | 同一条请求page fault和access fault互斥；page fault优先于PMP access fault。允许同一pipe同一cycle裸信号page_fault和access_fault同时为1，但必须分别归属当前T0请求和上一拍T1请求。 |
         | L1DTLB_SVA_A016 | assert | Q010, Q011, AUD-010 | install/expt/top | `mmu_lsu_tlb_wakeup[11:0]`只能为12'h000或12'hfff，不得产生per-entry/per-pipe onehot形态。 |
-        | L1DTLB_SVA_A017 | assert | Q010, Q011, AUD-010 | install/expt/top | wakeup触发源限于TLB install完成/将写入可见，或LSU replay命中exception array并消费fault；MB CAM hit、MB full drop、RTU flush、ABT late refill drain不得单独产生wakeup。 |
+        | L1DTLB_SVA_A017 | assert | Q010, Q011, AUD-010 | install/expt/top | wakeup触发源：TLB install完成/将写入可见、LSU replay命中exception array并消费fault、或MB中有entry处于pgflt/acflt状态（l1dtlb_function_description.txt line 8）；MB CAM hit、MB full drop、RTU flush、ABT late refill drain不得单独产生wakeup。 |
         | L1DTLB_SVA_A018 | assert | Q012, Q013, AUD-009 | top | `mmu_lsu_tlb_busy == (|mb_entry_vld)`，busy不是VA ready反压信号；busy=1时TLB hit/direct-map请求仍应正常返回。 |
         | L1DTLB_SVA_A019 | assert | Q014, Q015 | hit_rd/top | TLB hit且无page fault时，pa_vld/PA/attr在T0返回，不等待PMP结果；PMP access fault只可在下一拍按token返回。 |
         | L1DTLB_SVA_A020 | assert | Q014, Q036 | allocator/top | T0 TLB miss且exception miss的请求，在T1才参与MB CAM和allocation；不得在T0组合分配MB。 |
@@ -883,7 +883,7 @@
         | L1DTLB_SVA_C005 | Q027, Q082, AUD-006 | 双pipe同拍miss、不同4K、至少两个free entry，分配两个最低free entry。 |
         | L1DTLB_SVA_C006 | Q024, Q005, Q082, AUD-007 | 双pipe同拍miss、不同4K、仅一个free entry，分别覆盖pipe0更老和pipe1更老两种IID年龄结果。 |
         | L1DTLB_SVA_C007 | Q037, Q082, AUD-008 | MB full时新miss drop/不分配，busy为1，后续由wakeup后replay。 |
-        | L1DTLB_SVA_C008 | Q010-Q013, AUD-009, AUD-010 | busy=1期间发生hit-under-miss；install触发wakeup广播；exception replay触发wakeup广播。 |
+        | L1DTLB_SVA_C008 | Q010-Q013, AUD-009, AUD-010 | busy=1期间发生hit-under-miss；install触发wakeup广播；exception replay触发wakeup广播；MB pgflt/acflt状态维持wakeup。 |
         | L1DTLB_SVA_C009 | Q003, Q004, AUD-011, AUD-012, AUD-013 | abort+hit、abort+miss、abort+exception-hit三类场景都被采到。 |
         | L1DTLB_SVA_C010 | Q031, AUD-016, AUD-017, AUD-018 | load R=0、load MXR读X-only、store W=0、store D=0、A=0、U/S/SUM权限组合均被采到。 |
         | L1DTLB_SVA_C011 | Q033, AUD-041 | regs_mmu_en=0 direct map、effective M-mode direct map、MPRV导致非M effective mode走正常DTLB三类场景。 |
@@ -937,7 +937,7 @@
         | L1DTLB_TS_CTRL_ABORT_EXPT_HIT | AUD-013 | abort不消费exception array | aborted request命中pending exception array entry | 不向该aborted request报告fault；不释放expt entry和对应MB entry | `test_mmu_l1dtlb_dtlb_abort_001` with expt-hit directed extension | expt-CAM match被观察但clear/MB release不发生，后续非abort replay仍可消费 |
         | L1DTLB_TS_CTRL_VABUF_NO_EFFECT | AUD-014 | vabuf无功能影响 | 相同VA/IID/type/mode/TLB状态下只改变vabuf | PA、fault、attribute、MB allocation和L2 request行为不变 | add low-priority directed/random cover in L1DTLB wrapper | monitor采样vabuf变化，scoreboard比较输出等价 |
         | L1DTLB_TS_CTRL_BUSY_ANY_INFLIGHT | AUD-009 | busy为任意MB valid | MB occupancy为1到满的各个状态，包括hit-under-miss期间 | `mmu_lsu_tlb_busy`在任意MB entry valid时为1；busy不是MB full，也不阻止hit/direct-map请求 | `test_mmu_l1dtlb_dtlb_busy_any_inflight_001`, `test_mmu_l1dtlb_dtlb_busy_restart_mode_001` | cross busy与MB occupancy 1..8，采样busy=1期间hit成功 |
-        | L1DTLB_TS_CTRL_WAKEUP_INSTALL | AUD-010 | install触发wakeup广播 | 正常refill/install写入TLB entry | `mmu_lsu_tlb_wakeup[11:0]`只允许12'hfff或12'h000，作为广播提示，不携带pipe/IID/entry语义 | `test_mmu_l1dtlb_dtlb_wakeup_complete_bcast_001` | install事件与wakeup事件级匹配，wakeup形态为全0/全1 |
+        | L1DTLB_TS_CTRL_WAKEUP_INSTALL | AUD-010 | install/refill 或 MB fault 状态触发wakeup广播 | 正常refill/install写入TLB entry，或MB有entry处于pgflt/acflt状态（l1dtlb_function_description.txt line 8） | `mmu_lsu_tlb_wakeup[11:0]`只允许12'hfff或12'h000，作为广播提示 | `test_mmu_l1dtlb_dtlb_wakeup_complete_bcast_001` | install/MB-fault事件与wakeup事件级匹配，wakeup形态为全0/全1 |
         | L1DTLB_TS_CTRL_WAKEUP_EXPT | AUD-010 | exception replay触发wakeup广播 | LSU replay命中exception array并消费page/access fault | fault replay完成时发出广播wakeup；MB CAM hit、MB full drop、RTU flush、ABT late refill不单独触发wakeup | `test_mmu_l1dtlb_dtlb_wakeup_expt_001`, `test_mmu_l1dtlb_dtlb_wakeup_multi_retry_001` | expt clear/MB release与wakeup关联，negative source不触发wakeup |
         | L1DTLB_TS_CTRL_RESET_STATE | AUD-042, AUD-054 | reset初始状态 | reset assert/deassert后第一个可检查周期 | TLB valid全0、MB IDLE/invalid、exception invalid、sent清0、busy/wakeup/fault/pa_vld无毛刺，credit为初始最大值 | `test_mmu_l1dtlb_dtlb_reset_state_001` | reset state probe、external outputs和scheduler credit一致 |
 
@@ -1160,7 +1160,7 @@
 
         Busy/wakeup检查：
             busy逐拍等于任意MB entry valid。busy不是LSU VA请求ready，busy=1时hit-under-miss仍需正常返回hit响应。
-            wakeup是12-bit广播提示，只允许全0或全1。触发源只包括TLB install和exception array hit/replay完成；MB CAM hit、MB full本身、RTU flush drain、ABT late refill不应产生wakeup。
+            wakeup是12-bit广播提示，只允许全0或全1。触发源包括：TLB install、exception array hit/replay完成、以及MB中有entry处于pgflt/acflt状态（l1dtlb_function_description.txt line 8）；MB CAM hit、MB full本身、RTU flush drain、ABT late refill不应产生wakeup。
             wakeup不携带pipe或IID，不得作为某条请求完成信号逐请求匹配；只能作为事件级提示，并结合后续LSU replay观察生命周期闭环。
 
         MB/exception/install检查：

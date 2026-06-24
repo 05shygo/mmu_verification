@@ -2623,16 +2623,33 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     m_phase6f_credit_shadow = exp_next;
   endfunction
 
+  // ===========================================================================
+  // phase6f_check_wakeup_matrix
+  //
+  // Wakeup semantics (per l1dtlb_function_description.txt §1 line 8):
+  //   mmu_lsu_tlb_wakeup[11:0] 拉高（广播 12'hfff）当：
+  //     (a) l1dtlb 正在回填（refill/install，写入 TLB entry），或
+  //     (b) miss buffer 中有任意 entry 处于 page fault 或 access fault 状态
+  //
+  // wakeup 始终是全 0 或全 1 广播（RTL 实现：mb_have_free=1 时全 1）。
+  // 合法 wakeup 源分类：
+  //   install_src  — 回填/install 正在进行
+  //   expt_src     — expt-CAM 有 hit/replay
+  //   mb_fault_src — MB 中有 entry 处于 pgflt/acflt 状态（新增，line 8）
+  // ===========================================================================
   protected function void phase6f_check_wakeup_matrix();
     bit wake;
     bit install_src;
     bit expt_src;
+    bit mb_fault_src;
+    bit any_legal_src;
     bit neg_context;
 
     if ($isunknown({lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup,
                     v_probe.mon_cb.l1d_refill_vld,
                     v_probe.mon_cb.l1d_expt_hit_vec,
                     v_probe.mon_cb.l1d_expt_wakeup,
+                    v_probe.mon_cb.l1d_mb_state,
                     v_probe.mon_cb.rtu_yy_xx_flush,
                     v_probe.mon_cb.tlboper_utlb_clr,
                     v_probe.mon_cb.tlboper_utlb_inv_va_req}))
@@ -2645,16 +2662,29 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
                || v_probe.mon_cb.l1d_install_sel_wfi;
     expt_src = (v_probe.mon_cb.l1d_expt_hit_vec != 8'h00)
             || (v_probe.mon_cb.l1d_expt_wakeup == 12'hfff);
+    // 新增（l1dtlb_function_description.txt line 8）:
+    // MB 中有任意 entry 处于 page fault 或 access fault 状态时也是合法 wakeup 源
+    mb_fault_src = 1'b0;
+    for (int unsigned i = 0; i < 8; i++) begin
+      if (v_probe.mon_cb.l1d_mb_vld[i] &&
+          (v_probe.mon_cb.l1d_mb_state[i] == MB_STATE_PGFLT ||
+           v_probe.mon_cb.l1d_mb_state[i] == MB_STATE_ACFLT))
+        mb_fault_src = 1'b1;
+    end
+
+    any_legal_src = install_src || expt_src || mb_fault_src;
 
     if (wake) begin
       if (install_src)
         m_phase6f_wakeup_install++;
       if (expt_src)
         m_phase6f_wakeup_expt++;
-      if (!install_src && !expt_src)
+      if (!any_legal_src)
         sb_error("P6F_WAKEUP_SOURCE",
-          $sformatf("wakeup=0x%03h has no install/expt source refill=%0b expt_hit=0x%02h flush=%0b inv=%0b",
-            lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup, v_probe.mon_cb.l1d_refill_vld,
+          $sformatf("wakeup=0x%03h has no legal source (install=%0b expt=%0b mb_fault=%0b) refill=%0b expt_hit=0x%02h flush=%0b inv=%0b",
+            lsu_vif.monitor_cb.mmu_lsu_tlb_wakeup,
+            install_src, expt_src, mb_fault_src,
+            v_probe.mon_cb.l1d_refill_vld,
             v_probe.mon_cb.l1d_expt_hit_vec, v_probe.mon_cb.rtu_yy_xx_flush,
             inv_req_seen()));
     end
@@ -2668,7 +2698,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
                || (v_probe.mon_cb.l1d_l2_ref_cmplt
                 && (v_probe.mon_cb.l1d_l2_ref_eid < MB_DEPTH)
                 && (v_probe.mon_cb.l1d_mb_state[v_probe.mon_cb.l1d_l2_ref_eid] == MB_STATE_ABT));
-    if (neg_context && !install_src && !expt_src) begin
+    if (neg_context && !any_legal_src) begin
       m_phase6f_wakeup_negative_checks++;
       if (v_probe.mon_cb.rtu_yy_xx_flush)
         m_phase6f_wakeup_flush_negative++;
@@ -4285,7 +4315,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6d_no_rsp_no_wakeup, m_phase6d_side_effect_matrix_checks),
       UVM_LOW)
     `uvm_info({get_type_name(), "::PHASE6E_REFILL_INSTALL"},
-      $sformatf("status=implemented refill_oracle=%0d ptw=%0d l2=%0d wfi=%0d normal_bind=%0d install_onehot=%0d install_priority=%0d wfi_lowest=%0d wfi_data_hold=%0d install_visible_next=%0d mb_release_expect=%0d mb_release_check=%0d stale_no_sidefx=%0d abt_late_refill=%0d fault_no_tlb_write=%0d policy='normal refill binds WFC MB; install priority WFI>PTW>L2; WFI payload held from MB; stale/ABT completion has no TLB/expt/wakeup side effect'",
+      $sformatf("status=implemented refill_oracle=%0d ptw=%0d l2=%0d wfi=%0d normal_bind=%0d install_onehot=%0d install_priority=%0d wfi_lowest=%0d wfi_data_hold=%0d install_visible_next=%0d mb_release_expect=%0d mb_release_check=%0d stale_no_sidefx=%0d abt_late_refill=%0d fault_no_tlb_write=%0d policy='normal refill binds WFC MB; install priority WFI>PTW>L2; WFI payload held from MB; stale/ABT late-refill completion has no TLB install side effect (wakeup from MB fault state is legal per l1dtlb_function_description.txt line 8)'",
         m_phase6e_refill_oracle_checks, m_phase6e_refill_ptw,
         m_phase6e_refill_l2, m_phase6e_refill_wfi,
         m_phase6e_normal_refill_bind, m_phase6e_install_onehot_checks,
@@ -4318,7 +4348,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
         m_phase6f_credit_store_req),
       UVM_LOW)
     `uvm_info({get_type_name(), "::PHASE6F_WAKEUP_MATRIX"},
-      $sformatf("status=implemented install=%0d expt=%0d negative_checks=%0d reset_neg=%0d flush_neg=%0d inv_neg=%0d abt_neg=%0d policy='broadcast wakeup must be sourced by install or expt replay; reset/flush/invalidate/ABT stale controls are negative-source contexts unless an explicit install/expt source is present'",
+      $sformatf("status=implemented install=%0d expt=%0d negative_checks=%0d reset_neg=%0d flush_neg=%0d inv_neg=%0d abt_neg=%0d policy='broadcast wakeup sourced by install, expt replay, or MB fault state (pgflt/acflt per l1dtlb_function_description.txt line 8); reset/flush/invalidate/ABT stale controls are negative-source contexts unless a legal source is present'",
         m_phase6f_wakeup_install, m_phase6f_wakeup_expt,
         m_phase6f_wakeup_negative_checks, m_phase6f_wakeup_reset_negative,
         m_phase6f_wakeup_flush_negative, m_phase6f_wakeup_inv_negative,

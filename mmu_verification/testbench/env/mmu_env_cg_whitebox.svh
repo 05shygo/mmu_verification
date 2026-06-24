@@ -83,6 +83,31 @@ class mmu_env_cg_whitebox extends uvm_component;
   bit          wb_tlbop_tlbiall;
   int unsigned wb_sample_cycles;
 
+  // Phase 1: Permission fault and exception-CAM variables (AUD-016~018, 026~029)
+  bit          wb_lsu_p0_pa_vld;
+  bit          wb_lsu_p1_pa_vld;
+  logic [1:0]  wb_dtlb_p0_perm_fault_kind;
+  logic [1:0]  wb_dtlb_p1_perm_fault_kind;
+  logic [1:0]  wb_dtlb_expt_wr_src;
+  logic [1:0]  wb_dtlb_expt_wr_type;
+  logic [1:0]  wb_dtlb_expt_match_kind;
+  int unsigned wb_dtlb_expt_hit_cnt;
+
+  // Phase 2: Invalidate variables (AUD-034~038)
+  logic [2:0]  wb_dtlb_inv_kind;        // 3'b001=INV_ALL, 3'b010=INV_VA, 3'b100=INV_ASID
+  logic [1:0]  wb_dtlb_inv_race;        // 2'b00=无竞争, 2'b01=hit同拍, 2'b10=install同拍, 2'b11=双重竞争
+
+  // Phase 4: Install arbitration and wakeup variables (AUD-009/010/024)
+  logic [1:0]  wb_dtlb_install_arb_sel;     // 2'd1=PTW, 2'd2=L2, 2'd3=WFI
+  bit          wb_dtlb_install_arb_conflict; // ≥2 install_req simultaneously = 1
+  bit          wb_dtlb_wakeup_active;        // l1d_expt_wakeup != 0
+
+  // Phase 5: TLBOP operation type classification (TP_034~044)
+  //   Inferred from TLBOP FSM states at tlbop_l2_tlboper_cmplt (or tlboper_ptw_abort)
+  //   Encoding: 4'd1=TLBP, 4'd2=TLBR, 4'd3=TLBWI, 4'd4=TLBWR,
+  //             4'd5=INVVA_ALL, 4'd6=INVASID, 4'd7=INVVA_ASID, 4'd8=INVALL, 4'd9=ABORT
+  logic [3:0]  wb_tlboper_op_type;
+
   // --- §10.2: cg_ptw_walk ----------------------------------------------------
   covergroup cg_ptw_walk;
     option.per_instance = 1;
@@ -105,6 +130,157 @@ class mmu_env_cg_whitebox extends uvm_component;
       ignore_bins reserved = {3'b011, 3'b101, 3'b110, 3'b111};
     }
     cx_bw: cross cp_bank, cp_way;
+  endgroup
+
+  // --- cg_l2tlb_arbiter (Phase 5: TP_009~011) --------------------------------
+  covergroup cg_l2tlb_arbiter;
+    option.per_instance = 1;
+    // ── TP_009: Read vs Write ─────────────────────────────────────────────
+    cp_arb_req_type: coverpoint v_probe.l2_arb_write iff (v_probe.l2_arb_req) {
+      bins read  = {0};
+      bins write = {1};
+    }
+    // ── TP_010: Access type (l2_arb_acc_type 3-bit encoding) ──────────────
+    //   3'b010 = load      (DTLB load)
+    //   3'b110 = store     (DTLB store)
+    //   3'b011 = fetch     (ITLB instruction fetch)
+    //   3'b100 = prefetch  (PFU prefetch)
+    //   3'b001 = tlbop     (TLB operation: TLBP/TLBR/TLBWI/TLBWR/INV*)
+    //   3'b101 = ptw_refill (PTW page table walk refill write-back)
+    //   3'b000, 3'b111 = other / reserved
+    cp_arb_acc_type: coverpoint v_probe.l2_arb_acc_type iff (v_probe.l2_arb_req) {
+      bins load       = {3'b010};
+      bins store      = {3'b110};
+      bins fetch      = {3'b011};
+      bins prefetch   = {3'b100};
+      bins tlbop      = {3'b001};
+      bins ptw_refill = {3'b101};
+      bins other      = default;
+    }
+    // ── TP_011: Bank selection count ──────────────────────────────────────
+    //   l2_arb_bank_sel is 8-bit onehot; $countones gives number of banks selected
+    cp_arb_bank_sel_cnt: coverpoint $countones(v_probe.l2_arb_bank_sel) iff (v_probe.l2_arb_req) {
+      bins one   = {1};
+      bins two   = {2};
+      bins four  = {4};
+      bins eight = {8};
+      illegal_bins invalid = {0, 3, [5:7]};  // 8-bit onehot only allows power-of-two counts
+    }
+    // ── Stall detection ───────────────────────────────────────────────────
+    //   NOTE: l2_arb_req and arb_l2tlb_req map to the same wire in current RTL
+    //   (both = u_dut.arb_l2tlb_req).  The stalled bin (2'b10) may not be hit
+    //   unless the probe mapping is split in a future revision.
+    cp_arb_stall: coverpoint {v_probe.l2_arb_req, v_probe.arb_l2tlb_req}
+                  iff (v_probe.l2_arb_req) {
+      bins normal_flow = {2'b11};  // req + grant same cycle
+      bins stalled     = {2'b10};  // req high but grant low (reserved for future probe split)
+    }
+    // ── Request source ────────────────────────────────────────────────────
+    //   Inferred from per-source active signals:
+    //     2'd1 = reqq       (l2_reqq_issue_valid)
+    //     2'd2 = pfu        (l2_pfu_req_vld)
+    //     2'd3 = ptw_refill (ptw_arb_req)
+    //     2'd4 = tlbop      (tlbop_arb_req)
+    cp_arb_source: coverpoint {
+      v_probe.l2_reqq_issue_valid ? 2'd1 :
+      v_probe.l2_pfu_req_vld      ? 2'd2 :
+      v_probe.ptw_arb_req         ? 2'd3 :
+      v_probe.tlbop_arb_req       ? 2'd4 : 2'd0
+    } iff (v_probe.l2_arb_req) {
+      bins reqq       = {2'd1};
+      bins pfu        = {2'd2};
+      bins ptw_refill = {2'd3};
+      bins tlbop      = {2'd4};
+    }
+    // ── TP_011 cross: source × acc_type ───────────────────────────────────
+    cx_arb_src_type: cross cp_arb_source, cp_arb_acc_type;
+  endgroup
+
+  // --- cg_l2tlb_lookup (Phase 3: TP_012~016) --------------------------------
+  covergroup cg_l2tlb_lookup;
+    option.per_instance = 1;
+    cp_lookup_result: coverpoint {v_probe.l2_final_vld, v_probe.l2_final_tlb_hit} iff (1'b1) {
+      bins idle = {2'b00, 2'b01};
+      bins hit  = {2'b11};
+      bins miss = {2'b10};
+    }
+    cp_lookup_pgs: coverpoint v_probe.l2_raw_pre_pgs0
+                   iff (v_probe.l2_final_vld && v_probe.l2_final_tlb_hit) {
+      bins pgs_4k = {3'b001};
+      bins pgs_2m = {3'b010};
+      bins pgs_1g = {3'b100};
+      ignore_bins reserved = {3'b000, 3'b011, 3'b101, 3'b110, 3'b111};
+    }
+    // Source encoding: {l2_final_is_dtlb, acc_type == 3'b100 (prefetch)}
+    //   2'b00: ITLB  (!is_dtlb, !is_pfu)
+    //   2'b10: DTLB  ( is_dtlb, !is_pfu)
+    //   2'b01,11: PFU  (is_pfu, regardless of is_dtlb)
+    cp_lookup_source: coverpoint {v_probe.l2_final_is_dtlb,
+                                   (v_probe.l2_final_acc_type == 3'b100)}
+                      iff (v_probe.l2_final_vld) {
+      bins itlb = {2'b00};
+      bins dtlb = {2'b10};
+      bins pfu  = {2'b01, 2'b11};
+    }
+    cp_lookup_acc_type: coverpoint v_probe.l2_final_acc_type iff (v_probe.l2_final_vld) {
+      bins load     = {3'b010};
+      bins store    = {3'b110};
+      bins fetch    = {3'b011};
+      bins prefetch = {3'b100};
+      bins other    = default;
+    }
+    cp_lookup_way_hit_cnt: coverpoint $countones(v_probe.l2_final_way_hit)
+                           iff (v_probe.l2_final_vld && v_probe.l2_final_tlb_hit) {
+      bins single    = {1};
+      bins multi_hit = {[2:8]};
+    }
+    cx_lookup_src_res: cross cp_lookup_source, cp_lookup_result;
+    cx_lookup_pgs_src: cross cp_lookup_pgs, cp_lookup_source;
+  endgroup
+
+  // --- cg_l2tlb_pfu (Phase 3: TP_028~033) -----------------------------------
+  covergroup cg_l2tlb_pfu;
+    option.per_instance = 1;
+    // PFU fault kind encoding (priority: deny > acc_fault > flag_fault > pass)
+    cp_pfu_fault_kind: coverpoint {
+      v_probe.pfu_l2tlb_deny       ? 3'd3 :
+      v_probe.pfu_l2tlb_acc_fault  ? 3'd2 :
+      v_probe.pfu_l2tlb_flag_fault ? 3'd1 : 3'd0
+    } iff (v_probe.l2_pfu_rsp_vld) {
+      bins pass       = {3'd0};
+      bins flag_fault = {3'd1};
+      bins acc_fault  = {3'd2};
+      bins deny       = {3'd3};
+    }
+  endgroup
+
+  // --- cg_l2tlb_ptw_if (Phase 3: TP_023~027) --------------------------------
+  covergroup cg_l2tlb_ptw_if;
+    option.per_instance = 1;
+    cp_ptw_req: coverpoint v_probe.l2tlb_ptw_req iff (1'b1) {
+      bins not_issued = {0};
+      bins issued     = {1};
+    }
+    // l2tlb_ptw_type: 3'b011=fetch(ITLB), 3'b010=load(DTLB), 3'b110=store(DTLB), 3'b100=prefetch(PFU)
+    cp_ptw_req_type: coverpoint v_probe.l2tlb_ptw_type iff (v_probe.l2tlb_ptw_req) {
+      bins itlb = {3'b011};
+      bins dtlb = {3'b010, 3'b110};
+      bins pfu  = {3'b100};
+      ignore_bins others = default;
+    }
+    // Completion type: cmplt=1 + data_vld=1 → data_valid
+    //                 cmplt=1 + pgflt=1   → page_fault
+    //                 cmplt=1 + acc_err=1 → access_err
+    cp_ptw_cmplt_type: coverpoint {
+      v_probe.ptw_l2tlb_cmplt && v_probe.ptw_l2tlb_ref_data_vld ? 2'd1 :
+      v_probe.ptw_l2tlb_cmplt && v_probe.ptw_l2tlb_ref_pgflt   ? 2'd2 :
+      v_probe.ptw_l2tlb_cmplt && v_probe.ptw_l2tlb_ref_acc_err  ? 2'd3 : 2'd0
+    } iff (v_probe.ptw_l2tlb_cmplt) {
+      bins data_valid = {2'd1};
+      bins page_fault = {2'd2};
+      bins access_err = {2'd3};
+      illegal_bins illegal_idle = {2'd0};
+    }
   endgroup
 
   // --- cg_l1itlb ------------------------------------------------------------
@@ -201,6 +377,77 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins mid = {[4:7]};
       bins full = {8};
     }
+    // ── Phase 1: Permission fault (AUD-016/017/018) ──────────────────────
+    cp_perm_fault_p0: coverpoint wb_dtlb_p0_perm_fault_kind iff (wb_lsu_p0_pa_vld) {
+      bins none    = {2'b00};
+      bins pgflt   = {2'b01};
+      bins acflt   = {2'b10};
+      bins both    = {2'b11};
+    }
+    cp_perm_fault_p1: coverpoint wb_dtlb_p1_perm_fault_kind iff (wb_lsu_p1_pa_vld) {
+      bins none    = {2'b00};
+      bins pgflt   = {2'b01};
+      bins acflt   = {2'b10};
+      bins both    = {2'b11};
+    }
+    // ── Phase 1: Exception-CAM write source (AUD-026) ────────────────────
+    cp_expt_wr_src: coverpoint wb_dtlb_expt_wr_src iff (wb_dtlb_expt_wr_src != 2'd0) {
+      bins single_p0 = {2'd1};
+      bins single_p1 = {2'd2};
+      bins dual      = {2'd3};
+    }
+    // ── Phase 1: Exception-CAM write type (AUD-027) ──────────────────────
+    cp_expt_wr_type: coverpoint wb_dtlb_expt_wr_type iff (wb_dtlb_expt_wr_type != 2'd0) {
+      bins pgflt     = {2'd1};
+      bins acflt     = {2'd2};
+      bins dual_fault = {2'd3};
+    }
+    // ── Phase 1: Exception-CAM match kind (AUD-028) ──────────────────────
+    cp_expt_match: coverpoint wb_dtlb_expt_match_kind iff (wb_dtlb_expt_match_kind != 2'd0) {
+      bins p0_match = {2'd1};
+      bins p1_match = {2'd2};
+      bins dual_match = {2'd3};
+    }
+    // ── Phase 1: Exception-CAM hit count (AUD-029) ───────────────────────
+    cp_expt_hit_cnt: coverpoint wb_dtlb_expt_hit_cnt iff (1'b1) {
+      bins zero  = {0};
+      bins one   = {1};
+      bins multi = {[2:8]};
+    }
+    // ── Phase 2: Invalidate type (AUD-034/035/036) ──────────────────────
+    cp_inv_type: coverpoint wb_dtlb_inv_kind iff (wb_dtlb_inv_kind != 3'd0) {
+      bins inv_all  = {3'b001};
+      bins inv_va   = {3'b010};
+      bins inv_asid = {3'b100};
+    }
+    // ── Phase 2: Invalidate race with hit/install (AUD-037/038) ─────────
+    cp_inv_race: coverpoint wb_dtlb_inv_race iff (wb_dtlb_inv_kind != 3'd0) {
+      bins no_race       = {2'd0};
+      bins hit_race      = {2'd1};
+      bins install_race  = {2'd2};
+      bins double_race   = {2'd3};
+    }
+    // ── Phase 4: Install arbitration selection (AUD-024) ──────────────────
+    // Selection priority matches RTL: WFI > PTW > L2
+    //   (see l1dtlb_function_description.txt line 40-46)
+    cp_install_arb_sel: coverpoint wb_dtlb_install_arb_sel iff (wb_dtlb_refill_vld) {
+      bins ptw = {2'd1};
+      bins l2  = {2'd2};
+      bins wfi = {2'd3};
+    }
+    // ── Phase 4: Install arbitration conflict (AUD-024) ────────────────────
+    // Detects ≥2 install_req simultaneously asserted in same cycle
+    cp_install_arb_conflict: coverpoint wb_dtlb_install_arb_conflict iff (wb_dtlb_refill_vld) {
+      bins no_conflict = {0};
+      bins conflict    = {1};
+    }
+    // ── Phase 4: Wakeup signal state (AUD-009/010) ─────────────────────────
+    // l1d_expt_wakeup[11:0] broadcast: all-0=inactive, all-1=active
+    // RTL wakeup semantics: active during refill OR when MB has pgflt/acflt entry
+    cp_wakeup: coverpoint wb_dtlb_wakeup_active {
+      bins inactive = {0};
+      bins active   = {1};
+    }
   endgroup
 
   // --- cg_l2_reqq -----------------------------------------------------------
@@ -260,6 +507,33 @@ class mmu_env_cg_whitebox extends uvm_component;
     cp_invall_state: coverpoint wb_tlbop_tlbiall {
       bins idle = {1'b0};
       bins wfc  = {1'b1};
+    }
+    // ── Phase 5: TLBOP operation type (TP_034~044) ────────────────────────
+    //   iff: wb_tlboper_op_type != 0 (sampled when any TLBOP completes or aborts)
+    //
+    //   wb_tlboper_op_type encoding (inferred from TLBOP FSM states at completion):
+    //     4'd1 = TLBP        (tlbop_tlbp_fsm     != IDLE when tlbop_l2_tlboper_cmplt)
+    //     4'd2 = TLBR        (tlbop_tlbr_fsm     != IDLE when ...)
+    //     4'd3 = TLBWI       (tlbop_tlbwi_fsm    != IDLE when ...)
+    //     4'd4 = TLBWR       (tlbop_tlbwr_fsm    != IDLE when ...)
+    //     4'd5 = INVVA_ALL   (tlbiva_cur_st      != IVA_IDLE, VA-hit path)
+    //     4'd6 = INVASID     (tlbop_tlbiasid_fsm != IDLE when ...)
+    //     4'd7 = INVVA_ASID  (tlbiva_cur_st      != IVA_IDLE, ASID-hit path)
+    //     4'd8 = INVALL      (tlbop_tlbiall_fsm  != IDLE when ...)
+    //     4'd9 = ABORT       (tlboper_ptw_abort asserted)
+    //   The undersampled tlbop_l2_tlboper_sel (8-bit way-select, not opcode) is
+    //   supplemented by FSM state inference to disambiguate operation type.
+    //   Reference: ct_mmu_tlboper.v §tlboper_sel (L2TLB way-select for write ops).
+    cp_op_type: coverpoint wb_tlboper_op_type iff (wb_tlboper_op_type != 4'd0) {
+      bins tlbp       = {4'd1};
+      bins tlbr       = {4'd2};
+      bins tlbwi      = {4'd3};
+      bins tlbwr      = {4'd4};
+      bins invva_all  = {4'd5};
+      bins invasid    = {4'd6};
+      bins invva_asid = {4'd7};
+      bins invall     = {4'd8};
+      bins abort_op   = {4'd9};
     }
   endgroup
 
@@ -660,6 +934,10 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_sample_cycles               = 0;
     cg_ptw_walk                  = new();
     cg_l2tlb_bank                = new();
+    cg_l2tlb_arbiter             = new();
+    cg_l2tlb_lookup              = new();
+    cg_l2tlb_pfu                 = new();
+    cg_l2tlb_ptw_if              = new();
     cg_l1itlb                    = new();
     cg_l1dtlb                    = new();
     cg_l2_reqq                   = new();
@@ -716,6 +994,10 @@ class mmu_env_cg_whitebox extends uvm_component;
       sample_dut;
       cg_ptw_walk.sample();
       cg_l2tlb_bank.sample();
+      cg_l2tlb_arbiter.sample();
+      cg_l2tlb_lookup.sample();
+      cg_l2tlb_pfu.sample();
+      cg_l2tlb_ptw_if.sample();
       cg_l1itlb.sample();
       sample_l1dtlb_covergroup();
       cg_l2_reqq.sample();
@@ -733,6 +1015,17 @@ class mmu_env_cg_whitebox extends uvm_component;
       cg_maee_path.sample();
       sample_phase13_covergroups();
       sample_reconstruct_covergroups();
+      // ── Phase 1: Independent sampling of L1DTLB permission fault & expt-CAM coverpoints ──
+      // Permission fault coverpoints require lsu_vif for page_fault/access_fault signals
+      if (lsu_vif != null) begin
+        cg_l1dtlb.sample();
+      end
+      // Exception-CAM coverpoints use v_probe only, always sample
+      cg_l1dtlb.sample();
+      // ── Phase 2: Independent sampling of L1DTLB invalidate coverpoints (AUD-034~038) ──
+      cg_l1dtlb.sample();
+      // ── Phase 4: Independent sampling of L1DTLB install arbitration & wakeup coverpoints ──
+      cg_l1dtlb.sample();
       wb_sample_cycles++;
     end
   endtask
@@ -740,7 +1033,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   virtual function void final_phase(uvm_phase phase);
     super.final_phase(phase);
     `uvm_info(get_type_name(),
-      $sformatf("whitebox_cg summary: sampled_cycles=%0d ptw_ready=%0.2f twu_idle_mask=%0.2f xbar_hit=%0.2f twu_except_busy=%0.2f twu_scalar_ready=%0.2f arb_grant=%0.2f arb_pgs=%0.2f maee_leaf=%0.2f maee_path=%0.2f",
+      $sformatf("whitebox_cg summary: sampled_cycles=%0d ptw_ready=%0.2f twu_idle_mask=%0.2f xbar_hit=%0.2f twu_except_busy=%0.2f twu_scalar_ready=%0.2f arb_grant=%0.2f arb_pgs=%0.2f maee_leaf=%0.2f maee_path=%0.2f l2tlb_arbiter=%0.2f l2tlb_lookup=%0.2f l2tlb_pfu=%0.2f l2tlb_ptw_if=%0.2f",
         wb_sample_cycles,
         cg_ptw_ready_transition.get_inst_coverage(),
         cg_twu_idle_vs_mask_state.get_inst_coverage(),
@@ -750,7 +1043,11 @@ class mmu_env_cg_whitebox extends uvm_component;
         cg_arb_grant_type.get_inst_coverage(),
         cg_ptw_arb_pgs_type.get_inst_coverage(),
         cg_maee_leaf_level.get_inst_coverage(),
-        cg_maee_path.get_inst_coverage()),
+        cg_maee_path.get_inst_coverage(),
+        cg_l2tlb_arbiter.get_inst_coverage(),
+        cg_l2tlb_lookup.get_inst_coverage(),
+        cg_l2tlb_pfu.get_inst_coverage(),
+        cg_l2tlb_ptw_if.get_inst_coverage()),
       UVM_LOW)
     `uvm_info(get_type_name(),
       $sformatf("phase13_whitebox_cg summary: pmp_result=%0.2f pmp_unit_level=%0.2f pmp_grant=%0.2f pmp_pa=%0.2f pmp_deny=%0.2f twu_mask=%0.2f pmp_port=%0.2f sysmap_flg=%0.2f cross1g=%0.2f cross2m=%0.2f degrade=%0.2f sysmap_pa=%0.2f sysmap_4twu=%0.2f default=%0.2f rec_l1pmpflg=%0.2f rec_visible_mutex=%0.2f",
@@ -1095,6 +1392,162 @@ class mmu_env_cg_whitebox extends uvm_component;
     wb_tlbop_tlbwr          = v_probe.tlbop_tlbwr_fsm;
     wb_tlbop_tlbiasid       = v_probe.tlbop_tlbiasid_fsm;
     wb_tlbop_tlbiall        = v_probe.tlbop_tlbiall_fsm;
+
+    // ── Phase 1: Permission fault (AUD-016/017/018) ────────────────────────
+    wb_lsu_p0_pa_vld = lsu_p0_pa_vld;
+    wb_lsu_p1_pa_vld = lsu_p1_pa_vld;
+    wb_dtlb_p0_perm_fault_kind = 2'd0;
+    wb_dtlb_p1_perm_fault_kind = 2'd0;
+    if (lsu_vif != null) begin
+      // mmu_lsu_page_fault0/1 & mmu_lsu_access_fault0/1 are on lsu_vif.monitor_cb
+      case ({lsu_vif.monitor_cb.mmu_lsu_access_fault0, lsu_vif.monitor_cb.mmu_lsu_page_fault0})
+        2'b01: wb_dtlb_p0_perm_fault_kind = 2'd1;  // pgflt only
+        2'b10: wb_dtlb_p0_perm_fault_kind = 2'd2;  // acflt only
+        2'b11: wb_dtlb_p0_perm_fault_kind = 2'd3;  // both
+        default: ; // 2'b00 → none
+      endcase
+      case ({lsu_vif.monitor_cb.mmu_lsu_access_fault1, lsu_vif.monitor_cb.mmu_lsu_page_fault1})
+        2'b01: wb_dtlb_p1_perm_fault_kind = 2'd1;
+        2'b10: wb_dtlb_p1_perm_fault_kind = 2'd2;
+        2'b11: wb_dtlb_p1_perm_fault_kind = 2'd3;
+        default: ;
+      endcase
+    end
+
+    // ── Phase 1: Exception-CAM write source (AUD-026) ──────────────────────
+    if (v_probe.l1d_expt_wr0_vld && v_probe.l1d_expt_wr1_vld)
+      wb_dtlb_expt_wr_src = 2'd3;  // dual
+    else if (v_probe.l1d_expt_wr0_vld)
+      wb_dtlb_expt_wr_src = 2'd1;  // single_p0
+    else if (v_probe.l1d_expt_wr1_vld)
+      wb_dtlb_expt_wr_src = 2'd2;  // single_p1
+    else
+      wb_dtlb_expt_wr_src = 2'd0;  // none
+
+    // ── Phase 1: Exception-CAM write type (AUD-027) ────────────────────────
+    wb_dtlb_expt_wr_type = 2'd0;
+    if (v_probe.l1d_expt_wr0_vld || v_probe.l1d_expt_wr1_vld) begin
+      bit has_pgflt, has_acflt;
+      has_pgflt = (v_probe.l1d_expt_wr0_vld && v_probe.l1d_expt_wr0_pgflt)
+               || (v_probe.l1d_expt_wr1_vld && v_probe.l1d_expt_wr1_pgflt);
+      has_acflt = (v_probe.l1d_expt_wr0_vld && v_probe.l1d_expt_wr0_acflt)
+               || (v_probe.l1d_expt_wr1_vld && v_probe.l1d_expt_wr1_acflt);
+      case ({has_acflt, has_pgflt})
+        2'b01: wb_dtlb_expt_wr_type = 2'd1;  // pgflt only
+        2'b10: wb_dtlb_expt_wr_type = 2'd2;  // acflt only
+        2'b11: wb_dtlb_expt_wr_type = 2'd3;  // dual_fault
+        default: ;
+      endcase
+    end
+
+    // ── Phase 1: Exception-CAM match kind (AUD-028) ────────────────────────
+    if (v_probe.l1d_p0_expt_match && v_probe.l1d_p1_expt_match)
+      wb_dtlb_expt_match_kind = 2'd3;  // dual match
+    else if (v_probe.l1d_p0_expt_match)
+      wb_dtlb_expt_match_kind = 2'd1;  // p0 match
+    else if (v_probe.l1d_p1_expt_match)
+      wb_dtlb_expt_match_kind = 2'd2;  // p1 match
+    else
+      wb_dtlb_expt_match_kind = 2'd0;  // none
+
+    // ── Phase 1: Exception-CAM hit count (AUD-029) ─────────────────────────
+    wb_dtlb_expt_hit_cnt = $countones(v_probe.l1d_expt_hit_vec);
+
+    // ── Phase 2: Invalidate type and race detection (AUD-034~038) ────────
+    // INV_ASID inference:
+    //   When entries are cleared (l1d_entry_clr != 0) but neither
+    //   tlboper_utlb_clr (INV_ALL) nor tlboper_utlb_inv_va_req (INV_VA)
+    //   is active, the operation is inferred as INV_ASID — an ASID-based
+    //   invalidate that clears only entries matching a specific ASID,
+    //   observable as bulk l1d_entry_vld clearing.
+    //   Dependencies: tlboper_utlb_clr, tlboper_utlb_inv_va_req,
+    //                 l1d_entry_clr, l1d_entry_vld.
+    wb_dtlb_inv_kind = 3'd0;
+    if (v_probe.tlboper_utlb_clr)
+      wb_dtlb_inv_kind = 3'b001;  // INV_ALL: clear all entries
+    else if (v_probe.tlboper_utlb_inv_va_req)
+      wb_dtlb_inv_kind = 3'b010;  // INV_VA: clear entry matching VA
+    else if (|v_probe.l1d_entry_clr)
+      wb_dtlb_inv_kind = 3'b100;  // INV_ASID: inferred from entry_vld bulk clearing
+                                  //   when INV_ALL/INV_VA signals are inactive
+    // Race detection: check if hit or install occurs in same cycle as invalidate
+    if (wb_dtlb_inv_kind != 3'd0) begin
+      bit inv_hit_race, inv_install_race;
+      inv_hit_race     = v_probe.l1d_p0_hit_vld || v_probe.l1d_p1_hit_vld;
+      inv_install_race = v_probe.l1d_refill_vld;
+      case ({inv_install_race, inv_hit_race})
+        2'b01: wb_dtlb_inv_race = 2'd1;  // hit same-cycle
+        2'b10: wb_dtlb_inv_race = 2'd2;  // install same-cycle
+        2'b11: wb_dtlb_inv_race = 2'd3;  // double race (hit + install)
+        default: wb_dtlb_inv_race = 2'd0; // no race
+      endcase
+    end else begin
+      wb_dtlb_inv_race = 2'd0;
+    end
+
+    // ── Phase 4: Install arbitration selection (AUD-024) ────────────────────
+    // RTL install arbitration priority: WFI > PTW > L2
+    //   (l1dtlb_function_description.txt line 40-46)
+    // Probe signals l1d_install_sel_* encode the RTL arbitration result directly.
+    if (v_probe.l1d_install_sel_wfi)
+      wb_dtlb_install_arb_sel = 2'd3;
+    else if (v_probe.l1d_install_sel_l2)
+      wb_dtlb_install_arb_sel = 2'd2;
+    else if (v_probe.l1d_install_sel_ptw)
+      wb_dtlb_install_arb_sel = 2'd1;
+    else
+      wb_dtlb_install_arb_sel = 2'd0;
+
+    // ── Phase 4: Install arbitration conflict (AUD-024) ─────────────────────
+    // Detects ≥2 install_req simultaneously asserted in same cycle
+    wb_dtlb_install_arb_conflict = (int'(v_probe.l1d_install_req_ptw)
+                                  + int'(v_probe.l1d_install_req_l2)
+                                  + int'(v_probe.l1d_install_req_wfi)) >= 2;
+
+    // ── Phase 4: Wakeup signal state (AUD-009/010) ──────────────────────────
+    // l1d_expt_wakeup[11:0] is broadcast: all-0 or all-1
+    // RTL wakeup source: (a) refill/install of TLB entry
+    //                    (b) OR MB contains pgflt/acflt entry
+    wb_dtlb_wakeup_active = (v_probe.l1d_expt_wakeup != 12'b0);
+
+    // ── Phase 5: TLBOP operation type classification (TP_034~044) ────────
+    //   Inferred from TLBOP FSM states when tlbop_l2_tlboper_cmplt fires,
+    //   or when tlboper_ptw_abort is asserted.
+    //   Reference: ct_mmu_tlboper.v line 1118-1132 (completion/abort signals)
+    wb_tlboper_op_type = 4'd0;
+    if (v_probe.tlbop_l2_tlboper_cmplt) begin
+      // TLBP: FSM leaves IDLE (2'd0) → WFG (2'd1) → WFC (2'd3; 2'd2 reserved)
+      if (v_probe.tlbop_tlbp_fsm != 2'd0)
+        wb_tlboper_op_type = 4'd1;
+      // TLBR: same FSM pattern as TLBP
+      else if (v_probe.tlbop_tlbr_fsm != 2'd0)
+        wb_tlboper_op_type = 4'd2;
+      // TLBWI: same FSM pattern
+      else if (v_probe.tlbop_tlbwi_fsm != 2'd0)
+        wb_tlboper_op_type = 4'd3;
+      // TLBWR: IDLE(0)→TAG(1)→WFG(2)→WFC(3)
+      else if (v_probe.tlbop_tlbwr_fsm != 2'd0)
+        wb_tlboper_op_type = 4'd4;
+      // INVVA: IDLE→RD→CMP→WR→WT→CMPLT (tlbiva_cur_st)
+      else if (v_probe.tlbiva_cur_st != 4'd0) begin
+        // INVVA subtypes: ASID-hit path vs VA-hit (all-entries) path
+        if (v_probe.tlbop_l2_asid_hit)
+          wb_tlboper_op_type = 4'd7;  // INVVA_ASID: ASID-based selective invalidate
+        else
+          wb_tlboper_op_type = 4'd5;  // INVVA_ALL: VA-based all-entries invalidate
+      end
+      // INVASID: IDLE→RD→WFC→WT→NWT
+      else if (v_probe.tlbop_tlbiasid_fsm != 3'd0)
+        wb_tlboper_op_type = 4'd6;
+      // INVALL: IDLE(0)→WFC(1)
+      else if (v_probe.tlbop_tlbiall_fsm != 1'b0)
+        wb_tlboper_op_type = 4'd8;
+    end
+    // ABORT: detected when tlboper_ptw_abort fires (PTW abort during LSU TLB op)
+    //   cf. ct_mmu_tlboper.v line 1132: tlboper_ptw_abort = tlb_lsu_oper && !tlb_lsu_oper_flop
+    if (v_probe.tlboper_ptw_abort)
+      wb_tlboper_op_type = 4'd9;
+
   endfunction
 
   function logic [2:0] f_first_onehot3(input logic [7:0] oh);

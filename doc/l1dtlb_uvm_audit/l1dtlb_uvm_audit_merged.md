@@ -212,11 +212,11 @@ Required implementation output:
 
 - Select one UVM owner for exact L1DTLB scheduler credit.  The default owner is `mmu_l1dtlb_spec_sb.svh`; scheduler SVA is corroborating protocol evidence, not a second scoreboard owner.
 - The credit model must check reset/max value, range, request-fire decrement, credit-return increment, `credit=0+return` no same-cycle fire, and `credit>0+return+fire` conservation.  A clean run with `fire_return=0` is partial evidence only.
-- The wakeup matrix must classify install and exception replay as positive sources.  Reset, RTU flush, invalidate, and ABT/stale completion are negative-source contexts unless an explicit install/expt source is present in the same sampled cycle.
+- The wakeup matrix must classify install, exception replay, and MB fault state (pgflt/acflt, per l1dtlb_function_description.txt line 8) as positive wakeup sources.  Reset, RTU flush, invalidate, and ABT/stale completion are negative-source contexts unless an explicit install/expt source is present in the same sampled cycle.
 - RTU flush must be modeled as clearing MB/expt and killing in-flight side effects.  It must not imply full TLB entry clear unless `tlboper_utlb_clr`, `regs_utlb_clr`, or a VA invalidate source is observed.
 - Invalidate+hit same cycle must allow the current-cycle old-hit response, then require a later miss/refill before the invalidated entry can be used as a valid hit again.
 - Invalidate+install same entry must prove clear-wins final state with a clean directed run; logs with unrelated assertions, MB drain timeouts, or zero same-cycle cover do not close this row.
-- ABT/stale late refill closure must reject TLB install, exception write, and wakeup side effects, and must distinguish inherited Phase 6E ABT evidence from a Phase 6F race-matrix report.
+- ABT/stale late refill closure must reject TLB install and exception write side effects; wakeup from MB fault state (l1dtlb_function_description.txt line 8) is a legal positive source distinguished from ABT/stale completion side effects, and inherited Phase 6E ABT evidence is separated from the Phase 6F race-matrix report.
 - `vabuf` functional equivalence and exact PLRU victim selection remain debug/formal/future rows unless the spec and observability are extended.  Vabuf-change cover is useful evidence but not an equivalence proof.
 
 Evidence discipline:

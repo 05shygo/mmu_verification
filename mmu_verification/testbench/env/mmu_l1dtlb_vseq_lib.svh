@@ -152,7 +152,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_WAKEUP_MULTI_RETRY_001": begin
         scn = L1DTLB_SCN_BUSY_WAKEUP;
         sid = "L1DTLB_TS_CTRL_BUSY_ANY_INFLIGHT";
-        intent = "busy/wakeup broadcast while in-flight";
+        intent = "busy/wakeup broadcast: refill, expt replay, or MB fault state (l1dtlb_function_description.txt line 8)";
       end
       "DTLB_ABORT_001": begin
         scn = L1DTLB_SCN_ABORT;
@@ -258,7 +258,7 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_EXPT_HIT_WITH_TLB_HIT_001": begin
         scn = L1DTLB_SCN_FAULT_REFILL;
         sid = "L1DTLB_TS_EXPT_FAULT_REFILL_WRITE";
-        intent = "fault refill, exception CAM replay, wakeup";
+        intent = "fault refill, exception CAM replay, wakeup (incl. MB fault state per l1dtlb_funcdesc line 8)";
       end
       "DTLB_HUGE_001",
       "DTLB_HUGE_002",

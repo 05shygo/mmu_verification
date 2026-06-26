@@ -8,7 +8,7 @@ class test_mmu_l2tlb_cov_ptw_off_v2 extends l2tlb_phase6e_test_base;
     num_txn = 128; timeout_ns = 120_000_000;
     m_enable_sv39_4k_bringup = 1'b1;
     // Disable PTW BEFORE vseq runs
-    m_cp0_seq_names.push_back("ptw_off_v2");
+    m_cp0_seq_names.push_back("cp0_ptw_disable_seq");
     m_vseq_names.push_back("mmu_l2tlb_ptw_off_vseq");
   endfunction
 endclass

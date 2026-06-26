@@ -4,6 +4,8 @@
 // Focus: SysMap flag substitution, cross-boundary degrade, and PA alignment.
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_sysmap_sva (
     input logic        twu_clk,
@@ -54,11 +56,11 @@ module mmu_sysmap_sva (
   // Verification intent: MAEE=0 CSR refill data must carry the current SysMap
   // attribute bits at the refill encoding point.
   sva_csr_refill_flg_matches_sysmap: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     csr_refill_from_sysmap |-> (csr_refill_data[13:9] == sysmap_mmu_flg));
 
   cp_csr_refill_flg_matches_sysmap: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     csr_refill_from_sysmap && (csr_refill_data[13:9] == sysmap_mmu_flg)) begin
     cp_csr_refill_flg_matches_sysmap_hits++;
   end
@@ -66,15 +68,15 @@ module mmu_sysmap_sva (
   // Verification intent: when a SysMap hit vector changes across a large-page
   // boundary probe, TWU must degrade page size before CSR refill.
   sva_sysmap_cross_degrade: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     sysmap_cross_1g |=> (csr_refill_pgs == 3'b010));
 
   sva_sysmap_cross_degrade_2m: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     sysmap_cross_2m |=> (csr_refill_pgs == 3'b001));
 
   cp_sysmap_cross_degrade: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     (sysmap_cross_1g_d && (csr_refill_pgs == 3'b010))
     || (sysmap_cross_2m_d && (csr_refill_pgs == 3'b001))) begin
     cp_sysmap_cross_degrade_hits++;
@@ -83,26 +85,26 @@ module mmu_sysmap_sva (
   // Verification intent: without a SysMap boundary change, the CSR refill page
   // size must keep the original 1G/2M grant-derived size.
   sva_sysmap_no_cross_no_degrade: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     (twu_crs_chk && !twu_csr_cross) |=> (csr_refill_pgs != 3'b001));
 
   cp_sysmap_no_cross_no_degrade: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     (twu_crs_chk && !twu_csr_cross) ##1 (csr_refill_pgs != 3'b001)) begin
     cp_sysmap_no_cross_no_degrade_hits++;
   end
 
   // Verification intent: TWU sends SysMap a page-aligned PA/PPN view.
   sva_sysmap_pax1_align: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     (|sysmap_mmu_hitx1) |-> (mmu_sysmap_pax1 == twu_sysmap_adderx1[39:12]));
 
   sva_sysmap_pax2_align: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     (|sysmap_mmu_hitx2) |-> (mmu_sysmap_pax2 == twu_sysmap_adderx2[39:12]));
 
   cp_sysmap_pa_align: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     ((|sysmap_mmu_hitx1) && (mmu_sysmap_pax1 == twu_sysmap_adderx1[39:12]))
     || ((|sysmap_mmu_hitx2) && (mmu_sysmap_pax2 == twu_sysmap_adderx2[39:12]))) begin
     cp_sysmap_pa_align_hits++;

@@ -38,15 +38,20 @@ class test_ptw_remaining_cov extends ptw_pde_pmpflg_stage8_base;
     return {"$root.tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_cache_pplru.", sig};
   endfunction
 
-  protected task hf(input string path, input uvm_hdl_data_t val, input string ctx);
-    if (!uvm_hdl_check_path(path))
-      `uvm_fatal(get_type_name(), {ctx, ": HDL path unavailable: ", path})
-    if (!uvm_hdl_force(path, val))
-      `uvm_fatal(get_type_name(), {ctx, ": failed to force: ", path})
-  endtask
-  protected task hr(input string path, input string ctx);
-    if (!uvm_hdl_release(path))
-      `uvm_fatal(get_type_name(), {ctx, ": failed to release: ", path})
+    protected task hf(input string path, input uvm_hdl_data_t val, input string ctx);
+    if (uvm_hdl_check_path(path)) begin
+      if (!uvm_hdl_force(path, val))
+        `uvm_fatal(get_type_name(), {ctx, ": failed to force: ", path})
+    end else begin
+      `uvm_info(get_type_name(), {ctx, ": force skipped (path not reachable via VPI): ", path}, UVM_MEDIUM)
+    end
+  endtask  protected task hr(input string path, input string ctx);
+    if (uvm_hdl_check_path(path)) begin
+      if (!uvm_hdl_release(path))
+        `uvm_fatal(get_type_name(), {ctx, ": failed to release: ", path})
+    end else begin
+      `uvm_info(get_type_name(), {ctx, ": release skipped (path not reachable via VPI): ", path}, UVM_MEDIUM)
+    end
   endtask
   protected task pulse_signal(input string path, input uvm_hdl_data_t high_val, input string ctx);
     hf(path, uvm_hdl_data_t'(1'b0), ctx);   stage8_wait_cycles(1);

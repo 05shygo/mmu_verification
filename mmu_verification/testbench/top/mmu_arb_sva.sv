@@ -3,6 +3,8 @@
 // 验证意图: 5 路 grant 多 hot 中至多一路；有全局请求时 five-hot 中恰一路；PTW 写两拍流水在复位下清零 (F5.NEW.2 伪代码 sva_ptw_write_pipe_reset_safe)
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_arb_sva (
     input logic forever_cpuclk,
@@ -381,11 +383,11 @@ module mmu_arb_sva (
   end
 
   // 验证意图: 5 个 grant 在任意周期至多 1 个为 1（固定优先级 + ptw 写时序的互斥结构）
-  a_grant_onehot0: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_grant_onehot0: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0({arb_pfu_grant, arb_reqq_grant, arb_tlboper_grant, arb_ptw_grant, arb_ptw_write_grant}));
 
   // 验证意图: 有 arb_l2tlb_req 时，上述五路中恰有一路置位（与 OR 合路一致）
-  a_grant_onehot_when_req: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_grant_onehot_when_req: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_l2tlb_req |-> $onehot({arb_pfu_grant, arb_reqq_grant, arb_tlboper_grant, arb_ptw_grant, arb_ptw_write_grant}));
 
   // 验证意图: 同步复位低有效期间/释放后的采样边沿，PTW 两拍写请求寄存器被清零
@@ -394,72 +396,72 @@ module mmu_arb_sva (
 
   // L2TLB_SVA_005/019/020/021: block windows must not leak grants to
   // lower-priority or masked sources. PTW writeback is allowed during ptw_on.
-  a_ptw_on_blocks_non_write_sources: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_on_blocks_non_write_sources: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_on |-> !(arb_ptw_grant || arb_tlboper_grant || arb_reqq_grant || arb_pfu_grant));
 
-  a_tlboper_on_blocks_lookup_sources: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlboper_on_blocks_lookup_sources: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_on |-> !(arb_ptw_grant || arb_reqq_grant || arb_pfu_grant));
 
-  a_wbuf_full_blocks_new_reads: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_wbuf_full_blocks_new_reads: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_arb_rrpv_wbuf_full |-> !(arb_ptw_grant || arb_tlboper_grant || arb_reqq_grant || arb_pfu_grant));
 
   // L2TLB_SVA_022 / Phase6F: wbuf full blocks only new RRPV-producing reads.
   // PTW writeback is the drain-side architectural update and must remain legal.
-  a_wbuf_full_allows_ptw_writeback: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_wbuf_full_allows_ptw_writeback: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (l2tlb_arb_rrpv_wbuf_full && ptw_write_req2 && ptw_on && !tlboper_on)
       |-> arb_ptw_write_grant);
 
-  a_prefetch_mask_blocks_pfu_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_prefetch_mask_blocks_pfu_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     prefetch_mask |-> !arb_pfu_grant);
 
   // L2TLB_SVA_005/006: fixed-priority grant eligibility when no block is active.
-  a_ptw_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (ptw_arb_req && !ptw_on && !tlboper_on && !l2tlb_arb_rrpv_wbuf_full)
       |-> arb_ptw_grant);
 
-  a_tlboper_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlboper_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (tlboper_arb_req && !ptw_arb_req && !ptw_on && !l2tlb_arb_rrpv_wbuf_full)
       |-> arb_tlboper_grant);
 
-  a_reqq_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_reqq_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (issue_valid && !ptw_arb_req && !tlboper_arb_req && !ptw_on && !tlboper_on
       && !l2tlb_arb_rrpv_wbuf_full)
       |-> arb_reqq_grant);
 
-  a_pfu_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pfu_priority_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va2_vld && !dutlb_xx_mmu_off && !ptw_arb_req && !tlboper_arb_req
       && !issue_valid && !ptw_on && !tlboper_on && !prefetch_mask
       && !l2tlb_arb_rrpv_wbuf_full)
       |-> arb_pfu_grant);
 
   // L2TLB_SVA_005: selected payload must come from the granted source.
-  a_reqq_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_reqq_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_reqq_grant |-> (arb_l2tlb_vpn == issue_vpn
                      && arb_l2tlb_trans_id == issue_queue_id
                      && arb_l2tlb_eid == issue_eid
                      && arb_l2tlb_acc_type == issue_type));
 
-  a_pfu_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pfu_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_pfu_grant |-> (arb_l2tlb_vpn == l2tlb_arb_pfu_vpn
                     && arb_l2tlb_acc_type == 3'b100));
 
-  a_tlboper_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlboper_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_tlboper_grant |-> (arb_l2tlb_vpn == tlboper_arb_vpn
                         && arb_l2tlb_acc_type == 3'b001
                         && arb_l2tlb_write == tlboper_arb_write));
 
-  a_ptw_read_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_read_payload_no_cross: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_ptw_grant |-> (arb_l2tlb_vpn == ptw_arb_vpn
                     && !arb_l2tlb_write
                     && arb_l2tlb_acc_type == 3'b000));
 
-  a_ptw_write_payload_class: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_write_payload_class: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_ptw_write_grant |-> (arb_l2tlb_write && arb_l2tlb_acc_type == 3'b101));
 
   // L2TLB_HASH_MODEL: exact address hash/size/bank modeling must match mmu_arb
   // for all L2TLB request sources. The model intentionally does not predict
   // victim state beyond checking the already-selected PTW write victim_way.
-  a_l2tlb_idx_hash_exact: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2tlb_idx_hash_exact: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (l2tlb_hash_check_en_comb && !(arb_tlboper_grant && tlboper_arb_idx_not_va))
       |-> (l2tlb_idx_int_comb == l2tlb_idx_exp_comb))
     else l2tlb_hash_report_error($sformatf("kind=idx src={ptw:%0b ptw_wr:%0b tlbop:%0b reqq:%0b pfu:%0b} vpn=0x%07h sel_vpn=0x%07h tlbop_idx_not_va=%0b idx_dut=0x%016h idx_int=0x%016h idx_exp=0x%016h",
@@ -470,7 +472,7 @@ module mmu_arb_sva (
       $sampled(l2tlb_idx_dut_comb), $sampled(l2tlb_idx_int_comb),
       $sampled(l2tlb_idx_exp_comb)));
 
-  a_l2tlb_size_pred_exact: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2tlb_size_pred_exact: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_hash_check_en_comb |-> (arb_l2tlb_size_bus == l2tlb_size_exp_comb))
     else l2tlb_hash_report_error($sformatf("kind=size src={ptw:%0b ptw_wr:%0b tlbop:%0b reqq:%0b pfu:%0b} vpn=0x%07h sel_vpn=0x%07h size_dut=0x%06h size_int=0x%06h size_exp=0x%06h",
       $sampled(arb_ptw_grant), $sampled(arb_ptw_write_grant),
@@ -479,7 +481,7 @@ module mmu_arb_sva (
       $sampled(sel_vpn), $sampled(arb_l2tlb_size_bus),
       $sampled(l2tlb_size_int_comb), $sampled(l2tlb_size_exp_comb)));
 
-  a_l2tlb_bank_sel_exact: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2tlb_bank_sel_exact: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_hash_check_en_comb |-> (arb_l2tlb_bank_sel == l2tlb_bank_exp_comb))
     else l2tlb_hash_report_error($sformatf("kind=bank src={ptw:%0b ptw_wr:%0b tlbop:%0b reqq:%0b pfu:%0b} vpn=0x%07h ptw_selector=0x%0h ptw_pgs=0x%0h bank_dut=0x%02h bank_int=0x%02h bank_exp=0x%02h victim=0x%02h tlbop_bank=0x%02h",
       $sampled(arb_ptw_grant), $sampled(arb_ptw_write_grant),
@@ -490,68 +492,68 @@ module mmu_arb_sva (
       $sampled(l2tlb_bank_exp_comb), $sampled(victim_way),
       $sampled(tlboper_arb_bank_sel)));
 
-  a_ptw_pgs_legal_when_read_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_pgs_legal_when_read_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_ptw_grant |-> valid_l2tlb_page_size(ptw_arb_pgs));
 
   // L2TLB_SVA_021: a sustained PFU request is masked after accept until
   // response/error or MB-full retry releases the mask.
-  a_pfu_grant_sets_prefetch_mask: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pfu_grant_sets_prefetch_mask: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (arb_pfu_grant && !(mmu_lsu_pa2_err || mmu_lsu_pa2_vld || l2tlb_arb_pfu_miss_mb_full))
       |=> prefetch_mask);
 
-  a_pfu_response_releases_prefetch_mask: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pfu_response_releases_prefetch_mask: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (mmu_lsu_pa2_err || mmu_lsu_pa2_vld || l2tlb_arb_pfu_miss_mb_full)
       |=> !prefetch_mask);
 
   // Trigger evidence for Phase6G assertion/cover extraction.
-  c_pairwise_reqq_pfu_conflict: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_pairwise_reqq_pfu_conflict: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     issue_valid && lsu_mmu_va2_vld && arb_reqq_grant);
 
-  c_pairwise_ptw_reqq_conflict: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_pairwise_ptw_reqq_conflict: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_arb_req && issue_valid);
 
-  c_pairwise_tlbop_reqq_conflict: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_pairwise_tlbop_reqq_conflict: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_arb_req && issue_valid);
 
-  c_diag_ptw_tlbop_conflict: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_diag_ptw_tlbop_conflict: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_arb_req && tlboper_arb_req);
 
-  c_diag_ptw_reqq_pfu_conflict: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_diag_ptw_reqq_pfu_conflict: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_arb_req && issue_valid && lsu_mmu_va2_vld && !dutlb_xx_mmu_off);
 
-  c_diag_tlbop_reqq_pfu_conflict: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_diag_tlbop_reqq_pfu_conflict: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_arb_req && issue_valid && lsu_mmu_va2_vld && !dutlb_xx_mmu_off);
 
-  c_ptw_on_blocks_reqq: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_ptw_on_blocks_reqq: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_on && issue_valid && !arb_reqq_grant);
 
-  c_tlboper_on_blocks_pfu: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_tlboper_on_blocks_pfu: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_on && lsu_mmu_va2_vld && !arb_pfu_grant);
 
-  c_prefetch_mask_release: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_prefetch_mask_release: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     prefetch_mask ##1 (mmu_lsu_pa2_err || mmu_lsu_pa2_vld || l2tlb_arb_pfu_miss_mb_full) ##1 !prefetch_mask);
 
-  c_wbuf_full_blocks_new_reads: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_wbuf_full_blocks_new_reads: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_arb_rrpv_wbuf_full
     && (ptw_arb_req || tlboper_arb_req || issue_valid || lsu_mmu_va2_vld)
     && !(arb_ptw_grant || arb_tlboper_grant || arb_reqq_grant || arb_pfu_grant));
 
-  c_wbuf_full_allows_ptw_writeback: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_wbuf_full_allows_ptw_writeback: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_arb_rrpv_wbuf_full && arb_ptw_write_grant);
 
-  c_l2tlb_hash_selector_00: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_l2tlb_hash_selector_00: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_l2tlb_req && (arb_l2tlb_vpn[19:18] == 2'b00));
 
-  c_l2tlb_hash_selector_01: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_l2tlb_hash_selector_01: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_l2tlb_req && (arb_l2tlb_vpn[19:18] == 2'b01));
 
-  c_l2tlb_hash_selector_10: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_l2tlb_hash_selector_10: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_l2tlb_req && (arb_l2tlb_vpn[19:18] == 2'b10));
 
-  c_l2tlb_hash_selector_11: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_l2tlb_hash_selector_11: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_l2tlb_req && (arb_l2tlb_vpn[19:18] == 2'b11));
 
-  c_l2tlb_hash_tlbop_idx_not_va: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_l2tlb_hash_tlbop_idx_not_va: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_l2tlb_req && arb_tlboper_grant && tlboper_arb_idx_not_va);
 
   final begin

@@ -103,8 +103,8 @@ typedef enum int unsigned {
 
 typedef enum int unsigned {
   PTW_SRC_ACCESS_SRC_NONE               = 0,
-  PTW_SRC_ACCESS_SRC_TWU_PMP            = 1,  // legacy alias — use TWU_PMP_UNIT for new code
   PTW_SRC_ACCESS_SRC_TWU_PMP_UNIT       = 1,  // twu_reconstruct: unified pmp_unit single-source
+  PTW_SRC_ACCESS_SRC_TWU_PMP            = 5,  // legacy alias — use TWU_PMP_UNIT for new code
   PTW_SRC_ACCESS_SRC_MBUF_BUS_ERROR     = 2,
   PTW_SRC_ACCESS_SRC_PDE_CACHE_PMP_DENY = 3,
   PTW_SRC_ACCESS_SRC_UNMODELED          = 4

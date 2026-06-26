@@ -5,6 +5,8 @@
 // Proves 1:1 correspondence of request→grant→done for TLBP/TLBR/TLBWI/TLBWR.
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_tlbop_lifecycle_sva (
     input logic forever_cpuclk,
@@ -63,11 +65,11 @@ module mmu_tlbop_lifecycle_sva (
                    || tlbiasid_active || tlbiall_active || tlbiva_active;
 
   // ── G2: Arb request implies an FSM is active ───────────────────────────
-  a_arb_req_implies_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_arb_req_implies_active: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_arb_req |-> any_active);
 
   // ── G2: Grant implies an FSM is active AND arb_req was asserted ────────
-  a_grant_implies_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_grant_implies_active: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     arb_tlboper_grant |-> any_active && tlboper_arb_req);
 
   // ── G2: Grant during active → exactly 1 grant per operation ────────────
@@ -110,27 +112,27 @@ module mmu_tlbop_lifecycle_sva (
   end
 
   // Each operation must get at least 1 grant before returning to IDLE
-  a_tlbp_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbp_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbp_cur_st != IDLE ##1 tlbp_cur_st == IDLE |-> tlbp_grant_seen);
 
-  a_tlbr_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbr_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbr_cur_st != IDLE ##1 tlbr_cur_st == IDLE |-> tlbr_grant_seen);
 
-  a_tlbwi_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbwi_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbwi_cur_st != IDLE ##1 tlbwi_cur_st == IDLE |-> tlbwi_grant_seen);
 
-  a_tlbwr_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbwr_gets_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbwr_cur_st != IDLE ##1 tlbwr_cur_st == IDLE |-> tlbwr_grant_seen);
 
   // ── G2: Exactly 1 grant per operation ──────────────────────────────────
-  a_tlbp_single_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbp_single_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (tlbp_active && tlbp_grant_lock && arb_tlboper_grant) |-> !tlbp_active);
 
-  a_tlbr_single_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbr_single_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (tlbr_active && tlbr_grant_lock && arb_tlboper_grant) |-> !tlbr_active);
 
   // ── G2: TLBWI has at most 1 grant ──────────────────────────────────────
-  a_tlbwi_single_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbwi_single_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (tlbwi_active && tlbwi_grant_lock && arb_tlboper_grant) |-> !tlbwi_active);
 
   // ── G2: TLBWR has at most 2 grants (read + write phases) ───────────────
@@ -144,7 +146,7 @@ module mmu_tlbop_lifecycle_sva (
     else if (tlbwr_grant_lock && arb_tlboper_grant && tlbwr_active)
       tlbwr_grant_double <= 1'b1;
   end
-  a_tlbwr_at_most_2_grants: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlbwr_at_most_2_grants: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (tlbwr_active && tlbwr_grant_double && arb_tlboper_grant) |-> !tlbwr_active);
 
   // ── TP_043: reset during TLBOP clears all FSM to IDLE ──────────────────
@@ -237,17 +239,17 @@ module mmu_tlbop_lifecycle_sva (
   end
 
   // ── TP_043: reset must not leave stale done/grant ──────────────────────
-  a_reset_no_stale_done: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_reset_no_stale_done: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     !cpurst_b ##1 cpurst_b |-> !tlboper_regs_cmplt && !arb_tlboper_grant);
 
   // ── TP_044: tlboper_ptw_abort marks an uncaptured LSU invalidate ───────
   // OpenC910 drives this as a level while the raw LSU invalidate request is
   // pending but has not yet been captured by TLBOper.  It is not a one-cycle
   // pulse when real LSU CTCQ holds the request until mmu_lsu_tlb_inv_done.
-  a_ptw_abort_only_uncaptured_lsu: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_abort_only_uncaptured_lsu: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_ptw_abort |-> (tlb_lsu_oper && !tlb_lsu_oper_flop));
 
-  a_ptw_abort_drops_after_capture: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_abort_drops_after_capture: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlb_lsu_oper_flop |-> !tlboper_ptw_abort);
 
   // ── G2: L2TLB completion only when an FSM is active ────────────────────
@@ -256,28 +258,28 @@ module mmu_tlbop_lifecycle_sva (
   // returns to IDLE due to pipeline drain, or during post-reset pipeline
   // flush.  The 3-cycle $past window covers multi-stage pipeline delay from
   // FSM → arbiter → L2TLB → completion path.
-  a_l2_cmplt_during_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2_cmplt_during_active: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     jtlb_tlboper_cmplt |-> any_active || $past(any_active) || $past(any_active, 2) || $past(any_active, 3));
 
   // ── G2: regs_cmplt only when an FSM is active (or just finished) ──────
   // regs_cmplt is pulsed when the operation is done
-  a_regs_cmplt_implies_was_active: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_regs_cmplt_implies_was_active: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_regs_cmplt |-> any_active || $past(any_active));
 
   // ── Cover properties for evidence ──────────────────────────────────────
-  c_tlbp_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_tlbp_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbp_cur_st == IDLE ##1 tlbp_active ##1 arb_tlboper_grant
     ##1 jtlb_tlboper_cmplt ##1 tlbp_cur_st == IDLE);
 
-  c_tlbr_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_tlbr_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbr_cur_st == IDLE ##1 tlbr_active ##1 arb_tlboper_grant
     ##1 jtlb_tlboper_cmplt ##1 tlbr_cur_st == IDLE);
 
-  c_tlbwi_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_tlbwi_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbwi_cur_st == IDLE ##1 tlbwi_active ##1 arb_tlboper_grant
     ##1 tlbwi_cur_st == IDLE);
 
-  c_tlbwr_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_tlbwr_full_lifecycle: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlbwr_cur_st == IDLE ##1 tlbwr_active ##1 arb_tlboper_grant
     ##1 tlbwr_cur_st == IDLE);
 

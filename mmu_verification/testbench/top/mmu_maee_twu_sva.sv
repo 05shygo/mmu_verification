@@ -3,6 +3,8 @@
 // Replaces old fst/scd/thd_chk_* SVA with unified chk_unit_lvl checks.
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_maee_twu_sva (
     input logic        twu_clk,
@@ -46,25 +48,25 @@ module mmu_maee_twu_sva (
   // MAEE-SVA-001: CSR/refill mutual exclusion (all levels)
   // ══════════════════════════════════════════════════════════════════════════
   a_maee_csr_refill_mutex: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     !(chk_unit_csr_req && chk_unit_refill_req));
 
   cp_maee_paths_mutex_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     chk_unit_csr_req ^ chk_unit_refill_req) begin cp_maee_paths_mutex++; end
 
   // ══════════════════════════════════════════════════════════════════════════
   // MAEE-SVA-002: MAEE=0 → leaf enters CSR path (1G/2M); 4K → direct refill
   // ══════════════════════════════════════════════════════════════════════════
   a_maee0_csr_path: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     !cp0_mmu_maee |-> (
       (!fst_leaf_nonfault || (chk_unit_csr_req && !chk_unit_refill_req))
       && (!scd_leaf_nonfault || (chk_unit_csr_req && !chk_unit_refill_req))
     ));
 
   cp_maee0_csr_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     !cp0_mmu_maee && (
       (fst_leaf_nonfault && chk_unit_csr_req && !chk_unit_refill_req)
       || (scd_leaf_nonfault && chk_unit_csr_req && !chk_unit_refill_req)
@@ -74,7 +76,7 @@ module mmu_maee_twu_sva (
   // MAEE-SVA-003: MAEE=1 → leaf bypasses CSR FSM, direct refill (all levels)
   // ══════════════════════════════════════════════════════════════════════════
   a_maee1_direct_refill: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     cp0_mmu_maee |-> (
       (!fst_leaf_nonfault || (chk_unit_refill_req && !chk_unit_csr_req))
       && (!scd_leaf_nonfault || (chk_unit_refill_req && !chk_unit_csr_req))
@@ -82,7 +84,7 @@ module mmu_maee_twu_sva (
     ));
 
   cp_maee1_refill_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     cp0_mmu_maee && (
       (fst_leaf_nonfault && chk_unit_refill_req && !chk_unit_csr_req)
       || (scd_leaf_nonfault && chk_unit_refill_req && !chk_unit_csr_req)
@@ -94,12 +96,12 @@ module mmu_maee_twu_sva (
   //               behavior: 4K always direct refill regardless of MAEE)
   // ══════════════════════════════════════════════════════════════════════════
   a_maee0_thd_direct_refill: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     !cp0_mmu_maee && thd_leaf_nonfault
     |-> (chk_unit_refill_req && !chk_unit_csr_req));
 
   cp_maee0_thd_direct_refill_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     !cp0_mmu_maee && thd_leaf_nonfault && chk_unit_refill_req && !chk_unit_csr_req) begin
     cp_maee0_thd_direct_refill++;
   end
@@ -108,19 +110,19 @@ module mmu_maee_twu_sva (
   // MAEE-SVA-005: level coverage — each page size can reach the MAEE path
   // ══════════════════════════════════════════════════════════════════════════
   cp_maee_level_1g_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     fst_leaf_nonfault && (chk_unit_refill_req || chk_unit_csr_req)) begin
     cp_maee_level_1g++;
   end
 
   cp_maee_level_2m_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     scd_leaf_nonfault && (chk_unit_refill_req || chk_unit_csr_req)) begin
     cp_maee_level_2m++;
   end
 
   cp_maee_level_4k_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     thd_leaf_nonfault && chk_unit_refill_req) begin
     cp_maee_level_4k++;
   end

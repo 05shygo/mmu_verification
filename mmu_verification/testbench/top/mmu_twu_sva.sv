@@ -3,6 +3,8 @@
 // Replaces old fst/scd/thd pipeline SVA with unified pmp_unit/chk_unit checks.
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_twu_sva (
     input logic        twu_clk,
@@ -53,11 +55,11 @@ module mmu_twu_sva (
   // Busy-no-mask is legal (pmp_unit active but not waiting, or csr active).
   // ══════════════════════════════════════════════════════════════════════════
   a_twu_mask_unified_equation: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     twu_mask == (pmp_unit_wait || chk_next));
 
   cp_twu_mask_unified_equation_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     (twu_mask && pmp_unit_wait)
     || (twu_mask && chk_next)
     || (!twu_mask && !pmp_unit_wait && !chk_next)) begin
@@ -68,11 +70,11 @@ module mmu_twu_sva (
   // TWU-SVA-002: Idle → mask must be 0; busy-no-mask is legal
   // ══════════════════════════════════════════════════════════════════════════
   a_twu_idle_implies_no_mask: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     twu_idle |-> !twu_mask);
 
   cp_twu_idle_implies_no_mask_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     twu_idle && !twu_mask) begin
     cp_twu_idle_implies_no_mask++;
   end
@@ -81,18 +83,18 @@ module mmu_twu_sva (
   // TWU-SVA-003: CSR grant single-active (csr_refill_req is single-bit)
   // ══════════════════════════════════════════════════════════════════════════
   a_twu_csr_single_source: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     chk_unit_csr_req |-> !chk_unit_refill_req);
 
   // ══════════════════════════════════════════════════════════════════════════
   // TWU-SVA-004: Scalar ready — CHK wait implies !ready (RTL invariant)
   // ══════════════════════════════════════════════════════════════════════════
   a_twu_scalar_ready_relation: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     chk_unit_wait |-> !twu_data_ready);
 
   cp_twu_scalar_ready_hold_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     !twu_data_ready || chk_unit_wait) begin
     cp_twu_scalar_ready_hold++;
   end
@@ -102,14 +104,14 @@ module mmu_twu_sva (
   //              is held (mask high)
   // ══════════════════════════════════════════════════════════════════════════
   a_twu_chk_next_priority: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     chk_next |-> twu_mask);
 
   // ══════════════════════════════════════════════════════════════════════════
   // TWU-SVA-006: Multi-level inflight is legal in unified TWU
   // ══════════════════════════════════════════════════════════════════════════
   c_twu_multi_inflight_legal: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     pmp_unit_vld && chk_unit_vld) begin
     cp_twu_multi_inflight_legal++;
   end
@@ -118,7 +120,7 @@ module mmu_twu_sva (
   // TWU-SVA-007: 2M CSR cross updates csr_data_flop (preserved from old SVA)
   // ══════════════════════════════════════════════════════════════════════════
   a_twu_2m_cross_data: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     (twu_crs2_2m && twu_csr_cross) |=> (csr_data_flop != $past(csr_data_flop)));
 
   final begin

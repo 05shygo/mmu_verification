@@ -3,6 +3,8 @@
 // Bind target: pplru
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_pde_pplru_sva #(
     parameter int PDE_ENTRY_NUM = 16,
@@ -37,30 +39,30 @@ module mmu_pde_pplru_sva #(
   endfunction
 
   a_pplru_write_updt_matches_refill_vld: assert property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     plru_write_updt == PDE_plru_refill_vld);
 
   a_pplru_refill_onehot_matches_write_num: assert property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     plru_write_updt |-> (!$isunknown(write_num)
                       && !$isunknown(plru_PDE_ref_num)
                       && $onehot(plru_PDE_ref_num)
                       && (plru_PDE_ref_num == pde_idx_onehot(write_num))));
 
   a_pplru_all_invalid_selects_way0: assert property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     plru_write_updt && (PDE_plru_read_vld == '0)
     |-> (plru_PDE_ref_num == pde_idx_onehot('0)));
 
   generate
     if (PDE_ENTRY_NUM > 1) begin : gen_way1_sva
       a_pplru_way0_valid_selects_way1: assert property (@(posedge forever_cpuclk)
-        disable iff (!cpurst_b)
+        disable iff (`L2TLB_NEG_DISABLE)
         plru_write_updt && (PDE_plru_read_vld == pde_idx_onehot('0))
         |-> (plru_PDE_ref_num == pde_idx_onehot(1)));
 
       cp_pplru_way0_valid_way1: cover property (@(posedge forever_cpuclk)
-        disable iff (!cpurst_b)
+        disable iff (`L2TLB_NEG_DISABLE)
         plru_write_updt && (PDE_plru_read_vld == pde_idx_onehot('0))
         && (plru_PDE_ref_num == pde_idx_onehot(1))) begin
         cp_pplru_way0_valid_way1_hits++;
@@ -69,12 +71,12 @@ module mmu_pde_pplru_sva #(
 
     if (PDE_ENTRY_NUM > 2) begin : gen_way2_sva
       a_pplru_way01_valid_selects_way2: assert property (@(posedge forever_cpuclk)
-        disable iff (!cpurst_b)
+        disable iff (`L2TLB_NEG_DISABLE)
         plru_write_updt && (PDE_plru_read_vld == (pde_idx_onehot('0) | pde_idx_onehot(1)))
         |-> (plru_PDE_ref_num == pde_idx_onehot(2)));
 
       cp_pplru_way01_valid_way2: cover property (@(posedge forever_cpuclk)
-        disable iff (!cpurst_b)
+        disable iff (`L2TLB_NEG_DISABLE)
         plru_write_updt && (PDE_plru_read_vld == (pde_idx_onehot('0) | pde_idx_onehot(1)))
         && (plru_PDE_ref_num == pde_idx_onehot(2))) begin
         cp_pplru_way01_valid_way2_hits++;
@@ -83,25 +85,25 @@ module mmu_pde_pplru_sva #(
   endgenerate
 
   a_pplru_full_valid_selects_plru_way: assert property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     plru_write_updt && (&PDE_plru_read_vld)
     |-> (plru_PDE_ref_num == pde_idx_onehot(plru_num)));
 
   cp_pplru_write_num_match: cover property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     plru_write_updt && (plru_PDE_ref_num == pde_idx_onehot(write_num))) begin
     cp_pplru_write_num_match_hits++;
   end
 
   cp_pplru_all_invalid_way0: cover property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     plru_write_updt && (PDE_plru_read_vld == '0)
     && (plru_PDE_ref_num == pde_idx_onehot('0))) begin
     cp_pplru_all_invalid_way0_hits++;
   end
 
   cp_pplru_full_valid_plru: cover property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     plru_write_updt && (&PDE_plru_read_vld)
     && (plru_PDE_ref_num == pde_idx_onehot(plru_num))) begin
     cp_pplru_full_valid_plru_hits++;

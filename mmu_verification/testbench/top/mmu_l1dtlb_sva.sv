@@ -6,6 +6,8 @@
 // formal/equivalence items; see the traceability document for residual gaps.
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_l1dtlb_sva #(
     parameter int MB_DEPTH    = 8,
@@ -173,102 +175,102 @@ module mmu_l1dtlb_sva #(
                 && mmu_lsu_access_fault0 == 1'b0
                 && mmu_lsu_access_fault1 == 1'b0));
 
-  a_regs_utlb_clr_clears_entries: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_regs_utlb_clr_clears_entries: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     regs_utlb_clr |=> (entry_vld == '0));
 
-  a_tlboper_utlb_clr_clears_entries: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlboper_utlb_clr_clears_entries: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_utlb_clr |=> (entry_vld == '0));
 
   // A004/A005: STAMO is a pipe1 bypass path and must not create pipe0 side effects.
-  a_stamo_no_pipe0_bypass: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_stamo_no_pipe0_bypass: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_stamo_vld && !lsu_mmu_va0_vld) |-> !mmu_lsu_pa0_vld);
 
-  a_stamo_no_new_miss_side_effect: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_stamo_no_new_miss_side_effect: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_stamo_vld && !lsu_mmu_va0_vld && !lsu_mmu_va1_vld)
     |-> (!dutlb_miss_vld0 && !dutlb_miss_vld1));
 
   // A008/A020/A037/A038/A070: abort, CAM-hit, and no-response paths do not allocate.
-  a_abort0_not_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_abort0_not_miss: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && lsu_mmu_abort0) |-> !dutlb_miss_vld0);
 
-  a_abort1_not_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_abort1_not_miss: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va1_vld && lsu_mmu_abort1) |-> !dutlb_miss_vld1);
 
-  a_abort0_no_expt_consume_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_abort0_no_expt_consume_top: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && lsu_mmu_abort0) |-> !expt_match0);
 
-  a_abort1_no_expt_consume_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_abort1_no_expt_consume_top: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va1_vld && lsu_mmu_abort1) |-> !expt_match1);
 
-  a_expt_replay0_not_new_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_replay0_not_new_miss: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && expt_match0) |-> (!dutlb_miss_vld0 && !dutlb_miss_vld_short0));
 
-  a_expt_replay1_not_new_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_replay1_not_new_miss: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va1_vld && expt_match1) |-> (!dutlb_miss_vld1 && !dutlb_miss_vld_short1));
 
   // A011/A012/A014/A015: externally visible terminal/fault shape.
-  a_pipe0_page_fault_has_pa_vld: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pipe0_page_fault_has_pa_vld: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_page_fault0 |-> mmu_lsu_pa0_vld);
 
-  a_pipe1_page_fault_has_pa_vld: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pipe1_page_fault_has_pa_vld: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_page_fault1 |-> mmu_lsu_pa1_vld);
 
-  a_expt_replay0_has_terminal_response: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_replay0_has_terminal_response: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && expt_match0) |-> mmu_lsu_pa0_vld);
 
-  a_expt_replay1_has_terminal_response: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_replay1_has_terminal_response: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va1_vld && expt_match1) |-> mmu_lsu_pa1_vld);
 
   // A016/A017/A018: wakeup/busy event-level contract.
-  a_wakeup_is_broadcast: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_wakeup_is_broadcast: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (mmu_lsu_tlb_wakeup == 12'h000) || (mmu_lsu_tlb_wakeup == 12'hfff));
 
-  a_wakeup_has_known_source: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_wakeup_has_known_source: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (mmu_lsu_tlb_wakeup == 12'hfff) |-> ((install_wakeup == 12'hfff) || (expt_wakeup == 12'hfff)));
 
-  a_busy_mirrors_mb_valid: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_busy_mirrors_mb_valid: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_tlb_busy == (|mb_entry_vld));
 
   // A021/A022/A068: hit responses are independent per pipe.
-  a_pipe0_hit_returns_t0: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pipe0_hit_returns_t0: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && (|entry_hit0) && !mmu_lsu_page_fault0) |-> mmu_lsu_pa0_vld);
 
-  a_pipe1_hit_returns_t0: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pipe1_hit_returns_t0: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va1_vld && (|entry_hit1) && !mmu_lsu_page_fault1) |-> mmu_lsu_pa1_vld);
 
-  a_dual_hit_returns_both: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_dual_hit_returns_both: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && lsu_mmu_va1_vld && (|entry_hit0) && (|entry_hit1)
      && !mmu_lsu_page_fault0 && !mmu_lsu_page_fault1)
     |-> (mmu_lsu_pa0_vld && mmu_lsu_pa1_vld));
 
   // A023/A037/A039: top-level T1 miss allocation gating before allocator.
-  a_same_4k_miss_dedup_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_same_4k_miss_dedup_top: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (same_4k_miss01 && !(mb_hit0 || mb_hit1) && !(&mb_entry_vld))
     |-> (alloc_gnt0 && !alloc_gnt1 && $countones(mb_alloc_we) == 1));
 
-  a_mb_cam_hit_no_alloc0: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_mb_cam_hit_no_alloc0: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (miss0_vld_q && !miss0_abort_q && mb_hit0) |-> !alloc_gnt0);
 
-  a_mb_cam_hit_no_alloc1: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_mb_cam_hit_no_alloc1: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (miss1_vld_q && !miss1_abort_q && mb_hit1) |-> !alloc_gnt1);
 
-  a_mb_full_no_alloc_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_mb_full_no_alloc_top: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ((miss0_vld_q || miss1_vld_q) && (&mb_entry_vld)) |-> (!alloc_gnt0 && !alloc_gnt1 && mb_alloc_we == '0));
 
-  a_one_free_dual_diff_at_most_one_alloc_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_one_free_dual_diff_at_most_one_alloc_top: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (miss0_vld_q && miss1_vld_q && (miss0_vpn_q != miss1_vpn_q) && ($countones(mb_entry_vld) == MB_DEPTH-1))
     |-> ($countones(mb_alloc_we) <= 1 && !(alloc_gnt0 && alloc_gnt1)));
 
-  a_direct_map_no_new_miss_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_direct_map_no_new_miss_top: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ((lsu_mmu_va0_vld || lsu_mmu_va1_vld) && dutlb_off_hit)
     |-> (!dutlb_miss_vld0 && !dutlb_miss_vld1));
 
-  a_legal_no_response_no_t0_terminal_top: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_legal_no_response_no_t0_terminal_top: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (((lsu_mmu_va0_vld && !lsu_mmu_abort0 && !dutlb_off_hit && !expt_match0 && mb_hit0 && !(|entry_hit0))
       || (lsu_mmu_va0_vld && !lsu_mmu_abort0 && !dutlb_off_hit && !expt_match0 && dutlb_miss_vld0 && (&mb_entry_vld) && !mb_hit0 && !(|entry_hit0)))
      |-> (!mmu_lsu_pa0_vld && !mmu_lsu_page_fault0)));
 
-  a_legal_no_response_no_t0_terminal_top_p1: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_legal_no_response_no_t0_terminal_top_p1: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (((lsu_mmu_va1_vld && !lsu_mmu_abort1 && !dutlb_off_hit && !expt_match1 && mb_hit1 && !(|entry_hit1))
       || (lsu_mmu_va1_vld && !lsu_mmu_abort1 && !dutlb_off_hit && !expt_match1 && dutlb_miss_vld1 && (&mb_entry_vld) && !mb_hit1 && !(|entry_hit1)))
      |-> (!mmu_lsu_pa1_vld && !mmu_lsu_page_fault1)));
@@ -277,19 +279,19 @@ module mmu_l1dtlb_sva #(
   genvar ent_i;
   generate
     for (ent_i = 0; ent_i < NUM_ENTRY; ent_i++) begin : gen_l1dtlb_entry_sva
-      a_valid_entry_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_valid_entry_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         entry_vld[ent_i] |-> (!$isunknown(entry_ppn[ent_i])
                            && !$isunknown(l1dtlb_ent_vpn[ent_i])
                            && !$isunknown(l1dtlb_ent_pgs[ent_i])
                            && legal_pgs(l1dtlb_ent_pgs[ent_i])));
 
-      a_va8_inv_clears_matching_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_va8_inv_clears_matching_entry: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         (tlboper_utlb_inv_va_req
          && entry_vld[ent_i]
          && (l1dtlb_ent_vpn[ent_i][7:0] == lsu_mmu_tlb_va[7:0]))
         |=> !entry_vld[ent_i]);
 
-      a_va8_inv_preserves_nonmatching_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_va8_inv_preserves_nonmatching_entry: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         (tlboper_utlb_inv_va_req
          && entry_vld[ent_i]
          && (l1dtlb_ent_vpn[ent_i][7:0] != lsu_mmu_tlb_va[7:0])
@@ -298,7 +300,7 @@ module mmu_l1dtlb_sva #(
          && !entry_upd[ent_i])
         |=> entry_vld[ent_i]);
 
-      a_clear_wins_install_same_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_clear_wins_install_same_entry: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         (((regs_utlb_clr || tlboper_utlb_clr)
           || (tlboper_utlb_inv_va_req
               && entry_vld[ent_i]
@@ -308,38 +310,38 @@ module mmu_l1dtlb_sva #(
     end
   endgenerate
 
-  a_refill_entry_update_onehot: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_refill_entry_update_onehot: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld |-> ($onehot(entry_upd)
                       && (utlb_refill_idx < NUM_ENTRY)
                       && (entry_upd == onehot_entry(utlb_refill_idx))));
 
-  a_refill_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_refill_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld |-> (!$isunknown(utlb_refill_vpn)
                       && !$isunknown(utlb_refill_ppn)
                       && !$isunknown(utlb_refill_pgs)
                       && legal_pgs(utlb_refill_pgs)));
 
-  a_plru_refill_way_onehot: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_plru_refill_way_onehot: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     plru_refill_updt |-> ($onehot(plru_refill_way) && !$isunknown(plru_refill_way)));
 
   // A040/A041: MB aggregate state-derived signals.
   genvar mb_i;
   generate
     for (mb_i = 0; mb_i < MB_DEPTH; mb_i++) begin : gen_l1dtlb_mb_sva
-      a_mb_vld_matches_state: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_mb_vld_matches_state: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         mb_entry_vld[mb_i] == (mb_entry_state[mb_i] != MB_STATE_IDLE));
 
-      a_mb_ready_only_wfg: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_mb_ready_only_wfg: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         mb_entry_ready[mb_i] |-> (mb_entry_state[mb_i] == MB_STATE_WFG));
 
-      a_mb_wfc_matches_state: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_mb_wfc_matches_state: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         mb_entry_wfc[mb_i] == ((mb_entry_state[mb_i] == MB_STATE_WFC)
                             || (mb_entry_state[mb_i] == MB_STATE_ABT)));
 
-      a_mb_wfi_matches_state: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_mb_wfi_matches_state: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         mb_entry_wfi[mb_i] == (mb_entry_state[mb_i] == MB_STATE_WFI));
 
-      a_valid_mb_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+      a_valid_mb_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
         mb_entry_vld[mb_i] |-> (!$isunknown(mb_entry_vpn[mb_i])
                              && !$isunknown(mb_entry_iid[mb_i])
                              && !$isunknown(mb_entry_store[mb_i])));
@@ -347,183 +349,183 @@ module mmu_l1dtlb_sva #(
   endgenerate
 
   // A047/A052/A053/A054: L2/fault refill payload and stale/flush side effects.
-  a_l2_req_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2_req_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_l2tlb_req_vld |-> (!$isunknown(dutlb_l2tlb_req_vpn)
                           && !$isunknown(dutlb_l2tlb_req_eid)
                           && !$isunknown(dutlb_l2tlb_req_is_load)));
 
-  a_l2_req_eid_in_range: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2_req_eid_in_range: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_l2tlb_req_vld |-> (dutlb_l2tlb_req_eid < MB_DEPTH));
 
-  a_l2_req_matches_mb_payload: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2_req_matches_mb_payload: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (dutlb_l2tlb_req_vld && mb_entry_vld[dutlb_l2tlb_req_eid])
     |-> (dutlb_l2tlb_req_vpn == mb_entry_vpn[dutlb_l2tlb_req_eid]
       && dutlb_l2tlb_req_is_load == !mb_entry_store[dutlb_l2tlb_req_eid]));
 
-  a_expt_wr0_fault_exclusive: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr0_fault_exclusive: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr0_vld |-> !(expt_wr0_pgflt && expt_wr0_acflt));
 
-  a_expt_wr1_fault_exclusive: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr1_fault_exclusive: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr1_vld |-> !(expt_wr1_pgflt && expt_wr1_acflt));
 
-  a_expt_wr0_has_fault_class: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr0_has_fault_class: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr0_vld |-> (expt_wr0_pgflt ^ expt_wr0_acflt));
 
-  a_expt_wr1_has_fault_class: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr1_has_fault_class: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr1_vld |-> (expt_wr1_pgflt ^ expt_wr1_acflt));
 
-  a_expt_wr0_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr0_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr0_vld |-> (!$isunknown(expt_wr0_eid)
                    && !$isunknown(expt_wr0_iid)
                    && !$isunknown(expt_wr0_vpn)));
 
-  a_expt_wr1_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr1_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr1_vld |-> (!$isunknown(expt_wr1_eid)
                    && !$isunknown(expt_wr1_iid)
                    && !$isunknown(expt_wr1_vpn)));
 
-  a_expt_wr0_id_in_range: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr0_id_in_range: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr0_vld |-> (expt_wr0_eid < MB_DEPTH));
 
-  a_expt_wr1_id_in_range: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_expt_wr1_id_in_range: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr1_vld |-> (expt_wr1_eid < MB_DEPTH));
 
-  a_l2_fault_is_page_fault_only: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2_fault_is_page_fault_only: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr1_vld |-> (expt_wr1_pgflt && !expt_wr1_acflt));
 
-  a_ptw_fault_requires_wfc_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_fault_requires_wfc_entry: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr0_vld |-> (mb_entry_vld[expt_wr0_eid]
                    && mb_entry_state[expt_wr0_eid] == MB_STATE_WFC));
 
-  a_l2_fault_requires_wfc_entry: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l2_fault_requires_wfc_entry: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr1_vld |-> (mb_entry_vld[expt_wr1_eid]
                    && mb_entry_state[expt_wr1_eid] == MB_STATE_WFC));
 
   // RTU flush suppresses new fault side effects.  Same-cycle refill/install
   // wakeup is legal and is checked by the per-MB flush/refill assertions below.
-  a_flush_blocks_new_side_effects: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_flush_blocks_new_side_effects: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     rtu_yy_xx_flush |-> (!expt_wr0_vld && !expt_wr1_vld));
 
   // A071: event-level miss counter guard.
-  a_hpc_miss_only_on_real_miss: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_hpc_miss_only_on_real_miss: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_hpcp_dutlb_miss |-> (dutlb_miss_vld0 || dutlb_miss_vld1));
 
   // C001-C027 representative cover points.  Several complex rows are also
   // measured in the whitebox covergroup and traceability matrix.
-  cp_l1dtlb_c001_reset_then_miss: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c001_reset_then_miss: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     $rose(cpurst_b) ##[1:64] (dutlb_miss_vld0 || dutlb_miss_vld1));
 
-  cp_l1dtlb_c002_dual_hit: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c002_dual_hit: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_va0_vld && lsu_mmu_va1_vld && (|entry_hit0) && (|entry_hit1));
 
-  cp_l1dtlb_c003_hit_miss: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c003_hit_miss: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_va0_vld && lsu_mmu_va1_vld
     && (((|entry_hit0) && dutlb_miss_vld1) || ((|entry_hit1) && dutlb_miss_vld0)));
 
-  cp_l1dtlb_c007_mb_full: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c007_mb_full: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (&mb_entry_vld) && (dutlb_miss_vld0 || dutlb_miss_vld1));
 
-  cp_l1dtlb_c004_same_vpn_dedup_top: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c004_same_vpn_dedup_top: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     same_4k_miss01 && alloc_gnt0 && !alloc_gnt1);
 
-  cp_l1dtlb_c008_hit_under_miss: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c008_hit_under_miss: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_tlb_busy && (mmu_lsu_pa0_vld || mmu_lsu_pa1_vld));
 
-  cp_l1dtlb_c006_one_free_dual_diff_top: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c006_one_free_dual_diff_top: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     miss0_vld_q && miss1_vld_q && (miss0_vpn_q != miss1_vpn_q)
     && ($countones(mb_entry_vld) == MB_DEPTH-1));
 
-  cp_l1dtlb_c011_direct_map_no_miss_top: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c011_direct_map_no_miss_top: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ((lsu_mmu_va0_vld || lsu_mmu_va1_vld) && dutlb_off_hit
      && !dutlb_miss_vld0 && !dutlb_miss_vld1));
 
-  cp_l1dtlb_c009_abort: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c009_abort: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && lsu_mmu_abort0) || (lsu_mmu_va1_vld && lsu_mmu_abort1));
 
-  cp_l1dtlb_c009_abort_hit: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c009_abort_hit: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && lsu_mmu_abort0 && (|entry_hit0))
     || (lsu_mmu_va1_vld && lsu_mmu_abort1 && (|entry_hit1)));
 
-  cp_l1dtlb_c009_abort_miss_attempt: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c009_abort_miss_attempt: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va0_vld && lsu_mmu_abort0 && !(|entry_hit0) && !dutlb_off_hit && !expt_match0)
     || (lsu_mmu_va1_vld && lsu_mmu_abort1 && !(|entry_hit1) && !dutlb_off_hit && !expt_match1));
 
-  cp_l1dtlb_c012_stamo: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c012_stamo: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_stamo_vld);
 
-  cp_l1dtlb_c014_l2_req: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_l2_req: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_l2tlb_req_vld);
 
-  cp_l1dtlb_c015_wfi_install: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c015_wfi_install: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (|mb_entry_wfi) ##[0:16] utlb_refill_vld);
 
-  cp_l1dtlb_c016_fault_write: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c016_fault_write: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr0_vld || expt_wr1_vld);
 
-  cp_l1dtlb_c016_dual_fault_write: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c016_dual_fault_write: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_wr0_vld && expt_wr1_vld && (expt_wr0_eid != expt_wr1_eid));
 
-  cp_l1dtlb_c019_expt_replay: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c019_expt_replay: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     expt_match0 || expt_match1);
 
-  cp_l1dtlb_c020_clear: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c020_clear: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     regs_utlb_clr || tlboper_utlb_clr || tlboper_utlb_inv_va_req || rtu_yy_xx_flush);
 
-  cp_l1dtlb_c020_va8_alias_clear: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c020_va8_alias_clear: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_utlb_inv_va_req
     && (|entry_vld)
     && (|(entry_vld & va8_match_vec(lsu_mmu_tlb_va[7:0]))));
 
-  cp_l1dtlb_c020_inv_install_same_entry: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c020_inv_install_same_entry: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (|entry_upd)
     && ((tlboper_utlb_inv_va_req && (|(entry_upd & entry_vld & va8_match_vec(lsu_mmu_tlb_va[7:0]))))
         || regs_utlb_clr || tlboper_utlb_clr));
 
-  cp_l1dtlb_c021_t1_t0_overlap: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c021_t1_t0_overlap: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (mmu_lsu_access_fault0 && (mmu_lsu_pa0_vld || mmu_lsu_page_fault0))
     || (mmu_lsu_access_fault1 && (mmu_lsu_pa1_vld || mmu_lsu_page_fault1)));
 
-  cp_l1dtlb_c022_page_size_4k: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c022_page_size_4k: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld && utlb_refill_pgs == 3'b001);
 
-  cp_l1dtlb_c022_page_size_2m: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c022_page_size_2m: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld && utlb_refill_pgs == 3'b010);
 
-  cp_l1dtlb_c022_page_size_1g: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c022_page_size_1g: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld && utlb_refill_pgs == 3'b100);
 
-  cp_l1dtlb_c023_multi_hit_diag: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c023_multi_hit_diag: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ($countones(entry_hit0) > 1) || ($countones(entry_hit1) > 1));
 
-  cp_l1dtlb_c024_plru_refill: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c024_plru_refill: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     plru_refill_updt);
 
-  cp_l1dtlb_c025_hpc_miss_event: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c025_hpc_miss_event: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_hpcp_dutlb_miss);
 
-  cp_l1dtlb_c026_vabuf_change: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c026_vabuf_change: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_va0_vld && $changed(lsu_mmu_vabuf0));
 
   // Consumer-only PTW routing evidence. PTW source-side closure remains in
   // ptw_source_sb and PTW-bound SVA.
   a_l1d_ptw_success_has_install_payload: assert property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     (ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt)
     |-> (!ptw_l1tlb_pgflt && !ptw_l1tlb_acc_err && legal_pgs(ptw_l1tlb_ref_pgs)));
 
   cp_l1d_ptw_consumer_install: cover property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt
     && !ptw_l1tlb_pgflt && !ptw_l1tlb_acc_err) begin
     cp_l1d_ptw_consumer_install_hits++;
   end
 
   a_l1d_ptw_fault_class_mutex: assert property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     ptw_l1dtlb_ref_cmplt |-> !(ptw_l1tlb_pgflt && ptw_l1tlb_acc_err));
 
   cp_l1d_ptw_consumer_fault: cover property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     ptw_l1dtlb_ref_cmplt && (ptw_l1tlb_pgflt || ptw_l1tlb_acc_err)) begin
     cp_l1d_ptw_consumer_fault_hits++;
   end
@@ -561,43 +563,43 @@ module mmu_l1dtlb_allocator_sva #(
   endfunction
 
   // A023/A024/A025/A039: allocation count, same-4K dedup, and full behavior.
-  a_alloc_we_matches_grants: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_alloc_we_matches_grants: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     $countones(alloc_we) == ((gnt0 ? 1 : 0) + (gnt1 ? 1 : 0)));
 
-  a_alloc_we_at_most_two: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_alloc_we_at_most_two: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     $countones(alloc_we) <= 2);
 
-  a_no_free_no_grant: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_no_free_no_grant: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (&mb_vld) |-> (!gnt0 && !gnt1 && alloc_we == '0));
 
-  a_same_4k_dual_miss_dedup: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_same_4k_dual_miss_dedup: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (req0_vld && req1_vld && (req0_vpn == req1_vpn) && (free_count(mb_vld) != 0))
     |-> (gnt0 && !gnt1 && $countones(alloc_we) == 1));
 
-  a_two_free_dual_diff_allocates_both: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_two_free_dual_diff_allocates_both: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (req0_vld && req1_vld && (req0_vpn != req1_vpn) && (free_count(mb_vld) >= 2))
     |-> (gnt0 && gnt1 && sel0 != sel1 && $countones(alloc_we) == 2));
 
-  a_single_req0_allocates_when_free: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_single_req0_allocates_when_free: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (req0_vld && !req1_vld && (free_count(mb_vld) != 0)) |-> gnt0);
 
-  a_single_req1_allocates_when_free: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_single_req1_allocates_when_free: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (!req0_vld && req1_vld && (free_count(mb_vld) != 0)) |-> gnt1);
 
-  cp_l1dtlb_c004_same_vpn_dedup: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c004_same_vpn_dedup: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     req0_vld && req1_vld && (req0_vpn == req1_vpn) && gnt0 && !gnt1);
 
-  cp_l1dtlb_c005_dual_diff_two_free: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c005_dual_diff_two_free: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     req0_vld && req1_vld && (req0_vpn != req1_vpn) && gnt0 && gnt1);
 
-  cp_l1dtlb_c006_dual_diff_one_free: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c006_dual_diff_one_free: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     req0_vld && req1_vld && (req0_vpn != req1_vpn) && (free_count(mb_vld) == 1));
 
-  cp_l1dtlb_c006_one_free_port0_wins: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c006_one_free_port0_wins: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     req0_vld && req1_vld && (req0_vpn != req1_vpn) && (free_count(mb_vld) == 1)
     && gnt0 && !gnt1);
 
-  cp_l1dtlb_c006_one_free_port1_wins: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  cp_l1dtlb_c006_one_free_port1_wins: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     req0_vld && req1_vld && (req0_vpn != req1_vpn) && (free_count(mb_vld) == 1)
     && !gnt0 && gnt1);
 
@@ -653,29 +655,29 @@ module mmu_l1dtlb_mb_entry_sva #(
   endfunction
 
   // A040/A041/A042/A051/A065: MB FSM and latched data behavior.
-  a_entry_vld_state_decode: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_entry_vld_state_decode: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     entry_vld == (entry_state != STATE_IDLE));
 
-  a_entry_ready_state_decode: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_entry_ready_state_decode: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     entry_ready == (entry_state == STATE_WFG));
 
-  a_entry_wfc_state_decode: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_entry_wfc_state_decode: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     entry_wfc == ((entry_state == STATE_WFC) || (entry_state == STATE_ABT)));
 
-  a_entry_wfi_state_decode: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_entry_wfi_state_decode: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     entry_wfi == (entry_state == STATE_WFI));
 
-	  a_alloc_latches_payload: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+	  a_alloc_latches_payload: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
 	    (alloc_vld && !rtu_yy_xx_flush && entry_state == STATE_IDLE)
 	    |=> (entry_vpn == $past(alloc_vpn)
 	      && entry_iid == $past(alloc_iid)
 	      && entry_store == $past(alloc_store)));
 
-	  a_idle_flush_blocks_alloc: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+	  a_idle_flush_blocks_alloc: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
 	    (alloc_vld && rtu_yy_xx_flush && entry_state == STATE_IDLE)
 	    |=> entry_state == STATE_IDLE);
 
-  a_wfi_data_stable_without_grant: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_wfi_data_stable_without_grant: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFI && !refill_gnt && !rtu_yy_xx_flush)
     |=> (entry_state == STATE_WFI
       && entry_vpn == $past(entry_vpn)
@@ -683,45 +685,45 @@ module mmu_l1dtlb_mb_entry_sva #(
       && entry_flg == $past(entry_flg)
       && entry_pgs == $past(entry_pgs)));
 
-  a_fault_state_holds_until_replay_or_flush: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_fault_state_holds_until_replay_or_flush: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     ((entry_state == STATE_PGFLT) || (entry_state == STATE_ACFLT)) && !expt_hit && !rtu_yy_xx_flush
     |=> ((entry_state == STATE_PGFLT) || (entry_state == STATE_ACFLT)));
 
-  a_refill_fault_exclusive: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_refill_fault_exclusive: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     refill_vld |-> !(refill_pgflt && refill_acflt));
 
-  a_refill_success_payload_legal: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_refill_success_payload_legal: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFC && refill_vld && !refill_pgflt && !refill_acflt)
     |-> (!$isunknown(refill_ppn) && !$isunknown(refill_flg) && legal_pgs(refill_pgs)));
 
-  a_wfg_flush_no_grant_to_idle: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_wfg_flush_no_grant_to_idle: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFG && rtu_yy_xx_flush && !(issue_sel && issue_grant)) |=> entry_state == STATE_IDLE);
 
-  a_wfg_flush_with_grant_to_abt: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_wfg_flush_with_grant_to_abt: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFG && rtu_yy_xx_flush && issue_sel && issue_grant) |=> entry_state == STATE_ABT);
 
-  cp_l1dtlb_wfg_flush_no_grant: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_wfg_flush_no_grant: cover property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     entry_state == STATE_WFG && rtu_yy_xx_flush && !(issue_sel && issue_grant));
 
-  cp_l1dtlb_wfg_flush_with_grant: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_wfg_flush_with_grant: cover property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     entry_state == STATE_WFG && rtu_yy_xx_flush && issue_sel && issue_grant);
 
-  a_wfc_flush_no_refill_to_abt: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_wfc_flush_no_refill_to_abt: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFC && rtu_yy_xx_flush && !refill_vld) |=> entry_state == STATE_ABT);
 
-  a_wfc_flush_refill_to_idle: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_wfc_flush_refill_to_idle: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFC && rtu_yy_xx_flush && refill_vld) |=> entry_state == STATE_IDLE);
 
-  a_wfi_flush_to_idle: assert property (@(posedge mb_clk) disable iff (!cpurst_b)
+  a_wfi_flush_to_idle: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFI && rtu_yy_xx_flush) |=> entry_state == STATE_IDLE);
 
-  cp_l1dtlb_c017_stale_or_abt_refill: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c017_stale_or_abt_refill: cover property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state inside {STATE_IDLE, STATE_PGFLT, STATE_ACFLT, STATE_ABT}) && refill_vld);
 
-  cp_l1dtlb_c015_wfi_hold: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c015_wfi_hold: cover property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_state == STATE_WFI) && refill_gnt);
 
-  cp_l1dtlb_c020_flush_race: cover property (@(posedge mb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c020_flush_race: cover property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
     rtu_yy_xx_flush && (entry_state != STATE_IDLE));
 
 endmodule
@@ -773,84 +775,84 @@ module mmu_l1dtlb_scheduler_sva #(
   assign old_ready_id = first_ready(mb_entry_ready);
 
   // A002/A043/A044/A045/A046/A047: scheduler credit and request ownership.
-  a_credit_in_range: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_credit_in_range: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     credit_cnt <= CREDIT_MAX);
 
   a_reset_credit_max: assert property (@(posedge sched_clk)
     !cpurst_b |=> credit_cnt == CREDIT_MAX);
 
-  a_no_req_without_credit_or_return: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_no_req_without_credit_or_return: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (credit_cnt == 0 && !l2tlb_credit_ret) |-> !dutlb_arb_req);
 
-  a_no_req_at_zero_credit_even_with_return: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_no_req_at_zero_credit_even_with_return: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     credit_cnt == 0 |-> !dutlb_arb_req);
 
-  a_credit_decrement_on_req_only: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_credit_decrement_on_req_only: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (dutlb_arb_req && !l2tlb_credit_ret) |=> credit_cnt == $past(credit_cnt) - 1'b1);
 
-  a_credit_increment_on_return_only: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_credit_increment_on_return_only: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (!dutlb_arb_req && l2tlb_credit_ret && (credit_cnt < CREDIT_MAX))
     |=> credit_cnt == $past(credit_cnt) + 1'b1);
 
-  a_credit_hold_on_req_and_return: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_credit_hold_on_req_and_return: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (dutlb_arb_req && l2tlb_credit_ret) |=> credit_cnt == $past(credit_cnt));
 
-  a_req_payload_known: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_req_payload_known: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_arb_req |-> (!$isunknown(dutlb_arb_vpn)
                     && !$isunknown(dutlb_arb_id)
                     && !$isunknown(dutlb_arb_store)));
 
-  a_req_id_in_range: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_req_id_in_range: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_arb_req |-> (dutlb_arb_id < MB_DEPTH));
 
-  a_issue_sel_onehot0: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_issue_sel_onehot0: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(issue_sel));
 
-  a_req_matches_issue_grant: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_req_matches_issue_grant: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_arb_req == issue_grant_out);
 
-  a_old_mb_priority_over_bypass: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_old_mb_priority_over_bypass: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     ((|mb_entry_ready) && (alloc_gnt0 || alloc_gnt1) && (credit_cnt != 0))
     |-> (dutlb_arb_req
       && dutlb_arb_id == old_ready_id
       && issue_sel == ({{(MB_DEPTH-1){1'b0}}, 1'b1} << old_ready_id)));
 
-  a_mb_req_payload_matches_entry: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_mb_req_payload_matches_entry: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (dutlb_arb_req && (|mb_entry_ready))
     |-> (dutlb_arb_vpn == mb_entry_vpn[dutlb_arb_id]
       && dutlb_arb_store == mb_entry_store[dutlb_arb_id]));
 
-  a_bypass0_req_matches_alloc: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_bypass0_req_matches_alloc: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (dutlb_arb_req && !(|mb_entry_ready) && alloc_gnt0)
     |-> (dutlb_arb_id == alloc_sel0
       && dutlb_arb_vpn == alloc_vpn0
       && dutlb_arb_store == alloc_store0));
 
-  a_bypass1_req_matches_alloc: assert property (@(posedge sched_clk) disable iff (!cpurst_b)
+  a_bypass1_req_matches_alloc: assert property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (dutlb_arb_req && !(|mb_entry_ready) && !alloc_gnt0 && alloc_gnt1)
     |-> (dutlb_arb_id == alloc_sel1
       && dutlb_arb_vpn == alloc_vpn1
       && dutlb_arb_store == alloc_store1));
 
-  cp_l1dtlb_c014_credit_empty: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_credit_empty: cover property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     credit_cnt == 0);
 
-  cp_l1dtlb_c014_credit_req: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_credit_req: cover property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_arb_req);
 
-  cp_l1dtlb_c014_credit_return: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_credit_return: cover property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_credit_ret);
 
-  cp_l1dtlb_c014_req_and_return: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_req_and_return: cover property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_arb_req && l2tlb_credit_ret);
 
-  cp_l1dtlb_c014_zero_credit_return: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_zero_credit_return: cover property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (credit_cnt == 0) && l2tlb_credit_ret && !dutlb_arb_req);
 
-  cp_l1dtlb_c014_old_mb_priority: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_old_mb_priority: cover property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     (|mb_entry_ready) && (alloc_gnt0 || alloc_gnt1) && dutlb_arb_req);
 
-  cp_l1dtlb_c014_bypass_issue: cover property (@(posedge sched_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c014_bypass_issue: cover property (@(posedge sched_clk) disable iff (`L2TLB_NEG_DISABLE)
     !(|mb_entry_ready) && (alloc_gnt0 || alloc_gnt1) && dutlb_arb_req);
 
 endmodule
@@ -921,13 +923,13 @@ module mmu_l1dtlb_install_sva #(
   assign wfi_id = first_wfi(mb_entry_wfi);
 
   // A016/A048/A049/A050/A051/A066: install arbitration and update payload.
-  a_install_wakeup_shape: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_install_wakeup_shape: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     (mmu_lsu_tlb_wakeup == 12'h000) || (mmu_lsu_tlb_wakeup == 12'hfff));
 
-  a_install_wakeup_on_install: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_install_wakeup_on_install: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld |-> (mmu_lsu_tlb_wakeup == 12'hfff));
 
-  a_no_install_on_fault_refill_only: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_no_install_on_fault_refill_only: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     (!(|mb_entry_wfi)
      && ((ptw_l1dtlb_ref_cmplt && (ptw_l1tlb_pgflt || ptw_l1tlb_acc_err))
       || (jtlb_dutlb_ref_cmplt && jtlb_dutlb_pgflt))
@@ -941,13 +943,13 @@ module mmu_l1dtlb_install_sva #(
           && !jtlb_dutlb_pgflt))
     |-> !utlb_refill_vld);
 
-  a_grant_bus_onehot0: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_grant_bus_onehot0: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(mb_refill_gnt_bus));
 
-  a_plru_way_onehot_on_refill: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_plru_way_onehot_on_refill: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld |-> (plru_refill_updt && $onehot(plru_refill_way)));
 
-  a_wfi_priority_over_ptw_l2: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_wfi_priority_over_ptw_l2: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     (|mb_entry_wfi) |-> (utlb_refill_vld
                       && mb_refill_gnt_bus[wfi_id]
                       && utlb_refill_vpn == mb_entry_vpn[wfi_id]
@@ -955,7 +957,7 @@ module mmu_l1dtlb_install_sva #(
                       && utlb_refill_flg == mb_entry_flg[wfi_id]
                       && utlb_refill_pgs == mb_entry_pgs[wfi_id]));
 
-  a_ptw_priority_over_l2: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_ptw_priority_over_l2: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     (!(|mb_entry_wfi)
      && ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt
      && mb_entry_vld[ptw_l1dtlb_ref_id]
@@ -972,7 +974,7 @@ module mmu_l1dtlb_install_sva #(
       && utlb_refill_flg == ptw_l1tlb_ref_flg
       && utlb_refill_pgs == ptw_l1dtlb_ref_pgs));
 
-  a_l2_selected_when_no_wfi_ptw: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_l2_selected_when_no_wfi_ptw: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     (!(|mb_entry_wfi)
      && !(ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt
           && mb_entry_vld[ptw_l1dtlb_ref_id]
@@ -989,7 +991,7 @@ module mmu_l1dtlb_install_sva #(
       && utlb_refill_flg == jtlb_utlb_ref_flg
       && utlb_refill_pgs == l2tlb_l1dtlb_ref_pgs));
 
-  a_install_payload_known_legal: assert property (@(posedge install_clk) disable iff (!cpurst_b)
+  a_install_payload_known_legal: assert property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld |-> (!$isunknown(utlb_refill_idx)
                       && !$isunknown(utlb_refill_vpn)
                       && !$isunknown(utlb_refill_ppn)
@@ -997,13 +999,13 @@ module mmu_l1dtlb_install_sva #(
                       && !$isunknown(utlb_refill_pgs)
                       && legal_pgs(utlb_refill_pgs)));
 
-  cp_l1dtlb_c015_wfi_priority: cover property (@(posedge install_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c015_wfi_priority: cover property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     (|mb_entry_wfi) && utlb_refill_vld);
 
-  cp_l1dtlb_c015_ptw_l2_collision: cover property (@(posedge install_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c015_ptw_l2_collision: cover property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_l1dtlb_ref_cmplt && jtlb_dutlb_ref_cmplt && utlb_refill_vld);
 
-  cp_l1dtlb_c018_install_release: cover property (@(posedge install_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c018_install_release: cover property (@(posedge install_clk) disable iff (`L2TLB_NEG_DISABLE)
     utlb_refill_vld && (|mb_refill_gnt_bus));
 
 endmodule
@@ -1148,78 +1150,78 @@ module mmu_l1dtlb_hit_rd_sva #(
 );
 
   // A004/A011/A012/A014/A015/A019/A031-A035/A059/A068/A069.
-  a_hit_response_t0: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_hit_response_t0: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va_vld_x && (|entry_hit_vec) && !mmu_lsu_page_fault_x)
     |-> mmu_lsu_pa_vld_x);
 
-  a_page_fault_has_pa_vld: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_page_fault_has_pa_vld: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_page_fault_x |-> mmu_lsu_pa_vld_x);
 
-  a_direct_map_terminal_response: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_direct_map_terminal_response: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va_vld_x && dutlb_off_hit && !lsu_mmu_abort_x)
     |-> (mmu_lsu_pa_vld_x && !dutlb_miss_vld_x && !dutlb_miss_vld_short_x));
 
-  a_expt_replay_not_new_miss: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_expt_replay_not_new_miss: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va_vld_x && expt_match_x) |-> (!dutlb_miss_vld_x && !dutlb_miss_vld_short_x));
 
-  a_expt_replay_has_fault_class: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_expt_replay_has_fault_class: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va_vld_x && expt_match_x) |-> (expt_pgflt_x ^ expt_acflt_x));
 
   // RTL gives exception-CAM replay priority via dutlb_pre_sel.  A replay may
   // coincide with a stale/independent TLB entry hit for the same VPN; the
   // required behavior is that the request is completed as the replayed fault
   // and does not allocate a new miss or source stale entry PA.
-  a_expt_entry_overlap_is_terminal_replay: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_expt_entry_overlap_is_terminal_replay: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va_vld_x && (|entry_hit_vec) && expt_match_x)
     |-> (mmu_lsu_pa_vld_x && !dutlb_miss_vld_x && !dutlb_miss_vld_short_x
          && (mmu_lsu_pa_x == mmu_sysmap_pa_x)));
 
-  cp_l1dtlb_expt_entry_overlap_replay: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_expt_entry_overlap_replay: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_va_vld_x && (|entry_hit_vec) && expt_match_x);
 
-  a_abort_blocks_miss: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_abort_blocks_miss: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_va_vld_x && lsu_mmu_abort_x) |-> !dutlb_miss_vld_x);
 
   // STAMO itself is not a DTLB miss source.  A concurrent VA retry on pipe1 can
   // still miss, so keep this assertion scoped to pure STAMO cycles.
-  a_stamo_bypass_not_miss: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_stamo_bypass_not_miss: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_stamo_vld_x && !lsu_mmu_va_vld_x)
     |-> (!dutlb_miss_vld_x && !dutlb_miss_vld_short_x));
 
   // RTL (mmu_l1dtlb_hit_rd.sv:267): dutlb_stamo_pre_sel = lsu_mmu_stamo_vld_x & !dutlb_expt_match.
   // When expt_match=1, STAMO path is disabled and PA comes from exception handler.
   // Assertion must exclude expt_match case to avoid false failure.
-  a_stamo_pa_source: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_stamo_pa_source: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_stamo_vld_x && mmu_lsu_pa_vld_x && !expt_match_x) |-> (mmu_lsu_pa_x == lsu_mmu_stamo_pa_x));
 
-  a_access_fault_known_payload: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_access_fault_known_payload: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_access_fault_x |-> !$isunknown({mmu_lsu_pa_x, mmu_pmp_pa_x}));
 
-  a_plru_hit_sample_known: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_plru_hit_sample_known: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     dutlb_plru_read_hit_vld_x |-> !$isunknown(dutlb_plru_read_hit_x));
 
-  a_valid_hit_only_from_valid_entry: assert property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  a_valid_hit_only_from_valid_entry: assert property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     (entry_hit_vec & ~entry_vld_vec) == '0);
 
-  cp_l1dtlb_c002_single_hit: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c002_single_hit: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_va_vld_x && (|entry_hit_vec));
 
-  cp_l1dtlb_c010_page_fault: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c010_page_fault: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_page_fault_x);
 
-  cp_l1dtlb_c011_direct_map: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c011_direct_map: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_va_vld_x && dutlb_off_hit && mmu_lsu_pa_vld_x);
 
-  cp_l1dtlb_c012_stamo_bypass: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c012_stamo_bypass: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_stamo_vld_x && mmu_lsu_pa_vld_x);
 
-  cp_l1dtlb_c012_stamo_pipe_negative: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c012_stamo_pipe_negative: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     !lsu_mmu_stamo_vld_x && lsu_mmu_va_vld_x && (|entry_hit_vec) && mmu_lsu_pa_vld_x);
 
-  cp_l1dtlb_c021_access_fault: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c021_access_fault: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_access_fault_x);
 
-  cp_l1dtlb_c026_vabuf_changes: cover property (@(posedge dutlb_clk) disable iff (!cpurst_b)
+  cp_l1dtlb_c026_vabuf_changes: cover property (@(posedge dutlb_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_va_vld_x && $changed(lsu_mmu_vabuf_x));
 
 endmodule

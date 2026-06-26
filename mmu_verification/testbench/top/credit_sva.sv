@@ -149,13 +149,13 @@ module credit_sva #(
   // L2TLB_SVA_003: ITLB request valid is a one-cycle pulse in this
   // environment. DTLB requests are credit-backed per-cycle allocations, so
   // timeout/fairness stress may legally issue back-to-back DTLB misses.
-  a_i_req_one_cycle_pulse: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_i_req_one_cycle_pulse: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     i_req_valid |=> !i_req_valid);
 
-  c_d_req_back_to_back_valid: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_d_req_back_to_back_valid: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     d_req_valid ##1 d_req_valid);
 
-  a_d_req_no_same_payload_hold: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_d_req_no_same_payload_hold: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (d_req_valid && $past(d_req_valid))
       |-> ((d_req_vpn != $past(d_req_vpn))
         || (d_req_eid != $past(d_req_eid))
@@ -173,58 +173,58 @@ module credit_sva #(
       |-> (! $isunknown(issue_queue_id) && ! $isunknown(issue_eid)
         && ! $isunknown(issue_type) && ! $isunknown(issue_vpn)));
 
-  a_credit_retn_bits_known: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_credit_retn_bits_known: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (! $isunknown(i_credit_return) && ! $isunknown(d_credit_return)));
 
   // L2TLB_SVA_004/007: request allocation must respect ITLB entry0 and DTLB
   // entry1..N partitioning. Normal tests must not request without credit.
-  a_i_req_has_free_entry0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_i_req_has_free_entry0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     i_req_valid |-> !entry_vld_vec[0]);
 
-  a_d_req_has_free_dtlb_entry: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_d_req_has_free_dtlb_entry: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     d_req_valid |-> !(&entry_vld_vec[TOTAL_DEPTH-1:1]));
 
-  a_dtlb_alloc_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_dtlb_alloc_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(dtlb_alloc_oh));
 
-  a_alloc_entry0_itlb_only: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_alloc_entry0_itlb_only: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     alloc_en_vec[0] |-> i_req_valid);
 
-  a_alloc_dtlb_entries_dtlb_only: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_alloc_dtlb_entries_dtlb_only: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (|alloc_en_vec[TOTAL_DEPTH-1:1]) |-> d_req_valid);
 
-  a_entry0_type_itlb: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_entry0_type_itlb: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     entry_vld_vec[0] |-> (entry_out_type[0] == 3'b011 && entry_out_eid[0] == '0));
 
   genvar entry_idx;
   generate
     for (entry_idx = 1; entry_idx < TOTAL_DEPTH; entry_idx++) begin : gen_dtlb_partition_sva
-      a_dtlb_entry_type: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+      a_dtlb_entry_type: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
         entry_vld_vec[entry_idx] |-> (is_dtlb_type(entry_out_type[entry_idx])
                                    && !$isunknown(entry_out_vpn[entry_idx])
                                    && !$isunknown(entry_out_eid[entry_idx])));
     end
   endgenerate
 
-  a_issue_entry0_is_itlb: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_issue_entry0_is_itlb: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (issue_valid && (issue_queue_id == '0))
       |-> (issue_type == 3'b011 && issue_eid == '0));
 
-  a_issue_dtlb_partition: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_issue_dtlb_partition: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (issue_valid && id_in_range(issue_queue_id) && (issue_queue_id != '0))
       |-> is_dtlb_type(issue_type));
 
-  a_issue_id_in_range: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_issue_id_in_range: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     issue_valid |-> id_in_range(issue_queue_id));
 
   // L2TLB_SVA_008: grant/feedback IDs must target outstanding queue state.
-  a_ffr_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_ffr_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(ffr_oh));
 
-  a_entry_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_entry_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(entry_grant_vec));
 
-  a_bypass_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_bypass_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(bypass_grant_vec));
 
   a_feedback_id_known_and_in_range: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
@@ -236,23 +236,23 @@ module credit_sva #(
   a_feedback_result_legal_combo: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     fb_valid |-> $onehot0({fb_hit, fb_miss_alloc, fb_miss_retry}));
 
-  a_retry_keeps_entry_for_replay: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_retry_keeps_entry_for_replay: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (fb_valid && fb_miss_retry && id_in_range(fb_trans_id))
       |=> (entry_vld_vec[$past(fb_trans_id)] && entry_rdy_vec[$past(fb_trans_id)]));
 
-  a_itlb_credit_matches_entry0_dealloc: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_itlb_credit_matches_entry0_dealloc: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     i_credit_return == entry_dealloc_vec[0]);
 
-  a_dtlb_credit_matches_dtlb_dealloc: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_dtlb_credit_matches_dtlb_dealloc: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     d_credit_return == (|entry_dealloc_vec[TOTAL_DEPTH-1:1]));
 
-  c_itlb_alloc_issue: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_itlb_alloc_issue: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     i_req_valid ##[0:2] issue_valid && (issue_queue_id == '0) && issue_grant);
 
-  c_dtlb_alloc_issue: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_dtlb_alloc_issue: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     d_req_valid ##[0:4] issue_valid && (issue_queue_id != '0) && issue_grant);
 
-  c_reqq_retry_feedback: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_reqq_retry_feedback: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     fb_valid && fb_miss_retry);
 
   final begin

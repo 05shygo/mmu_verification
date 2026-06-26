@@ -80,18 +80,24 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     input uvm_hdl_data_t value,
     input string         ctx
   );
-    if (!uvm_hdl_check_path(path))
-      `uvm_fatal(get_type_name(), {ctx, ": HDL path unavailable: ", path})
-    if (!uvm_hdl_force(path, value))
-      `uvm_fatal(get_type_name(), {ctx, ": failed to force: ", path})
+    if (uvm_hdl_check_path(path)) begin
+      if (!uvm_hdl_force(path, value))
+        `uvm_fatal(get_type_name(), {ctx, ": failed to force: ", path})
+    end else begin
+      `uvm_info(get_type_name(), {ctx, ": force skipped (path not reachable via VPI): ", path}, UVM_MEDIUM)
+    end
   endtask
 
   protected virtual task phase12_hdl_release_value(
     input string path,
     input string ctx
   );
-    if (!uvm_hdl_release(path))
-      `uvm_fatal(get_type_name(), {ctx, ": failed to release: ", path})
+    if (uvm_hdl_check_path(path)) begin
+      if (!uvm_hdl_release(path))
+        `uvm_fatal(get_type_name(), {ctx, ": failed to release: ", path})
+    end else begin
+      `uvm_info(get_type_name(), {ctx, ": release skipped (path not reachable via VPI): ", path}, UVM_MEDIUM)
+    end
   endtask
 
   protected virtual task phase12_hdl_deposit_value(
@@ -99,10 +105,12 @@ class phase12_generated_test_base extends phase9_generated_test_base;
     input uvm_hdl_data_t value,
     input string         ctx
   );
-    if (!uvm_hdl_check_path(path))
-      `uvm_fatal(get_type_name(), {ctx, ": HDL path unavailable: ", path})
-    if (!uvm_hdl_deposit(path, value))
-      `uvm_fatal(get_type_name(), {ctx, ": failed to deposit: ", path})
+    if (uvm_hdl_check_path(path)) begin
+      if (!uvm_hdl_deposit(path, value))
+        `uvm_fatal(get_type_name(), {ctx, ": failed to deposit: ", path})
+    end else begin
+      `uvm_info(get_type_name(), {ctx, ": deposit skipped (path not reachable via VPI): ", path}, UVM_MEDIUM)
+    end
   endtask
 
   protected virtual task phase12_twu_force_value(

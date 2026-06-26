@@ -193,6 +193,14 @@ class ptw_source_ref_model extends uvm_component;
   int unsigned m_pde_update_match_count;
   int unsigned m_pde_update_mismatch_count;
   int unsigned m_pde_duplicate_direct_accerr_event_count;
+  int unsigned m_pde_duplicate_direct_accerr_count;
+  int unsigned m_mem_by_id_req_count;
+  int unsigned m_mem_by_id_rsp_match_count;
+  int unsigned m_mem_by_id_invalid_rsp_count;
+  int unsigned m_mem_by_id_rsp_without_outstanding_count;
+  int unsigned m_mem_by_id_duplicate_count;
+  int unsigned m_mem_by_id_abort_drain_rsp_count;
+  int unsigned m_mem_by_id_bus_error_count;
   int unsigned m_probe_gap_count;
   int unsigned m_satp_clear_count;
   int unsigned m_pmp_clear_count;
@@ -1918,7 +1926,6 @@ class ptw_source_ref_model extends uvm_component;
         m_rec_chk_next_priority, m_rec_scalar_ready_hold,
         m_rec_pmpflg_payload, m_rec_two_source_refill,
         m_probe_gap_legacy_stage_event),
-      UVM_NONE)
       UVM_NONE)
 
     `uvm_info(get_type_name(),

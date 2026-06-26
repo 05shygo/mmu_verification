@@ -1,0 +1,4 @@
+# Whitebox tests that require +MMU_WHITEBOX_CODE_COV_ASSERT_OFF.
+# Keep these out of make covp/covp_sva assertion coverage runs.
+test_mbuf_entry_line_cond_branch_cov
+test_twu_unified_code_cov

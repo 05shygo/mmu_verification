@@ -917,6 +917,7 @@ endclass : test_l2tlb_p6e_rrpv_debug_pressure
 `include "test_mmu_l2tlb_cov_cond_1234b.svh"
 `include "test_mmu_l2tlb_cov_ptw_disabled.svh"
 `include "test_mmu_l2tlb_cov_ptw_off.svh"
+`include "test_mmu_l2tlb_cov_ptw_off_v2.svh"
 `include "test_mmu_l2tlb_cov_ptw_off_v3.svh"
 `include "test_mmu_l2tlb_cond_769.svh"
 `include "test_diag_ptw_en.svh"

@@ -78,33 +78,33 @@ module mmu_l2tlb_mb_sva #(
                 && !$isunknown(req_acc_type) && !$isunknown(req_is_dtlb)
                 && is_reqq_or_pfu_type(req_acc_type)));
 
-  a_itlb_alloc_entry0_only: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_itlb_alloc_entry0_only: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (req_valid && !req_is_dtlb && !entry_vld_vec[0])
       |-> (alloc_en_vec[0] && !(|alloc_en_vec[TOTAL_DEPTH-1:1])));
 
-  a_itlb_full_no_overwrite: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_itlb_full_no_overwrite: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (req_valid && !req_is_dtlb && entry_vld_vec[0])
       |-> (!req_alloc_valid && !alloc_en_vec[0]));
 
-  a_dtlb_alloc_partition: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_dtlb_alloc_partition: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (req_valid && req_is_dtlb && !(&entry_vld_vec[TOTAL_DEPTH-1:1]))
       |-> (!alloc_en_vec[0] && $onehot(alloc_en_vec[TOTAL_DEPTH-1:1])));
 
-  a_dtlb_full_no_overwrite: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_dtlb_full_no_overwrite: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (req_valid && req_is_dtlb && (&entry_vld_vec[TOTAL_DEPTH-1:1]))
       |-> (!req_alloc_valid && (alloc_en_vec[TOTAL_DEPTH-1:1] == '0)));
 
-  a_dtlb_alloc_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_dtlb_alloc_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(dtlb_alloc_oh));
 
   // L2TLB_SVA_010/013: issue and completion accounting by MB id.
-  a_ffr_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_ffr_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(ffr_oh));
 
-  a_entry_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_entry_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(entry_grant_vec));
 
-  a_bypass_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_bypass_grant_onehot0: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(bypass_grant_vec));
 
   a_issue_payload_known: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
@@ -112,11 +112,11 @@ module mmu_l2tlb_mb_sva #(
                 && !$isunknown(issue_vpn) && !$isunknown(issue_type)
                 && id_in_range(issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH])));
 
-  a_issue_id_matches_partition: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_issue_id_matches_partition: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     issue_req |-> (issue_is_dtlb ==
       (issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH] != '0)));
 
-  a_issue_payload_matches_ready_entry: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_issue_payload_matches_ready_entry: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (issue_req && (|entry_rdy_vec))
       |-> (issue_vpn == entry_out_vpn[issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH]]
         && issue_type == entry_out_type[issue_eid[L1EID_WIDTH+L2EID_WIDTH-1:L1EID_WIDTH]]));
@@ -125,7 +125,7 @@ module mmu_l2tlb_mb_sva #(
   // entry or bypass alloc. Abort/TLBOP retry may reselect a different entry
   // under PTW backpressure; the payload must still be stable for a same eid.
   a_ptw_ready_backpressure_payload_stable: assert property (@(posedge reqq_clk)
-    disable iff (!cpurst_b || !l2mb_sva_past_valid
+    disable iff (`L2TLB_NEG_DISABLE || !l2mb_sva_past_valid
               || tlboper_ptw_abort || tlboper_ptw_abort_q)
       (issue_req && !ptw_ready
        && $past(issue_req && !ptw_ready)
@@ -133,7 +133,7 @@ module mmu_l2tlb_mb_sva #(
         |-> ($stable(issue_vpn) && $stable(issue_type) && $stable(issue_is_dtlb)));
 
   c_mb_issue_reselect_under_backpressure: cover property (@(posedge reqq_clk)
-    disable iff (!cpurst_b || !l2mb_sva_past_valid)
+    disable iff (`L2TLB_NEG_DISABLE || !l2mb_sva_past_valid)
       issue_req && !ptw_ready
       && $past(issue_req && !ptw_ready)
       && (issue_eid != $past(issue_eid)));
@@ -144,27 +144,27 @@ module mmu_l2tlb_mb_sva #(
   a_feedback_id_outstanding: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (fb_valid && id_in_range(fb_trans_id)) |-> entry_vld_vec[fb_trans_id]);
 
-  a_feedback_deallocates_matching_entry: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_feedback_deallocates_matching_entry: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (fb_valid && fb_hit && id_in_range(fb_trans_id))
       |=> !entry_vld_vec[$past(fb_trans_id)]);
 
   // L2TLB_SVA_016: abort clears sent state and must not drop outstanding entry
   // ownership, except entries that legally complete in the abort cycle.
-  a_abort_keeps_outstanding_entries_valid: assert property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  a_abort_keeps_outstanding_entries_valid: assert property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     (tlboper_ptw_abort && (entry_vld_vec != '0))
       |=> ((entry_vld_vec & ($past(entry_vld_vec) & ~$past(entry_dealloc_vec)))
         == ($past(entry_vld_vec) & ~$past(entry_dealloc_vec))));
 
-  c_mb_itlb_alloc: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_mb_itlb_alloc: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     req_valid && !req_is_dtlb && req_alloc_valid);
 
-  c_mb_dtlb_alloc: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_mb_dtlb_alloc: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     req_valid && req_is_dtlb && req_alloc_valid);
 
-  c_mb_ptw_backpressure: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_mb_ptw_backpressure: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
       issue_req && !ptw_ready ##1 issue_req && ptw_ready);
 
-  c_mb_abort_outstanding: cover property (@(posedge reqq_clk) disable iff (!cpurst_b)
+  c_mb_abort_outstanding: cover property (@(posedge reqq_clk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_ptw_abort && (entry_vld_vec != '0));
 
 endmodule

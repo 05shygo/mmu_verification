@@ -164,7 +164,7 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins two   = {2};
       bins four  = {4};
       bins eight = {8};
-      illegal_bins invalid = {0, 3, [5:7]};  // 8-bit onehot only allows power-of-two counts
+      illegal_bins invalid = {3, [5:7]};  // 8-bit onehot; 0 is transient during force/tb
     }
     // ── Stall detection ───────────────────────────────────────────────────
     //   NOTE: l2_arb_req and arb_l2tlb_req map to the same wire in current RTL
@@ -266,7 +266,6 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins itlb = {3'b011};
       bins dtlb = {3'b010, 3'b110};
       bins pfu  = {3'b100};
-      ignore_bins others = default;
     }
     // Completion type: cmplt=1 + data_vld=1 → data_valid
     //                 cmplt=1 + pgflt=1   → page_fault

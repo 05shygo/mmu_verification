@@ -151,13 +151,13 @@ module mmu_l2tlb_rrpv_sva (
 
   // PTW read (acc_type 000) must enter the raw stage so replacement policy can
   // consume the RRPV/tag-valid read data and choose a victim for the later write.
-  a_ptw_read_sets_raw_vld: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_read_sets_raw_vld: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (arb_l2tlb_req && !arb_l2tlb_write && (arb_l2tlb_acc_type == 3'b000))
       |=> raw_vld);
 
   // PTW write (acc_type 101) is the refill write beat and must not re-enter the
   // raw lookup/replacement read stage.
-  a_ptw_write_skips_raw_vld: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_ptw_write_skips_raw_vld: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (arb_l2tlb_req && arb_l2tlb_write && (arb_l2tlb_acc_type == 3'b101))
       |=> !raw_vld);
 
@@ -177,7 +177,7 @@ module mmu_l2tlb_rrpv_sva (
         |-> ($stable(l2tlb_ptw_type) && $stable(l2tlb_ptw_vpn)));
 
   c_l2tlb_ptw_reselect_under_backpressure: cover property (@(posedge forever_cpuclk)
-    disable iff (!cpurst_b || !l2tlb_sva_past_valid)
+    disable iff (`L2TLB_NEG_DISABLE || !l2tlb_sva_past_valid)
       l2tlb_ptw_req && !ptw_ready
       && $past(l2tlb_ptw_req && !ptw_ready)
       && (l2tlb_ptw_id != $past(l2tlb_ptw_id)));
@@ -198,7 +198,7 @@ module mmu_l2tlb_rrpv_sva (
 
   // A ReqQ multi-hit is a terminal page-fault result, so it must release the
   // sent ReqQ entry instead of leaving it stuck in sent state.
-  a_reqq_multihit_releases: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_reqq_multihit_releases: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (final_vld && final_cmp_with_va && is_reqq_type(final_acc_type) && final_tlb_hit_mult)
       |-> (l2tlb_reqq_fb_vld && !l2tlb_reqq_fb_miss_retry
         && !l2tlb_reqq_fb_miss_alloc && !l2tlb_reqq_fb_hit
@@ -206,42 +206,42 @@ module mmu_l2tlb_rrpv_sva (
 
   // When PTW is disabled, a ReqQ miss is also a terminal page-fault result. It
   // must not be replayed just because the miss buffer cannot accept it.
-  a_reqq_ptw_disabled_miss_releases: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_reqq_ptw_disabled_miss_releases: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (final_vld && final_cmp_with_va && is_reqq_type(final_acc_type) && l2tlb_miss && !cp0_mmu_ptw_en)
       |-> (l2tlb_reqq_fb_vld && !l2tlb_reqq_fb_miss_retry
         && !l2tlb_reqq_fb_miss_alloc && !l2tlb_reqq_fb_hit
         && (l2tlb_reqq_fb_id == final_queue_id)));
 
-  a_reqq_feedback_result_legal_combo: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_reqq_feedback_result_legal_combo: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_reqq_fb_vld |-> $onehot0({l2tlb_reqq_fb_hit,
                                     l2tlb_reqq_fb_miss_alloc,
                                     l2tlb_reqq_fb_miss_retry}));
 
-  a_l1_response_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_l1_response_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     (l2tlb_l1dtlb_ref_cmplt || l2tlb_l1itlb_ref_cmplt || l2tlb_top_utlb_pavld)
       |-> (!$isunknown(l2tlb_l1tlb_ref_flg) && !$isunknown(l2tlb_l1tlb_ref_pgs)
         && !$isunknown(l2tlb_l1tlb_ref_ppn) && !$isunknown(l2tlb_l1tlb_ref_vpn)));
 
-  a_pfu_response_payload_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_pfu_response_payload_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_pa2_vld |-> (!$isunknown(mmu_lsu_pa2) && !$isunknown(mmu_lsu_pa2_err)
                       && !$isunknown(mmu_lsu_sec2) && !$isunknown(mmu_lsu_share2)));
 
-  a_tlboper_response_known: assert property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  a_tlboper_response_known: assert property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     l2tlb_tlboper_cmplt |-> (!$isunknown(l2tlb_tlboper_sel)
                           && !$isunknown(l2tlb_tlboper_va_hit)));
 
-  c_reqq_multihit_terminal_fault: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_reqq_multihit_terminal_fault: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     final_vld && final_cmp_with_va && is_reqq_type(final_acc_type)
     && final_tlb_hit_mult && l2tlb_reqq_fb_vld);
 
-  c_reqq_ptw_disabled_terminal_fault: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_reqq_ptw_disabled_terminal_fault: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     final_vld && final_cmp_with_va && is_reqq_type(final_acc_type)
     && l2tlb_miss && !cp0_mmu_ptw_en && l2tlb_reqq_fb_vld);
 
-  c_ptw_ready_backpressure: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_ptw_ready_backpressure: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
       l2tlb_ptw_req && !ptw_ready ##1 l2tlb_ptw_req && ptw_ready);
 
-  c_ptw_fault_completion: cover property (@(posedge forever_cpuclk) disable iff (!cpurst_b)
+  c_ptw_fault_completion: cover property (@(posedge forever_cpuclk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_l2tlb_ref_cmplt && (ptw_l2tlb_ref_pgflt || ptw_l2tlb_ref_acc_err));
 
 endmodule

@@ -3,6 +3,8 @@
 // ID/grant-aware PTW MBUF checks plus bus-error/abort coverage.
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_ptw_lsu_protocol_sva (
     input logic        mbuf_clk,
@@ -252,34 +254,34 @@ module mmu_ptw_lsu_protocol_sva (
     end
   end
 
-  a_lsu_req_fire_definition: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_fire_definition: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_req_fire == (mmu_lsu_data_req && lsu_mmu_data_req_grant));
 
-  a_lsu_req_id_legal_on_fire: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_id_legal_on_fire: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_req_fire |-> legal_mbuf_id(mmu_lsu_data_req_id));
 
-  a_lsu_req_no_duplicate_id_on_fire: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_no_duplicate_id_on_fire: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_req_fire |-> !outstanding_by_id[mmu_lsu_data_req_id]);
 
-  a_lsu_req_fire_sets_entry_on: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_fire_sets_entry_on: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_req_fire && legal_mbuf_id(mmu_lsu_data_req_id))
       |=> mbuf_entry_on[$past(mmu_lsu_data_req_id)]);
 
-  a_lsu_req_ptr_onehot: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_ptr_onehot: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_data_req |-> $onehot(mmu_lsu_data_req_ptr));
 
-  a_lsu_req_ptr_matches_id: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_ptr_matches_id: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_data_req |-> (mmu_lsu_data_req_ptr == id_to_mbuf_vec(mmu_lsu_data_req_id)));
 
-  a_lsu_req_id_matches_selected_entry: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_id_matches_selected_entry: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     mmu_lsu_data_req |-> (legal_mbuf_id(mmu_lsu_data_req_id)
                           && ((req_hold_vld ? req_hold_ptr : req_sel_ptr)
                               == id_to_mbuf_vec(mmu_lsu_data_req_id))));
 
-  a_lsu_req_fire_grants_selected_entry: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_fire_grants_selected_entry: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_req_fire |-> (mbuf_entry_req_grant == id_to_mbuf_vec(mmu_lsu_data_req_id)));
 
-  a_lsu_req_hold_stable_until_grant: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_hold_stable_until_grant: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (mmu_lsu_data_req && !lsu_mmu_data_req_grant && !ptw_abort_drain)
       |=> (ptw_abort_drain
            || (mmu_lsu_data_req
@@ -287,21 +289,21 @@ module mmu_ptw_lsu_protocol_sva (
                && (mmu_lsu_data_req_id   == $past(mmu_lsu_data_req_id))
                && (mmu_lsu_data_req_size == $past(mmu_lsu_data_req_size)))));
 
-  a_lsu_req_hold_matches_recorded_values: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_req_hold_matches_recorded_values: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     hold_seen_q && mmu_lsu_data_req && !lsu_mmu_data_req_grant && !ptw_abort_drain
       |-> ((mmu_lsu_data_req_addr == hold_addr_q)
            && (mmu_lsu_data_req_id == hold_id_q)
            && (mmu_lsu_data_req_size == hold_size_q)));
 
-  a_lsu_ungranted_req_does_not_set_entry_on: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_ungranted_req_does_not_set_entry_on: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (mmu_lsu_data_req && !lsu_mmu_data_req_grant && !ptw_abort_drain && !response_event)
       |=> ((mbuf_entry_on & ~$past(mbuf_entry_on)) == 9'b0));
 
-  a_lsu_response_matches_outstanding_id: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_response_matches_outstanding_id: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (response_event && legal_mbuf_id(lsu_mmu_data_id))
       |-> outstanding_by_id[lsu_mmu_data_id]);
 
-  a_lsu_response_clears_only_rsp_entry: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_response_clears_only_rsp_entry: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (response_event
      && legal_mbuf_id(lsu_mmu_data_id)
      && outstanding_by_id[lsu_mmu_data_id]
@@ -310,13 +312,13 @@ module mmu_ptw_lsu_protocol_sva (
              & ~id_to_mbuf_vec($past(lsu_mmu_data_id))) == 9'b0)
            && !mbuf_entry_on[$past(lsu_mmu_data_id)]));
 
-  a_lsu_invalid_response_has_no_entry_decode: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_invalid_response_has_no_entry_decode: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (response_event && !legal_mbuf_id(lsu_mmu_data_id))
       |-> ((lsu_mmu_resp_entry_dec == 9'b0)
            && (lsu_mmu_data_vld_entry == 9'b0)
            && (lsu_mmu_bus_error_entry == 9'b0)));
 
-  a_lsu_invalid_response_no_visible_writeback_when_idle: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_invalid_response_no_visible_writeback_when_idle: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (response_event
      && !legal_mbuf_id(lsu_mmu_data_id)
      && !(|write_back_req)
@@ -326,7 +328,7 @@ module mmu_ptw_lsu_protocol_sva (
            && (mbuf_twu_data_vld == 4'b0000)
            && !mbuf_cache_upd));
 
-  a_lsu_invalid_response_preserves_entry_state_when_idle: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_invalid_response_preserves_entry_state_when_idle: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (response_event
      && !legal_mbuf_id(lsu_mmu_data_id)
      && !lsu_req_fire
@@ -339,146 +341,146 @@ module mmu_ptw_lsu_protocol_sva (
            && (mbuf_entry_get == $past(mbuf_entry_get))
            && (mbuf_entry_bus_err_flop == $past(mbuf_entry_bus_err_flop))));
 
-  a_lsu_response_decode: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_response_decode: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     response_event |-> (lsu_mmu_resp_entry_dec == id_to_mbuf_vec(lsu_mmu_data_id)));
 
-  a_lsu_data_decode: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_data_decode: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_data_vld |-> (lsu_mmu_data_vld_entry == id_to_mbuf_vec(lsu_mmu_data_id)));
 
-  a_lsu_bus_error_decode: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_bus_error_decode: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_bus_error |-> (lsu_mmu_bus_error_entry == id_to_mbuf_vec(lsu_mmu_data_id)));
 
-  a_lsu_bus_error_has_data_vld: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_bus_error_has_data_vld: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_bus_error |-> lsu_mmu_data_vld);
 
-  a_lsu_bus_error_no_normal_writeback_for_rsp_id: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_bus_error_no_normal_writeback_for_rsp_id: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_bus_error && legal_mbuf_id(lsu_mmu_data_id))
       |-> (((write_back_req & id_to_mbuf_vec(lsu_mmu_data_id)) == 9'b0)
            && ((write_back_grant & id_to_mbuf_vec(lsu_mmu_data_id)) == 9'b0)));
 
-  a_lsu_bus_error_no_normal_writeback_when_idle: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_bus_error_no_normal_writeback_when_idle: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_bus_error && !(|write_back_req)) |-> ((mbuf_twu_data_vld == 4'b0000)
                                                  && (write_back_grant == 9'b0)));
 
-  a_lsu_bus_error_sets_pending: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_lsu_bus_error_sets_pending: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_bus_error && !ptw_abort_drain) |=> mbuf_bus_error);
 
-  a_mbuf_grant_onehot0: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_mbuf_grant_onehot0: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot0(mbuf_grant));
 
-  a_abort_no_mbuf_create: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_no_mbuf_create: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_ptw_abort |-> (mbuf_entry_upd == 9'b0));
 
-  a_abort_does_not_directly_clear_entry_on: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_does_not_directly_clear_entry_on: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (tlboper_ptw_abort && !response_event && !lsu_req_fire)
       |=> (response_event
            || lsu_req_fire
            || (mbuf_entry_on == $past(mbuf_entry_on))));
 
-  a_abort_drain_blocks_new_req: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_drain_blocks_new_req: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain |-> !mmu_lsu_data_req);
 
-  a_abort_drain_no_fire: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_drain_no_fire: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain |-> !lsu_req_fire);
 
-  a_abort_drain_clears_hold: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_drain_clears_hold: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain |=> !req_hold_vld);
 
-  a_abort_drain_blocks_new_entry: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_drain_blocks_new_entry: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain |-> (mbuf_entry_upd == 9'b0));
 
-  a_abort_drain_blocks_cache_update: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_drain_blocks_cache_update: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain |-> !mbuf_cache_upd);
 
-  a_pde_abort_drain_blocks_cache_update: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_pde_abort_drain_blocks_cache_update: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain |-> !mbuf_cache_upd);
 
-  a_pde_bus_error_no_cache_update_when_idle: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_pde_bus_error_no_cache_update_when_idle: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (lsu_mmu_bus_error
      && !(|write_back_req)
      && !(|write_back_grant)
      && !write_back_grant_any_q) |-> !mbuf_cache_upd);
 
-  a_abort_reg_waits_for_on_clear: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_reg_waits_for_on_clear: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (tlboper_ptw_abort_reg && (|mbuf_entry_on)) |=> tlboper_ptw_abort_reg);
 
-  a_abort_reg_clears_after_on_empty: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  a_abort_reg_clears_after_on_empty: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (tlboper_ptw_abort_reg && !(|mbuf_entry_on) && !tlboper_ptw_abort)
       |=> !tlboper_ptw_abort_reg);
 
-  a_mbuf_on_changes_only_on_lsu_fire_or_response: assert property (@(posedge mbuf_clk) disable iff (!cpurst_b || !past_valid)
+  a_mbuf_on_changes_only_on_lsu_fire_or_response: assert property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE || !past_valid)
     $changed(mbuf_entry_on) |-> ($past(lsu_req_fire) || $past(response_event)));
 
-  cp_mbuf_grant_onehot: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_mbuf_grant_onehot: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     $onehot(mbuf_grant)) begin
     cp_mbuf_grant_onehot_hits++;
   end
 
-  cp_lsu_req_fire: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_req_fire: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_req_fire);
 
-  cp_lsu_req_id_all: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_req_id_all: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     seen_req_id_mask == 9'h1ff);
 
-  cp_lsu_two_outstanding: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_two_outstanding: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     count_ones9(mbuf_entry_on) >= 2);
 
-  cp_lsu_max_pressure: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_max_pressure: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     count_ones9(mbuf_entry_on) >= 4);
 
-  cp_lsu_ooo_response: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_ooo_response: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ooo_response_pulse);
 
-  cp_lsu_grant_wait: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_grant_wait: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     grant_wait_2plus_pulse);
 
-  cp_lsu_normal_data: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_normal_data: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_data_vld && !lsu_mmu_bus_error) begin
     cp_lsu_normal_data_hits++;
   end
 
-  cp_lsu_bus_error_data_vld: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_bus_error_data_vld: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_data_vld && lsu_mmu_bus_error);
 
-  cp_lsu_bus_error_no_chk: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_bus_error_no_chk: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_bus_error && !(|write_back_req)
     && (mbuf_twu_data_vld == 4'b0000) && (write_back_grant == 9'b0)) begin
     cp_lsu_bus_error_no_chk_hits++;
   end
 
-  cp_pde_bus_error_no_cache_upd_idle: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_pde_bus_error_no_cache_upd_idle: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     lsu_mmu_bus_error
     && !(|write_back_req)
     && !(|write_back_grant)
     && !write_back_grant_any_q
     && !mbuf_cache_upd);
 
-  cp_lsu_bus_error_pending: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_bus_error_pending: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     (|mbuf_bus_error_grant) || (|bus_err_write_back_req) || mbuf_bus_error) begin
     cp_lsu_bus_error_pending_hits++;
   end
 
-  cp_lsu_abort_no_create: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_abort_no_create: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     tlboper_ptw_abort && (mbuf_entry_upd == 9'b0) && (mbuf_entry_vld != 9'b0)) begin
     cp_lsu_abort_no_create_hits++;
   end
 
-  cp_lsu_abort_drain_multi: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_abort_drain_multi: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     abort_drain_multi_pulse);
 
-  cp_lsu_abort_before_grant: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_abort_before_grant: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     abort_before_grant_pulse);
 
-  cp_lsu_abort_drain_no_req: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_abort_drain_no_req: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain && !mmu_lsu_data_req && !mbuf_cache_upd);
 
-  cp_pde_abort_drain_no_cache_upd: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_pde_abort_drain_no_cache_upd: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     ptw_abort_drain && !mbuf_cache_upd);
 
-  cp_lsu_buserr_by_id: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_buserr_by_id: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     buserr_by_id_pulse);
 
-  cp_lsu_invalid_id_ignored: cover property (@(posedge mbuf_clk) disable iff (!cpurst_b)
+  cp_lsu_invalid_id_ignored: cover property (@(posedge mbuf_clk) disable iff (`L2TLB_NEG_DISABLE)
     invalid_id_ignored_pulse);
 
   final begin

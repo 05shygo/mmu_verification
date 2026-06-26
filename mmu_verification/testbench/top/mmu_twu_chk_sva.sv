@@ -4,6 +4,8 @@
 // Replaces old fst/scd/thd_chk_* 3-stage SVA with unified chk_unit_* checks.
 // =============================================================================
 `timescale 1ns/1ps
+`include "l2tlb_negative_sva_guard.svh"
+`include "l2tlb_negative_sva_guard.svh"
 
 module mmu_twu_chk_sva #(
     parameter int VPN_WIDTH  = 27,
@@ -96,18 +98,18 @@ module mmu_twu_chk_sva #(
   // PTW-SVA-CHK-001: FLG decode matches raw data @ chk_unit_vld
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_flg_decode: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld |-> (chk_unit_flg == decode_flg(chk_unit_data)));
 
   // ══════════════════════════════════════════════════════════════════════════
   // PTW-SVA-CHK-002: leaf decode from PTE flags
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_leaf_decode: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld |-> (chk_unit_leaf_vld == leaf_from_flg(chk_unit_flg)));
 
   cp_chk_unit_level_cover: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     chk_unit_vld && (is_fst() || is_scd() || is_thd())) begin
     cp_chk_unit_level++;
   end
@@ -116,12 +118,12 @@ module mmu_twu_chk_sva #(
   // PTW-SVA-CHK-003: write-only leaf → page fault at all levels
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_write_only_fault: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld && write_only_fault(chk_unit_flg, cp0_mmu_mxr)
     |-> chk_unit_page_flt);
 
   cp_chk_leaf_write_only_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld && write_only_fault(chk_unit_flg, cp0_mmu_mxr)) begin
     cp_chk_leaf_write_only++;
   end
@@ -130,19 +132,19 @@ module mmu_twu_chk_sva #(
   // PTW-SVA-CHK-004: non-leaf pointer check — FST/SCD no page fault for pointer
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_nonleaf_pointer_not_fault: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_flg[0] && !chk_unit_flg[1]
     && !chk_unit_flg[2] && !chk_unit_flg[3] && !is_thd()
     |-> (!chk_unit_leaf_vld && !chk_unit_page_flt));
 
   // THD non-leaf must page fault
   a_chk_thd_nonleaf_fault: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_flg[0] && !chk_unit_flg[1] && !chk_unit_flg[3] && is_thd()
     |-> chk_unit_page_flt);
 
   cp_chk_nonleaf_level_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     (chk_unit_vld && !chk_unit_leaf_vld && !chk_unit_page_flt && !is_thd())
     || (chk_unit_vld && is_thd() && chk_unit_page_flt)) begin
     cp_chk_nonleaf_level++;
@@ -152,64 +154,64 @@ module mmu_twu_chk_sva #(
   // PTW-SVA-CHK-005: permission checks — fetch needs X, load needs R, store needs W+D
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_fetch_needs_x: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld && chk_unit_fetch_type && !chk_unit_flg[3]
     |-> chk_unit_page_flt);
 
   a_chk_load_needs_r_or_mxr_x: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld && chk_unit_load_type
     && !chk_unit_flg[1] && !(cp0_mmu_mxr && chk_unit_flg[3])
     |-> chk_unit_page_flt);
 
   a_chk_store_needs_w_d: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld && chk_unit_store_type
     && (!chk_unit_flg[2] || !chk_unit_flg[6])
     |-> chk_unit_page_flt);
 
   cp_chk_fetch_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_fetch_type) begin cp_chk_fetch++; end
 
   cp_chk_load_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_load_type) begin cp_chk_load++; end
 
   cp_chk_store_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_store_type) begin cp_chk_store++; end
 
   cp_chk_pfu_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && (chk_unit_type == PTW_TYPE_PREF)) begin cp_chk_pfu++; end
 
   // ══════════════════════════════════════════════════════════════════════════
   // PTW-SVA-CHK-006: U/S page permission rules
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_user_supervisor_rules: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld
     && ((chk_unit_flg[4] && chk_unit_cp0_supv_mode && !cp0_mmu_sum)
         || (!chk_unit_flg[4] && chk_unit_cp0_user_mode))
     |-> chk_unit_page_flt);
 
   cp_chk_us_sum_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_page_flt) begin cp_chk_us_sum++; end
 
   // ══════════════════════════════════════════════════════════════════════════
   // PTW-SVA-CHK-007: huge page alignment fault → page fault, no refill/CSR
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_huge_align_fault: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld
     && ((is_fst() && huge1g_misaligned(chk_unit_data))
         || (is_scd() && huge2m_misaligned(chk_unit_data)))
     |-> (chk_unit_page_flt && !chk_unit_refill_req && !chk_unit_csr_req));
 
   cp_chk_huge_align_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_leaf_vld
     && ((is_fst() && huge1g_misaligned(chk_unit_data))
         || (is_scd() && huge2m_misaligned(chk_unit_data)))) begin
@@ -220,12 +222,12 @@ module mmu_twu_chk_sva #(
   // PTW-SVA-CHK-008: page fault → no refill, no CSR, no next walk side-effect
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_page_fault_no_side_effect: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_page_flt
     |-> (!chk_unit_refill_req && !chk_unit_csr_req));
 
   cp_chk_no_side_effect_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && chk_unit_page_flt && !chk_unit_refill_req && !chk_unit_csr_req) begin
     cp_chk_no_side_effect++;
   end
@@ -234,37 +236,37 @@ module mmu_twu_chk_sva #(
   // PTW-SVA-CHK-009: wait holds CHK payload stable
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_wait_holds_payload: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     chk_unit_wait && !tlboper_ptw_abort
     |=> (tlboper_ptw_abort
       || (chk_unit_vld && $stable(chk_unit_vpn) && $stable(chk_unit_type)
           && $stable(chk_unit_id) && $stable(chk_unit_data))));
 
   cp_chk_wait_hold_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b)
+    disable iff (`L2TLB_NEG_DISABLE)
     chk_unit_wait && !tlboper_ptw_abort) begin cp_chk_wait_hold++; end
 
   // ══════════════════════════════════════════════════════════════════════════
   // PTW-SVA-CHK-010: CSR/refill mutual exclusion
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_csr_refill_mutex: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     !(chk_unit_csr_req && chk_unit_refill_req));
 
   cp_chk_csr_refill_mutex_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_csr_req ^ chk_unit_refill_req) begin cp_chk_csr_refill_mutex++; end
 
   // ══════════════════════════════════════════════════════════════════════════
   // PTW-SVA-CHK-011: page fault accepted → no subsequent next-level PMP/refill
   // ══════════════════════════════════════════════════════════════════════════
   a_chk_pgflt_no_next_walk: assert property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     pgflt_chk_unit_grant |-> (!chk_unit_refill_req && !chk_unit_csr_req
                               && twu_l2tlb_ref_pgflt && !twu_arb_ref_req));
 
   cp_chk_pgflt_no_next_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     pgflt_chk_unit_grant && !chk_unit_refill_req && !chk_unit_csr_req) begin
     cp_chk_pgflt_no_next++;
   end
@@ -273,7 +275,7 @@ module mmu_twu_chk_sva #(
   // PTW-SVA-CHK-012: RSW/high-reserved field observation (provisional)
   // ══════════════════════════════════════════════════════════════════════════
   cp_chk_rsw_reserved_p: cover property (@(posedge twu_clk)
-    disable iff (!cpurst_b || tlboper_ptw_abort)
+    disable iff (`L2TLB_NEG_DISABLE || tlboper_ptw_abort)
     chk_unit_vld && (|chk_unit_data[63:38] || |chk_unit_data[9:8])) begin
     cp_chk_rsw_reserved++;
   end

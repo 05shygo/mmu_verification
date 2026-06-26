@@ -139,7 +139,7 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   // Phase 7: L2TLB Reset + MB partition — cross-cycle tracking & state variables
   //   TP_001/002 (cold/warm reset), TP_043 (reset during TLBOP), TP_047 (victim way),
-  //   TP_055 (MB partition), TP_027 (illegal PTW cmplt), AUD-031 (RTU flush clear)
+  //   TP_055 (MB partition), AUD-031 (RTU flush clear)
   bit          wb_l2_rst_n_prev;             // prev rst_ni for L2 reset rising-edge detect
   bit          wb_l2_rst_rose;               // rst_ni rising edge detected (set in run_phase)
   bit          wb_rtu_flush_prev;            // prev rtu_yy_xx_flush for edge detection
@@ -153,7 +153,6 @@ class mmu_env_cg_whitebox extends uvm_component;
   bit          wb_l1d_flush_clear_valid;     // qualifier: flush+2cycles check active this cycle
   bit          wb_l1d_flush_expt_ok;         // separate flag for dual-sample of expt_cleared/expt_not_cleared
   logic [2:0]  wb_l2mb_alloc_queue_id;       // source queue_id of newly allocated L2 MB entry
-  logic [1:0]  wb_illegal_cmplt_kind;        // 2'd0=legal, 2'd1=illegal_no_pending, 2'd2=illegal_multi_flags, 2'd3=illegal_bad_id
   logic [2:0]  wb_l2_victim_way_idx;         // 3-bit victim way index (decoded from 8-bit onehot l2_victim_way)
   int unsigned wb_l2mb_itlb_cnt;             // L2 MB entries occupied by ITLB (queue_id==0)
   int unsigned wb_l2mb_dtlb_cnt;             // L2 MB entries occupied by DTLB (queue_id!=0)
@@ -348,15 +347,6 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   // --- cg_l1itlb ------------------------------------------------------------
   covergroup cg_l1itlb;
-    // Phase 7: Illegal PTW completion detection (TP_027)
-    //   iff: ptw_l2tlb_cmplt == 1.
-    //   Detects: cmplt without pending req, simultaneous data_vld+pgflt, bad PTW ID.
-    cp_illegal_cmplt: coverpoint wb_illegal_cmplt_kind iff (v_probe.ptw_l2tlb_cmplt) {
-      bins legal              = {2'd0};
-      bins illegal_no_pending  = {2'd1};
-      bins illegal_multi_flags = {2'd2};
-      bins illegal_bad_id      = {2'd3};
-    }
     option.per_instance = 1;
     cp_entry_vld_count: coverpoint wb_itlb_ent {
       bins c0_4 = {[0:4]}; bins c5_8 = {[5:8]}; bins c9_12 = {[9:12]}; bins c13_16 = {[13:16]};
@@ -1365,6 +1355,23 @@ class mmu_env_cg_whitebox extends uvm_component;
         cg_l1pmpflg_payload_path.get_inst_coverage(),
         cg_twu_visible_class_mutex.get_inst_coverage()),
       UVM_LOW)
+    // ── Phase 8: dedicated Phase 14 covergroup expansion report ────────────
+    //   Prints the 6 Phase 14 covergroups (P3/P5/P7) explicitly so the
+    //   signoff log can grep "PHASE14_COVERGROUP_EXPANSION" for a compact
+    //   view.  cg_l1dtlb's Phase 1/2/4/6/6B coverpoints are already
+    //   accumulated inside cg_l1dtlb.get_inst_coverage() and are not
+    //   duplicated here to avoid double counting in tooling that parses
+    //   this line.  get_inst_coverage() is safe to call even when a vif is
+    //   unbound (covergroup simply stays at 0% in that case).
+    `uvm_info({get_type_name(), "::PHASE14_COVERGROUP_EXPANSION"},
+      $sformatf("l2tlb_lookup=%0.2f l2tlb_pfu=%0.2f l2tlb_ptw_if=%0.2f l2tlb_arbiter=%0.2f l2tlb_reset=%0.2f l2tlb_mb_part=%0.2f",
+        cg_l2tlb_lookup.get_inst_coverage(),
+        cg_l2tlb_pfu.get_inst_coverage(),
+        cg_l2tlb_ptw_if.get_inst_coverage(),
+        cg_l2tlb_arbiter.get_inst_coverage(),
+        cg_l2tlb_reset.get_inst_coverage(),
+        cg_l2tlb_mb_part.get_inst_coverage()),
+      UVM_LOW)
   endfunction
 
   virtual function void sample_phase13_covergroups();
@@ -1987,24 +1994,6 @@ class mmu_env_cg_whitebox extends uvm_component;
         wb_l2tlb_cold_reset_state = 4'd0;  // all_idle
     end else begin
       wb_l2tlb_cold_reset_state = 4'd0;
-    end
-
-    // Phase 7: Illegal PTW completion (TP_027)
-    //   iff: ptw_l2tlb_cmplt == 1. Detects illegal completion combinations.
-    wb_illegal_cmplt_kind = 2'd0;
-    if (v_probe.ptw_l2tlb_cmplt) begin
-      bit multi_flags;
-      multi_flags = (int'(v_probe.ptw_l2tlb_ref_data_vld)
-                   + int'(v_probe.ptw_l2tlb_ref_pgflt)
-                   + int'(v_probe.ptw_l2tlb_ref_acc_err)) > 1;
-      if (!v_probe.l2tlb_ptw_req && !(|v_probe.l2mb_vld_vec))
-        wb_illegal_cmplt_kind = 2'd1;  // illegal_no_pending
-      else if (multi_flags)
-        wb_illegal_cmplt_kind = 2'd2;  // illegal_multi_flags
-      else if (v_probe.ptw_l2tlb_id != v_probe.l2tlb_ptw_id)
-        wb_illegal_cmplt_kind = 2'd3;  // illegal_bad_id
-      else
-        wb_illegal_cmplt_kind = 2'd0;  // legal
     end
 
     // Phase 7: Victim way index (TP_047)

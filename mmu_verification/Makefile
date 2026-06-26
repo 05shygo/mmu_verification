@@ -108,7 +108,7 @@ endif
 
 RUN_COMPAT_ENTRY_GOALS := run run_check run_cov run_batch run_gui debug fast_check
 RUN_COMPAT_KNOWN_GOALS := all help setup check_env env comp comp_all comp_fast comp_rtl comp_tb elab \
-        run run_check fast fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
+        run run_check fast fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov verdi_cov \
         cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
         covp_scope_gates_95 covp_l1l2_95_signoff \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
@@ -904,7 +904,7 @@ PHASE8_VSEQS  ?= mmu_smoke_vseq mmu_concurrent_3pipe_vseq mmu_ptw_thrash_vseq \
 	mmu_error_rain_vseq mmu_perf_bench_vseq
 
 .PHONY: all help setup check_env env comp comp_all comp_rtl comp_tb elab \
-        run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov \
+        run run_check fast_check check_log run_gui run_batch debug profile verdi wave run_cov cov merge_cov verdi_cov \
         cov_quick cov_l1l2 cov_all covp cov_gen_list covp_scope_reports covp_scope_gates covp_l1l2_special_gates ptw_code_cov_signoff_gate \
         covp_scope_gates_95 covp_l1l2_95_signoff \
         clean clean_all clean_wave clean_cov list_tests status info print-% \
@@ -2429,10 +2429,77 @@ cov:
 	URG_VDB_GLOB="$(URG_VDB_GLOB)" \
 	bash "$(PROJECT_DIR)/scripts/run_urg_report.sh"
 
-verdi_cov:
-	@test -d "$(COV_DB_DIR)" || (echo "ERROR: COV_DB_DIR not found: $(COV_DB_DIR)"; exit 2)
-	@echo "[verdi_cov] Opening Verdi with DUT code coverage VDB: $(COV_DB_DIR)"
-	$(VERDI) -cov -covdir $(COV_DB_DIR) -top ct_mmu_top &
+# ── Verdi 交互式覆盖率查看 ─────────────────────────────────────────────────
+#   make verdi_cov         打开 simv.vdb + compile 上下文（推荐）
+#   make verdi_cov COV_DB_DIR=output/phase14_parallel_vdb/some.vdb  查看并行分片
+VERDI_FLIST := $(OUTPUT_DIR)/verdi.f
+$(VERDI_FLIST): $(TB_DIR)/Files.f
+	@echo "[verdi_cov] Generating flat Verdi file list ..."
+	@mkdir -p "$(OUTPUT_DIR)"
+	@> "$@"  # start empty
+	@# Expand all file lists recursively into one flat list, ignoring // comments and blank lines
+	@files_to_process="$(TB_DIR)/Files.f"; \
+	processed="/tmp/verdi_flist_processed_$$$$"; \
+	: > "$$processed"; \
+	while [ -n "$$files_to_process" ]; do \
+		f=$${files_to_process%% *}; \
+		rest=$${files_to_process#* }; \
+		[ "$$rest" = "$$files_to_process" ] && rest=""; \
+		files_to_process="$$rest"; \
+		if grep -qxF "$$f" "$$processed" 2>/dev/null; then continue; fi; \
+		echo "$$f" >> "$$processed"; \
+		while IFS= read -r line || [ -n "$$line" ]; do \
+			case "$$line" in \
+				""|"#"*|"//"*) continue ;; \
+				-F*) nested="$${line#-F }"; \
+				     eval nested="$$nested"; \
+				     [ -f "$$nested" ] && files_to_process="$$nested $$files_to_process" ;; \
+				*)   eval echo "$$line" >> "$@" ;; \
+			esac; \
+		done < "$$f"; \
+	done; \
+	rm -f "$$processed"
+	@# Append include dirs
+	@echo "+incdir+$(TB_DIR)/common" >> "$@"
+	@echo "+incdir+$(TB_DIR)/env" >> "$@"
+	@echo "+incdir+$(TB_DIR)/test" >> "$@"
+	@echo "+incdir+$(TB_DIR)/top" >> "$@"
+	@echo "+incdir+$(TB_DIR)/ifu_agent" >> "$@"
+	@echo "+incdir+$(TB_DIR)/lsu_agent" >> "$@"
+	@echo "+incdir+$(TB_DIR)/cp0_agent" >> "$@"
+	@echo "+incdir+$(TB_DIR)/ptw_mem_agent" >> "$@"
+	@echo "+incdir+$(TB_DIR)/pmp_agent" >> "$@"
+	@echo "+incdir+$(TB_DIR)/sysmap_cfg_agent" >> "$@"
+	@echo "+incdir+$(TB_DIR)/misc_agent" >> "$@"
+	@echo "+incdir+$(MMU_PARAMS_DIR)" >> "$@"
+	@echo "+incdir+$(CV_DV_UTILS_DIR)/uvm" >> "$@"
+	@# Append test suite incdirs
+	@for d in $(TEST_SUITE_DIRS); do echo "+incdir+$${d%/}" >> "$@"; done
+	@echo "$(TB_DIR)/top/tb_top.sv" >> "$@"
+	@echo "[verdi_cov] Flat file list ready: $@ ($$(wc -l < $@) lines)"
+
+verdi_cov: $(VERDI_FLIST)
+	@# Auto-detect most complete VDB (evaluated in recipe so COV_DB_DIR override works)
+	@VDB="$(COV_DB_DIR)"; \
+	if [ "$(COV_DB_DIR)" = "$(OUTPUT_DIR)/simv.vdb" ] && [ -d "$(COV_DIR)/phase14_merged.vdb" ]; then \
+		VDB="$(COV_DIR)/phase14_merged.vdb"; \
+	fi; \
+	test -d "$$VDB" || (echo "ERROR: VDB not found: $$VDB"; echo "  Run 'make cov_quick' first to populate coverage data"; exit 2); \
+	if ! find "$$VDB" -type d -name "test" -print -quit 2>/dev/null | grep -q .; then \
+		echo "[verdi_cov] WARNING: VDB has no test data — panels will be blank!"; \
+		echo "[verdi_cov]   VDB path : $$VDB"; \
+		echo "[verdi_cov]   This VDB only contains compile-time design context."; \
+		echo "[verdi_cov]   You need to run 'make cov_quick' (or cov_l1l2 / cov_all) first."; \
+		echo "[verdi_cov]   Then retry: make verdi_cov"; \
+		echo "[verdi_cov]"; \
+	fi; \
+	echo "[verdi_cov] Loading VDB: $$VDB"; \
+	if [ "$$VDB" = "$(COV_DB_DIR)" ] && [ -d "$(COV_BASE_DB_DIR)" ]; then \
+		echo "[verdi_cov]   + compile context: $(COV_BASE_DB_DIR)"; \
+		$(VERDI) -cov -covdir $(COV_BASE_DB_DIR) -covdir "$$VDB" -f $(VERDI_FLIST) & \
+	else \
+		$(VERDI) -cov -covdir "$$VDB" -f $(VERDI_FLIST) & \
+	fi
 
 merge_cov:
 	@$(MAKE) cov URG_REPORT_DIR="$(URG_MERGE_REPORT_DIR)" URG_MERGED_DB="$(URG_MERGED_DB)"

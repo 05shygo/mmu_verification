@@ -103,6 +103,13 @@ ${TB_DIR}/top/mmu_pmp_twu_sva.sv
 ${TB_DIR}/top/mmu_sysmap_sva.sv
 ${TB_DIR}/top/mmu_ptw_source_sva.sv
 ${TB_DIR}/top/mmu_tlbop_lifecycle_sva.sv
+# Phase 9: L1DTLB / L2TLB audit-point SVAs (AUD-014/015, TP_048/049/056/058)
+${TB_DIR}/top/mmu_l1dtlb_vabuf_sva.sv
+${TB_DIR}/top/mmu_l1dtlb_pulse_width_sva.sv
+${TB_DIR}/top/mmu_l2tlb_illegal_input_sva.sv
+${TB_DIR}/top/mmu_l2tlb_starvation_sva.sv
+${TB_DIR}/top/mmu_l2tlb_ptw_ooo_sva.sv
+${TB_DIR}/top/mmu_l2tlb_ctrl_hazard_sva.sv
 
 # ---------------------------------------------------------------------------
 # Phase 2: Testbench interfaces (must come after RTL & params package)

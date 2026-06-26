@@ -1668,6 +1668,27 @@ bind mmu_l2tlb_rrpv_wbuf mmu_l2tlb_rrpv_wbuf_sva #(
 ) u_l2tlb_rrpv_wbuf_sva (.*);
 bind mmu_l2tlb_mb mmu_l2tlb_mb_sva    u_l2tlb_mb_sva (.*);
 bind mmu_l2tlb_reqq credit_sva       u_reqq_sva  (.*);
+// Phase 9: audit-point SVAs (AUD-014/015, TP_048/049/056/058).
+//   See doc/l1dtlb_uvm_audit/covergroup_improvement_plan.md Phase 9.
+//   AUD-014 needs hit_rd-internal dutlb_hit_vld (hierarchical port override).
+bind mmu_l1dtlb mmu_l1dtlb_vabuf_sva u_l1dtlb_vabuf_sva (
+  .*,
+  .p0_hit_vld(x_hit_rd_port0.dutlb_hit_vld),
+  .p1_hit_vld(x_hit_rd_port1.dutlb_hit_vld)
+);
+// AUD-015: all probes are mmu_l1dtlb ports — plain .* works.
+bind mmu_l1dtlb mmu_l1dtlb_pulse_width_sva u_l1dtlb_pulse_width_sva (.*);
+// TP_048 / TP_056 / TP_058: probes are mmu_l2tlb ports or top-level internal
+// nets (final_vld) — plain .* works for both.
+bind mmu_l2tlb mmu_l2tlb_illegal_input_sva u_l2tlb_illegal_input_sva (.*);
+bind mmu_l2tlb mmu_l2tlb_ptw_ooo_sva       u_l2tlb_ptw_ooo_sva       (.*);
+bind mmu_l2tlb mmu_l2tlb_ctrl_hazard_sva   u_l2tlb_ctrl_hazard_sva   (.*);
+// TP_049: ReqQ/MB vld vectors live in submodules — hierarchical override.
+bind mmu_l2tlb mmu_l2tlb_starvation_sva u_l2tlb_starvation_sva (
+  .*,
+  .reqq_vld_vec(x_l2tlb_reqq.entry_vld_vec),
+  .mb_vld_vec(x_l2tlb_mb.entry_vld_vec)
+);
 // twu_reconstruct Phase 3: SVA must be rewritten for unified pmp_unit/chk_unit architecture
 // Bind entry points ready — mmu_twu_sva, mmu_twu_chk_sva, mmu_maee_twu_sva, mmu_pmp_twu_sva
 // need new port lists using pmp_unit_* / chk_unit_* / scalar twu_data_ready.

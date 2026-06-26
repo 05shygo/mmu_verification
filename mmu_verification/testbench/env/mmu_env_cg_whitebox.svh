@@ -108,6 +108,55 @@ class mmu_env_cg_whitebox extends uvm_component;
   //             4'd5=INVVA_ALL, 4'd6=INVASID, 4'd7=INVVA_ASID, 4'd8=INVALL, 4'd9=ABORT
   logic [3:0]  wb_tlboper_op_type;
 
+
+  // Phase 6: Abort classification and credit boundary variables (AUD-011/012/013/021)
+  //   AUD-011: abort + TLB hit  -> TLB response valid but suppressed (abort overrides)
+  //   AUD-012: abort + TLB miss -> miss request cancelled, no MB allocation
+  //   AUD-013: abort + expt-CAM match -> expt entry not consumed, abort propagated
+  bit          wb_dtlb_p0_abort_vld;       // pipe0 has valid request with abort asserted
+  bit          wb_dtlb_p1_abort_vld;       // pipe1 has valid request with abort asserted
+  logic [1:0]  wb_dtlb_abort_kind_p0;      // 2'b00=no_abort, 2'b01=hit_abort, 2'b10=miss_abort, 2'b11=expt_abort
+  logic [1:0]  wb_dtlb_abort_kind_p1;      // 2'b00=no_abort, 2'b01=hit_abort, 2'b10=miss_abort, 2'b11=expt_abort
+  //   AUD-021: credit=0 boundary - scheduler must wait for credit return before issuing L2 request
+  //   RTL constraint: when l1d_sched_credit_cnt==0, l1d_l2_req_vld cannot be 1 unless
+  //   l1d_l2_credit_ret returns credit in the same cycle (and even then, RTL prohibits same-cycle fire)
+  logic [1:0]  wb_dtlb_credit_boundary;    // 2'b00=normal, 2'b01=zero_no_ret, 2'b10=zero_with_ret_no_fire, 2'b11=zero_with_ret_and_fire
+
+  // Phase 6B: L1DTLB gap fill — prev-state tracking for cross-cycle detection
+  //   AUD-007 (IID priority), AUD-020 (MB CAM hit no-alloc/wakeup),
+  //   AUD-022 (Scheduler old-MB vs bypass), AUD-042 (L1DTLB reset init state)
+  bit          wb_dtlb_rst_n_prev;           // prev rst_ni for L1DTLB reset rising-edge detect
+  bit          wb_dtlb_p0_miss_prev;         // prev pipe0 miss for T0->T1 MB CAM tracking
+  bit          wb_dtlb_p1_miss_prev;         // prev pipe1 miss for T0->T1 MB CAM tracking
+  logic [1:0]  wb_dtlb_iid_winner;           // 2'd1=p0_wins, 2'd2=p1_wins (iff one_free_dual_diff)
+  logic [1:0]  wb_dtlb_mb_cam_hit_event;    // 2'd0=no_cam_hit, 2'd1=cam_hit_no_alloc, 2'd2=cam_hit_no_wakeup
+  bit          wb_dtlb_mb_cam_hit_valid;     // qualifier: T0 miss -> T1 CAM check valid this cycle
+  bit          wb_dtlb_mb_cam_hit_no_wakeup; // separate flag for dual-sample of no-wakeup bin
+  logic [1:0]  wb_dtlb_sched_old_mb_prio;    // 2'd1=old_mb_granted, 2'd2=bypass_granted, 2'd3=no_request
+  logic [2:0]  wb_dtlb_reset_done_state;     // 3'd0=all_clear, 3'd1=entry_not_clear, 3'd2=mb_not_clear
+                                              // 3'd3=expt_not_clear, 3'd4=credit_wrong
+  bit          wb_dtlb_rst_rose;             // rst_ni rising edge detected (set in run_phase before skip)
+
+  // Phase 7: L2TLB Reset + MB partition — cross-cycle tracking & state variables
+  //   TP_001/002 (cold/warm reset), TP_043 (reset during TLBOP), TP_047 (victim way),
+  //   TP_055 (MB partition), TP_027 (illegal PTW cmplt), AUD-031 (RTU flush clear)
+  bit          wb_l2_rst_n_prev;             // prev rst_ni for L2 reset rising-edge detect
+  bit          wb_l2_rst_rose;               // rst_ni rising edge detected (set in run_phase)
+  bit          wb_rtu_flush_prev;            // prev rtu_yy_xx_flush for edge detection
+  bit          wb_rtu_flush_rose_d1;         // flush rising edge delayed 1 cycle
+  bit          wb_rtu_flush_rose_d2;         // flush rising edge delayed 2 cycles (sample trigger)
+  logic [8:0]  wb_l2mb_vld_prev;             // prev l2mb_vld_vec for alloc-source delta detection
+  logic [3:0]  wb_l2tlb_cold_reset_state;    // 4'd0=all_idle, 4'd1=reqq_not_empty, 4'd2=mb_not_empty, 4'd3=arb_active
+  logic [3:0]  wb_l2tlb_reset_tlbop;         // 4'd0=no_tlbop, 4'd1=reset_during_tlbp, 4'd2=reset_during_tlbwi,
+                                              // 4'd3=reset_during_invall, 4'd4=reset_during_invasid
+  logic [1:0]  wb_l1d_flush_clear;           // 2'd0=mb_cleared, 2'd1=mb_not_cleared, 2'd2=expt_cleared, 2'd3=expt_not_cleared
+  bit          wb_l1d_flush_clear_valid;     // qualifier: flush+2cycles check active this cycle
+  bit          wb_l1d_flush_expt_ok;         // separate flag for dual-sample of expt_cleared/expt_not_cleared
+  logic [2:0]  wb_l2mb_alloc_queue_id;       // source queue_id of newly allocated L2 MB entry
+  logic [1:0]  wb_illegal_cmplt_kind;        // 2'd0=legal, 2'd1=illegal_no_pending, 2'd2=illegal_multi_flags, 2'd3=illegal_bad_id
+  logic [2:0]  wb_l2_victim_way_idx;         // 3-bit victim way index (decoded from 8-bit onehot l2_victim_way)
+  int unsigned wb_l2mb_itlb_cnt;             // L2 MB entries occupied by ITLB (queue_id==0)
+  int unsigned wb_l2mb_dtlb_cnt;             // L2 MB entries occupied by DTLB (queue_id!=0)
   // --- §10.2: cg_ptw_walk ----------------------------------------------------
   covergroup cg_ptw_walk;
     option.per_instance = 1;
@@ -164,7 +213,7 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins two   = {2};
       bins four  = {4};
       bins eight = {8};
-      illegal_bins invalid = {3, [5:7]};  // 8-bit onehot; 0 is transient during force/tb
+      illegal_bins invalid = {0, 3, [5:7]};  // 8-bit onehot only allows power-of-two counts
     }
     // ── Stall detection ───────────────────────────────────────────────────
     //   NOTE: l2_arb_req and arb_l2tlb_req map to the same wire in current RTL
@@ -240,6 +289,20 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   // --- cg_l2tlb_pfu (Phase 3: TP_028~033) -----------------------------------
   covergroup cg_l2tlb_pfu;
+    // Phase 7: Victim way on write (TP_047)
+    //   iff: l2_arb_write==1 and acc_type is refill/ptw_refill (3'b101) or tlbop (3'b001).
+    //   l2_victim_way is 8-bit onehot; f_first_onehot3 converts to 3-bit way index.
+    cp_victim_way: coverpoint wb_l2_victim_way_idx
+                   iff (v_probe.l2_arb_write && (v_probe.l2_arb_acc_type == 3'b101 || v_probe.l2_arb_acc_type == 3'b001)) {
+      bins way0 = {3'd0};
+      bins way1 = {3'd1};
+      bins way2 = {3'd2};
+      bins way3 = {3'd3};
+      bins way4 = {3'd4};
+      bins way5 = {3'd5};
+      bins way6 = {3'd6};
+      bins way7 = {3'd7};
+    }
     option.per_instance = 1;
     // PFU fault kind encoding (priority: deny > acc_fault > flag_fault > pass)
     cp_pfu_fault_kind: coverpoint {
@@ -266,6 +329,7 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins itlb = {3'b011};
       bins dtlb = {3'b010, 3'b110};
       bins pfu  = {3'b100};
+      ignore_bins others = default;
     }
     // Completion type: cmplt=1 + data_vld=1 → data_valid
     //                 cmplt=1 + pgflt=1   → page_fault
@@ -284,6 +348,15 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   // --- cg_l1itlb ------------------------------------------------------------
   covergroup cg_l1itlb;
+    // Phase 7: Illegal PTW completion detection (TP_027)
+    //   iff: ptw_l2tlb_cmplt == 1.
+    //   Detects: cmplt without pending req, simultaneous data_vld+pgflt, bad PTW ID.
+    cp_illegal_cmplt: coverpoint wb_illegal_cmplt_kind iff (v_probe.ptw_l2tlb_cmplt) {
+      bins legal              = {2'd0};
+      bins illegal_no_pending  = {2'd1};
+      bins illegal_multi_flags = {2'd2};
+      bins illegal_bad_id      = {2'd3};
+    }
     option.per_instance = 1;
     cp_entry_vld_count: coverpoint wb_itlb_ent {
       bins c0_4 = {[0:4]}; bins c5_8 = {[5:8]}; bins c9_12 = {[9:12]}; bins c13_16 = {[13:16]};
@@ -451,6 +524,85 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   // --- cg_l2_reqq -----------------------------------------------------------
   covergroup cg_l2_reqq;
+    // Phase 6: Abort kind pipe0 (AUD-011/012/013)
+    //   iff: pipe0 has valid request with abort asserted (wb_dtlb_p0_abort_vld)
+    //   When abort=1: classify by TLB response - hit_abort (TLB hit but suppressed),
+    //   miss_abort (miss cancelled, no MB alloc), expt_abort (expt-CAM match,
+    //   entry not consumed per AUD-013), no_abort (degenerate: abort but no TLB response)
+    cp_abort_kind_p0: coverpoint wb_dtlb_abort_kind_p0 iff (wb_dtlb_p0_abort_vld) {
+      bins no_abort   = {2'b00};
+      bins hit_abort  = {2'b01};
+      bins miss_abort = {2'b10};
+      bins expt_abort = {2'b11};
+    }
+    // Phase 6: Abort kind pipe1 (AUD-011/012/013)
+    cp_abort_kind_p1: coverpoint wb_dtlb_abort_kind_p1 iff (wb_dtlb_p1_abort_vld) {
+      bins no_abort   = {2'b00};
+      bins hit_abort  = {2'b01};
+      bins miss_abort = {2'b10};
+      bins expt_abort = {2'b11};
+    }
+    // Phase 6: Credit=0 boundary condition (AUD-021)
+    //   iff: l1d_sched_credit_cnt == 0 - only sample when credit is at zero boundary
+    //   Four bins are mutually exclusive and complete across {credit_ret, l2_req_vld}:
+    //     - normal:                 credit>0 (excluded by iff, never sampled here)
+    //     - zero_no_ret:            credit=0, no credit return this cycle
+    //     - zero_with_ret_no_fire:  credit=0, credit return arrives, no L2 req fire
+    //     - zero_with_ret_and_fire: credit=0, credit return + L2 req fire same cycle
+    //       RTL constraint: the scheduler cannot issue l2_req when credit=0 because
+    //       l1d_l2_req_vld requires available credit; same-cycle return+fire is
+    //       structurally prohibited (credit decrement and return are serialized).
+    cp_credit_boundary_cond: coverpoint wb_dtlb_credit_boundary iff (v_probe.l1d_sched_credit_cnt == 5'd0) {
+      bins normal                 = {2'b00};
+      bins zero_no_ret            = {2'b01};
+      bins zero_with_ret_no_fire  = {2'b10};
+      bins zero_with_ret_and_fire = {2'b11};
+    }
+    // Phase 6B: IID priority (AUD-007)
+    //   iff: wb_dtlb_one_free_dual_diff == 1 (dual miss different VPN +
+    //   only 1 free MB slot).  The older IID wins allocation.
+    //   Winner determined from RTL allocation grant signals:
+    //   l1d_alloc_gnt0_safe -> p0_wins; l1d_alloc_gnt1_safe -> p1_wins.
+    cp_iid_priority: coverpoint wb_dtlb_iid_winner iff (wb_dtlb_one_free_dual_diff) {
+      bins p0_wins = {2'd1};
+      bins p1_wins = {2'd2};
+    }
+    // Phase 6B: MB CAM hit no-alloc / no-wakeup (AUD-020)
+    //   Cross-cycle: pipe miss at T0 -> T1 check MB CAM hit.
+    //   When MB CAM hits, RTL must suppress allocation (no MB entry alloc)
+    //   and must not assert expt wakeup (l1d_expt_wakeup all-0).
+    //   Three bins: no_cam_hit (prev_miss but no CAM hit),
+    //   cam_hit_no_alloc (CAM hit + alloc correctly suppressed),
+    //   cam_hit_no_wakeup (CAM hit + wakeup correctly suppressed).
+    //   When both no-alloc and no-wakeup hold, run_phase samples twice.
+    cp_mb_cam_hit_no_alloc: coverpoint wb_dtlb_mb_cam_hit_event
+                            iff (wb_dtlb_mb_cam_hit_valid) {
+      bins no_cam_hit        = {2'd0};
+      bins cam_hit_no_alloc  = {2'd1};
+      bins cam_hit_no_wakeup = {2'd2};
+    }
+    // Phase 6B: Scheduler old-MB vs bypass priority (AUD-022)
+    //   iff: l1d_l2_req_vld == 1 (L2 request issued this cycle).
+    //   old_mb_granted: an old MB entry is selected for issue.
+    //   bypass_granted: new miss bypasses MB directly.
+    cp_sched_priority: coverpoint wb_dtlb_sched_old_mb_prio
+                       iff (v_probe.l1d_l2_req_vld) {
+      bins old_mb_granted  = {2'd1};
+      bins bypass_granted  = {2'd2};
+    }
+    // Phase 6B: Reset initial state (AUD-042)
+    //   iff: rst_ni rising edge detected (wb_dtlb_rst_rose == 1).
+    //   Checks TLB entry_vld, MB vld, expt vld (via wakeup), credit counter.
+    //   Expected: entry_vld=0, mb_vld=0, expt wakeup=0, credit=CREDIT_MAX(8).
+    //   Priority-encoded: first non-clear condition wins, all_clear if all ok.
+    cp_reset_initial_state: coverpoint wb_dtlb_reset_done_state
+                            iff (wb_dtlb_rst_rose) {
+      bins all_clear       = {3'd0};
+      bins entry_not_clear = {3'd1};
+      bins mb_not_clear    = {3'd2};
+      bins expt_not_clear  = {3'd3};
+      bins credit_wrong    = {3'd4};
+    }
     option.per_instance = 1;
     cp_alloc_idx: coverpoint wb_reqq_iss { bins id[] = {[0:8]}; }
     cp_depth: coverpoint wb_reqq_dep { bins d0 = {0}; bins d1_4 = {[1:4]}; bins d5_9 = {[5:9]}; }
@@ -539,6 +691,70 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- Phase 12: cg_ptw_ready_transition -------------------------------------
   covergroup cg_ptw_ready_transition;
     option.per_instance = 1;
+
+  // --- Phase 7: cg_l2tlb_reset (TP_001/002/043 + AUD-031) -------------------
+  covergroup cg_l2tlb_reset;
+    option.per_instance = 1;
+    // TP_001/002: Cold reset initial state
+    //   iff: rst_ni rising edge (wb_l2_rst_rose).
+    //   Expected: ReqQ empty, MB empty, arbiter idle.
+    cp_cold_reset_state: coverpoint wb_l2tlb_cold_reset_state iff (wb_l2_rst_rose) {
+      bins all_idle       = {4'd0};
+      bins reqq_not_empty = {4'd1};
+      bins mb_not_empty   = {4'd2};
+      bins arb_active     = {4'd3};
+    }
+    // TP_043: Reset during TLBOP
+    //   iff: rst_ni falling edge detected and TLBOP was active.
+    //   Encoded during run_phase edge detection (before reset skip).
+    cp_reset_during_tlbop: coverpoint wb_l2tlb_reset_tlbop
+                           iff (wb_l2tlb_reset_tlbop != 4'd0) {
+      bins reset_during_tlbp    = {4'd1};
+      bins reset_during_tlbwi   = {4'd2};
+      bins reset_during_invall  = {4'd3};
+      bins reset_during_invasid = {4'd4};
+    }
+    // AUD-031: RTU flush clears L1DTLB MB / expt
+    //   iff: rtu_yy_xx_flush rising edge + 2 cycles (wb_l1d_flush_clear_valid).
+    //   Checks: MB vld cleared? expt wakeup cleared?
+    //   Dual-sample in run_phase to cover both mb and expt aspects.
+    cp_l1d_flush_clear: coverpoint wb_l1d_flush_clear
+                        iff (wb_l1d_flush_clear_valid) {
+      bins mb_cleared       = {2'd0};
+      bins mb_not_cleared   = {2'd1};
+      bins expt_cleared     = {2'd2};
+      bins expt_not_cleared = {2'd3};
+    }
+  endgroup
+
+  // --- Phase 7: cg_l2tlb_mb_part (TP_055) -----------------------------------
+  covergroup cg_l2tlb_mb_part;
+    option.per_instance = 1;
+    // TP_055: MB allocation source
+    //   iff: l2mb_alloc_valid == 1 (new MB entry allocated this cycle).
+    //   queue_id decoding: 3'd0 = ITLB, others = DTLB/PFU.
+    //   Newly-allocated entry detected via l2mb_vld_vec 0->1 transition.
+    cp_mb_alloc_source: coverpoint wb_l2mb_alloc_queue_id
+                        iff (v_probe.l2mb_alloc_valid) {
+      bins itlb = {3'd0};
+      bins dtlb = {[3'd1:3'd7]};
+    }
+    // TP_055: MB queue depth by source
+    //   Per-cycle sampling of ITLB (queue_id==0) and DTLB (queue_id!=0)
+    //   entry counts across all 9 L2 MB entries.
+    cp_mb_queue_depth_itlb: coverpoint wb_l2mb_itlb_cnt {
+      bins d0   = {0};
+      bins d1   = {1};
+      bins d2_3 = {[2:3]};
+      bins d4p  = {[4:9]};
+    }
+    cp_mb_queue_depth_dtlb: coverpoint wb_l2mb_dtlb_cnt {
+      bins d0   = {0};
+      bins d1   = {1};
+      bins d2_3 = {[2:3]};
+      bins d4p  = {[4:9]};
+    }
+  endgroup
     cp_ready_transition: coverpoint {wb_ptw_ready_prev, wb_ptw_ready}
                          iff (wb_ptw_ready_hist_valid) {
       bins stay_low  = {2'b00};
@@ -971,6 +1187,8 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
+    cg_l2tlb_reset               = new();
+    cg_l2tlb_mb_part             = new();
     if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe)) begin
       `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not in config_db — mmu_env_cg_whitebox will idle", UVM_LOW)
     end
@@ -989,7 +1207,44 @@ class mmu_env_cg_whitebox extends uvm_component;
     end
     forever begin
       @(posedge v_probe.clk_i);
+
+      // ── Phase 6B/7: Edge detection (before reset skip) ─────────────────
+      // Reset rising edge for L1DTLB/L2TLB init-state coverpoints
+      wb_dtlb_rst_rose = (!wb_dtlb_rst_n_prev && v_probe.rst_ni === 1'b1);
+      wb_l2_rst_rose   = (!wb_l2_rst_n_prev && v_probe.rst_ni === 1'b1);
+
+      // Reset falling edge: detect TLBOP active for cp_reset_during_tlbop
+      wb_l2tlb_reset_tlbop = 4'd0;
+      if (wb_l2_rst_n_prev && v_probe.rst_ni === 1'b0) begin
+        // Check which TLBOP FSM is active at reset assertion
+        if (v_probe.tlbop_tlbp_fsm != 2'd0)
+          wb_l2tlb_reset_tlbop = 4'd1;  // reset_during_tlbp
+        else if (v_probe.tlbop_tlbwi_fsm != 2'd0)
+          wb_l2tlb_reset_tlbop = 4'd2;  // reset_during_tlbwi
+        else if (v_probe.tlbop_tlbiall_fsm != 1'b0)
+          wb_l2tlb_reset_tlbop = 4'd3;  // reset_during_invall
+        else if (v_probe.tlbop_tlbiasid_fsm != 3'd0)
+          wb_l2tlb_reset_tlbop = 4'd4;  // reset_during_invasid
+        // Other TLBOP types (TLBR, TLBWR, INVVA) fall into default/no_tlbop;
+        // they can be added as additional bins in future phases.
+      end
+
+      // RTU flush edge tracking (2-cycle delay for AUD-031)
+      begin
+        bit flush_rose;
+        flush_rose = !wb_rtu_flush_prev && v_probe.rtu_yy_xx_flush;
+        wb_l1d_flush_clear_valid = wb_rtu_flush_rose_d2;  // capture d2 before shift
+        wb_rtu_flush_rose_d2     = wb_rtu_flush_rose_d1;
+        wb_rtu_flush_rose_d1     = flush_rose;
+      end
+
+      // Update prev for edge-detection variables (must happen even when rst=0)
+      wb_dtlb_rst_n_prev = v_probe.rst_ni;
+      wb_l2_rst_n_prev   = v_probe.rst_ni;
+      wb_rtu_flush_prev  = v_probe.rtu_yy_xx_flush;
+
       if (v_probe.rst_ni === 1'b0) continue;
+
       sample_dut;
       cg_ptw_walk.sample();
       cg_l2tlb_bank.sample();
@@ -1025,6 +1280,47 @@ class mmu_env_cg_whitebox extends uvm_component;
       cg_l1dtlb.sample();
       // ── Phase 4: Independent sampling of L1DTLB install arbitration & wakeup coverpoints ──
       cg_l1dtlb.sample();
+      // ── Phase 6: Independent sampling of L1DTLB abort & credit boundary coverpoints ──
+      // cp_abort_kind_p0/p1 require lsu_vif (abort signals sourced from LSU vif);
+      // cp_credit_boundary_cond uses v_probe only, sampled together for simplicity.
+      // Both coverpoints use iff conditions to filter irrelevant cycles.
+      if (lsu_vif != null) begin
+        cg_l1dtlb.sample();
+      end
+      // ── Phase 6B: Independent sampling of L1DTLB IID/MB CAM/Sched/Reset coverpoints ──
+      // cp_iid_priority, cp_sched_priority, cp_reset_initial_state use v_probe only.
+      // cp_mb_cam_hit_no_alloc: when MB CAM hit detected, dual-sample for
+      //   cam_hit_no_alloc and cam_hit_no_wakeup bins.
+      cg_l1dtlb.sample();
+      if (wb_dtlb_mb_cam_hit_valid && wb_dtlb_mb_cam_hit_event == 2'd1 && wb_dtlb_mb_cam_hit_no_wakeup) begin
+        wb_dtlb_mb_cam_hit_event = 2'd2;     // switch to cam_hit_no_wakeup bin
+        cg_l1dtlb.sample();
+        wb_dtlb_mb_cam_hit_event = 2'd1;     // restore
+      end
+      // ── Phase 7: New covergroup samples ──────────────────────────────────
+      cg_l2tlb_reset.sample();
+      cg_l2tlb_mb_part.sample();
+      // Phase 7: cp_l1d_flush_clear dual-sample (mb + expt aspects)
+      if (wb_l1d_flush_clear_valid) begin
+        cg_l2tlb_reset.sample();  // hits mb_cleared or mb_not_cleared
+        if (wb_l1d_flush_expt_ok) begin
+          wb_l1d_flush_clear = 2'd2;   // expt_cleared
+          cg_l2tlb_reset.sample();
+        end else begin
+          wb_l1d_flush_clear = 2'd3;   // expt_not_cleared
+          cg_l2tlb_reset.sample();
+        end
+        // restore mb-state value (it was sampled in sample_dut)
+        wb_l1d_flush_clear = (v_probe.l1d_mb_vld == 8'h00) ? 2'd0 : 2'd1;
+      end
+      // ── Phase 6B/7: Update prev-state for cross-cycle tracking ────────
+      wb_dtlb_p0_miss_prev = v_probe.l1d_p0_miss_vld;
+      wb_dtlb_p1_miss_prev = v_probe.l1d_p1_miss_vld;
+      wb_l2mb_vld_prev     = v_probe.l2mb_vld_vec;
+      // Clear one-shot edge flags
+      wb_dtlb_rst_rose = 1'b0;
+      wb_l2_rst_rose   = 1'b0;
+      wb_l1d_flush_clear_valid = 1'b0;
       wb_sample_cycles++;
     end
   endtask
@@ -1032,7 +1328,7 @@ class mmu_env_cg_whitebox extends uvm_component;
   virtual function void final_phase(uvm_phase phase);
     super.final_phase(phase);
     `uvm_info(get_type_name(),
-      $sformatf("whitebox_cg summary: sampled_cycles=%0d ptw_ready=%0.2f twu_idle_mask=%0.2f xbar_hit=%0.2f twu_except_busy=%0.2f twu_scalar_ready=%0.2f arb_grant=%0.2f arb_pgs=%0.2f maee_leaf=%0.2f maee_path=%0.2f l2tlb_arbiter=%0.2f l2tlb_lookup=%0.2f l2tlb_pfu=%0.2f l2tlb_ptw_if=%0.2f",
+      $sformatf("whitebox_cg summary: sampled_cycles=%0d ptw_ready=%0.2f twu_idle_mask=%0.2f xbar_hit=%0.2f twu_except_busy=%0.2f twu_scalar_ready=%0.2f arb_grant=%0.2f arb_pgs=%0.2f maee_leaf=%0.2f maee_path=%0.2f l2tlb_arbiter=%0.2f l2tlb_lookup=%0.2f l2tlb_pfu=%0.2f l2tlb_ptw_if=%0.2f l2tlb_reset=%0.2f l2tlb_mb_part=%0.2f",
         wb_sample_cycles,
         cg_ptw_ready_transition.get_inst_coverage(),
         cg_twu_idle_vs_mask_state.get_inst_coverage(),
@@ -1046,7 +1342,9 @@ class mmu_env_cg_whitebox extends uvm_component;
         cg_l2tlb_arbiter.get_inst_coverage(),
         cg_l2tlb_lookup.get_inst_coverage(),
         cg_l2tlb_pfu.get_inst_coverage(),
-        cg_l2tlb_ptw_if.get_inst_coverage()),
+        cg_l2tlb_ptw_if.get_inst_coverage(),
+        cg_l2tlb_reset.get_inst_coverage(),
+        cg_l2tlb_mb_part.get_inst_coverage()),
       UVM_LOW)
     `uvm_info(get_type_name(),
       $sformatf("phase13_whitebox_cg summary: pmp_result=%0.2f pmp_unit_level=%0.2f pmp_grant=%0.2f pmp_pa=%0.2f pmp_deny=%0.2f twu_mask=%0.2f pmp_port=%0.2f sysmap_flg=%0.2f cross1g=%0.2f cross2m=%0.2f degrade=%0.2f sysmap_pa=%0.2f sysmap_4twu=%0.2f default=%0.2f rec_l1pmpflg=%0.2f rec_visible_mutex=%0.2f",
@@ -1554,6 +1852,206 @@ class mmu_env_cg_whitebox extends uvm_component;
     if (oh[1]) return 3'd1;
     if (oh[2]) return 3'd2;
     if (oh[3]) return 3'd3;
+
+    // Phase 6: Abort classification (AUD-011/012/013)
+    //   AUD-011: abort + TLB hit  - hit response valid but suppressed by abort
+    //   AUD-012: abort + TLB miss - miss request cancelled, MB entry not allocated
+    //   AUD-013: abort + expt-CAM match - exception entry matched but not consumed
+    wb_dtlb_p0_abort_vld   = 1'b0;
+    wb_dtlb_p1_abort_vld   = 1'b0;
+    wb_dtlb_abort_kind_p0  = 2'b00;
+    wb_dtlb_abort_kind_p1  = 2'b00;
+    if (lsu_vif != null) begin
+      // Pipe0: only classify when there is a valid request with abort
+      wb_dtlb_p0_abort_vld = lsu_vif.monitor_cb.lsu_mmu_va0_vld
+                           && lsu_vif.monitor_cb.lsu_mmu_abort0;
+      if (wb_dtlb_p0_abort_vld) begin
+        // Priority: expt_match > hit > miss
+        // (expt_abort is highest priority per AUD-013)
+        if (v_probe.l1d_p0_expt_match)
+          wb_dtlb_abort_kind_p0 = 2'b11;  // expt_abort
+        else if (v_probe.l1d_p0_hit_vld)
+          wb_dtlb_abort_kind_p0 = 2'b01;  // hit_abort
+        else if (v_probe.l1d_p0_miss_vld)
+          wb_dtlb_abort_kind_p0 = 2'b10;  // miss_abort
+        else
+          wb_dtlb_abort_kind_p0 = 2'b00;  // no_abort
+      end
+      // Pipe1: same classification logic
+      wb_dtlb_p1_abort_vld = lsu_vif.monitor_cb.lsu_mmu_va1_vld
+                           && lsu_vif.monitor_cb.lsu_mmu_abort1;
+      if (wb_dtlb_p1_abort_vld) begin
+        if (v_probe.l1d_p1_expt_match)
+          wb_dtlb_abort_kind_p1 = 2'b11;  // expt_abort
+        else if (v_probe.l1d_p1_hit_vld)
+          wb_dtlb_abort_kind_p1 = 2'b01;  // hit_abort
+        else if (v_probe.l1d_p1_miss_vld)
+          wb_dtlb_abort_kind_p1 = 2'b10;  // miss_abort
+        else
+          wb_dtlb_abort_kind_p1 = 2'b00;  // no_abort
+      end
+    end
+
+    // Phase 6: Credit boundary condition (AUD-021)
+    //   AUD-021: verify scheduler behavior when l1d_sched_credit_cnt == 0
+    if (v_probe.l1d_sched_credit_cnt == 5'd0) begin
+      // Credit is at zero boundary - classify by {credit_ret, l2_req_vld}
+      if (!v_probe.l1d_l2_credit_ret)
+        wb_dtlb_credit_boundary = 2'b01;  // zero_no_ret
+      else if (!v_probe.l1d_l2_req_vld)
+        wb_dtlb_credit_boundary = 2'b10;  // zero_with_ret_no_fire
+      else
+        wb_dtlb_credit_boundary = 2'b11;  // zero_with_ret_and_fire
+    end else begin
+      wb_dtlb_credit_boundary = 2'b00;    // normal: credit>0
+    end
+
+    // Phase 6B: IID priority (AUD-007)
+    //   When dual miss with different VPN and only 1 free MB slot, the older
+    //   IID wins allocation. Result encoded in allocation grant signals.
+    wb_dtlb_iid_winner = 2'd0;
+    if (wb_dtlb_one_free_dual_diff) begin
+      if (v_probe.l1d_alloc_gnt0_safe)
+        wb_dtlb_iid_winner = 2'd1;  // p0_wins
+      else if (v_probe.l1d_alloc_gnt1_safe)
+        wb_dtlb_iid_winner = 2'd2;  // p1_wins
+    end
+
+    // Phase 6B: MB CAM hit event (AUD-020)
+    //   T0 miss (tracked via prev variables) -> T1 MB CAM check.
+    //   Expected: MB CAM hit -> no new MB allocation, no expt wakeup.
+    wb_dtlb_mb_cam_hit_event   = 2'd0;
+    wb_dtlb_mb_cam_hit_valid   = 1'b0;
+    wb_dtlb_mb_cam_hit_no_wakeup = 1'b0;
+    if (wb_dtlb_p0_miss_prev || wb_dtlb_p1_miss_prev) begin
+      wb_dtlb_mb_cam_hit_valid = 1'b1;
+      if (v_probe.l1d_p0_mb_hit || v_probe.l1d_p1_mb_hit) begin
+        // MB CAM hit: alloc should be suppressed, wakeup should be 0
+        wb_dtlb_mb_cam_hit_event = 2'd1;  // cam_hit_no_alloc (primary bin)
+        wb_dtlb_mb_cam_hit_no_wakeup = (v_probe.l1d_expt_wakeup == 12'b0);
+      end else begin
+        wb_dtlb_mb_cam_hit_event = 2'd0;  // no_cam_hit
+      end
+    end
+
+    // Phase 6B: Scheduler priority - old MB vs bypass (AUD-022)
+    //   When L2 request fires, check source: old MB entry (issue_sel != 0)
+    //   or new-miss bypass (issue_sel == 0).
+    wb_dtlb_sched_old_mb_prio = 2'd3;  // no_request (iff filters out)
+    if (v_probe.l1d_l2_req_vld) begin
+      if (|v_probe.l1d_mb_issue_sel)
+        wb_dtlb_sched_old_mb_prio = 2'd1;  // old_mb_granted
+      else
+        wb_dtlb_sched_old_mb_prio = 2'd2;  // bypass_granted
+    end
+
+    // Phase 6B: Reset initial state (AUD-042)
+    //   Checked on rst_ni rising edge (wb_dtlb_rst_rose set in run_phase).
+    //   Expected: entry_vld=0, mb_vld=0, expt wakeup=0, credit=CREDIT_MAX(8).
+    if (wb_dtlb_rst_rose) begin
+      bit [3:0] flags;
+      flags = 4'b0;
+      if (v_probe.l1d_entry_vld != 16'h0000)
+        flags[0] = 1'b1;
+      if (v_probe.l1d_mb_vld != 8'h00)
+        flags[1] = 1'b1;
+      if (v_probe.l1d_expt_wakeup != 12'b0)
+        flags[2] = 1'b1;
+      if (v_probe.l1d_sched_credit_cnt != 5'd8)
+        flags[3] = 1'b1;
+      // Priority encode: first non-clear wins
+      if (flags == 4'b0000)
+        wb_dtlb_reset_done_state = 3'd0;  // all_clear
+      else if (flags[0])
+        wb_dtlb_reset_done_state = 3'd1;  // entry_not_clear
+      else if (flags[1])
+        wb_dtlb_reset_done_state = 3'd2;  // mb_not_clear
+      else if (flags[2])
+        wb_dtlb_reset_done_state = 3'd3;  // expt_not_clear
+      else
+        wb_dtlb_reset_done_state = 3'd4;  // credit_wrong
+    end else begin
+      wb_dtlb_reset_done_state = 3'd0;
+    end
+
+    // Phase 7: Cold reset state for L2TLB (TP_001/002)
+    //   Checked on rst_ni rising edge. Expected: reqq empty, mb empty, arb idle.
+    if (wb_l2_rst_rose) begin
+      if (v_probe.l2_reqq_vld_vec != 9'b0)
+        wb_l2tlb_cold_reset_state = 4'd1;  // reqq_not_empty
+      else if (v_probe.l2mb_vld_vec != 9'b0)
+        wb_l2tlb_cold_reset_state = 4'd2;  // mb_not_empty
+      else if (v_probe.l2_arb_req)
+        wb_l2tlb_cold_reset_state = 4'd3;  // arb_active
+      else
+        wb_l2tlb_cold_reset_state = 4'd0;  // all_idle
+    end else begin
+      wb_l2tlb_cold_reset_state = 4'd0;
+    end
+
+    // Phase 7: Illegal PTW completion (TP_027)
+    //   iff: ptw_l2tlb_cmplt == 1. Detects illegal completion combinations.
+    wb_illegal_cmplt_kind = 2'd0;
+    if (v_probe.ptw_l2tlb_cmplt) begin
+      bit multi_flags;
+      multi_flags = (int'(v_probe.ptw_l2tlb_ref_data_vld)
+                   + int'(v_probe.ptw_l2tlb_ref_pgflt)
+                   + int'(v_probe.ptw_l2tlb_ref_acc_err)) > 1;
+      if (!v_probe.l2tlb_ptw_req && !(|v_probe.l2mb_vld_vec))
+        wb_illegal_cmplt_kind = 2'd1;  // illegal_no_pending
+      else if (multi_flags)
+        wb_illegal_cmplt_kind = 2'd2;  // illegal_multi_flags
+      else if (v_probe.ptw_l2tlb_id != v_probe.l2tlb_ptw_id)
+        wb_illegal_cmplt_kind = 2'd3;  // illegal_bad_id
+      else
+        wb_illegal_cmplt_kind = 2'd0;  // legal
+    end
+
+    // Phase 7: Victim way index (TP_047)
+    //   Decode 8-bit onehot l2_victim_way to 3-bit index for cp_victim_way.
+    wb_l2_victim_way_idx = f_first_onehot3(v_probe.l2_victim_way);
+
+    // Phase 7: L2 MB alloc source (TP_055)
+    //   When l2mb_alloc_valid, find the newly allocated entry by detecting
+    //   0->1 transition in l2mb_vld_vec vs prev, and read its queue_id.
+    wb_l2mb_alloc_queue_id = 3'd0;
+    if (v_probe.l2mb_alloc_valid) begin
+      for (int unsigned i = 0; i < 9; i++) begin
+        if (v_probe.l2mb_vld_vec[i] && !wb_l2mb_vld_prev[i]) begin
+          wb_l2mb_alloc_queue_id = v_probe.l2mb_entry_queue_id[i];
+          break;
+        end
+      end
+    end
+
+    // Phase 7: L2 MB queue depth per source (TP_055)
+    //   Count valid L2 MB entries by source: ITLB (queue_id==0) vs DTLB (others).
+    wb_l2mb_itlb_cnt = 0;
+    wb_l2mb_dtlb_cnt = 0;
+    for (int unsigned i = 0; i < 9; i++) begin
+      if (v_probe.l2mb_vld_vec[i]) begin
+        if (v_probe.l2mb_entry_queue_id[i] == 3'd0)
+          wb_l2mb_itlb_cnt++;
+        else
+          wb_l2mb_dtlb_cnt++;
+      end
+    end
+
+    // Phase 7: L1DTLB flush clear (AUD-031)
+    //   Checked 2 cycles after rtu_yy_xx_flush rising edge.
+    //   wb_l1d_flush_clear_valid is set by run_phase edge tracking.
+    if (wb_l1d_flush_clear_valid) begin
+      // MB cleared check
+      if (v_probe.l1d_mb_vld == 8'h00)
+        wb_l1d_flush_clear = 2'd0;  // mb_cleared
+      else
+        wb_l1d_flush_clear = 2'd1;  // mb_not_cleared
+      // Expt cleared flag for run_phase dual-sample
+      wb_l1d_flush_expt_ok = (v_probe.l1d_expt_wakeup == 12'b0);
+    end else begin
+      wb_l1d_flush_clear = 2'd0;
+      wb_l1d_flush_expt_ok = 1'b0;
+    end
     if (oh[4]) return 3'd4;
     if (oh[5]) return 3'd5;
     if (oh[6]) return 3'd6;

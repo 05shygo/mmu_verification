@@ -1866,14 +1866,7 @@ class mmu_env_cg_whitebox extends uvm_component;
     if (v_probe.tlboper_ptw_abort)
       wb_tlboper_op_type = 4'd9;
 
-  endfunction
-
-  function logic [2:0] f_first_onehot3(input logic [7:0] oh);
-    if (oh[0]) return 3'd0;
-    if (oh[1]) return 3'd1;
-    if (oh[2]) return 3'd2;
-    if (oh[3]) return 3'd3;
-
+    // ── Phase 6/6B/7 L1DTLB & L2TLB whitebox sampling (moved out of f_first_onehot3) ──
     // Phase 6: Abort classification (AUD-011/012/013)
     //   AUD-011: abort + TLB hit  - hit response valid but suppressed by abort
     //   AUD-012: abort + TLB miss - miss request cancelled, MB entry not allocated
@@ -2055,12 +2048,20 @@ class mmu_env_cg_whitebox extends uvm_component;
       wb_l1d_flush_clear = 2'd0;
       wb_l1d_flush_expt_ok = 1'b0;
     end
+  endfunction
+
+  function logic [2:0] f_first_onehot3(input logic [7:0] oh);
+    if (oh[0]) return 3'd0;
+    if (oh[1]) return 3'd1;
+    if (oh[2]) return 3'd2;
+    if (oh[3]) return 3'd3;
     if (oh[4]) return 3'd4;
     if (oh[5]) return 3'd5;
     if (oh[6]) return 3'd6;
     if (oh[7]) return 3'd7;
     return 3'd0;
   endfunction
+
 
 endclass : mmu_env_cg_whitebox
 

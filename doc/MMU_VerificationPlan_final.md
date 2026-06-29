@@ -1806,7 +1806,7 @@ Phase 14 的 Closure Owner policy、IssueTracker 和 SignoffMatrix 已融合为�
 | S1 | full list 5-seed regression 100% pass | Pass | high-parallel shards clean，summary pass_rate=1.0000 |
 | S2 | latest coverage run has no regression | Pass | `phase14_coverage_merge_parallel` generated URG report |
 | S3 | line/branch/toggle/FSM coverage target | Pass | line/branch/toggle/FSM all 100.00% |
-| S4 | functional coverage 100% | Open | functional coverage 67.66%；tracked by MMU-P14-ISSUE-003 |
+| S4 | functional coverage 100% | Open | functional coverage 67.66%；tracked by MMU-P14-ISSUE-003；Phase 14 covergroup 扩展（cg_l2tlb_lookup/pfu/ptw_if/arbiter/reset/mb_part + cg_l1dtlb 新增 coverpoint，P1-P8）已落地，见 `doc/l1dtlb_uvm_audit/covergroup_improvement_plan.md` |
 | S5 | assertion coverage 100%, 0 fail | Pass | assertion 100.00%，0 fail |
 | S6 | P0/P1 open bugs are 0 | Pass | Phase14 issues 007-015、017-019 closed; no open P0/P1 |
 | S7 | P2 bugs reviewed and agreed | Open | depends on MMU-P14-ISSUE-003 review |

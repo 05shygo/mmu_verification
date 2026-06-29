@@ -224,21 +224,21 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins stalled     = {2'b10};  // req high but grant low (reserved for future probe split)
     }
     // ── Request source ────────────────────────────────────────────────────
-    //   Inferred from per-source active signals:
-    //     2'd1 = reqq       (l2_reqq_issue_valid)
-    //     2'd2 = pfu        (l2_pfu_req_vld)
-    //     2'd3 = ptw_refill (ptw_arb_req)
-    //     2'd4 = tlbop      (tlbop_arb_req)
+    //   Inferred from per-source active signals (3-bit encoding so tlbop=4 fits):
+    //     3'd1 = reqq       (l2_reqq_issue_valid)
+    //     3'd2 = pfu        (l2_pfu_req_vld)
+    //     3'd3 = ptw_refill (ptw_arb_req)
+    //     3'd4 = tlbop      (tlbop_arb_req)
     cp_arb_source: coverpoint {
-      v_probe.l2_reqq_issue_valid ? 2'd1 :
-      v_probe.l2_pfu_req_vld      ? 2'd2 :
-      v_probe.ptw_arb_req         ? 2'd3 :
-      v_probe.tlbop_arb_req       ? 2'd4 : 2'd0
+      v_probe.l2_reqq_issue_valid ? 3'd1 :
+      v_probe.l2_pfu_req_vld      ? 3'd2 :
+      v_probe.ptw_arb_req         ? 3'd3 :
+      v_probe.tlbop_arb_req       ? 3'd4 : 3'd0
     } iff (v_probe.l2_arb_req) {
-      bins reqq       = {2'd1};
-      bins pfu        = {2'd2};
-      bins ptw_refill = {2'd3};
-      bins tlbop      = {2'd4};
+      bins reqq       = {3'd1};
+      bins pfu        = {3'd2};
+      bins ptw_refill = {3'd3};
+      bins tlbop      = {3'd4};
     }
     // ── TP_011 cross: source × acc_type ───────────────────────────────────
     cx_arb_src_type: cross cp_arb_source, cp_arb_acc_type;
@@ -277,6 +277,9 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins prefetch = {3'b100};
       bins other    = default;
     }
+    // TP_016: multi-hit 被动观测——正常随机仿真极少自然产生 multi-hit（需 TLBWI
+    //   写相同 VPN 到不同 way）。bins multi_hit 命中率取决于是否有定向 vseq
+    //   主动构造（见 Phase 11 vseq_l2tlb_multi_hit_construct）。
     cp_lookup_way_hit_cnt: coverpoint $countones(v_probe.l2_final_way_hit)
                            iff (v_probe.l2_final_vld && v_probe.l2_final_tlb_hit) {
       bins single    = {1};
@@ -328,7 +331,10 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins itlb = {3'b011};
       bins dtlb = {3'b010, 3'b110};
       bins pfu  = {3'b100};
-      ignore_bins others = default;
+      // Remaining 3-bit encodings are not produced by RTL for ptw_type; collect
+      // them as an explicit catch-all bin instead of ignore_bins (default bin
+      // spec is not allowed in ignore_bins — VCS IBCNHD).
+      bins others = default;
     }
     // Completion type: cmplt=1 + data_vld=1 → data_valid
     //                 cmplt=1 + pgflt=1   → page_fault
@@ -483,6 +489,10 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins inv_asid = {3'b100};
     }
     // ── Phase 2: Invalidate race with hit/install (AUD-037/038) ─────────
+    //   spec_gap: l1dtlb_testpoint_audit.md 标记 AUD-037/038 为 spec_gap——
+    //   "Function description asks but does not finalize this race"。
+    //   本 coverpoint 只记录 race 事件是否发生（覆盖率），不加结果 checker /
+    //   scoreboard 预期。待设计团队澄清 race 的预期最终 valid 状态后再补充检查。
     cp_inv_race: coverpoint wb_dtlb_inv_race iff (wb_dtlb_inv_kind != 3'd0) {
       bins no_race       = {2'd0};
       bins hit_race      = {2'd1};
@@ -681,6 +691,18 @@ class mmu_env_cg_whitebox extends uvm_component;
   // --- Phase 12: cg_ptw_ready_transition -------------------------------------
   covergroup cg_ptw_ready_transition;
     option.per_instance = 1;
+    // PTW ready transition across consecutive cycles.
+    //   iff: wb_ptw_ready_hist_valid (at least one previous sample stored).
+    //   Driven by phase12_pulse_ptw_ready_for_cov which toggles ptw_jtlb_ready
+    //   (xbar_pde_ready & !abort) across consecutive cycles.
+    cp_ready_transition: coverpoint {wb_ptw_ready_prev, wb_ptw_ready}
+                         iff (wb_ptw_ready_hist_valid) {
+      bins stay_low  = {2'b00};
+      bins rise      = {2'b01};
+      bins fall      = {2'b10};
+      bins stay_high = {2'b11};
+    }
+  endgroup
 
   // --- Phase 7: cg_l2tlb_reset (TP_001/002/043 + AUD-031) -------------------
   covergroup cg_l2tlb_reset;
@@ -743,14 +765,6 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins d1   = {1};
       bins d2_3 = {[2:3]};
       bins d4p  = {[4:9]};
-    }
-  endgroup
-    cp_ready_transition: coverpoint {wb_ptw_ready_prev, wb_ptw_ready}
-                         iff (wb_ptw_ready_hist_valid) {
-      bins stay_low  = {2'b00};
-      bins rise      = {2'b01};
-      bins fall      = {2'b10};
-      bins stay_high = {2'b11};
     }
   endgroup
 
@@ -1148,6 +1162,8 @@ class mmu_env_cg_whitebox extends uvm_component;
     cg_l2_reqq                   = new();
     cg_tlboper_fsm               = new();
     cg_ptw_ready_transition      = new();
+    cg_l2tlb_reset               = new();
+    cg_l2tlb_mb_part             = new();
     cg_twu_idle_vs_mask_state    = new();
     cg_xbar_hit_level            = new();
     cg_twu_except_while_arb_busy = new();
@@ -1177,8 +1193,6 @@ class mmu_env_cg_whitebox extends uvm_component;
 
   virtual function void build_phase(uvm_phase phase);
     super.build_phase(phase);
-    cg_l2tlb_reset               = new();
-    cg_l2tlb_mb_part             = new();
     if (!uvm_config_db#(virtual mmu_dut_probes_if)::get(this, "", "MMU_DUT_PROBES_VIF", v_probe)) begin
       `uvm_info(get_type_name(), "MMU_DUT_PROBES_VIF not in config_db — mmu_env_cg_whitebox will idle", UVM_LOW)
     end

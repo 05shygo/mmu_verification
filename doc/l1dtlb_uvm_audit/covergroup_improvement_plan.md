@@ -29,6 +29,8 @@
 
 **覆盖**：AUD-034/035/036/037/038
 
+> **spec_gap 警告（AUD-037/038）**：L1DTLB 审计标记这两个为 spec_gap——"Function description asks but does not finalize this race"。`cp_inv_race` 的 coverpoint **只记录竞争事件是否发生**（覆盖率），**绝对不能基于此加结果 checker / scoreboard 预期**，直到设计团队澄清 race 的预期最终 valid 状态。
+
 **任务**：
 1. 在 `sample_dut()` 中从 `v_probe.tlboper_utlb_clr/inv_va_req/inv_va` 算出 `wb_dtlb_inv_kind`、`wb_dtlb_inv_during_hit/install`
 2. 在 `cg_l1dtlb` 追加 2 个 coverpoint：`cp_inv_type`（INV_ALL/INV_VA/INV_ASID）、`cp_inv_race`（invalidate×hit、invalidate×install 同拍）
@@ -38,12 +40,17 @@
 - [ ] `cp_inv_type` 的 `iff` 条件为 `wb_dtlb_inv_kind != 0`（仅发生 invalidate 时采样）
 - [ ] `cp_inv_race` 能区分四种场景：无竞争 / hit 同拍 / install 同拍 / 双重竞争
 - [ ] INV_ASID 的推断逻辑有明确注释说明依赖的信号（当前通过 entry_vld 大面积清零推断）
+- [ ] **AUD-037/038**：coverpoint 代码注释中标注"spec_gap，仅覆盖事件发生，不加结果检查"
 
 ---
 
-## Phase 3：L2TLB 核心 covergroup — Lookup + PFU + PTW Interface（16 项）
+## Phase 3：L2TLB 核心 covergroup — Lookup + PFU + PTW Interface（15 项）
 
-**覆盖**：TP_012~016（tag lookup）、TP_023~027（PTW interface）、TP_028~033（PFU）
+**覆盖**：TP_012~016（tag lookup）、TP_023~026（PTW interface 合法 completion）、TP_028~033（PFU）
+
+> **TP_027 不在此 Phase**：TP_027 是 Negative assertion（非法 PTW completion），规格明确"不进入普通功能比较、普通随机不生成"，由 Phase 9 SVA 覆盖。
+>
+> **TP_016 部分覆盖**：`cp_lookup_way_hit_cnt` 的 `bins multi` 是**被动观测** multi-hit 是否在随机仿真中自然发生。multi-hit 极少自然产生（需 TLBWI 写相同 VPN 到不同 way）。完整覆盖需要 Phase 11 定向 vseq 通过 TLBWI 主动构造。
 
 **任务**：
 1. 新建 `cg_l2tlb_lookup`：`cp_lookup_result`（hit/miss）、`cp_lookup_pgs`（4K/2M/1G）、`cp_lookup_source`（ITLB/DTLB）、`cp_lookup_acc_type`（load/store）、`cp_lookup_way_hit_cnt`（single/multi-hit）、`cx_lookup_src_res`、`cx_lookup_pgs_src`
@@ -131,21 +138,33 @@
 
 ## Phase 7：L2TLB Reset + MB Partition + 遗漏补充（7 项）
 
-**覆盖**：TP_001/002（cold/warm reset）、TP_043（TLBOP+reset）、TP_055（MB partition ITLB vs DTLB）、TP_027（非法 PTW completion）、TP_047（replacement victim way）、AUD-031（RTU flush 清理 MB/expt）
+**覆盖**：TP_001/002（cold/warm reset）、TP_043（TLBOP+reset）、TP_055（MB partition ITLB vs DTLB）、TP_047（replacement victim way）、AUD-031（RTU flush 清理 MB/expt）
+
+> **❌ 删除 `cp_illegal_cmplt`**：TP_027 是 Negative assertion（规格明确"不进入普通功能比较、普通随机不生成"），用 coverpoint 覆盖是**验证方法论错误**：
+> - 非法 bin（illegal_no_pending / illegal_multi_flags / illegal_bad_id）在正常仿真中**永远不会命中**，只会产生 0% 死 bin 污染覆盖率报告
+> - 合法 bin（legal_data_vld / legal_pgflt / legal_acc_err）与 Phase 3 `cp_ptw_cmplt_type` **完全重复**
+> - TP_027 的正确验证手段是 Phase 9 SVA（`illegal_ptw_completion` property）
+>
+> **需删除的代码**：
+> - `wb_illegal_cmplt_kind` 变量声明（~line 156）
+> - `cp_illegal_cmplt` coverpoint 定义及全部 bin（~line 354-359）
+> - `sample_dut()` 中 `wb_illegal_cmplt_kind` 赋值逻辑（~line 2010-2024）
+> - `run_phase` 中 `cp_illegal_cmplt.sample()` 调用（如有）
+> - `final_phase` 打印中相关项（如有）
 
 **任务**：
 1. 新建 `cg_l2tlb_reset`：`cp_cold_reset_state`、`cp_reset_during_tlbop`
 2. 新建 `cg_l2tlb_mb_part`：`cp_mb_queue_id`（ITLB/DTLB 分布），依赖 `l2mb_alloc_valid` + `l2mb_entry_queue_id`
-3. 在 `cg_l2tlb_ptw_if`（Phase 3 已建）追加 `cp_illegal_cmplt`：检测非法 PTW completion 组合（无 pending req 却有 cmplt / 同时 data_vld+pgflt / bad ID 等）
+3. ~~在 `cg_l2tlb_ptw_if` 追加 `cp_illegal_cmplt`~~ → **已删除，TP_027 改由 Phase 9 SVA 覆盖**
 4. 在 `cg_l2tlb_lookup`（Phase 3 已建）追加 `cp_victim_way`：覆盖 L2TLB replacement 选中的 victim way（0-7），仅在 refill/TLBWI/TLBWR 写入时采样
 5. 在 `cg_l2tlb_reset` 同组追加 `cp_l1d_flush_clear`：覆盖 AUD-031，RTU flush 后 L1DTLB MB vld 和 expt vld 是否清零
-6. 在 `run_phase` sample 这 2 个新 covergroup + 3 个追加 coverpoint
+6. 在 `run_phase` sample 这 2 个新 covergroup + 2 个追加 coverpoint
 
 **验收标准**：
 - [ ] `cp_cold_reset_state` 能捕获 `rst_ni=0` 时 `l2mb_vld_vec==0` 的状态（bin `reset_active_entries_zero`）
 - [ ] `cp_reset_during_tlbop` 的触发逻辑有注释说明（依赖 `sample_dut()` 中跨 cycle 状态检测）
 - [ ] `cp_mb_queue_id` 仅在 `l2mb_alloc_valid=1` 时采样，正确区分 ITLB（queue_id=0/1）和 DTLB（queue_id=2）
-- [ ] `cp_illegal_cmplt` 的 `iff` 条件为 `ptw_l2tlb_cmplt==1`，bin 区分：legal_data_vld / legal_pgflt / legal_acc_err / illegal_no_pending / illegal_multi_flags / illegal_bad_id
+- [ ] **`cp_illegal_cmplt` 及关联变量/赋值/sample 已全部删除**，编译通过无残留引用
 - [ ] `cp_victim_way` 仅在 `l2_arb_write==1` 且 `l2_arb_acc_type` 为 refill/TLBWI/TLBWR 时采样
 - [ ] `cp_l1d_flush_clear` 在 `rtu_yy_xx_flush` 上升沿后的 cycle 采样 MB vld 和 expt vld 清零状态
 
@@ -180,7 +199,7 @@
 |-------|------|:---:|:---:|---|
 | P1 | L1DTLB 权限Fault + Expt-CAM | 6 | — | AUD-016~018, 026~029 (7) |
 | P2 | L1DTLB Invalidate | 2 | — | AUD-034~038 (5) |
-| P3 | L2TLB Lookup / PFU / PTW | 7 | 3 | TP_012~016, 023~033 (16) |
+| P3 | L2TLB Lookup / PFU / PTW | 7 | 3 | TP_012~016, 023~026, 028~033 (15) |
 | P4 | L1DTLB Install仲裁 + Wakeup | 3 | — | AUD-009/010/024 (3) |
 | P5 | L2TLB Arbiter + TLBOP op_type | 5 | 1 | TP_009~011, 034~044 (14) |
 | P6 | L1DTLB Abort + Credit边界 | 3 | — | AUD-011~013, 021 (4) |
@@ -208,15 +227,14 @@
 
 > 新建 assertion 文件或在现有 assertion 模块中追加。捕获时序关系和边界条件。
 
-**覆盖**：AUD-014, AUD-015, TP_048, TP_049, TP_056, TP_058
-
-**覆盖**：AUD-014, AUD-015, TP_048, TP_049, TP_056, TP_058
+**覆盖**：AUD-014, AUD-015, TP_027, TP_048, TP_049, TP_056, TP_058
 
 | ID | SVA 属性 | 检测内容 | probe 信号 |
 |----|---------|---------|-----------|
 | AUD-014 | `vabuf_no_effect` | vabuf 翻转时 TLB 行为不变 | `l1d_p0/1_hit_vld`, `mmu_lsu_pa0/1` |
 | AUD-015 | `t0_t1_pulse_width` | T0/T1 响应脉冲宽度 ≥ N cycles | `mmu_lsu_pa0_vld`, `mmu_lsu_pa1_vld` |
-| TP_048 | `illegal_input_reject` | 非法输入不导致 X 传播或死锁 | `l2_arb_req`, `l2tlb_ptw_req` |
+| TP_027 | `illegal_ptw_completion` | 非法 completion（bad ID / 无 outstanding MB）触发 assertion，不进入功能比较 | `ptw_l2tlb_ref_id`, `l2mb_vld_vec`, `l2mb_entry_sent` |
+| TP_048 | `no_x_propagation` | 非法输入时关键 payload 不为 X/Z（协议防护，**不检查 DUT 拒绝行为**） | `l2_arb_req`, `l2tlb_ptw_req`, 各 valid/payload |
 | TP_049 | `no_starvation` | ReqQ/MB 请求不被无限期阻塞 | `l2_reqq_vld_vec`, `l2mb_vld_vec` |
 | TP_056 | `ptw_ooo_completion` | PTW 乱序完成时 ID 匹配正确 | `ptw_l2tlb_id`, `l2tlb_ptw_id` |
 | TP_058 | `control_hazard_safe` | 控制冒险不导致非法状态跳转 | `l2_final_vld`, `l2_arb_req` |
@@ -228,21 +246,27 @@
 
 ---
 
-## Phase 10：追加 L2TLB coverpoint（7 项）
+## Phase 10：追加 L2TLB coverpoint（9 项）
 
 > 在 Phase 3/5/7 已建 covergroup 中追加，或在 `sample_dut()` 中追加变量后于 `run_phase` 采样。
 
-**覆盖**：TP_006, TP_018, TP_019, TP_021, TP_053, TP_054, TP_057
+**覆盖**：TP_006, TP_007, TP_017, TP_018, TP_019, TP_022, TP_053, TP_054, TP_057
 
 | ID | 追加位置 | 新增 coverpoint | probe 信号 |
 |----|---------|---------------|-----------|
-| TP_006 | `cg_l2tlb_arbiter`（或新建 `cg_l2_reqq` 追加） | `cp_bypass_issue` | `l2_arb_req` + ReqQ bypass 路径 |
-| TP_018 | `cg_l2tlb_ptw_if` | `cp_ptw_disabled` | `ptw_l2tlb_cmplt` + `ptw_on` |
-| TP_019 | `cg_l2tlb_ptw_if` | `cx_mb_to_ptw_payload`（cross） | `l2tlb_ptw_req` + `l2tlb_ptw_vpn` + `l2mb_issue_req` |
-| TP_021 | `cg_l2tlb_mb_part` | `cp_mb_dup_alloc` | `l2mb_alloc_valid` + `l2mb_vld_vec` 边沿 |
-| TP_053 | `cg_l2tlb_lookup` | `cp_prefetch_mask` | `l2_arb_*` prefetch 相关 |
-| TP_054 | `cg_l2tlb_arbiter` | `cp_bank_skew`（追加 bin） | `l2_arb_bank_sel` 分布细化 |
+| TP_006 | `cg_l2tlb_arbiter` | `cp_bypass_issue` | `l2_arb_req` + `arb_l2tlb_req` 同拍 grant |
+| TP_007 | `cg_l2tlb_mb_part` | `cp_mb_full_retry` | `l2mb_vld_vec` 全满 + 新 miss 到达 |
+| TP_017 | `cg_l2tlb_mb_part` | `cp_mb_alloc_source` | `l2mb_alloc_valid` + `l2mb_entry_queue_id` |
+| TP_018 | `cg_l2tlb_ptw_if` | `cp_ptw_disabled` | `l2_miss` + `ptw_on`（或 `cp0_mmu_ptw_en`） |
+| TP_019 | `cg_l2tlb_ptw_if` | `cx_mb_to_ptw_payload`（cross） | `l2tlb_ptw_req` + `l2tlb_ptw_vpn` + `l2mb_entry_vpn` |
+| TP_022 | `cg_l2tlb_mb_part` | `cp_mb_alloc_dealloc_same_cycle` | `l2mb_alloc_valid` + `l2mb_dealloc_valid` 同拍 |
+| TP_053 | `cg_l2tlb_lookup` | `cp_prefetch_mask` | `l2_pfu_req_vld` + `prefetch_mask` |
+| TP_054 | `cg_l2tlb_arbiter` | `cp_bank_skew` | `l2_arb_bank_sel` 分布（debug cover） |
 | TP_057 | `cg_l2tlb_pfu` | `cp_pfu_truth_table` | `pfu_pmp_flg4`、`pfu_sysmap_flg4` |
+
+> **注（TP_054）**：规格明确"不要求 v1 hard close exact hash，至少 debug cover"（line 2143）。`cp_bank_skew` 只覆盖 bank_sel 分布观测，不检查 hash 正确性。
+
+> **注**：TP_021（MB duplicate alloc）规格说明明确"不要求 duplicate suppression"——DUT 不做去重，重复分配是允许行为，已移至 Phase 12。
 
 **任务**：
 1. 确认各 probe 信号在 `mmu_dut_probes_if.sv` 中已暴露，缺失则先补 probe
@@ -252,35 +276,43 @@
 
 **验收标准**：
 - [ ] 每个新 coverpoint 有 `iff` 条件，不产生无意义采样
-- [ ] `cp_mb_dup_alloc` 的逻辑正确检测同一 VPN 在 MB 中重复分配
+- [ ] `cp_mb_full_retry`（TP_007）正确检测 MB 全满（9 entry 全 valid）+ 新 miss 到达且不分配的场景
+- [ ] `cp_mb_alloc_source`（TP_017）的 bin 区分 ITLB（queue_id=0）/ DTLB（queue_id=1-8）/ PFU（queue_id=9）
+- [ ] `cp_mb_alloc_dealloc_same_cycle`（TP_022）正确检测 alloc 和 dealloc 同拍发生（用 prev 变量追踪边沿）
+- [ ] `cx_mb_to_ptw_payload` 的 cross 项不产生非法组合（MB issue 与 PTW req 时序对齐）
 - [ ] `cp_pfu_truth_table` 的 bin 覆盖 PFU 所有输入组合（pmp_flg × sysmap_flg × deny）
 
 ---
 
-## Phase 11：Directed vseq 负向测试（2 项）
+## Phase 11：Directed vseq 负向测试 + 定向构造（3 项）
 
 > 在 `mmu_l2tlb_coverage_vseq.svh` 或新建 vseq 中追加定向激励。
 
-**覆盖**：TP_048（负向）、TP_058（控制冒险）
+**覆盖**：TP_048（负向）、TP_058（控制冒险）、TP_016（multi-hit 定向构造）
 
 | ID | vseq 名称 | 激励场景 |
 |----|----------|---------|
-| TP_048 | `vseq_l2tlb_illegal_input` | 发送非法 VA/access type 组合、越界 index，验证 DUT 不崩溃且输出 error flag |
+| TP_048 | `vseq_l2tlb_illegal_input` | 注入非法 access type(3'b111)、bad completion ID、credit overflow；**验证 assertion 触发或协议检查命中，不比较功能结果**（规格明确非法输入"不应产生"，DUT 行为未定义） |
 | TP_058 | `vseq_l2tlb_control_hazard` | 在同拍切换 ptw_on / tlboper_on，验证 FSM 不进入非法状态 |
+| TP_016 | `vseq_l2tlb_multi_hit_construct` | 通过 TLBWI/TLBWR 向不同 way 写入相同 VPN+ASID+pgs 的 valid entry，主动构造 multi-hit；验证 DUT 返回 page fault 路径（`l2tlb_l1dtlb_pgflt` / `l2tlb_l1itlb_pgflt`），不当作正常 single-hit 更新 |
 
 **任务**：
-1. 在 `mmu_l2tlb_coverage_vseq.svh` 中新增 `vseq_l2tlb_illegal_input` 和 `vseq_l2tlb_control_hazard`
-2. 在 `mmu_vseq_lib.svh` 或测试列表中注册这两个 sequence
-3. 验证方式：sequence 内部检查 DUT 输出（不依赖 scoreboard），`uvm_error` 当 DUT 行为异常
+1. 在 `mmu_l2tlb_coverage_vseq.svh` 中新增 `vseq_l2tlb_illegal_input`、`vseq_l2tlb_control_hazard`、`vseq_l2tlb_multi_hit_construct`
+2. 在 `mmu_vseq_lib.svh` 或测试列表中注册这三个 sequence
+3. TP_048 验证方式：检查 SVA assertion 触发（Phase 9 的 `no_x_propagation`），**不设功能预期**，不触发 `uvm_error`
+4. TP_058 验证方式：检查 control 改写前 outstanding 已 drain/flush/abort
+5. TP_016 验证方式：构造 multi-hit 后检查 DUT 走 page fault 路径（multi-hit 不作为正常 hit），同时 Phase 3 `cp_lookup_way_hit_cnt` 的 `bins multi` 被命中
 
 **验收标准**：
-- [ ] 两个 vseq 在 `rst_ni=1` 后发送激励，至少包含 3 种不同非法输入组合
-- [ ] 控制冒险 vseq 覆盖 `ptw_on` 下降沿与 `tlboper_on` 上升沿同拍的场景
-- [ ] 仿真回归中两个 vseq 均 PASS（不触发 `uvm_error`）
+- [ ] TP_048 vseq 至少包含 3 种非法输入组合（bad access type / bad completion ID / credit overflow）
+- [ ] TP_048 vseq **不比较 DUT 功能输出**，只检查 SVA assertion 是否触发
+- [ ] TP_058 vseq 覆盖 `ptw_on` 下降沿与 `tlboper_on` 上升沿同拍的场景
+- [ ] TP_058 vseq 验证 control 改写前 outstanding translation 已完成 drain/flush/abort
+- [ ] TP_016 vseq 成功通过 TLBWI 构造 ≥2 way 的 multi-hit，且 Phase 3 `cp_lookup_way_hit_cnt` 的 `bins multi` 命中
 
 ---
 
-## Phase 12：设计澄清 / Meta（4 项）
+## Phase 12：设计澄清 / Meta（5 项）
 
 > 依赖设计团队确认或流程审计，不产生代码。
 
@@ -289,11 +321,13 @@
 | AUD-025 | spec_gap | 与设计确认：多 WFI entry 同时存在时的选择策略，确认后补充 coverpoint 或 SVA |
 | AUD-033 | spec_gap | 与设计确认：多 entry 命中同一 VA 是否允许、如何处理，确认后补充 |
 | TP_003 | meta | UVM 环境边界审计——检查是否所有 `*_if` 信号都被 monitor 捕获，是否有时序窗口遗漏 |
+| TP_021 | spec 已澄清 | 规格明确"不要求 duplicate suppression"——DUT 允许重复分配。现有 `test_mmu_dir_l2tlb_mb_dup_alloc_prevention` 需重审/改名以反映此规格决策（验证目标是"重复分配被允许且各 entry 独立 issue PTW"，而非"防止重复"） |
 | TP_050 | meta | 覆盖率收敛——在所有 Phase 完成后，检查整体覆盖率 ≥95%，未命中 bin 有 waiver 说明 |
 
 **验收标准**：
 - [ ] AUD-025 / AUD-033 有设计团队的书面答复（邮件/issue/文档注释）
 - [ ] TP_003 审计结果记录在 `l1dtlb_testpoint_audit.md` 中
+- [ ] TP_021 的现有测试 `test_mmu_dir_l2tlb_mb_dup_alloc_prevention` 已重审并改名（去掉 "prevention"），验证逻辑改为"确认重复 entry 各自独立 issue PTW"
 - [ ] TP_050 在回归报告中体现：总覆盖率 / 未命中 bin 列表 / waiver 理由
 
 ---
@@ -303,10 +337,10 @@
 | Phase | 实现方式 | 覆盖项数 | 覆盖 ID |
 |-------|---------|:---:|------|
 | P9 | SVA / Assertion | 6 | AUD-014, AUD-015, TP_048, TP_049, TP_056, TP_058 |
-| P10 | 追加 coverpoint | 7 | TP_006, TP_018, TP_019, TP_021, TP_053, TP_054, TP_057 |
-| P11 | Directed vseq | 2 | TP_048, TP_058（与 P9 互补） |
-| P12 | 设计澄清 / Meta | 4 | AUD-025, AUD-033, TP_003, TP_050 |
-| **合计** | | **19 次覆盖** | **11 项**（TP_048/058 跨 P9+P11，TP_003/050 为 Meta） |
+| P10 | 追加 coverpoint | 9 | TP_006, TP_007, TP_017, TP_018, TP_019, TP_022, TP_053, TP_054, TP_057 |
+| P11 | Directed vseq | 3 | TP_048, TP_058（与 P9 互补）, TP_016（与 P3 互补） |
+| P12 | 设计澄清 / Meta | 5 | AUD-025, AUD-033, TP_003, TP_021, TP_050 |
+| **合计** | | **22 次覆盖** | **16 项**（TP_048/058 跨 P9+P11 双重覆盖） |
 
 ## 全覆盖验证
 

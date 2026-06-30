@@ -75,30 +75,30 @@ module mmu_l1dtlb_pulse_width_sva (
       |-> (!mmu_lsu_page_fault1 || lsu_mmu_va1_vld));
 
   // ---------------------------------------------------------------------------
-  // AUD-015 (T1 access_fault): access_fault arrives one cycle later than the
-  // T0 response in this design.  It must still be a single-cycle pulse and is
-  // only allowed to re-assert when a new request re-enters the pipeline.
-  // Because access_fault is a T1 (1-cycle-delayed) response, the request that
-  // caused it (lsu_mmu_vaN_vld) was valid in the PREVIOUS cycle, so the
-  // sustain qualifier must be sampled with $past.  The $past read is safe:
-  // l1d_pulse_past_valid disables the assertion on the very first cycle.
+  // AUD-015 (T1 access_fault): access_fault is a terminal response.  Its timing
+  // relative to the T0 response is scenario-dependent — it can land in the
+  // same cycle as pa_vld (early-known fault) or one cycle later (PMP/late
+  // fault).  Therefore the request/PA coupling is NOT checked at a fixed cycle
+  // offset; only the single-cycle pulse shape is.  Per the file header rule,
+  // after access_fault rises it must deassert the NEXT cycle unless a new
+  // request (lsu_mmu_vaN_vld) sustains it.  |=> (not |->) implements that.
   // ---------------------------------------------------------------------------
   a_access_fault0_pulse_single_cycle: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b || !l1d_pulse_past_valid)
       $rose(mmu_lsu_access_fault0)
-      |-> (!mmu_lsu_access_fault0 || $past(lsu_mmu_va0_vld)));
+      |=> (!mmu_lsu_access_fault0 || lsu_mmu_va0_vld));
 
   a_access_fault1_pulse_single_cycle: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b || !l1d_pulse_past_valid)
       $rose(mmu_lsu_access_fault1)
-      |-> (!mmu_lsu_access_fault1 || $past(lsu_mmu_va1_vld)));
+      |=> (!mmu_lsu_access_fault1 || lsu_mmu_va1_vld));
 
   // ---------------------------------------------------------------------------
   // Structural helpers: terminal responses require pa_vld.
   //   * page_fault is a T0 (same-cycle) response → pa_vld checked this cycle.
-  //   * access_fault is a T1 (1-cycle-delayed) response → the pa_vld that
-  //     accompanied the fault was valid one cycle earlier, so check $past and
-  //     guard the first cycle with l1d_pulse_past_valid.
+  //   * access_fault timing is scenario-dependent (same cycle OR one cycle
+  //     later), so accept pa_vld in the current OR previous cycle.  The $past
+  //     read is guarded by l1d_pulse_past_valid on the first cycle.
   // ---------------------------------------------------------------------------
   a_page_fault0_has_pa_vld: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b)
@@ -110,11 +110,11 @@ module mmu_l1dtlb_pulse_width_sva (
 
   a_access_fault0_has_pa_vld: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b || !l1d_pulse_past_valid)
-      mmu_lsu_access_fault0 |-> $past(mmu_lsu_pa0_vld));
+      mmu_lsu_access_fault0 |-> (mmu_lsu_pa0_vld || $past(mmu_lsu_pa0_vld)));
 
   a_access_fault1_has_pa_vld: assert property (@(posedge forever_cpuclk)
     disable iff (!cpurst_b || !l1d_pulse_past_valid)
-      mmu_lsu_access_fault1 |-> $past(mmu_lsu_pa1_vld));
+      mmu_lsu_access_fault1 |-> (mmu_lsu_pa1_vld || $past(mmu_lsu_pa1_vld)));
 
   // ---------------------------------------------------------------------------
   // Covers: gather evidence that each pulse type fired during simulation.

@@ -212,10 +212,11 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_INV_004",
       "DTLB_INV_VA8_alias_001",
       "DTLB_INV_HIT_SAME_CYCLE_001",
-      "DTLB_INV_INSTALL_SAME_ENTRY_001": begin
+      "DTLB_INV_INSTALL_SAME_ENTRY_001",
+      "DTLB_COND_1116_INV_VA_ENT2_001": begin
         scn = L1DTLB_SCN_INVALIDATE;
         sid = "L1DTLB_TS_INV_TLBOPER_CLR";
-        intent = "invalidate/cleanup scope";
+        intent = "invalidate/cleanup scope (cond 1116 entry 2 VA inv closure)";
       end
       "DTLB_CLEANUP_SCOPE_MATRIX_001": begin
         scn = L1DTLB_SCN_FLUSH_RACE;
@@ -2492,6 +2493,46 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_direct_map_overlap", 524288, 16);
   endtask
 
+  // --------------------------------------------------------------------------
+  // DTLB_COND_1116_INV_VA_ENT2_001
+  //
+  // Goal: close COND gap on mmu_l1dtlb.sv line 1116 — the 1 1 1 combination
+  //       (tlboper_utlb_inv_va_req && l1dtlb_ent_vld[2] && VA[7:0] match)
+  //       for entry[2], which also resolves line 1120's 0 0 1 gap
+  //       (ctc_inv_va_hit_clr[2] being the sole setter).
+  //
+  // Strategy: fill entries with sequential VAs, probe entry 2's VPN[7:0],
+  //           then send INV_VA_ALL with a VA whose VPN[7:0] matches so the
+  //           comparison fires while the entry is still valid.
+  // --------------------------------------------------------------------------
+  protected task scenario_cond_1116_inv_va_ent2();
+    do_bringup(64, 39'h10_0000);
+    // PLRU distributes 16 sequential VAs across all entries; one of them ends
+    // up in entry 2.  Sweep all 16 VPN[7:0] values: fill all entries, then
+    // invalidate each VA.  The one whose VPN[7:0] matches entry 2ʼs stored
+    // VPN produces the COND 1 1 1 combination for line 1116/1120.
+    // Hold lsu_mmu_tlb_va for the whole tlboper FSM window so the
+    // combinational evaluation sees the values overlap.
+    for (int unsigned trial = 0; trial < 3; trial++) begin
+      for (int i = 0; i < 16; i++)
+        send_lsu_item(LSU_PIPE0, va_page(i), 7'(7'd80 + trial*16 + i), 1'b0);
+      m_env_h.wait_for_quiescent_midtest(
+        $sformatf("l1dtlb_ent2_fill_t%0d", trial), 524288, 8);
+      for (int i = 0; i < 16; i++) begin
+        raw_idle();
+        @(m_lsu_vif.driver_cb);
+        m_lsu_vif.driver_cb.lsu_mmu_tlb_va_all_inv <= 1'b1;
+        m_lsu_vif.driver_cb.lsu_mmu_tlb_va <= {12'b0, 27'(va_page(i)[38:12])};
+        @(m_lsu_vif.driver_cb);
+        m_lsu_vif.driver_cb.lsu_mmu_tlb_va_all_inv <= 1'b0;
+        repeat (16) @(m_lsu_vif.driver_cb);
+        m_lsu_vif.driver_cb.lsu_mmu_tlb_va <= 27'b0;
+        raw_idle();
+      end
+    end
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_ent2_inv_va", 524288, 8);
+  endtask
+
   protected task scenario_invalidate();
     do_bringup(64, 39'h10_0000);
     fill_page(0);
@@ -4324,6 +4365,8 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       L1DTLB_SCN_INVALIDATE: begin
         if (tc_id == "DTLB_INV_VA8_alias_001")
           scenario_inv_va8_alias();
+        else if (tc_id == "DTLB_COND_1116_INV_VA_ENT2_001")
+          scenario_cond_1116_inv_va_ent2();
         else if (tc_id == "DTLB_INV_INSTALL_SAME_ENTRY_001")
           scenario_inv_install_same_entry();
         else if (tc_id == "DTLB_INV_HIT_SAME_CYCLE_001")

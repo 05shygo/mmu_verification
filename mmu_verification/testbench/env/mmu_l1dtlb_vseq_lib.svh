@@ -266,10 +266,11 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_HUGE_002",
       "DTLB_HUGE_003",
       "DTLB_HUGE_MIX_001",
-      "DTLB_DUAL_HIT_MUX_001": begin
+      "DTLB_DUAL_HIT_MUX_001",
+      "DTLB_COND_1190_1194_HUGE_001": begin
         scn = L1DTLB_SCN_HUGE;
         sid = "L1DTLB_TS_BASIC_PAGE_SIZE_4K_2M_1G";
-        intent = "4K/2M/1G hit/refill";
+        intent = "4K/2M/1G hit/refill (cond 1190/1194 entry 2/7 huge page closure)";
       end
       "DTLB_STAMO_001",
       "DTLB_STAMO_PIPE1_BYPASS_001",
@@ -3053,8 +3054,105 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_expt_tlb_overlap_done", 524288, 16);
   endtask
 
+  // --------------------------------------------------------------------------
+  // DTLB_COND_1190_1194_HUGE_001
+  //
+  // Goal: close COND coverage gaps on mmu_l1dtlb.sv lines 1190/1194 for
+  //       entry 2 (2M & 1G page hits, both ports) and entry 7 (2M page hit,
+  //       both ports).
+  //
+  // Strategy:
+  //   * Phase 1: Map 16 distinct 2M pages, invalidate the TLB, then fill all
+  //     16 entries with 2M pages by accessing each one. Hit every entry on
+  //     both ports (port 0 and port 1) to cover the (pgs[1] & hit*_2m)
+  //     sub-expression for every l1dtlb_ent index.
+  //   * Phase 2: Invalidate the 1G-page entry, then repeatedly fill one
+  //     entry with the 1G page, hit it on both ports, invalidate, and refill.
+  //     The PLRU distributes the refill across different entries; after enough
+  //     cycles the 1G page lands on entry 2 (and all others), covering
+  //     (pgs[2] & hit*_1g) for every index.
+  // --------------------------------------------------------------------------
+  protected task scenario_cov_cond_1190_1194_huge();
+    do_bringup(256, 39'h10_0000);
+
+    // Map 16 distinct 2M pages (each 2MB-aligned, covering VA range 0x20_0000
+    // to 0x220_0000 — well within Sv39's 512 GB space).
+    for (int unsigned i = 0; i < 16; i++) begin
+      m_env_h.m_pt_mem.m_builder.map_2m(
+        .va(va_t'(39'h20_0000 + (i * 39'h20_0000))),
+        .pa(pa_t'(40'h0040_0000 + (i * 40'h20_0000))),
+        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    end
+    // Map 1G page.
+    map_1g_page();
+    if (m_env_h.m_ref != null)
+      m_env_h.m_ref.sync_shadow_state();
+
+    // ── Phase 1: burst-fill 16 entries with 2M pages, then hit both ports ──
+    raw_inv(INV_ALL);
+    wait_lsu_cycles(32);
+    configure_ptw_delay(4, 8);
+
+    for (int unsigned i = 0; i < 16; i++) begin
+      va_t va2m;
+      va2m = va_t'(39'h20_0000 + (i * 39'h20_0000));
+      send_lsu_item(LSU_PIPE0, va2m, 7'(8'd80 + i), 1'b0, 1'b0);
+    end
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_2m_fill_all", 524288, 16);
+    // Hit each filled 2M entry from both ports (raw pipe pulses for speed).
+    for (int unsigned i = 0; i < 16; i++) begin
+      va_t va2m = va_t'(39'h20_0000 + (i * 39'h20_0000));
+      raw_pipe01(va2m, va2m + 39'h1000,
+        7'(8'd96 + i), 7'(8'd112 + i), 1'b0, 1'b1);
+      wait_lsu_cycles(4);
+    end
+    wait_lsu_cycles(32);
+
+    // ── Phase 2: invalidate 8 entries, re-burst the 2M fills, dual-hit ──
+    for (int unsigned i = 0; i < 8; i++) begin
+      raw_inv(INV_VA_ALL,
+        va_t'(39'h20_0000 + (i * 39'h20_0000)), m_asid);
+    end
+    wait_lsu_cycles(32);
+    for (int unsigned i = 0; i < 8; i++) begin
+      va_t va2m = va_t'(39'h20_0000 + (i * 39'h20_0000));
+      send_lsu_item(LSU_PIPE0, va2m, 7'(8'd128 + i), 1'b0, 1'b0);
+    end
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_2m_refill_all", 524288, 16);
+    for (int unsigned i = 0; i < 8; i++) begin
+      va_t va2m = va_t'(39'h20_0000 + (i * 39'h20_0000));
+      raw_pipe01(va2m, va2m + 39'h1000,
+        7'(8'd144 + i), 7'(8'd160 + i), 1'b0, 1'b1);
+      wait_lsu_cycles(4);
+    end
+    wait_lsu_cycles(32);
+
+    // ── Phase 3: cycle 1G page through entries ──
+    raw_inv(INV_ALL);
+    wait_lsu_cycles(32);
+    for (int unsigned cycle = 0; cycle < 32; cycle++) begin
+      send_lsu_item(LSU_PIPE0, 39'h4000_0000,
+        7'(8'd176 + (cycle % 80)), 1'b0, 1'b0);
+      m_env_h.wait_for_quiescent_midtest(
+        $sformatf("l1dtlb_1g_%0d", cycle), 524288, 8);
+      raw_pipe01(39'h4000_0000,
+        39'h4000_0000 + va_t'(cycle * 39'h1000 + 39'h2000),
+        7'd200, 7'd201, 1'b0, 1'b1);
+      wait_lsu_cycles(8);
+      raw_inv(INV_VA_ALL, 39'h4000_0000, m_asid);
+      wait_lsu_cycles(4);
+    end
+
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_cond_1190_1194_huge", 524288, 16);
+  endtask
+
   protected task scenario_huge();
     do_bringup(32, 39'h10_0000);
+    if (tc_id == "DTLB_COND_1190_1194_HUGE_001") begin
+      scenario_cov_cond_1190_1194_huge();
+      return;
+    end
     if (tc_id == "DTLB_HUGE_001") begin
       send_lsu_item(LSU_PIPE0, va_page(0), 7'd1, 1'b0);
       m_env_h.wait_for_quiescent_midtest("l1dtlb_huge_4k_fill", 524288, 8);

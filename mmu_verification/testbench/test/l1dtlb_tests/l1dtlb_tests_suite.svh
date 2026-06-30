@@ -85,3 +85,4 @@
 `include "test_mmu_l1dtlb_cov_iasid_completion.svh"
 `include "test_mmu_l1dtlb_cov_reset_mid.svh"
 `include "test_mmu_l1dtlb_cov_entry_sweep.svh"
+`include "test_mmu_l1dtlb_cov_cond_1190_1194_huge_001.svh"

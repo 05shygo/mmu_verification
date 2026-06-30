@@ -8,6 +8,7 @@
 `include "test_twu_condition_pagefault_cov.svh"
 `include "test_twu_condition_arb_cov.svh"
 `include "test_twu_toggle_cov.svh"
+`include "test_twu_unified_code_cov.svh"
 `include "test_ptw_pmp_before_lsu.svh"
 `include "test_ptw_pmp_deny_stop.svh"
 `include "test_twu_pmp_grant_onehot.svh"

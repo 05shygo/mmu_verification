@@ -87,3 +87,4 @@
 `include "test_mmu_l1dtlb_cov_entry_sweep.svh"
 `include "test_mmu_l1dtlb_cov_cond_1190_1194_huge_001.svh"
 `include "test_mmu_l1dtlb_cov_cond_1116_inv_va_ent2_001.svh"
+`include "test_mmu_l1dtlb_cov_cond_315_jtlb_pgflt_001.svh"

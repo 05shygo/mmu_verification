@@ -72,6 +72,9 @@
 //   mmu_l2tlb cond  872  : combo 0 1 (same par_fail stub)
 //   mmu_l2tlb cond  1167 : combo 1 1 0 1 (same par_fail stub)
 //   mmu_l2tlb cond  1186 : combo 0 1 1 1 (false combinational: vld=0,miss=1)
+// L1DTLB structural waivers (paper-tracked):
+//   mmu_l1dtlb cond 315  : combo 1 1 0 1 1 (physically impossible: mb_entry_vld
+//                           derives from state_r; state==WFC implies vld=1)
 //   mmu_l2tlb fsm   pfu_cur_st PFU_CHK->PFU_IDLE (reset-only path, no functional)
 //   mmu_l2tlb branch 1354 : default case (same reason as line 1382)
 // ═══════════════════════════════════════════════════════════════════════════════

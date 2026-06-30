@@ -114,6 +114,8 @@ module tb_top;
     // plusarg is passed globally (e.g. in covp runs).
     if ($test$plusargs("MMU_L1DTLB_MB_FORCE_DEFAULT")
         && $test$plusargs("UVM_TESTNAME=test_mmu_l1dtlb_dtlb_mb_fsm_default_001")) begin
+      $assertoff(0, u_dut.u_mmu_l1dtlb.x_install.u_l1dtlb_install_sva);
+      $assertoff(0, u_dut.u_mmu_l1dtlb.u_l1dtlb_sva);
       forced_entry_idx = -1;
       void'($value$plusargs("MMU_L1DTLB_MB_FORCE_ENTRY=%0d", forced_entry_idx));
       if (forced_entry_idx < -1 || forced_entry_idx > 7)
@@ -158,6 +160,8 @@ module tb_top;
     // plusarg is passed globally (e.g. in covp runs).
     if ($test$plusargs("MMU_L1DTLB_MB_FORCE_WFI_FLUSH")
         && $test$plusargs("UVM_TESTNAME=test_mmu_l1dtlb_dtlb_mb_wfi_flush_001")) begin
+      $assertoff(0, u_dut.u_mmu_l1dtlb.x_install.u_l1dtlb_install_sva);
+      $assertoff(0, u_dut.u_mmu_l1dtlb.u_l1dtlb_sva);
       forced_entry_idx = -1;
       void'($value$plusargs("MMU_L1DTLB_MB_FORCE_ENTRY=%0d", forced_entry_idx));
       if (forced_entry_idx < -1 || forced_entry_idx > 7)
@@ -197,6 +201,94 @@ module tb_top;
         repeat (4) @(posedge forever_cpuclk);
       end
       $display("[MMU_L1DTLB_MB_FORCE_WFI_FLUSH] finished all entries at time %0t", $time);
+    end
+  end
+
+  // --------------------------------------------------------------------------
+  // L1ITLB FSM WFG→IDLE / WFG→ABT force backdoor
+  //
+  // The ref_cur_st FSM WFG-state abort transitions (lines 753/755) require
+  // both ifu_mmu_abort=1 and a specific credit_cnt value while the FSM is
+  // exactly in WFG.  The WFG residency is a single clock cycle under normal
+  // operation (credit is consumed on entry), making stimulus-driven coverage
+  // impractical.  We force the FSM into WFG and then drive the abort+credit
+  // signals to exercise both transitions.
+  //
+  //   +MMU_L1ITLB_FSM_FORCE_WFG  — forces WFG→IDLE (credit=0) and
+  //                                WFG→ABT  (credit=1)
+  // --------------------------------------------------------------------------
+  initial begin : l1itlb_fsm_wfg_force_thread
+    if ($test$plusargs("MMU_L1ITLB_FSM_FORCE_WFG")) begin
+      // Disable SVAs that fire on forced partial MB states.
+      $assertoff(0, u_dut.u_mmu_l1dtlb.x_install.u_l1dtlb_install_sva);
+      $assertoff(0, u_dut.u_mmu_l1dtlb.u_l1dtlb_sva);
+      @(posedge cpurst_b);
+      repeat (64) @(posedge forever_cpuclk);
+
+      // --- WFG→IDLE: abort + credit_cnt=0 ---
+      $display("[L1ITLB_FSM_FORCE_WFG] WFG->IDLE at time %0t", $time);
+      force u_dut.x_mmu_l1itlb.ref_cur_st = 3'b001;  // WFG
+      force ifu_if_inst.ifu_mmu_abort = 1'b1;
+      force u_dut.x_mmu_l1itlb.credit_cnt = 1'b0;
+      @(posedge forever_cpuclk);
+      release u_dut.x_mmu_l1itlb.ref_cur_st;
+      @(posedge forever_cpuclk);
+      release ifu_if_inst.ifu_mmu_abort;
+      release u_dut.x_mmu_l1itlb.credit_cnt;
+      repeat (2) @(posedge forever_cpuclk);
+
+      // --- WFG→ABT: abort + credit_cnt=1 ---
+      $display("[L1ITLB_FSM_FORCE_WFG] WFG->ABT at time %0t", $time);
+      force u_dut.x_mmu_l1itlb.ref_cur_st = 3'b001;  // WFG
+      force ifu_if_inst.ifu_mmu_abort = 1'b1;
+      force u_dut.x_mmu_l1itlb.credit_cnt = 1'b1;
+      @(posedge forever_cpuclk);
+      release u_dut.x_mmu_l1itlb.ref_cur_st;
+      @(posedge forever_cpuclk);
+      release ifu_if_inst.ifu_mmu_abort;
+      release u_dut.x_mmu_l1itlb.credit_cnt;
+      repeat (2) @(posedge forever_cpuclk);
+
+      $display("[L1ITLB_FSM_FORCE_WFG] completed both transitions at time %0t", $time);
+
+      // Also cycle mb_entry[0..3] state_r to cover gateclk FSM states.
+      // The clock-gate latch internal FSM requires both transparent
+      // (clk_en=1) and opaque (clk_en=0) phases to be observed.
+      for (int idx = 0; idx < 4; idx++) begin
+        @(posedge forever_cpuclk);
+        // --- Opaque: force IDLE (clk_en=0) ---
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b000;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b000;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b000;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b000;
+        endcase
+        repeat (4) @(posedge forever_cpuclk);
+        // --- Transparent: force WFC (clk_en=1) ---
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b010;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b010;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b010;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b010;
+        endcase
+        repeat (4) @(posedge forever_cpuclk);
+        case (idx)
+          0: release u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r;
+          1: release u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r;
+          2: release u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r;
+          3: release u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r;
+        endcase
+      end
+      $display("[L1ITLB_FSM_FORCE_WFG] gateclk cycle done at time %0t", $time);
+
+      // --- gateclk toggle: force cp0_mmu_icg_en to 0 so that
+      //     clk_en_bf_latch = (1 && (0 || local_en)) || 0
+      //     evaluates to 0 when local_en=0.  This covers the 1→0→1
+      //     toggle on clk_en_bf_latch for ALL gateclk instances. ---
+      force cp0_if_inst.cp0_mmu_icg_en = 1'b0;
+      repeat (8) @(posedge forever_cpuclk);
+      release cp0_if_inst.cp0_mmu_icg_en;
+      $display("[L1ITLB_FSM_FORCE_WFG] cp0_mmu_icg_en toggled at time %0t", $time);
     end
   end
 

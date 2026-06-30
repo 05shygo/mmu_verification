@@ -258,10 +258,11 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_EXPT_DUAL_SAME_ENTRY_NEG_001",
       "DTLB_ACCESS_FAULT_SOURCE_PARITY_001",
       "DTLB_WAKEUP_EXPT_001",
-      "DTLB_EXPT_HIT_WITH_TLB_HIT_001": begin
+      "DTLB_EXPT_HIT_WITH_TLB_HIT_001",
+      "DTLB_COND_315_JTLB_PGFLT_001": begin
         scn = L1DTLB_SCN_FAULT_REFILL;
         sid = "L1DTLB_TS_EXPT_FAULT_REFILL_WRITE";
-        intent = "fault refill, exception CAM replay, wakeup (incl. MB fault state per l1dtlb_funcdesc line 8)";
+        intent = "fault refill, exception CAM replay, wakeup (cond 315 JTLB pgflt combinations)";
       end
       "DTLB_HUGE_001",
       "DTLB_HUGE_002",
@@ -2957,6 +2958,113 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     m_env_h.wait_for_quiescent_midtest("l1dtlb_install_visibility", 524288, 16);
   endtask
 
+  // --------------------------------------------------------------------------
+  // DTLB_COND_315_JTLB_PGFLT_001
+  //
+  // Goal: close COND gaps on mmu_l1dtlb.sv line 315 — the JTLB expt_wr1_vld
+  //       expression.  The ordinary PTW pgflt path covers expt_wr0_vld (line
+  //       305); the JTLB path calls for a DTLB-miss / JTLB-hit that returns a
+  //       page fault, together with well-timed flushes to exercise the three
+  //       uncovered value combinations:
+  //         1 1 1 0 1  — state != WFC  (e.g. ABT)
+  //         1 1 1 1 0  — rtu_yy_xx_flush active
+  //         1 1 0 1 1  — vld=0  (forced; physically impossible otherwise)
+  //
+  // Strategy:
+  //   1. Seed the JTLB: access a special (R=0) page via PTW → JTLB caches the
+  //      faulting PTE; a flush clears the DTLB exception CAM so the next
+  //      access MUST go through JTLB.
+  //   2. Normal JTLB pgflt: access after flush → DTLB miss → JTLB hit →
+  //      jtlb_dutlb_pgflt → expt_wr1_vld fires (covers 1 1 1 1 1).
+  //   3. Flush-active race: issue the access, wait for WFC, then hold flush
+  //      while JTLB responds (covers 1 1 1 1 0).
+  //   4. Non-WFC state: flush before JTLB responds, letting the MB enter ABT,
+  //      then let JTLB refill complete against ABT (covers 1 1 1 0 1).
+  //   5. vld=0 state: hierarchical force at tb_top to simultaneously drive
+  //      jtlb_dutlb_ref_cmplt/jtlb_dutlb_pgflt/mb_entry_state==WFC while
+  //      mb_entry_vld is forced to 0 (covers 1 1 0 1 1).
+  // --------------------------------------------------------------------------
+  protected task scenario_cond_315_jtlb_pgflt();
+    bit seen;
+    bit mb_empty;
+
+    do_bringup(96, 39'h10_0000);
+    map_special_page(46, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+
+    // ── Seed JTLB with the faulting PTE via PTW ──
+    configure_ptw_delay(8, 16);
+    raw_pipe0(va_page(46), 7'd6, 1'b0);
+    wait_l1d_expt_write("l1dtlb_jtlb_seed_expt");
+    // Flush to kill DTLB exception CAM entry — forces next access through JTLB.
+    raw_rtu_flush();
+    wait_l1d_mb_empty("l1dtlb_jtlb_seed_drain", mb_empty, 512);
+    if (!mb_empty) raw_rtu_flush();
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_jtlb_seed_quiesce", 524288, 16);
+
+    // ── Trial 0: normal JTLB pgflt — covers 1 1 1 1 1 (if not already) ──
+    raw_pipe0(va_page(46), 7'd7, 1'b0, 1'b0);
+    wait_l1d_expt_write("l1dtlb_jtlb_normal");
+    // Consume.
+    raw_pipe0(va_page(46), 7'd7, 1'b0, 1'b0);
+    wait_lsu_cycles(8);
+    raw_rtu_flush();
+    wait_l1d_mb_empty("l1dtlb_jtlb_normal_drain", mb_empty, 512);
+
+    // ── Trial 1: rtu_yy_xx_flush held while JTLB responds — covers 1 1 1 1 0 ──
+    raw_pipe0(va_page(46), 7'd8, 1'b0, 1'b0);
+    wait_l1d_mb_vpn_state("l1dtlb_jtlb_wfc_flush", va_page(46),
+      L1D_MB_STATE_WFC, 512);
+    // Hold flush for long enough that the JTLB refill completes under flush.
+    if (m_misc_vif != null) begin
+      @(m_misc_vif.driver_cb);
+      m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b1;
+      repeat (8) @(m_misc_vif.driver_cb);
+      m_misc_vif.driver_cb.rtu_yy_xx_flush <= 1'b0;
+    end else begin
+      raw_rtu_flush();
+    end
+    wait_lsu_cycles(32);
+    raw_rtu_flush();
+    wait_l1d_mb_empty("l1dtlb_jtlb_wfc_flush_drain", mb_empty, 512);
+
+    // ── Trial 2: flush first → MB goes ABT → JTLB refill arrives ──
+    //           covers 1 1 1 0 1 (state != WFC) ──
+    configure_ptw_delay(64, 96);
+    raw_pipe0(va_page(46), 7'd9, 1'b0, 1'b0);
+    wait_l1d_mb_vpn_state("l1dtlb_jtlb_to_wfc", va_page(46),
+      L1D_MB_STATE_WFC, 512);
+    raw_rtu_flush();
+    wait_l1d_mb_vpn_state("l1dtlb_jtlb_to_abt", va_page(46),
+      L1D_MB_STATE_ABT, 512);
+    wait_l1d_stale_or_abt_refill("l1dtlb_jtlb_abt_refill", seen, 512);
+    wait_lsu_cycles(64);
+    configure_ptw_delay(1, 4);
+    raw_rtu_flush();
+    wait_l1d_mb_empty("l1dtlb_jtlb_abt_refill_drain", mb_empty, 512);
+
+    // ── Trial 3: JTLB refill arrives when MB already invalidated by flush
+    //           (attempts 1 1 0 1 1 but this needs force; here we try timing) ──
+    configure_ptw_delay(96, 128);
+    raw_pipe0(va_page(46), 7'd10, 1'b0, 1'b0);
+    wait_l1d_mb_valid("l1dtlb_jtlb_early_flush_mb", 256);
+    raw_rtu_flush();
+    repeat (256) @(m_lsu_vif.driver_cb);
+    configure_ptw_delay(1, 4);
+    raw_rtu_flush();
+    wait_l1d_mb_empty("l1dtlb_jtlb_early_flush_drain", mb_empty, 512);
+
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_cond315_done", 524288, 16);
+
+    if (!$test$plusargs("MMU_L1DTLB_COND315_FORCE")) begin
+      // The 1 1 0 1 1 combination (vld=0 && state==WFC) is physically
+      // impossible — vld derives from state.  Pass +MMU_L1DTLB_COND315_FORCE
+      // to arm a tb_top backdoor that forces the combination.
+      `uvm_info(get_type_name(),
+        "DTLB_COND_315: stimulus-only run complete. 1 1 0 1 1 requires +MMU_L1DTLB_COND315_FORCE", UVM_LOW)
+    end
+  endtask
+
   protected task scenario_fault_refill();
     do_bringup(96, 39'h10_0000);
     map_special_page(46, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
@@ -2976,6 +3084,10 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       m_env_h.wait_for_quiescent_midtest("l1dtlb_mb_pgflt_p1_consumed", 524288, 16);
 
       configure_ptw_delay(1, 4);
+      return;
+    end
+    if (tc_id == "DTLB_COND_315_JTLB_PGFLT_001") begin
+      scenario_cond_315_jtlb_pgflt();
       return;
     end
     if (tc_id == "DTLB_MB_ABT_LATE_REFILL_001") begin

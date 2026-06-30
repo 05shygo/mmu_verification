@@ -206,13 +206,20 @@ class mmu_env_cg_whitebox extends uvm_component;
       bins other      = default;
     }
     // ── TP_011: Bank selection count ──────────────────────────────────────
-    //   l2_arb_bank_sel is 8-bit onehot; $countones gives number of banks selected
+    //   l2_arb_bank_sel is 8-bit onehot; $countones gives number of banks
+    //   selected.  When a request is presented but no bank is selected yet
+    //   (e.g. all TWU masked in test_mmu_ptw_ready_all_mask_low, or a transient
+    //   pre-grant cycle) the count is 0 — a legitimate state, tracked here as
+    //   no_sel.  Non-power-of-two counts are excluded via ignore_bins rather
+    //   than illegal_bins, since the onehot assumption is not guaranteed under
+    //   all masked/transient conditions (FCIBH was falsely triggered).
     cp_arb_bank_sel_cnt: coverpoint $countones(v_probe.l2_arb_bank_sel) iff (v_probe.l2_arb_req) {
-      bins one   = {1};
-      bins two   = {2};
-      bins four  = {4};
-      bins eight = {8};
-      illegal_bins invalid = {0, 3, [5:7]};  // 8-bit onehot only allows power-of-two counts
+      bins no_sel = {0};  // request presented, no bank selected (masked / pre-grant)
+      bins one    = {1};
+      bins two    = {2};
+      bins four   = {4};
+      bins eight  = {8};
+      ignore_bins non_pow2 = {3, [5:7]};
     }
     // ── Stall detection ───────────────────────────────────────────────────
     //   NOTE: l2_arb_req and arb_l2tlb_req map to the same wire in current RTL

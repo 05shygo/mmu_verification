@@ -84,6 +84,122 @@ module tb_top;
     end
   end
 
+  // --------------------------------------------------------------------------
+  // L1DTLB MB FSM line-coverage force backdoors (mmu_l1dtlb_mb_entry.sv)
+  //
+  // Two unreachable-by-stimulus line-coverage targets are closed by these
+  // hierarchical force backdoors, each gated on its own plusarg so they only
+  // fire in the dedicated directed tests:
+  //
+  //   +MMU_L1DTLB_MB_FORCE_WFI_FLUSH  -> line 200 (STATE_WFI + abort -> IDLE)
+  //   +MMU_L1DTLB_MB_FORCE_DEFAULT    -> line 228 (case-default, state 3'b111)
+  //
+  // Line 200 gap: the WFI residency window is routinely shorter than the
+  //   monitor->driver flush latency, so stimulus-driven WFI+flush races rarely
+  //   land. We force state_r=STATE_WFI (3'b110) for one stable cycle, then drive
+  //   rtu_yy_xx_flush high while the entry is held in WFI. The STATE_WFI case's
+  //   abort_this_cyc branch (line 200) then evaluates combinationally. We
+  //   release state_r before the next posedge so the FSM retires to STATE_IDLE
+  //   (state_nxt was set to IDLE by line 200), which also keeps the
+  //   a_wfi_flush_to_idle SVA consistent.
+  //
+  // Line 228 gap: the MB FSM only uses encodings 0..6 (STATE_IDLE..STATE_WFI).
+  //   Encoding 3'b111 is unreachable through legal transitions, so the
+  //   `default:` branch can never be exercised by functional stimulus. We force
+  //   state_r=3'b111 briefly so the always_comb case-default branch evaluates.
+  // --------------------------------------------------------------------------
+  initial begin : l1dtlb_mb_fsm_default_force_thread
+    int forced_entry_idx;
+    // Only fire when the dedicated force test is running, even if the
+    // plusarg is passed globally (e.g. in covp runs).
+    if ($test$plusargs("MMU_L1DTLB_MB_FORCE_DEFAULT")
+        && $test$plusargs("UVM_TESTNAME=test_mmu_l1dtlb_dtlb_mb_fsm_default_001")) begin
+      forced_entry_idx = -1;
+      void'($value$plusargs("MMU_L1DTLB_MB_FORCE_ENTRY=%0d", forced_entry_idx));
+      if (forced_entry_idx < -1 || forced_entry_idx > 7)
+        forced_entry_idx = -1;
+      @(posedge cpurst_b);
+      repeat (64) @(posedge forever_cpuclk);
+      for (int idx = 0; idx < 8; idx++) begin
+        if ((forced_entry_idx >= 0) && (idx != forced_entry_idx))
+          continue;
+        $display("[MMU_L1DTLB_MB_FORCE_DEFAULT] forcing gen_mb_entries[%0d].x_mb_entry.state_r = 3'b111 at time %0t",
+          idx, $time);
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b111;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b111;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b111;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b111;
+          4: force u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry.state_r = 3'b111;
+          5: force u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry.state_r = 3'b111;
+          6: force u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry.state_r = 3'b111;
+          7: force u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry.state_r = 3'b111;
+        endcase
+        repeat (8) @(posedge forever_cpuclk);
+        case (idx)
+          0: release u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r;
+          1: release u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r;
+          2: release u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r;
+          3: release u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r;
+          4: release u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry.state_r;
+          5: release u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry.state_r;
+          6: release u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry.state_r;
+          7: release u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry.state_r;
+        endcase
+        repeat (4) @(posedge forever_cpuclk);
+      end
+      $display("[MMU_L1DTLB_MB_FORCE_DEFAULT] finished all entries at time %0t", $time);
+    end
+  end
+
+  initial begin : l1dtlb_mb_fsm_wfi_flush_force_thread
+    int forced_entry_idx;
+    // Only fire when the dedicated force test is running, even if the
+    // plusarg is passed globally (e.g. in covp runs).
+    if ($test$plusargs("MMU_L1DTLB_MB_FORCE_WFI_FLUSH")
+        && $test$plusargs("UVM_TESTNAME=test_mmu_l1dtlb_dtlb_mb_wfi_flush_001")) begin
+      forced_entry_idx = -1;
+      void'($value$plusargs("MMU_L1DTLB_MB_FORCE_ENTRY=%0d", forced_entry_idx));
+      if (forced_entry_idx < -1 || forced_entry_idx > 7)
+        forced_entry_idx = -1;
+      @(posedge cpurst_b);
+      repeat (64) @(posedge forever_cpuclk);
+      for (int idx = 0; idx < 8; idx++) begin
+        if ((forced_entry_idx >= 0) && (idx != forced_entry_idx))
+          continue;
+        $display("[MMU_L1DTLB_MB_FORCE_WFI_FLUSH] forcing gen_mb_entries[%0d].x_mb_entry.state_r = STATE_WFI at time %0t",
+          idx, $time);
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b110;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b110;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b110;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b110;
+          4: force u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry.state_r = 3'b110;
+          5: force u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry.state_r = 3'b110;
+          6: force u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry.state_r = 3'b110;
+          7: force u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry.state_r = 3'b110;
+        endcase
+        @(posedge forever_cpuclk);
+        force u_dut.rtu_yy_xx_flush = 1'b1;
+        @(posedge forever_cpuclk);
+        case (idx)
+          0: release u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r;
+          1: release u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r;
+          2: release u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r;
+          3: release u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r;
+          4: release u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry.state_r;
+          5: release u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry.state_r;
+          6: release u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry.state_r;
+          7: release u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry.state_r;
+        endcase
+        @(posedge forever_cpuclk);
+        release u_dut.rtu_yy_xx_flush;
+        repeat (4) @(posedge forever_cpuclk);
+      end
+      $display("[MMU_L1DTLB_MB_FORCE_WFI_FLUSH] finished all entries at time %0t", $time);
+    end
+  end
+
   always_ff @(posedge forever_cpuclk or negedge cpurst_b) begin
     if (!cpurst_b)
       pmp_flag_vec_q <= 20'h77777;

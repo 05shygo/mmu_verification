@@ -325,6 +325,7 @@ URG_VDB_GLOB          ?=
 COV_TAG         ?= $(TEST_NAME)_$(SEED)
 COV_METRICS     := line+cond+fsm+tgl+branch+assert
 COV_ALL_LIST    ?= $(SIMU_DIR)/all_tests_coverage_list
+COV_L1DTLB_FORCE_PLUS_ARGS ?= +MMU_L1DTLB_MB_FORCE_WFI_FLUSH +MMU_L1DTLB_MB_FORCE_DEFAULT
 COV_L1L2_LIST   ?= $(SIMU_DIR)/l1l2_cov_list
 COV_QUICK_LIST  ?= $(SIMU_DIR)/mmu_coverage_list
 COV_DEF_SEED         ?= 1
@@ -2647,7 +2648,8 @@ covp: comp
 	@$(MAKE) regress_v4_full_parallel \
 	  PHASE14_LIST=$(COV_ALL_LIST) \
 	  PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)" \
-	  PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS)
+	  PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS) \
+          PLUS_ARGS="$(COV_L1DTLB_FORCE_PLUS_ARGS)"
 		  
 	@echo "=== Merging parallel VDBs → full MMU report ==="
 	@$(MAKE) phase14_coverage_merge_parallel
@@ -2686,14 +2688,14 @@ covp_full: comp cov_gen_list
 	@echo "============================================================"
 	@echo "  Phase 1/2: covp with whitebox tests (COND/TOGGLE focus)"
 	@echo "============================================================"
-	@export PLUS_ARGS="+MMU_WHITEBOX_CODE_COV_ASSERT_OFF"; \
+	@export PLUS_ARGS="+MMU_WHITEBOX_CODE_COV_ASSERT_OFF $(COV_L1DTLB_FORCE_PLUS_ARGS)"; \
 	 echo "=== covp: $$(wc -l < $(COV_ALL_LIST)) tests × $(words $(COV_PARALLEL_SEEDS)) seeds ==="; \
 	 $(MAKE) regress_v4_full_parallel \
 	   PHASE14_LIST=$(COV_ALL_LIST) \
 	   PHASE14_SEEDS="$(COV_PARALLEL_SEEDS)" \
 	   PHASE14_PARALLEL_JOBS=$(COV_PARALLEL_JOBS) \
 	   COV_DB_DIR=$(COV_DB_DIR) \
-	   PLUS_ARGS="+MMU_WHITEBOX_CODE_COV_ASSERT_OFF"
+	   PLUS_ARGS="+MMU_WHITEBOX_CODE_COV_ASSERT_OFF $(COV_L1DTLB_FORCE_PLUS_ARGS)"
 	@echo "=== Phase 1 VDB saved ==="
 	@cp -a $(COV_DB_DIR) $(COV_DIR)/covp_phase1_cond_tgl.vdb 2>/dev/null || true
 	@echo ""

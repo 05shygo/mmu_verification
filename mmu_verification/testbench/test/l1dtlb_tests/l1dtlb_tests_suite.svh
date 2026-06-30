@@ -42,6 +42,8 @@
 `include "test_mmu_l1dtlb_dtlb_inv_va8_alias_001.svh"
 `include "test_mmu_l1dtlb_dtlb_l2_reqq_depth_001.svh"
 `include "test_mmu_l1dtlb_dtlb_mb_fsm_wfi_001.svh"
+`include "test_mmu_l1dtlb_dtlb_mb_wfi_flush_001.svh"
+`include "test_mmu_l1dtlb_dtlb_mb_fsm_default_001.svh"
 `include "test_mmu_l1dtlb_dtlb_mb_high_entry_matrix_001.svh"
 `include "test_mmu_l1dtlb_dtlb_mb_entry2_state_matrix_001.svh"
 `include "test_mmu_l1dtlb_dtlb_mb_state_signal_001.svh"

@@ -1,59 +1,52 @@
 # L1TLB covp 未覆盖代码报告
 
 本报告基于 `make covp` 生成的 URG 覆盖率报告：`mmu_verification/output/coverage/phase14_urgReport`。
-- 原始 URG 数据源：`mmu_verification/output/coverage/phase14_merged.vdb`（由 `output/coverage/phase14_parallel_vdb/` 下并行回归分片合并而成）
+- 原始 URG 数据源：`mmu_verification/output/coverage/phase14_merged.vdb`（由 `output/coverage/phase14_parallel_vdb/` 下 26 个 batch 并行回归分片合并而成）
 - URG 命令：`urg -full64 -dir .../phase14_merged.vdb -elfile .../simu/exclude_v4.tgl -format both -report .../phase14_urgReport`
-- URG 报告生成时间：`Wed Jul  1 01:25:47 2026`（VCS V-2023.12-SP2）
+- URG 报告生成时间：`Tue Jun 30 14:18:53 2026`（VCS V-2023.12-SP2）
 - 统计范围：`tb_top.u_dut.u_mmu_l1dtlb` 与 `tb_top.u_dut.x_mmu_l1itlb` 子树下的所有实例（含 SVA 与子模块）。
 
-## 本次更新要点（相较上一版本 2026-06-30）
+## 本次更新要点（相较上一版本 2026-06-21）
 
-> 上一版本合计未覆盖对象 1056 项（原始 2089 项）；本次合计 879 项（原始 1941 项），整体收敛约 16.8%（合并后）/ 7.1%（原始）。注：上一版与本次的脚本提取均未覆盖 `mmu_l1dtlb_mb_entry` per-instance FSM（`state_r` 的 2 类迁移缺口跨 5 实例，见下文），故 FSM 对比行显示持平（上版 iUTLB 2→本轮 mb_entry 2，iUTLB FSM 已闭合）。主要变化如下：
+> 上一版本合计未覆盖对象 1190 项（原始 2254 项）；本次合计 1056 项（原始 2089 项），整体收敛约 11.3%（合并后）/ 7.3%（原始）。注：原始记录数差异主要来自 cond split/instance 页解析粒度变化，合并后唯一对象数（1056 vs 1190）是更稳定的比较口径。主要变化如下：
 
 | 覆盖类型 | 上一版（合并后） | 本次（合并后） | 变化 |
-| --- | ---: | ---: | --- |
-| 行覆盖 | 7 | 3 | **-4** |
-| 条件覆盖 | 84 | 79 | **-5** |
-| 分支覆盖（含 MISSING_ELSE） | 7 | 3 | **-4** |
-| FSM 状态迁移覆盖 | 2 | 2 | 0（注） |
-| 翻转覆盖 - 端口 | 362 | 254 | **-108** |
-| 翻转覆盖 - 内部信号 | 585 | 530 | **-55** |
-| 断言/cover 命中覆盖 | 9 | 8 | -1 |
-| **合计** | **1056** | **879** | **177** |
+| --- | ---: | ---: | ---: |
+| 行覆盖 | 13 | 7 | **-6** |
+| 条件覆盖 | 86 | 84 | -2 |
+| 分支覆盖（含 MISSING_ELSE）| 9 | 7 | -2 |
+| FSM 状态迁移覆盖 | 2 | 2 | 0 |
+| 翻转覆盖 - 端口 | 434 | 362 | **-72** |
+| 翻转覆盖 - 内部信号 | 636 | 585 | **-51** |
+| 断言/cover 命中覆盖 | 10 | 9 | -1 |
+| **合计** | **1190** | **1056** | **-134** |
 
-关键模块 SCORE/LINE/COND/TOGGLE 提升对照（仅列变化显著者）：
+关键模块 SCORE/LINE 提升对照（仅列变化显著者）：
 
 | 模块 | 上一版 SCORE/LINE/COND/TOGGLE | 本次 SCORE/LINE/COND/TOGGLE | 备注 |
 | --- | --- | --- | --- |
-| `mmu_l1itlb` | 81.71/92.06/77.53/73.69 | 88.39/95.24/80.34/73.85 | LINE 92.06→95.24 / COND 77.53→80.34 / FSM 77.78→100.00 / BRANCH 87.50→92.50 |
-| `mmu_l1dtlb_hit_rd_sva` | 83.69/--/--/77.38 | 86.65/--/--/83.30 | TOGGLE 77.38→83.30 |
-| `mmu_l1dtlb` | 90.41/100.00/85.08/76.57 | 93.32/100.00/91.42/81.87 | COND 85.08→91.42 / TOGGLE 76.57→81.87 |
-| `mmu_l1dtlb_mb_entry` | 93.85/96.97/86.30/91.23 | 95.77/100.00/86.30/92.55 | LINE 96.97→100.00 / TOGGLE 91.23→92.55 / BRANCH 94.74→100.00（注：FSM 模块聚合 100.00，但 per-instance 仍有 STATE_WFG→STATE_IDLE/STATE_ABT 缺口，见下文） |
-| `mmu_l1dtlb_hit_rd` | 89.36/100.00/78.66/78.78 | 91.10/100.00/80.49/83.91 | COND 78.66→80.49 / TOGGLE 78.78→83.91 |
-| `mmu_l1dtlb_mb_entry_sva` | 94.22/100.00/100.00/91.90 | 95.89/100.00/100.00/93.58 | TOGGLE 91.90→93.58 |
-| `mmu_l1dtlb_sva` | 94.89/100.00/100.00/82.60 | 96.47/100.00/100.00/86.69 | TOGGLE 82.60→86.69 |
-| `mmu_l1dtlb_scheduler_sva` | 93.43/100.00/--/80.28 | 94.80/100.00/--/84.39 | TOGGLE 80.28→84.39 |
-| `mmu_l1dtlb_scheduler` | 95.31/100.00/96.77/84.46 | 96.11/100.00/96.77/87.66 | TOGGLE 84.46→87.66 |
-| `mmu_l1dtlb_install_sva` | 92.38/100.00/100.00/69.51 | 93.16/100.00/100.00/72.65 | TOGGLE 69.51→72.65 |
-| `mmu_l1dtlb_expt_cam` | 89.05/100.00/80.77/75.44 | 89.76/100.00/80.77/78.27 | TOGGLE 75.44→78.27 |
-| `mmu_l1dtlb_install` | 88.09/100.00/79.41/72.94 | 88.78/100.00/79.41/75.72 | TOGGLE 72.94→75.72 |
+| `mmu_l1dtlb` | 86.97/95.22/83.62/71.98 | **90.41/100.00**/85.08/76.57 | LINE 已 100%，行 987-991 JTLB refill 分支已闭合 |
+| `mmu_l1dtlb_install` | 84.67/100/79.41/59.25 | 88.09/100/79.41/**72.94** | TOGGLE +13.7 |
+| `mmu_l1dtlb_expt_cam` | 87.15/100/80.77/67.84 | 89.05/100/80.77/**75.44** | TOGGLE +7.6 |
+| `mmu_l1dtlb_install_sva` | 88.61/100/100/54.43 | 92.38/100/100/**69.51** | TOGGLE +15.1 |
+| `mmu_l1dtlb_scheduler_sva` | 91.35/-/74.06/- | 93.43/-/**80.28**/- | TOGGLE +6.2 |
+| `mmu_l1dtlb_sva` | 93.83/100/100/79.50/89.67 | 94.89/100/100/**82.60**/**91.85** | TOGGLE/ASSERT 均提升 |
+| `mmu_l1itlb` | 81.90/92.06/78.65/73.53 | 81.71/92.06/77.53/73.69 | 基本持平（COND 略降，新约束/新 SVA 引入新缺口） |
+| `ct_mmu_iutlb_entry` | 96.28/100/97.44/87.69 | 95.64/100/94.87/87.69 | COND 略降（新增参数化实例） |
 
 本轮已闭合的代表性缺口：
-- `mmu_l1dtlb_mb_entry` 行 200（WFI 态被 flush 回 IDLE）、行 228（FSM default）闭合——mb_entry LINE 96.97→100.00，BRANCH 94.74→100.00。
-- `mmu_l1itlb` 行 753/755（WFG 态 abort→ABT / abort→IDLE 路径）闭合——对应 FSM `ref_cur_st` 的 `WFG -> IDLE` 与 `WFG -> ABT` 迁移已覆盖，FSM 77.78→100.00。
-- `mmu_l1dtlb` COND 85.08→91.42（+6.3%）：line 1190/1194 的 pgs×hit 表达式中位 entry（2..7）多 term 组合大量收敛，line 1116 invalidation 命中从 entry 2 推进到 entry 9。
-- `mmu_l1dtlb_hit_rd` COND 78.66→80.49（+1.8%）、TOGGLE 78.78→83.91（+5.1%）：hit_rd 内部信号翻转覆盖面扩大。
-- `mmu_l1itlb` LINE 92.06→95.24（+3.2%）、COND 77.53→80.34（+2.8%）、BRANCH 87.50→92.50（+5.0%）：iUTLB 质量全面提升。
-- SVA 模块 TOGGLE 全面提升：`mmu_l1dtlb_sva` +4.1%、`mmu_l1dtlb_mb_entry_sva` +1.7%、`mmu_l1dtlb_install_sva` +3.1%、`mmu_l1dtlb_hit_rd_sva` +5.9%、`mmu_l1dtlb_scheduler_sva` +4.1%。
+- `mmu_l1dtlb.sv` 行 987-991（`is_jtlb_refill` 分支 `entry_ref_ppn/flg/pgflt/acflt/pgs` 赋值）—— JTLB/UTLB refill 写入路径已激励，模块 LINE 覆盖率从 95.22 → 100.00。
+- `mmu_l1itlb.sv` 行 1192-1194（iUTLB 异常处理路径）已走到。
+- 大量 `l1dtlb_ent_*/mb_entry_*` 低位 entry 的 TOGGLE/COND 命中（部分高位 entry 仍缺，见下文）。
+- `gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` 从 19 项缩至 14 项（entry 0/1 已闭合，entry 10 及其他高位 entry 仍未成功）。
 
-本轮尚未闭合的关键缺口：
-- **`mmu_l1dtlb_mb_entry` FSM `state_r` 仍有缺口**：`STATE_WFG->STATE_ABT`（line 146，gen_mb_entries[1]）/ `STATE_WFG->STATE_IDLE`（line 237，gen_mb_entries[0..3]）——模块聚合 FSM=100.00 但 per-instance 仍有未覆盖迁移（共 2 类跨 5 实例）。注：该缺口在上一版报告中因脚本解析范围限制未被计入（同版本模块聚合 FSM 也是 100.00），本轮确认仍存在。
-- `mmu_l1itlb` 行 759/763/783：WFG 保持 / WFC abort+ref_cmplt 回 IDLE / FSM default 三条 LINE 缺口（3 项）。
-- `mmu_l1dtlb_sva` `gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` entry 10..16（7 项，上版 19 项——entry 0..9 已闭合）。
-- `mmu_l1dtlb_hit_rd_sva` `a_expt_entry_overlap_is_terminal_replay` + `cp_l1dtlb_expt_entry_overlap_replay`。
-- `mmu_l1dtlb_allocator_sva` `a_same_4k_dual_miss_dedup` + `cp_l1dtlb_c004_same_vpn_dedup`。
-- `mmu_l1dtlb_mb_entry_sva` `a_idle_flush_blocks_alloc`、`a_wfi_data_stable_without_grant`。
-- `mmu_l1dtlb_sva` `cp_l1dtlb_c001_reset_then_miss` cover。
+本轮新出现/重新暴露的缺口（多与新加 SVA 约束、新统计项有关）：
+- `mmu_l1dtlb_mb_entry` 行 200（WFI 态被 flush 回 IDLE）、行 228（FSM default）未执行。
+- `mmu_l1itlb` 行 753/755/759/763/783（`ref_nxt_st` 在 WFG/WFC 态下的 abort / 保持 / default 赋值）未执行（与 FSM `WFG->IDLE/WFG->ABT` 缺失迁移同源）。
+- `mmu_l1dtlb_mb_entry_sva` 新增 `a_idle_flush_blocks_alloc`、`a_wfi_data_stable_without_grant`、`a_wfi_flush_to_idle` 三个断言未成功。
+- `mmu_l1dtlb_hit_rd_sva` 新增 `a_expt_entry_overlap_is_terminal_replay` + 配套 cover `cp_l1dtlb_expt_entry_overlap_replay` 未命中。
+- `mmu_l1dtlb_allocator_sva` 的 `a_same_4k_dual_miss_dedup` + `cp_l1dtlb_c004_same_vpn_dedup`（同 4KB 双 miss 去重场景）未命中。
+- `mmu_l1dtlb_sva` 新增 `cp_l1dtlb_c001_reset_then_miss` cover（复位后立即 miss）未采样。
 
 ## 阅读说明
 
@@ -77,38 +70,94 @@
 
 | 覆盖类型 | 原始未覆盖记录数 | 合并后唯一代码对象数 |
 | --- | ---: | ---: |
-| 行覆盖 | 3 | 3 |
-| 条件覆盖 | 296 | 79 |
-| 分支覆盖（含 MISSING_ELSE） | 3 | 3 |
-| FSM 状态迁移覆盖 | 5 | 2 |
-| 翻转覆盖 - 端口 | 636 | 254 |
-| 翻转覆盖 - 内部信号 | 984 | 530 |
-| 断言/cover 命中覆盖 | 14 | 8 |
-| **合计** | **1941** | **879** |
+| 行覆盖 | 7 | 7 |
+| 条件覆盖 | 452 | 84 |
+| 分支覆盖（含 MISSING_ELSE）| 7 | 7 |
+| FSM 状态迁移覆盖 | 2 | 2 |
+| 翻转覆盖 - 端口 | 625 | 362 |
+| 翻转覆盖 - 内部信号 | 974 | 585 |
+| 断言/cover 命中覆盖 | 22 | 9 |
+| **合计** | **2089** | **1056** |
 
 | 模块 | SCORE/LINE/COND/TOGGLE/FSM/BRANCH/ASSERT (%) | 未覆盖对象数 | 源码 |
 | --- | --- | ---: | --- |
-| `mmu_l1dtlb` | 93.32/100.00/91.42/81.87/--/100.00/-- | 697 | `mmu/rtl/mmu_l1dtlb.sv` |
+| `mmu_l1dtlb` | 90.41/100.00/85.08/76.57/--/100.00/-- | 845 | `mmu/rtl/mmu_l1dtlb.sv` |
 | `mmu_l1dtlb_allocator` | 99.46/100.00/100.00/97.83/--/100.00/-- | 3 | `mmu/rtl/mmu_l1dtlb_allocator.sv` |
-| `mmu_l1dtlb_mb_entry` | 95.77/100.00/86.30/92.55/100.00/100.00/-- | 21 | `mmu/rtl/mmu_l1dtlb_mb_entry.sv` |
-| `mmu_l1dtlb_expt_cam` | 89.76/100.00/80.77/78.27/--/100.00/-- | 61 | `mmu/rtl/mmu_l1dtlb_expt_cam.sv` |
-| `mmu_l1dtlb_hit_rd` | 91.10/100.00/80.49/83.91/--/100.00/-- | 190 | `mmu/rtl/mmu_l1dtlb_hit_rd.sv` |
-| `mmu_l1dtlb_install` | 88.78/100.00/79.41/75.72/--/100.00/-- | 77 | `mmu/rtl/mmu_l1dtlb_install.sv` |
-| `mmu_l1dtlb_scheduler` | 96.11/100.00/96.77/87.66/--/100.00/-- | 25 | `mmu/rtl/mmu_l1dtlb_scheduler.sv` |
-| `mmu_l1itlb` | 88.39/95.24/80.34/73.85/100.00/92.50/-- | 462 | `mmu/rtl/mmu_l1itlb.sv` |
-| `ct_mmu_iutlb_entry` | 95.71/100.00/94.87/87.98/--/100.00/-- | 21 | `mmu/rtl/ct_mmu_iutlb_entry.v` |
-| `ct_mmu_iutlb_fst_entry` | 96.03/100.00/97.44/86.68/--/100.00/-- | 26 | `mmu/rtl/ct_mmu_iutlb_fst_entry.v` |
-| `mmu_l1dtlb_sva` | 96.47/100.00/100.00/86.69/--/100.00/95.65 | 107 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_mb_entry_sva` | 95.89/100.00/100.00/93.58/--/--/90.00 | 8 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_mb_entry` | 93.85/96.97/86.30/91.23/100.00/94.74/-- | 27 | `mmu/rtl/mmu_l1dtlb_mb_entry.sv` |
+| `mmu_l1dtlb_expt_cam` | 89.05/100.00/80.77/75.44/--/100.00/-- | 52 | `mmu/rtl/mmu_l1dtlb_expt_cam.sv` |
+| `mmu_l1dtlb_hit_rd` | 89.36/100.00/78.66/78.78/--/100.00/-- | 212 | `mmu/rtl/mmu_l1dtlb_hit_rd.sv` |
+| `mmu_l1dtlb_install` | 88.09/100.00/79.41/72.94/--/100.00/-- | 65 | `mmu/rtl/mmu_l1dtlb_install.sv` |
+| `mmu_l1dtlb_scheduler` | 95.31/100.00/96.77/84.46/--/100.00/-- | 15 | `mmu/rtl/mmu_l1dtlb_scheduler.sv` |
+| `mmu_l1itlb` | 81.71/92.06/77.53/73.69/77.78/87.50/-- | 476 | `mmu/rtl/mmu_l1itlb.sv` |
+| `ct_mmu_iutlb_entry` | 95.64/100.00/94.87/87.69/--/100.00/-- | 22 | `mmu/rtl/ct_mmu_iutlb_entry.v` |
+| `ct_mmu_iutlb_fst_entry` | 95.96/100.00/97.44/86.40/--/100.00/-- | 27 | `mmu/rtl/ct_mmu_iutlb_fst_entry.v` |
+| `mmu_l1dtlb_sva` | 94.89/100.00/100.00/82.60/--/100.00/91.85 | 103 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_mb_entry_sva` | 94.22/100.00/100.00/91.90/--/--/85.00 | 10 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
 | `mmu_l1dtlb_expt_cam_sva` | 99.56/--/--/99.11/--/--/100.00 | 2 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_install_sva` | 93.16/100.00/100.00/72.65/--/--/100.00 | 70 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_hit_rd_sva` | 86.65/--/--/83.30/--/--/90.00 | 143 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_install_sva` | 92.38/100.00/100.00/69.51/--/--/100.00 | 58 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_hit_rd_sva` | 83.69/--/--/77.38/--/--/90.00 | 159 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
 | `mmu_l1dtlb_allocator_sva` | 94.27/100.00/--/99.48/--/--/83.33 | 3 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_scheduler_sva` | 94.80/100.00/--/84.39/--/--/100.00 | 20 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_scheduler_sva` | 93.43/100.00/--/80.28/--/--/100.00 | 10 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
 
 ## 主要未覆盖模式分析
 
 ### 行覆盖缺口（语句从未执行）
+
+- `mmu_l1dtlb_mb_entry` `mmu/rtl/mmu_l1dtlb_mb_entry.sv:200` `state_nxt = STATE_IDLE;`
+
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:200`
+
+```systemverilog
+       197:             STATE_WFI: begin
+       198:                 if (abort_this_cyc) begin
+       199:                     // Flush occurred while waiting to install
+       200: >>                  state_nxt = STATE_IDLE;
+       201:                 end else if (refill_gnt) begin
+       202:                     // Finally granted permission to write to L1TLB
+       203:                     state_nxt = STATE_IDLE;
+```
+
+- `mmu_l1dtlb_mb_entry` `mmu/rtl/mmu_l1dtlb_mb_entry.sv:228` `default: state_nxt = STATE_IDLE;`
+
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:228`
+
+```systemverilog
+       225:                 end
+       226:             end
+       227:             
+       228: >>          default: state_nxt = STATE_IDLE;
+       229:         endcase
+       230:     end
+       231:     
+```
+
+- `mmu_l1itlb` `mmu/rtl/mmu_l1itlb.sv:753` `ref_nxt_st[2:0] = ABT;`
+
+`mmu/rtl/mmu_l1itlb.sv:753`
+
+```systemverilog
+       750:             end
+       751:             WFG: begin
+       752:               if(ifu_mmu_abort && credit_cnt != 1'b0)
+       753: >>              ref_nxt_st[2:0] = ABT;
+       754:               else if(ifu_mmu_abort)
+       755:                 ref_nxt_st[2:0] = IDLE;
+       756:               else if(credit_cnt != 1'b0)
+```
+
+- `mmu_l1itlb` `mmu/rtl/mmu_l1itlb.sv:755` `ref_nxt_st[2:0] = IDLE;`
+
+`mmu/rtl/mmu_l1itlb.sv:755`
+
+```systemverilog
+       752:               if(ifu_mmu_abort && credit_cnt != 1'b0)
+       753:                 ref_nxt_st[2:0] = ABT;
+       754:               else if(ifu_mmu_abort)
+       755: >>              ref_nxt_st[2:0] = IDLE;
+       756:               else if(credit_cnt != 1'b0)
+       757:                 ref_nxt_st[2:0] = WFC;
+       758:               else
+```
 
 - `mmu_l1itlb` `mmu/rtl/mmu_l1itlb.sv:759` `ref_nxt_st[2:0] = WFG;`
 
@@ -156,17 +205,20 @@
 
 | 模块 | 行号 | 表达式（已聚合参数化条目） | 未覆盖组合（采样） | 影响条目数 |
 | --- | ---: | --- | --- | ---: |
-| `mmu_l1dtlb` | 1190 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit0_1g)` | 1 0 Not Covered; 1 1 Not Covered | 52 |
-| `mmu_l1dtlb` | 1194 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit1_1g)` | 1 0 Not Covered; 1 1 Not Covered | 52 |
-| `mmu_l1dtlb` | 1190 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit0_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit0_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[...` | 0 0 1 Not Covered | 26 |
-| `mmu_l1dtlb` | 1194 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit1_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit1_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[...` | 0 0 1 Not Covered | 26 |
-| `mmu_l1dtlb` | 1116 | `EXPRESSION (tlboper_utlb_inv_va_req && l1dtlb_ent_vld[9] && (lsu_mmu_tlb_va[7:0] == l1dtlb_ent_vpn[9][7:0]))` | 1 1 1 Not Covered | 14 |
-| `mmu_l1dtlb` | 1120 | `EXPRESSION (regs_utlb_clr | tlboper_utlb_clr | ctc_inv_va_hit_clr[9])` | 0 0 1 Not Covered | 14 |
-| `mmu_l1itlb` | 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[0])) || (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2]) || ((!iutlb_flg_aft_bypass[3])) || (iutlb_flg_aft...` | 0 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 0 0 1 0 0 0 Not Covered; ... 共 7 种组合 | 7 |
+| `mmu_l1dtlb` | 1190 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit0_1g)` | 1 0 Not Covered; 1 1 Not Covered | 56 |
+| `mmu_l1dtlb` | 1194 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit1_1g)` | 1 0 Not Covered; 1 1 Not Covered | 56 |
+| `mmu_l1dtlb` | 1190 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit0_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit0_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[...` | 0 0 1 Not Covered; 0 1 0 Not Covered | 46 |
+| `mmu_l1dtlb` | 1194 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit1_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit1_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[...` | 0 0 1 Not Covered; 0 1 0 Not Covered | 46 |
+| `mmu_l1dtlb` | 1190 | `SUB-EXPRESSION (l1dtlb_ent_pgs[7][1] & u_l1dtlb_ent[7].hit0_2m)` | 1 0 Not Covered; 1 1 Not Covered | 36 |
+| `mmu_l1dtlb` | 1194 | `SUB-EXPRESSION (l1dtlb_ent_pgs[7][1] & u_l1dtlb_ent[7].hit1_2m)` | 1 0 Not Covered; 1 1 Not Covered | 36 |
+| `mmu_l1dtlb` | 1116 | `EXPRESSION (tlboper_utlb_inv_va_req && l1dtlb_ent_vld[2] && (lsu_mmu_tlb_va[7:0] == l1dtlb_ent_vpn[2][7:0]))` | 1 1 1 Not Covered | 28 |
+| `mmu_l1dtlb` | 1120 | `EXPRESSION (regs_utlb_clr | tlboper_utlb_clr | ctc_inv_va_hit_clr[2])` | 0 0 1 Not Covered | 28 |
+| `mmu_l1itlb` | 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[0])) || (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2]) || ((!iutlb_flg_aft_bypass[3])) || (iutlb_flg_aft...` | 0 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 0 0 1 0 0 0 Not Covered; ... 共 8 种组合 | 8 |
 | `mmu_l1dtlb` | 315 | `EXPRESSION (jtlb_dutlb_ref_cmplt && jtlb_dutlb_pgflt && mb_entry_vld[jtlb_dutlb_ref_id] && (mb_entry_state[jtlb_dutlb_ref_id] == MB_STATE_WFC) && ((!rt...` | 1 1 0 1 1 Not Covered; 1 1 1 0 1 Not Covered; 1 1 1 1 0 Not Covered | 6 |
 | `mmu_l1dtlb_hit_rd` | 170 | `SUB-EXPRESSION (((!dutlb_fin_flg[0])) || (((!dutlb_fin_flg[1])) && dutlb_fin_flg[2]) || (((!dutlb_fin_flg[1])) && dutlb_read_type_x && ( ! (cp0_mmu_mxr && ...` | 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 1 0 0 0 0 Not Covered; ... 共 5 种组合 | 5 |
 | `mmu_l1dtlb` | 802 | `EXPRESSION (miss0_vld_q && ((!miss0_abort_q)) && miss1_vld_q && ((!miss1_abort_q)) && (miss0_vpn_q == miss1_vpn_q))` | 1 0 1 1 1 Not Covered; 1 1 1 0 1 Not Covered | 4 |
 | `mmu_l1dtlb_hit_rd` | 165 | `EXPRESSION (((lsu_mmu_va_x[(VPN_WIDTH + 11)] && ((!(&lsu_mmu_va_x[63:(VPN_WIDTH + 12)])))) || (((!lsu_mmu_va_x[(VPN_WIDTH + 11)])) && ((|lsu_mmu_va_x[6...` | 1 0 1 Not Covered; 1 1 0 Not Covered; 1 1 1 Not Covered | 3 |
+| `mmu_l1dtlb_hit_rd` | 170 | `SUB-EXPRESSION (((!dutlb_fin_flg[2])) && ((!dutlb_read_type_x)))` | 1 1 Not Covered; 1 0 Not Covered | 3 |
 | `mmu_l1dtlb_install` | 100 | `EXPRESSION (ptw_l1dtlb_ref_pavld && ptw_l1dtlb_ref_cmplt && mb_entry_vld[id_ptw] && ((!req_ptw_expt)) && ((!req_ptw_aborted)))` | 1 0 1 1 1 Not Covered; 1 1 0 1 1 Not Covered; 1 1 1 0 1 Not Covered | 3 |
 | `mmu_l1dtlb_install` | 103 | `EXPRESSION (jtlb_dutlb_ref_pavld && jtlb_dutlb_ref_cmplt && mb_entry_vld[id_jtlb] && ((!req_jtlb_expt)) && ((!req_jtlb_aborted)))` | 1 1 0 1 1 Not Covered; 1 1 1 0 1 Not Covered; 1 1 1 1 0 Not Covered | 3 |
 | `mmu_l1itlb` | 551 | `SUB-EXPRESSION (iutlb_flg_aft_bypass[4] && cp0_supv_mode && ((!cp0_mmu_sum)))` | 1 0 1 Not Covered; 1 1 0 Not Covered; 1 1 1 Not Covered | 3 |
@@ -180,8 +232,10 @@
 | `mmu_l1dtlb_hit_rd` | 301 | `EXPRESSION (lsu_va_chg || lsu_mmu_va_vld_x || (pmp_flg_vld ^ lsu_mmu_va_vld_x))` | 0 1 0 Not Covered; 1 0 0 Not Covered | 2 |
 | `mmu_l1dtlb_scheduler` | 214 | `EXPRESSION (bypass_req_vld && credit_avail && ((!mb_req_vld)))` | 1 0 1 Not Covered; 1 1 0 Not Covered | 2 |
 | `mmu_l1itlb` | 520 | `EXPRESSION (iutlb_bypass_vld || iutlb_hit_vld || iutlb_disable_vld || iutlb_acc_flt || iutlb_ref_pgflt || iutlb_va_illegal)` | 0 0 1 0 0 0 Not Covered; 1 0 0 0 0 0 Not Covered | 2 |
+| `mmu_l1itlb` | 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[4])) && cp0_user_mode && regs_mmu_en)` | 0 1 1 Not Covered; 1 1 0 Not Covered | 2 |
 | `mmu_l1itlb` | 566 | `SUB-EXPRESSION (((!pmp_mmu_flg2[2])) && ( ! (cp0_mach_mode && ((!pmp_mmu_flg2[3]))) ) && pmp_flg_vld)` | 1 0 1 Not Covered; 1 1 1 Not Covered | 2 |
 | `mmu_l1itlb` | 727 | `EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit_vld)) && ((!iutlb_off_hit)) && ((!cp0_mmu_no_op_req)))` | 1 1 0 1 Not Covered; 1 1 1 0 Not Covered | 2 |
+| `mmu_l1itlb` | 752 | `EXPRESSION (ifu_mmu_abort && (credit_cnt != 1'b0))` | 1 0 Not Covered; 1 1 Not Covered | 2 |
 | `mmu_l1itlb` | 2064 | `EXPRESSION (ifu_mmu_va_vld && iutlb_addr_hit_vld && ((!iutlb_addr_hit)) && ((!iutlb_off_hit)))` | 0 1 1 1 Not Covered; 1 1 1 0 Not Covered | 2 |
 | `mmu_l1dtlb_mb_entry` | 120 | `EXPRESSION (alloc_vld && ((!abort_this_cyc)))` | 1 0 Not Covered | 1 |
 | `mmu_l1dtlb_mb_entry` | 134 | `EXPRESSION (issue_sel && issue_grant)` | 1 0 Not Covered | 1 |
@@ -211,103 +265,119 @@
 | `mmu_l1dtlb_hit_rd` | 209 | `EXPRESSION (lsu_mmu_va_vld_x & ((!dutlb_entry_hit_vld)) & ((!dutlb_va_illegal)) & ((!lsu_mmu_abort_x)) & ((!dutlb_off_hit)) & ((!dutlb_expt_match)))` | 1 1 0 1 1 1 Not Covered | 1 |
 | `mmu_l1dtlb_hit_rd` | 216 | `EXPRESSION (lsu_mmu_va_vld_x & ((!dutlb_entry_hit_vld)) & ((!dutlb_va_illegal)) & ((!dutlb_off_hit)) & ((!dutlb_expt_match)))` | 1 1 0 1 1 Not Covered | 1 |
 | `mmu_l1dtlb_hit_rd` | 261 | `EXPRESSION (dutlb_off_hit | ((!lsu_mmu_va_vld_x)) | dutlb_va_illegal | dutlb_expt_match | dutlb_stamo_pre_sel)` | 0 0 1 0 0 Not Covered | 1 |
-| `mmu_l1dtlb_hit_rd` | 267 | `EXPRESSION (lsu_mmu_stamo_vld_x & ((!dutlb_expt_match)))` | 1 0 Not Covered | 1 |
-| `mmu_l1dtlb_install` | 134 | `EXPRESSION (req_ptw_vld && ((!req_wfi_vld)))` | 1 0 Not Covered | 1 |
-| `mmu_l1dtlb_scheduler` | 145 | `EXPRESSION (credit_avail & ((|mb_entry_ready)))` | 0 1 Not Covered | 1 |
-| `mmu_l1dtlb_scheduler` | 213 | `EXPRESSION (mb_req_vld && credit_avail)` | 1 0 Not Covered | 1 |
-| `mmu_l1itlb` | 459 | `SUB-EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit)) && ((!iutlb_off_hit)))` | 1 1 0 Not Covered | 1 |
-| ... | ... | （其余 19 个聚合模式见下方分模块详情） | ... | ... |
+| ... | ... | （其余 24 个聚合模式见下方分模块详情） | ... | ... |
+
+### FSM 状态迁移缺口
+
+| 模块 | FSM | 未覆盖迁移 | 行号 |
+| --- | --- | --- | ---: |
+| `mmu_l1itlb` | `ref_cur_st` | `WFG->IDLE` | 735 |
+| `mmu_l1itlb` | `ref_cur_st` | `WFG->ABT` | 753 |
+
+`mmu/rtl/mmu_l1itlb.sv:735` (ref_cur_st FSM 的 `WFG->IDLE` 迁移):
+
+```systemverilog
+       731:     
+       732:     always @(posedge iutlb_clk or negedge cpurst_b)
+       733:     begin
+       734:       if (!cpurst_b)
+       735: >>      ref_cur_st[2:0] <= 3'b0;
+       736:       else
+       737:         ref_cur_st[2:0] <= ref_nxt_st[2:0];
+       738:     end
+       739:     
+```
 
 ### 断言/cover 命中缺口（按名称模式聚合）
 
 | 模块 | 名称（已聚合） | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | --- | ---: | ---: | ---: |
-| `mmu_l1dtlb_sva` | `gen_l1dtlb_entry_sva[10].a_va8_inv_clears_matching_entry` | assertion | 252988892 | 0 | 7 |
-| `mmu_l1dtlb_sva` | `cp_l1dtlb_c001_reset_then_miss` | cover | 252988892 | 0 | 1 |
-| `mmu_l1dtlb_mb_entry_sva` | `a_idle_flush_blocks_alloc` | assertion | 2034603960 | 0 | 1 |
-| `mmu_l1dtlb_mb_entry_sva` | `a_wfi_data_stable_without_grant` | assertion | 2034603960 | 0 | 1 |
-| `mmu_l1dtlb_hit_rd_sva` | `a_expt_entry_overlap_is_terminal_replay` | assertion | 508650990 | 0 | 1 |
-| `mmu_l1dtlb_hit_rd_sva` | `cp_l1dtlb_expt_entry_overlap_replay` | cover | 508650990 | 0 | 1 |
-| `mmu_l1dtlb_allocator_sva` | `a_same_4k_dual_miss_dedup` | assertion | 254325495 | 0 | 1 |
-| `mmu_l1dtlb_allocator_sva` | `cp_l1dtlb_c004_same_vpn_dedup` | cover | 254325495 | 0 | 1 |
+| `mmu_l1dtlb_sva` | `gen_l1dtlb_entry_sva[10].a_va8_inv_clears_matching_entry` | assertion | 212034487 | 0 | 14 |
+| `mmu_l1dtlb_sva` | `cp_l1dtlb_c001_reset_then_miss` | cover | 212034487 | 0 | 1 |
+| `mmu_l1dtlb_mb_entry_sva` | `a_idle_flush_blocks_alloc` | assertion | 1696275896 | 0 | 1 |
+| `mmu_l1dtlb_mb_entry_sva` | `a_wfi_data_stable_without_grant` | assertion | 1696275896 | 0 | 1 |
+| `mmu_l1dtlb_mb_entry_sva` | `a_wfi_flush_to_idle` | assertion | 1696275896 | 0 | 1 |
+| `mmu_l1dtlb_hit_rd_sva` | `a_expt_entry_overlap_is_terminal_replay` | assertion | 424068974 | 0 | 1 |
+| `mmu_l1dtlb_hit_rd_sva` | `cp_l1dtlb_expt_entry_overlap_replay` | cover | 424068974 | 0 | 1 |
+| `mmu_l1dtlb_allocator_sva` | `a_same_4k_dual_miss_dedup` | assertion | 212034487 | 0 | 1 |
+| `mmu_l1dtlb_allocator_sva` | `cp_l1dtlb_c004_same_vpn_dedup` | cover | 212034487 | 0 | 1 |
 
 ### 翻转覆盖 - 端口（按信号模式聚合）
 
 | 模块 | 端口（已聚合参数化位段） | 影响条目数 | Toggle No | 1->0 No | 0->1 No | 方向 |
 | --- | --- | ---: | ---: | ---: | ---: | --- |
-| `mmu_l1dtlb_hit_rd` | `entry_flg_vec[0]` | 57 | 57 | 57 | 14 | INPUT |
-| `mmu_l1dtlb_hit_rd_sva` | `entry_flg_vec[0]` | 57 | 57 | 57 | 14 | INPUT |
-| `mmu_l1dtlb_hit_rd` | `entry_ppn_vec[92]` | 30 | 30 | 30 | 4 | INPUT |
-| `mmu_l1dtlb_hit_rd_sva` | `entry_ppn_vec[92]` | 30 | 30 | 30 | 4 | INPUT |
-| `mmu_l1dtlb_sva` | `entry_ppn[3][8]` | 26 | 26 | 26 | 0 | INPUT |
-| `mmu_l1dtlb_install` | `mb_entry_ppn[0][15]` | 22 | 22 | 22 | 0 | INPUT |
-| `mmu_l1dtlb_install_sva` | `mb_entry_ppn[0][15]` | 22 | 22 | 22 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `l1dtlb_ent_vpn[0][23]` | 15 | 15 | 15 | 0 | INPUT |
-| `mmu_l1dtlb_install` | `mb_entry_vpn[1][25]` | 11 | 11 | 11 | 0 | INPUT |
-| `mmu_l1dtlb_scheduler` | `mb_entry_vpn[1][25]` | 11 | 11 | 11 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `mb_entry_vpn[1][25]` | 11 | 11 | 11 | 0 | INPUT |
-| `mmu_l1dtlb_install_sva` | `mb_entry_vpn[1][25]` | 11 | 11 | 11 | 0 | INPUT |
-| `mmu_l1dtlb_scheduler_sva` | `mb_entry_vpn[1][25]` | 11 | 11 | 11 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `entry_ppn[4][27:19]` | 10 | 10 | 10 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `l1dtlb_ent_pgs[7][1:0]` | 9 | 9 | 9 | 0 | INPUT |
+| `mmu_l1dtlb_hit_rd` | `entry_flg_vec[0]` | 30 | 30 | 30 | 14 | INPUT |
+| `mmu_l1dtlb_hit_rd_sva` | `entry_flg_vec[0]` | 30 | 30 | 30 | 14 | INPUT |
+| `mmu_l1dtlb_hit_rd` | `entry_ppn_vec[20]` | 23 | 23 | 23 | 0 | INPUT |
+| `mmu_l1dtlb_sva` | `entry_ppn[0][20]` | 23 | 23 | 23 | 0 | INPUT |
+| `mmu_l1dtlb_hit_rd_sva` | `entry_ppn_vec[20]` | 23 | 23 | 23 | 0 | INPUT |
+| `mmu_l1dtlb_install` | `mb_entry_ppn[0][15]` | 18 | 18 | 18 | 0 | INPUT |
+| `mmu_l1dtlb_install_sva` | `mb_entry_ppn[0][15]` | 18 | 18 | 18 | 0 | INPUT |
+| `mmu_l1dtlb_sva` | `entry_ppn[0][27:24]` | 16 | 16 | 16 | 0 | INPUT |
+| `mmu_l1dtlb_sva` | `entry_ppn[1][20:19]` | 15 | 15 | 15 | 0 | INPUT |
+| `mmu_l1dtlb_sva` | `l1dtlb_ent_pgs[6][1]` | 10 | 10 | 10 | 0 | INPUT |
+| `mmu_l1dtlb_sva` | `l1dtlb_ent_vpn[0][23]` | 8 | 8 | 8 | 0 | INPUT |
 | `mmu_l1dtlb_install` | `mb_entry_pgs[1][2]` | 7 | 7 | 7 | 0 | INPUT |
 | `mmu_l1dtlb_install_sva` | `mb_entry_pgs[1][2]` | 7 | 7 | 7 | 0 | INPUT |
+| `mmu_l1dtlb_install` | `mb_entry_vpn[1][25]` | 6 | 6 | 6 | 0 | INPUT |
 | `mmu_l1dtlb_install` | `mb_entry_flg[2][6:5]` | 6 | 6 | 6 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `entry_ppn[0][27:24]` | 6 | 6 | 6 | 0 | INPUT |
+| `mmu_l1dtlb_scheduler` | `mb_entry_vpn[1][25]` | 6 | 6 | 6 | 0 | INPUT |
+| `mmu_l1dtlb_sva` | `mb_entry_vpn[1][25]` | 6 | 6 | 6 | 0 | INPUT |
+| `mmu_l1dtlb_install_sva` | `mb_entry_vpn[1][25]` | 6 | 6 | 6 | 0 | INPUT |
 | `mmu_l1dtlb_install_sva` | `mb_entry_flg[2][6:5]` | 6 | 6 | 6 | 0 | INPUT |
-| `mmu_l1dtlb_install` | `mb_entry_vpn[3][16:15]` | 5 | 5 | 5 | 0 | INPUT |
-| `mmu_l1dtlb_scheduler` | `mb_entry_vpn[3][16:15]` | 5 | 5 | 5 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `mb_entry_vpn[3][16:15]` | 5 | 5 | 5 | 0 | INPUT |
-| `mmu_l1dtlb_install_sva` | `mb_entry_vpn[3][16:15]` | 5 | 5 | 5 | 0 | INPUT |
-| `mmu_l1dtlb_scheduler_sva` | `mb_entry_vpn[3][16:15]` | 5 | 5 | 5 | 0 | INPUT |
+| `mmu_l1dtlb_scheduler_sva` | `mb_entry_vpn[1][25]` | 6 | 6 | 6 | 0 | INPUT |
 | `mmu_l1dtlb_install` | `mb_entry_flg[2][2:0]` | 4 | 4 | 4 | 0 | INPUT |
 | `mmu_l1dtlb_install_sva` | `mb_entry_flg[2][2:0]` | 4 | 4 | 4 | 0 | INPUT |
 | `mmu_l1dtlb_mb_entry` | `entry_ppn[15]` | 2 | 2 | 2 | 0 | OUTPUT |
 | `mmu_l1dtlb_install` | `mb_entry_ppn[6][12:10]` | 2 | 2 | 2 | 0 | INPUT |
 | `mmu_l1dtlb_install` | `mb_entry_flg[6][3:0]` | 2 | 2 | 2 | 0 | INPUT |
 | `ct_mmu_iutlb_fst_entry` | `utlb_entry_ppn[15]` | 2 | 2 | 2 | 0 | OUTPUT |
-| `mmu_l1dtlb_sva` | `l1dtlb_ent_vpn[9][10:9]` | 2 | 2 | 2 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `l1dtlb_ent_vpn[11][11:9]` | 2 | 2 | 2 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `entry_ppn[10][11:10]` | 2 | 2 | 2 | 0 | INPUT |
-| `mmu_l1dtlb_sva` | `l1dtlb_ent_pgs[4][2]` | 2 | 2 | 2 | 0 | INPUT |
 | `mmu_l1dtlb_mb_entry_sva` | `entry_ppn[15]` | 2 | 2 | 2 | 0 | INPUT |
 | `mmu_l1dtlb_install_sva` | `mb_entry_ppn[6][12:10]` | 2 | 2 | 2 | 0 | INPUT |
 | `mmu_l1dtlb_install_sva` | `mb_entry_flg[6][3:0]` | 2 | 2 | 2 | 0 | INPUT |
 | `mmu_l1dtlb` | `cpurst_b` | 1 | 1 | 1 | 0 | INPUT |
+| `mmu_l1dtlb` | `pad_yy_icg_scan_en` | 1 | 1 | 1 | 1 | INPUT |
 | `mmu_l1dtlb` | `cp0_mmu_mpp[0]` | 1 | 1 | 0 | 1 | INPUT |
-| ... | ... （其余 214 个模式见下方分模块详情） | ... | ... | ... | ... | ... |
+| `mmu_l1dtlb` | `hpcp_mmu_cnt_en` | 1 | 1 | 0 | 1 | INPUT |
+| `mmu_l1dtlb` | `mmu_lsu_stall0` | 1 | 1 | 1 | 1 | OUTPUT |
+| `mmu_l1dtlb` | `mmu_lsu_stall1` | 1 | 1 | 1 | 1 | OUTPUT |
+| `mmu_l1dtlb` | `pmp_mmu_flg1[3]` | 1 | 1 | 1 | 1 | INPUT |
+| `mmu_l1dtlb` | `sysmap_mmu_flg0[0]` | 1 | 1 | 1 | 1 | INPUT |
+| `mmu_l1dtlb` | `sysmap_mmu_flg1[0]` | 1 | 1 | 1 | 1 | INPUT |
+| `mmu_l1dtlb` | `biu_mmu_smp_disable` | 1 | 1 | 1 | 0 | INPUT |
+| `mmu_l1dtlb` | `dutlb_top_ref_cur_st[2:0]` | 1 | 1 | 1 | 1 | OUTPUT |
+| ... | ... （其余 322 个模式见下方分模块详情） | ... | ... | ... | ... | ... |
 
 ### 翻转覆盖 - 内部信号（按信号模式聚合）
 
 | 模块 | 信号（已聚合参数化位段） | 影响条目数 | Toggle No | 1->0 No | 0->1 No |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `mmu_l1dtlb` | `entry_flg_vec[0]` | 57 | 57 | 57 | 14 |
-| `mmu_l1dtlb` | `entry_flg[0][0]` | 43 | 43 | 43 | 0 |
-| `mmu_l1dtlb` | `l1dtlb_ent_flg[0][0]` | 43 | 43 | 43 | 0 |
-| `mmu_l1dtlb` | `entry_ppn_vec[92]` | 30 | 30 | 30 | 4 |
-| `mmu_l1dtlb` | `entry_ppn[3][8]` | 26 | 26 | 26 | 0 |
-| `mmu_l1dtlb` | `l1dtlb_ent_ppn[3][8]` | 26 | 26 | 26 | 0 |
-| `mmu_l1dtlb` | `mb_entry_ppn[0][15]` | 22 | 22 | 22 | 0 |
-| `mmu_l1dtlb` | `entry_flg[1][1:0]` | 15 | 15 | 15 | 0 |
-| `mmu_l1dtlb` | `l1dtlb_ent_vpn[0][23]` | 15 | 15 | 15 | 0 |
-| `mmu_l1dtlb` | `l1dtlb_ent_flg[1][1:0]` | 15 | 15 | 15 | 0 |
+| `mmu_l1dtlb` | `entry_flg_vec[0]` | 30 | 30 | 30 | 14 |
+| `mmu_l1dtlb` | `entry_ppn[0][20]` | 23 | 23 | 23 | 0 |
+| `mmu_l1dtlb` | `entry_ppn_vec[20]` | 23 | 23 | 23 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_ppn[0][20]` | 23 | 23 | 23 | 0 |
+| `mmu_l1dtlb` | `mb_entry_ppn[0][15]` | 18 | 18 | 18 | 0 |
+| `mmu_l1dtlb` | `entry_flg[0][0]` | 16 | 16 | 16 | 0 |
+| `mmu_l1dtlb` | `entry_ppn[0][27:24]` | 16 | 16 | 16 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_ppn[0][27:24]` | 16 | 16 | 16 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_flg[0][0]` | 16 | 16 | 16 | 0 |
+| `mmu_l1dtlb` | `entry_flg[1][6:5]` | 15 | 15 | 15 | 0 |
+| `mmu_l1dtlb` | `entry_ppn[1][20:19]` | 15 | 15 | 15 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_ppn[1][20:19]` | 15 | 15 | 15 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_flg[1][6:5]` | 15 | 15 | 15 | 0 |
 | `mmu_l1dtlb_expt_cam` | `ent[1].vpn[25]` | 14 | 14 | 14 | 5 |
-| `mmu_l1dtlb` | `mb_entry_vpn[1][25]` | 11 | 11 | 11 | 0 |
-| `mmu_l1dtlb` | `entry_ppn[4][27:19]` | 10 | 10 | 10 | 0 |
-| `mmu_l1dtlb` | `l1dtlb_ent_ppn[4][27:19]` | 10 | 10 | 10 | 0 |
-| `mmu_l1dtlb` | `l1dtlb_ent_pgs[7][1:0]` | 9 | 9 | 9 | 0 |
+| `mmu_l1dtlb` | `entry_flg[3][3:0]` | 13 | 13 | 13 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_flg[3][3:0]` | 13 | 13 | 13 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_pgs[6][1]` | 10 | 10 | 10 | 0 |
+| `mmu_l1dtlb` | `l1dtlb_ent_vpn[0][23]` | 8 | 8 | 8 | 0 |
+| `mmu_l1dtlb` | `gen_mb_entries[0].entry_ref_ppn[23:21]` | 8 | 8 | 8 | 8 |
 | `mmu_l1dtlb` | `mb_entry_pgs[1][2]` | 7 | 7 | 7 | 0 |
+| `mmu_l1dtlb` | `gen_mb_entries[1].entry_ref_ppn[20]` | 7 | 7 | 7 | 0 |
 | `mmu_l1dtlb` | `gen_mb_entries[1].entry_ref_ppn[27:24]` | 7 | 7 | 7 | 0 |
-| `mmu_l1dtlb` | `entry_ppn[0][27:24]` | 6 | 6 | 6 | 0 |
+| `mmu_l1dtlb` | `mb_entry_vpn[1][25]` | 6 | 6 | 6 | 0 |
 | `mmu_l1dtlb` | `mb_entry_flg[2][6:5]` | 6 | 6 | 6 | 0 |
-| `mmu_l1dtlb` | `l1dtlb_ent_ppn[0][27:24]` | 6 | 6 | 6 | 0 |
-| `mmu_l1dtlb_expt_cam` | `ent[2].vpn[26:20]` | 6 | 6 | 6 | 6 |
-| `mmu_l1dtlb` | `mb_entry_vpn[3][16:15]` | 5 | 5 | 5 | 0 |
-| `mmu_l1dtlb` | `gen_mb_entries[3].alloc_vpn_i[14:13]` | 5 | 5 | 5 | 5 |
-| `mmu_l1dtlb` | `gen_mb_entries[3].alloc_vpn_i[26:20]` | 5 | 5 | 5 | 5 |
-| `mmu_l1dtlb_expt_cam` | `ent[3].vpn[19:15]` | 5 | 5 | 5 | 0 |
+| `mmu_l1dtlb` | `gen_mb_entries[3].alloc_vpn_i[26:13]` | 5 | 5 | 5 | 5 |
 | `mmu_l1dtlb` | `mb_entry_flg[2][2:0]` | 4 | 4 | 4 | 0 |
-| `mmu_l1dtlb_expt_cam` | `ent[2].vpn[14:12]` | 4 | 4 | 4 | 4 |
 | `mmu_l1itlb` | `entry24_ppn[11]` | 4 | 4 | 4 | 0 |
 | `mmu_l1itlb` | `entry25_ppn[0]` | 4 | 4 | 4 | 1 |
 | `mmu_l1itlb` | `entry29_ppn[0]` | 4 | 4 | 4 | 1 |
@@ -315,13 +385,14 @@
 | `mmu_l1itlb` | `entry6_ppn[11]` | 4 | 4 | 4 | 1 |
 | `mmu_l1itlb` | `entry7_ppn[10]` | 4 | 4 | 4 | 1 |
 | `mmu_l1dtlb_expt_cam` | `ent[3].vpn[11:10]` | 3 | 3 | 3 | 0 |
-| `mmu_l1dtlb_expt_cam` | `ent[3].iid[2:1]` | 3 | 3 | 3 | 0 |
+| `mmu_l1dtlb_expt_cam` | `ent[3].vpn[26:12]` | 3 | 3 | 3 | 3 |
+| `mmu_l1dtlb_expt_cam` | `ent[4].iid[1]` | 3 | 3 | 3 | 1 |
 | `mmu_l1itlb` | `entry16_ppn[15]` | 3 | 3 | 3 | 0 |
 | `mmu_l1itlb` | `entry1_ppn[15]` | 3 | 3 | 3 | 0 |
 | `mmu_l1itlb` | `entry4_ppn[15]` | 3 | 3 | 3 | 0 |
 | `mmu_l1itlb` | `entry5_ppn[15]` | 3 | 3 | 3 | 0 |
 | `mmu_l1itlb` | `entry8_ppn[15]` | 3 | 3 | 3 | 0 |
-| ... | ... （其余 490 个模式见下方分模块详情） | ... | ... | ... | ... |
+| ... | ... （其余 545 个模式见下方分模块详情） | ... | ... | ... | ... |
 
 ---
 
@@ -331,24 +402,24 @@
 
 | 模块 | 未翻转对象数 | 模块级 TOGGLE 覆盖率 |
 | --- | ---: | ---: |
-| `mmu_l1dtlb` | 497 | 81.87 |
-| `mmu_l1itlb` | 421 | 73.85 |
-| `mmu_l1dtlb_hit_rd` | 158 | 83.91 |
-| `mmu_l1dtlb_hit_rd_sva` | 141 | 83.30 |
-| `mmu_l1dtlb_sva` | 99 | 86.69 |
-| `mmu_l1dtlb_install` | 70 | 75.72 |
-| `mmu_l1dtlb_install_sva` | 70 | 72.65 |
-| `mmu_l1dtlb_expt_cam` | 56 | 78.27 |
-| `ct_mmu_iutlb_fst_entry` | 25 | 86.68 |
-| `mmu_l1dtlb_scheduler` | 21 | 87.66 |
+| `mmu_l1dtlb` | 497 | 76.57 |
+| `mmu_l1itlb` | 424 | 73.69 |
+| `mmu_l1dtlb_hit_rd` | 177 | 78.78 |
+| `mmu_l1dtlb_hit_rd_sva` | 157 | 77.38 |
+| `mmu_l1dtlb_sva` | 88 | 82.60 |
+| `mmu_l1dtlb_install` | 58 | 72.94 |
+| `mmu_l1dtlb_install_sva` | 58 | 69.51 |
+| `mmu_l1dtlb_expt_cam` | 47 | 75.44 |
+| `ct_mmu_iutlb_fst_entry` | 26 | 86.40 |
+| `ct_mmu_iutlb_entry` | 20 | 87.69 |
 
 ### 条件覆盖薄弱模块（按未覆盖表达式数排序）
 
 | 模块 | 未覆盖表达式数 | 模块级 COND 覆盖率 |
 | --- | ---: | ---: |
-| `mmu_l1dtlb` | 200 | 91.42 |
-| `mmu_l1itlb` | 35 | 80.34 |
-| `mmu_l1dtlb_hit_rd` | 32 | 80.49 |
+| `mmu_l1dtlb` | 348 | 85.08 |
+| `mmu_l1itlb` | 40 | 77.53 |
+| `mmu_l1dtlb_hit_rd` | 35 | 78.66 |
 | `mmu_l1dtlb_mb_entry` | 10 | 86.30 |
 | `mmu_l1dtlb_install` | 7 | 79.41 |
 | `mmu_l1dtlb_expt_cam` | 5 | 80.77 |
@@ -356,32 +427,33 @@
 | `ct_mmu_iutlb_entry` | 2 | 94.87 |
 | `ct_mmu_iutlb_fst_entry` | 1 | 97.44 |
 
-
 ### 主要结论
 
-- **L1TLB 整体未覆盖对象集中在 `mmu_l1dtlb`、`mmu_l1itlb`、`mmu_l1dtlb_sva`、`mmu_l1dtlb_hit_rd`/`mmu_l1dtlb_hit_rd_sva` 等模块**，主要表现为：
-  - **翻转覆盖（TOGGLE）缺口最多**（合并后 784 项）：参数化 entry/bit 位段（如 `l1dtlb_ent_ppn[N][...]`、`l1dtlb_ent_vpn[N][...]`、`mb_entry_vpn[N][...]`）较上版减少 163 项，主要因 entry 2..7 中位 entry 的 toggle 缺口收敛。高位 entry（N=8..15）仍有大量 TOGGLE 缺口。
-  - **条件覆盖（COND）缺口**（79 项合并后）：`mmu_l1dtlb` 主模块的 line 305/315 PTW/JTLB refill 异常+entry valid+状态组合仍缺若干组合；line 1190/1194 1G 页匹配支路在所有 entry 上均未覆盖；line 1116/1120 invalidation 已推进到 entry 9，entry 10..15 仍未覆盖。
-  - **行覆盖（LINE）缺口** 3 项（上版 7 项）：均位于 `mmu_l1itlb`——行 759（WFG 态 `credit_cnt==0` 且无 abort 保持 WFG）、行 763（WFC 态 `ifu_mmu_abort && l1itlb_ref_cmplt` 回 IDLE）、行 783（FSM default 回 IDLE）。
-  - **FSM 迁移缺口**（2 类合并后）：`mmu_l1itlb` 的 2 条 FSM 缺口（`ref_cur_st` 的 `WFG->IDLE` 与 `WFG->ABT`）本轮已闭合，iUTLB FSM 覆盖率达 100.00；`mmu_l1dtlb_mb_entry` 的 `state_r` FSM 仍有 2 类缺口——`STATE_WFG->STATE_ABT`（line 146, gen_mb_entries[1] 未覆盖）与 `STATE_WFG->STATE_IDLE`（line 237, gen_mb_entries[0..3] 未覆盖），对应 WFG 态下 abort+grant→ABT 和 flush→IDLE 两条迁移路径。
-  - **断言/cover 命中缺口** 8 项：`gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` entry 10..16 未命中（7 项，上版 19 项，0..9 已闭合）；`cp_l1dtlb_c001_reset_then_miss` cover 未采样；`a_idle_flush_blocks_alloc`/`a_wfi_data_stable_without_grant` 断言未成功；`a_expt_entry_overlap_is_terminal_replay` + cover 未命中；`a_same_4k_dual_miss_dedup` + cover 未命中。
+- **L1TLB 整体未覆盖对象集中在 `mmu_l1dtlb`、`mmu_l1itlb`、`mmu_l1dtlb_sva`、`mmu_l1dtlb_hit_rd`/`mmu_l1dtlb_hit_rd_sva` 等模块**。`mmu_l1dtlb` 本模块 LINE 已达 100%，缺口主要转移到 TOGGLE / COND 与 iUTLB FSM / 子模块 SVA。主要表现为：
+  - **翻转覆盖（TOGGLE）缺口最多**：参数化 entry/bit 位段（如 `l1dtlb_ent_ppn[N][...]`、`l1dtlb_ent_vpn[N][...]`、`mb_entry_vpn[1][25]`、`mb_entry_ppn[0][15]`、`mb_entry_flg[2][6:5]`）大多只在 0/1 号 entry 或低位 bit 上翻转过，高位 entry（如 entry 8..15）与高位 PPN/FLG 位段从未被写入或翻转，反映现有定向用例未遍历所有 16 个 entry、也未充分打散 PPN/FLG 的高位取值。
+  - **条件覆盖（COND）缺口**主要在 `mmu_l1dtlb` 主模块：例如 line 305/315 的 PTW/JTLB refill 完成 + 页错误 + entry valid + WFC 状态 + 非 flush 的多 term 与表达式，部分 term 组合（如 `1 1 0 1 1`、`1 1 1 0 1`、`1 1 1 1 0`）从未同时命中；line 802/817 的双 miss 去重 / mb_hit 判定表达式部分组合未覆盖；line 1116/1120 的 VA invalidation 命中比较与 clr 来源、line 1190/1194 的 `l1dtlb_ent_pgs & hit*_4k/2m/1g` 页大小命中与表达式在 entry 2..7 及 1G/2M 页大小上从未命中（影响条目数高达 28/56，是当前最大 COND 热点）。
+  - **行覆盖（LINE）缺口（共 7 条）**已从主模块迁移到子模块/FSM：`mmu_l1dtlb_mb_entry` 行 200（WFI 态被 flush 回 IDLE）、行 228（FSM default）；`mmu_l1itlb` 行 753/755/759/763/783（`ref_nxt_st` 在 WFG/WFC 态下的 abort→ABT、abort→IDLE、保持 WFG、WFC abort→IDLE、default→IDLE 赋值）。这些与 FSM 缺失迁移同源。
+  - **FSM 迁移缺口（仍 2 条）**：`mmu_l1itlb` 中 `ref_cur_st`（iUTLB refill 状态机：IDLE/WFG/WFC/ABT）的 `WFG -> IDLE`（line 735）与 `WFG -> ABT`（line 753）两条迁移仍未覆盖，即在 WFG（等待 PTW 授权）状态下收到 `ifu_mmu_abort` 的回 IDLE / 转 ABT 两条 abort 路径从未激励。
+  - **断言/cover 命中缺口（9 类）**：`mmu_l1dtlb_sva` 中 `gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` 仍有 14 个高位 entry 实例从未成功（Attempts=2.1e8，Successes=0）；`mmu_l1dtlb_mb_entry_sva` 的 `a_idle_flush_blocks_alloc` / `a_wfi_data_stable_without_grant` / `a_wfi_flush_to_idle` 三个 miss-buffer 行为断言未成功；`mmu_l1dtlb_hit_rd_sva` 的 `a_expt_entry_overlap_is_terminal_replay` + `cp_l1dtlb_expt_entry_overlap_replay`（异常 CAM 重叠 replay 终结）未命中；`mmu_l1dtlb_allocator_sva` 的 `a_same_4k_dual_miss_dedup` + `cp_l1dtlb_c004_same_vpn_dedup`（同 4KB 双 miss 去重）未命中；`cp_l1dtlb_c001_reset_then_miss`（复位后立即 miss）cover 未采样。
 
 ### 建议的定向激励
 
-1. **遍历所有 16 个 dutlb entry（继续推进 entry 8..15）**：entry 0..7 已有显著进展（toggle 缺口大量收敛），entry 8..15 仍需被 install/refill/hit/invalidate 激励，建议定向构造用例按 entry index 依次填满 16 个 entry。
-2. **1G 页匹配场景**：line 1190/1194 的 `pgs[2] & hit_1g` 1G 页支路在所有 entry 均未覆盖（SUB-EXPRESSION 影响 52 条目），需构造 1G 页地址映射使 hit 发生在 1G 页粒度。
-3. **iUTLB WFG 保持 / WFC abort+ref_cmplt 回 IDLE 路径**：`ref_nxt_st` 行 759（`credit_cnt==0` 且无 abort→保持 WFG）、行 763（WFC 态 `ifu_mmu_abort && l1itlb_ref_cmplt`→回 IDLE）、行 783（FSM default）需定向激励。
-4. **exception entry overlap 场景**：`mmu_l1dtlb_hit_rd_sva` 的 `a_expt_entry_overlap_is_terminal_replay` + cover——需 port0/port1 背靠背访问且均命中同一异常 entry，构造双端口冲突异常场景。
-5. **同 4KB 双 miss 去重**：`mmu_l1dtlb_allocator_sva` 的 `a_same_4k_dual_miss_dedup` + cover——需 port0 和 port1 同时 miss 且 VPN 落在同一 4KB 页，触发 allocator 去重逻辑。
-6. **复位后立即 miss**：`cp_l1dtlb_c001_reset_then_miss` cover——需在 `cpurst_b` 释放后立即发起 TLB miss 请求，且 miss buffer 成功 allocate。
-7. **mb_entry idle 态 flush / WFI 态 grant 前数据稳定**：`a_idle_flush_blocks_alloc`（idle 态收到 flush 阻止 alloc）、`a_wfi_data_stable_without_grant`（WFI 态 grant 前 entry 数据不变）——需构造定向时序场景。
-8. **mb_entry WFG→ABT / WFG→IDLE 迁移**：`state_r` FSM 的 `STATE_WFG->STATE_ABT`（line 146，abort 同时 issue grant→进 ABT）与 `STATE_WFG->STATE_IDLE`（line 237，复位/abort 无 grant→回 IDLE）在 gen_mb_entries[0..3] 上未覆盖——需构造 WFG 态下 `issue_sel && issue_grant` 与 `abort_this_cyc` 同时为 1 的 race 场景（→ABT），以及 WFG 态下仅 `abort_this_cyc=1` 且无 grant 的场景（→IDLE）。
+1. **遍历所有 16 个 dutlb entry 并打散 PPN/FLG 高位**：构造用例让 entry 0..15 都被 install/refill/hit/invalidate 一次，并让写入的 PPN/FLG 在高位 bit（`ppn[27:20]`、`flg[6:5]`、`ppn[15]` 等）经历 0↔1，可一次性闭合大量 entry 参数化的 TOGGLE/COND/cover 缺口（`l1dtlb_ent_*[N]`、`mb_entry_*[N]`、`gen_l1dtlb_entry_sva[N].*`），也能命中 line 1190/1194 在 entry 2..7 上的页大小命中表达式。
+2. **iUTLB WFG 状态 abort 路径（最高优先级，可同时闭合 LINE+FSM）**：让 iUTLB miss 进入 WFG（等待 PTW 授权）后收到 `ifu_mmu_abort`，且分别配合 `credit_cnt != 0`（→ 行 753 `ref_nxt_st=ABT`，触发 FSM `WFG->ABT`）与 `credit_cnt == 0`（→ 行 755 `ref_nxt_st=IDLE`，触发 FSM `WFG->IDLE`）。同时构造 WFG 态无 abort 且 `credit_cnt==0` 保持 WFG（行 759）、WFC 态 abort+cmplt 回 IDLE（行 763）、FSM default（行 783）等场景。
+3. **PTW/JTLB refill 异常组合**：针对 line 305/315 的多 term 表达式，构造 `ptw_l1dtlb_ref_cmplt=1` 同时 pgflt/accerr/vld/state/flush 不同取值的定向序列，覆盖 `1 1 0 1 1`、`1 1 1 0 1`、`1 1 1 1 0` 等缺失组合；`mmu_l1dtlb_install` 行 100/103 的 `ref_pavld && ref_cmplt && mb_entry_vld && !expt && !aborted` 同理。
+4. **VA8 invalidation 命中高位 entry**：让 `tlboper_utlb_inv_va_req` 命中 dutlb entry 2..15 的 VPN（尤其 entry 10），闭合 line 1116 与 `a_va8_inv_clears_matching_entry[N]` 的 14 个剩余实例。
+5. **miss-buffer WFI 行为与 flush 时序**：构造 `mb_entry` 处于 WFI（等待 install 授权）时被 flush / 未获 grant 的场景，覆盖 `mmu_l1dtlb_mb_entry` 行 200/228 与 `a_idle_flush_blocks_alloc` / `a_wfi_data_stable_without_grant` / `a_wfi_flush_to_idle` 三个 SVA。
+6. **同 4KB 双 miss 去重 / 异常 CAM 重叠 replay**：构造 LSU 两个 miss 指向相同 4KB VPN（命中 line 802/817 与 `a_same_4k_dual_miss_dedup` / `cp_l1dtlb_c004_same_vpn_dedup`）；构造 hit_rd 时 expt CAM 与新异常同一 entry 重叠并 replay 终结的场景（命中 `a_expt_entry_overlap_is_terminal_replay` / `cp_l1dtlb_expt_entry_overlap_replay`）。
+7. **复位后立即 miss 与 `cpurst_b` 下沿**：构造复位取消后首个时钟即发起 miss 的用例（采样 `cp_l1dtlb_c001_reset_then_miss`）；并补充真正的复位下沿测试以翻转多个 SVA 模块 `cpurst_b` 端口（当前 Toggle=No、1->0=No）。
+
+---
+
 ## 分模块详情
 
 ## 模块 `mmu_l1dtlb`
 
 源码：`mmu/rtl/mmu_l1dtlb.sv`
-原始未覆盖记录数：`697`；合并后唯一代码对象数：`139`。
+原始未覆盖记录数：`845`；合并后唯一代码对象数：`195`。
 
 ### 条件覆盖
 
@@ -394,12 +466,14 @@
 | 802 | `EXPRESSION (miss0_vld_q && ((!miss0_abort_q)) && miss1_vld_q && ((!miss1_abort_q)) && (miss0_vpn_q == miss1_vpn_q))` | 1 0 1 1 1 Not Covered; 1 1 1 0 1 Not Covered | 4 |
 | 817 | `EXPRESSION (miss0_vld_q && ((!miss0_abort_q)) && ((!mb_hit0)) && ((!rtu_yy_xx_flush)))` | 1 0 1 1 Not Covered | 2 |
 | 817 | `EXPRESSION (miss1_vld_q && ((!miss1_abort_q)) && ((!mb_hit1)) && ((!same_4k_miss01)) && ((!rtu_yy_xx_flush)))` | 1 0 1 1 1 Not Covered | 2 |
-| 1116 | `EXPRESSION (tlboper_utlb_inv_va_req && l1dtlb_ent_vld[9] && (lsu_mmu_tlb_va[7:0] == l1dtlb_ent_vpn[9][7:0]))` | 1 1 1 Not Covered | 14 |
-| 1120 | `EXPRESSION (regs_utlb_clr | tlboper_utlb_clr | ctc_inv_va_hit_clr[9])` | 0 0 1 Not Covered | 14 |
-| 1190 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit0_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit0_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit0_1g)))` | 0 0 1 Not Covered | 26 |
-| 1190 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit0_1g)` | 1 0 Not Covered; 1 1 Not Covered | 52 |
-| 1194 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit1_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit1_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit1_1g)))` | 0 0 1 Not Covered | 26 |
-| 1194 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit1_1g)` | 1 0 Not Covered; 1 1 Not Covered | 52 |
+| 1116 | `EXPRESSION (tlboper_utlb_inv_va_req && l1dtlb_ent_vld[2] && (lsu_mmu_tlb_va[7:0] == l1dtlb_ent_vpn[2][7:0]))` | 1 1 1 Not Covered | 28 |
+| 1120 | `EXPRESSION (regs_utlb_clr | tlboper_utlb_clr | ctc_inv_va_hit_clr[2])` | 0 0 1 Not Covered | 28 |
+| 1190 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit0_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit0_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit0_1g)))` | 0 0 1 Not Covered; 0 1 0 Not Covered | 46 |
+| 1190 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit0_1g)` | 1 0 Not Covered; 1 1 Not Covered | 56 |
+| 1190 | `SUB-EXPRESSION (l1dtlb_ent_pgs[7][1] & u_l1dtlb_ent[7].hit0_2m)` | 1 0 Not Covered; 1 1 Not Covered | 36 |
+| 1194 | `EXPRESSION ((l1dtlb_ent_pgs[2][0] & u_l1dtlb_ent[2].hit1_4k) | (l1dtlb_ent_pgs[2][1] & u_l1dtlb_ent[2].hit1_2m) | (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit1_1g)))` | 0 0 1 Not Covered; 0 1 0 Not Covered | 46 |
+| 1194 | `SUB-EXPRESSION (l1dtlb_ent_pgs[2][2] & u_l1dtlb_ent[2].hit1_1g)` | 1 0 Not Covered; 1 1 Not Covered | 56 |
+| 1194 | `SUB-EXPRESSION (l1dtlb_ent_pgs[7][1] & u_l1dtlb_ent[7].hit1_2m)` | 1 0 Not Covered; 1 1 Not Covered | 36 |
 
 `mmu/rtl/mmu_l1dtlb.sv:305`
 
@@ -504,6 +578,7 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 20 | `cpurst_b -> input  logic         cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 23 | `pad_yy_icg_scan_en -> input  logic         pad_yy_icg_scan_en,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 27 | `cp0_mmu_mpp[0] -> input  logic [1:0]   cp0_mmu_mpp,` | Toggle=No, 1->0=Yes, 0->1=No | INPUT | 1 |
 | 34 | `hpcp_mmu_cnt_en -> input  logic         hpcp_mmu_cnt_en,` | Toggle=No, 1->0=Yes, 0->1=No | INPUT | 1 |
 | 53 | `mmu_lsu_stall0 -> output logic         mmu_lsu_stall0,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
@@ -515,6 +590,8 @@
 | 133 | `dutlb_top_ref_cur_st[2:0] -> output logic [2:0]   dutlb_top_ref_cur_st,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
 | 134 | `dutlb_top_ref_type -> output logic         dutlb_top_ref_type,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
 | 135 | `dutlb_top_scd_updt -> output logic         dutlb_top_scd_updt,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
+| 142 | `jtlb_utlb_ref_ppn[20] -> input  logic [27:0]  jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 142 | `jtlb_utlb_ref_ppn[23:21] -> input  logic [27:0]  jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 142 | `jtlb_utlb_ref_ppn[27:24] -> input  logic [27:0]  jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 
 `mmu/rtl/mmu_l1dtlb.sv:20` (声明 `cpurst_b`)
@@ -527,6 +604,18 @@
         21:         input  logic         forever_cpuclk,
         22:         input  logic         utlb_clk,
         23:         input  logic         pad_yy_icg_scan_en,
+```
+
+`mmu/rtl/mmu_l1dtlb.sv:23` (声明 `pad_yy_icg_scan_en`)
+
+```systemverilog
+        20:         input  logic         cpurst_b,
+        21:         input  logic         forever_cpuclk,
+        22:         input  logic         utlb_clk,
+        23: >>      input  logic         pad_yy_icg_scan_en,
+        24:         
+        25:         // SysReg
+        26:         input  logic         cp0_mmu_icg_en,
 ```
 
 `mmu/rtl/mmu_l1dtlb.sv:27` (声明 `cp0_mmu_mpp`)
@@ -683,21 +772,21 @@
 | 157 | `sched_clk_en -> logic sched_clk, sched_clk_en;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 158 | `dplru_clk_en -> logic dplru_clk, dplru_clk_en;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 159 | `dutlb_clk_en -> logic dutlb_clk, dutlb_clk_en;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 210 | `entry_flg[0][0] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 43 |
-| 210 | `entry_flg[0][5:4] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 210 | `entry_flg[1][1:0] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 15 |
+| 210 | `entry_flg[0][0] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 16 |
+| 210 | `entry_flg[0][6:4] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 210 | `entry_flg[1][2:0] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
+| 210 | `entry_flg[1][6:5] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 15 |
+| 210 | `entry_flg[3][3:0] -> logic [NUM_ENTRY-1:0][FLG_WIDTH-1:0] entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 13 |
 | - | `Other bits of entry_flg[15:0][13:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 212 | `entry_ppn[0][27:24] -> logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 6 |
-| 212 | `entry_ppn[3][8] -> logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 26 |
-| 212 | `entry_ppn[4][27:19] -> logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 10 |
-| 212 | `entry_ppn[10][11:10] -> logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
+| 212 | `entry_ppn[0][20] -> logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 23 |
+| 212 | `entry_ppn[0][27:24] -> logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 16 |
+| 212 | `entry_ppn[1][20:19] -> logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 15 |
 | - | `Other bits of entry_ppn[15:0][27:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 213 | `l1dtlb_ent_pgs[4][2] -> logic [NUM_ENTRY-1:0][PGS_WIDTH-1:0] l1dtlb_ent_pgs;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
-| 213 | `l1dtlb_ent_pgs[7][1:0] -> logic [NUM_ENTRY-1:0][PGS_WIDTH-1:0] l1dtlb_ent_pgs;` | Toggle=No, 1->0=No, 0->1=Yes | 9 |
+| 213 | `l1dtlb_ent_pgs[6][1] -> logic [NUM_ENTRY-1:0][PGS_WIDTH-1:0] l1dtlb_ent_pgs;` | Toggle=No, 1->0=No, 0->1=Yes | 10 |
 | - | `Other bits of l1dtlb_ent_pgs[15:0][2:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 217 | `utlb_refill_vpn[26] -> logic [VPN_WIDTH-1:0]    utlb_refill_vpn;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 237 | `mb_entry_vpn[1][25] -> logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]    mb_entry_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 11 |
-| 237 | `mb_entry_vpn[3][16:15] -> logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]    mb_entry_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 5 |
+| 218 | `utlb_refill_ppn[23:21] -> logic [PPN_WIDTH-1:0]    utlb_refill_ppn;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 237 | `mb_entry_vpn[1][25] -> logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]    mb_entry_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 6 |
 | 237 | `mb_entry_vpn[7][12:10] -> logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]    mb_entry_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | - | `Other bits of mb_entry_vpn[7:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 239 | `mb_entry_pgs[1][2] -> logic [MB_DEPTH-1:0][PGS_WIDTH-1:0]    mb_entry_pgs;` | Toggle=No, 1->0=No, 0->1=Yes | 7 |
@@ -706,67 +795,117 @@
 | 258 | `issue_vpn[26:0] -> logic [VPN_WIDTH-1:0]  issue_vpn;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 259 | `issue_eid[2:0] -> logic [EID_WIDTH-1:0]  issue_eid;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 297 | `expt_wr1_acflt -> logic expt_wr0_acflt, expt_wr1_acflt;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[0] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 57 |
-| 513 | `entry_flg_vec[5:4] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 513 | `entry_flg_vec[15:14] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[0] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 30 |
+| 513 | `entry_flg_vec[6:4] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[16:14] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[20:19] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[22:21] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[29:28] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[30:28] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[34:33] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[36:35] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[43:42] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[45:42] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[48:47] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[50:49] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[57:56] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[59:56] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[62:61] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[64:63] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[71:70] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[73:70] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[76:75] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[78:77] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[85:84] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[87:84] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[90:89] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[92:91] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[99:98] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[101:98] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[104:103] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[106:105] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[113:112] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[115:112] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[118:117] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[120:119] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[127:126] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[129:126] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[132:131] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[134:133] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[141:140] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[143:140] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[146:145] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[148:147] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[155:154] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[157:154] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[160:159] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[162:161] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[169:168] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[171:168] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[174:173] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[176:175] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[183:182] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[185:182] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[188:187] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[190:189] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[197:196] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[199:196] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[202:201] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[204:203] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 513 | `entry_flg_vec[211:210] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[213:210] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 513 | `entry_flg_vec[216:215] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 513 | `entry_flg_vec[218:217] -> logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[20] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 23 |
+| 514 | `entry_ppn_vec[23:21] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 514 | `entry_ppn_vec[27:24] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[48:47] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[51:49] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 514 | `entry_ppn_vec[55:52] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[76:75] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[79:77] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 514 | `entry_ppn_vec[83:80] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[92] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 30 |
+| 514 | `entry_ppn_vec[104:103] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[107:105] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 514 | `entry_ppn_vec[111:108] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[139:131] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[167:159] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[195:187] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[132:131] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[135:133] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[139:136] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[160:159] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[163:161] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[167:164] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[188:187] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[191:189] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[195:192] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 514 | `entry_ppn_vec[207:206] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 514 | `entry_ppn_vec[223:215] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[251:243] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[279:271] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[291:290] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[216:215] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[219:217] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[223:220] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[235:234] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[244:243] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[247:245] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[251:248] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[263:262] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[272:271] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[275:273] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[279:276] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[291:290] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[300:299] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[303:301] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 514 | `entry_ppn_vec[307:304] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 514 | `entry_ppn_vec[319:318] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 514 | `entry_ppn_vec[335:327] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[328:327] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[331:329] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[335:332] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[347:346] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[356:355] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[359:357] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 514 | `entry_ppn_vec[363:360] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[391:383] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[403:402] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 514 | `entry_ppn_vec[419:411] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[375:374] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[384:383] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[387:385] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[391:388] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[403:402] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[412:411] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[415:413] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[419:416] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 514 | `entry_ppn_vec[431:430] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 514 | `entry_ppn_vec[447:439] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[440:439] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 514 | `entry_ppn_vec[443:441] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 514 | `entry_ppn_vec[447:444] -> logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 559 | `lsu_mmu_stamo_vld0 -> logic lsu_mmu_stamo_vld0;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 560 | `lsu_mmu_stamo_pa0[27:0] -> logic [PPN_WIDTH-1:0] lsu_mmu_stamo_pa0;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 782 | `mb_hit1_vec[4] -> logic [MB_DEPTH-1:0] mb_hit1_vec;` | Toggle=No, 1->0=No, 0->1=No | 2 |
-| 901 | `mb_entry_ppn[0][15] -> logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 22 |
-| 901 | `mb_entry_ppn[3][14:12] -> logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 781 | `mb_hit0_vec[7:3] -> logic [MB_DEPTH-1:0] mb_hit0_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 782 | `mb_hit1_vec[7:3] -> logic [MB_DEPTH-1:0] mb_hit1_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 901 | `mb_entry_ppn[0][15] -> logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 18 |
 | 901 | `mb_entry_ppn[6][12:10] -> logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
-| 901 | `mb_entry_ppn[7][5:3] -> logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 901 | `mb_entry_ppn[7][5:4] -> logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | - | `Other bits of mb_entry_ppn[7:0][27:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 902 | `mb_entry_flg[0][8:7] -> logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | 902 | `mb_entry_flg[2][2:0] -> logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 4 |
@@ -774,26 +913,27 @@
 | 902 | `mb_entry_flg[6][3:0] -> logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
 | - | `Other bits of mb_entry_flg[7:0][13:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 1082 | `utlb_upd_vpn[26] -> logic [VPN_WIDTH-1:0] utlb_upd_vpn;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 1091 | `ctc_inv_va_hit_clr[15:9] -> logic [15:0] ctc_inv_va_hit_clr;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 1096 | `l1dtlb_ent_vpn[0][23] -> logic [15:0][VPN_WIDTH-1:0]  l1dtlb_ent_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 15 |
+| 1083 | `utlb_upd_ppn[23:21] -> logic [PPN_WIDTH-1:0] utlb_upd_ppn;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 1091 | `ctc_inv_va_hit_clr[15:2] -> logic [15:0] ctc_inv_va_hit_clr;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 1096 | `l1dtlb_ent_vpn[0][23] -> logic [15:0][VPN_WIDTH-1:0]  l1dtlb_ent_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 8 |
 | 1096 | `l1dtlb_ent_vpn[2][25:22] -> logic [15:0][VPN_WIDTH-1:0]  l1dtlb_ent_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 1096 | `l1dtlb_ent_vpn[9][10:9] -> logic [15:0][VPN_WIDTH-1:0]  l1dtlb_ent_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
-| 1096 | `l1dtlb_ent_vpn[11][11:9] -> logic [15:0][VPN_WIDTH-1:0]  l1dtlb_ent_vpn;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
 | - | `Other bits of l1dtlb_ent_vpn[15:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 1097 | `l1dtlb_ent_ppn[0][27:24] -> logic [15:0][PPN_WIDTH-1:0]  l1dtlb_ent_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 6 |
-| 1097 | `l1dtlb_ent_ppn[3][8] -> logic [15:0][PPN_WIDTH-1:0]  l1dtlb_ent_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 26 |
-| 1097 | `l1dtlb_ent_ppn[4][27:19] -> logic [15:0][PPN_WIDTH-1:0]  l1dtlb_ent_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 10 |
-| 1097 | `l1dtlb_ent_ppn[10][11:10] -> logic [15:0][PPN_WIDTH-1:0]  l1dtlb_ent_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
+| 1097 | `l1dtlb_ent_ppn[0][20] -> logic [15:0][PPN_WIDTH-1:0]  l1dtlb_ent_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 23 |
+| 1097 | `l1dtlb_ent_ppn[0][27:24] -> logic [15:0][PPN_WIDTH-1:0]  l1dtlb_ent_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 16 |
+| 1097 | `l1dtlb_ent_ppn[1][20:19] -> logic [15:0][PPN_WIDTH-1:0]  l1dtlb_ent_ppn;` | Toggle=No, 1->0=No, 0->1=Yes | 15 |
 | - | `Other bits of l1dtlb_ent_ppn[15:0][27:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 1098 | `l1dtlb_ent_flg[0][0] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 43 |
-| 1098 | `l1dtlb_ent_flg[0][5:4] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 1098 | `l1dtlb_ent_flg[1][1:0] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 15 |
+| 1098 | `l1dtlb_ent_flg[0][0] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 16 |
+| 1098 | `l1dtlb_ent_flg[0][6:4] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| 1098 | `l1dtlb_ent_flg[1][2:0] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
+| 1098 | `l1dtlb_ent_flg[1][6:5] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 15 |
+| 1098 | `l1dtlb_ent_flg[3][3:0] -> logic [15:0][FLG_WIDTH-1:0]  l1dtlb_ent_flg;` | Toggle=No, 1->0=No, 0->1=Yes | 13 |
 | - | `Other bits of l1dtlb_ent_flg[15:0][13:0]` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| - | `gen_mb_entries[0].entry_ref_ppn[23:21]` | Toggle=No, 1->0=No, 0->1=No | 8 |
 | - | `gen_mb_entries[1].alloc_vpn_i[26]` | Toggle=No, 1->0=No, 0->1=No | 2 |
+| - | `gen_mb_entries[1].entry_ref_ppn[20]` | Toggle=No, 1->0=No, 0->1=Yes | 7 |
 | - | `gen_mb_entries[1].entry_ref_ppn[27:24]` | Toggle=No, 1->0=No, 0->1=Yes | 7 |
 | - | `gen_mb_entries[2].alloc_vpn_i[26:21]` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| - | `gen_mb_entries[3].alloc_vpn_i[14:13]` | Toggle=No, 1->0=No, 0->1=No | 5 |
-| - | `gen_mb_entries[3].alloc_vpn_i[26:20]` | Toggle=No, 1->0=No, 0->1=No | 5 |
+| - | `gen_mb_entries[3].alloc_vpn_i[26:13]` | Toggle=No, 1->0=No, 0->1=No | 5 |
 
 `mmu/rtl/mmu_l1dtlb.sv:156` (声明 `mb_clk_en`)
 
@@ -889,6 +1029,18 @@
        218:     logic [PPN_WIDTH-1:0]    utlb_refill_ppn;
        219:     logic [FLG_WIDTH-1:0]    utlb_refill_flg;
        220:     logic [2:0]		 utlb_refill_pgs;
+```
+
+`mmu/rtl/mmu_l1dtlb.sv:218` (声明 `utlb_refill_ppn`)
+
+```systemverilog
+       215:     logic                    utlb_refill_vld;
+       216:     logic [3:0]              utlb_refill_idx;
+       217:     logic [VPN_WIDTH-1:0]    utlb_refill_vpn;
+       218: >>  logic [PPN_WIDTH-1:0]    utlb_refill_ppn;
+       219:     logic [FLG_WIDTH-1:0]    utlb_refill_flg;
+       220:     logic [2:0]		 utlb_refill_pgs;
+       221:     
 ```
 
 `mmu/rtl/mmu_l1dtlb.sv:237` (声明 `mb_entry_vpn`)
@@ -1011,6 +1163,18 @@
        563:     assign lsu_mmu_stamo_pa0[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
 ```
 
+`mmu/rtl/mmu_l1dtlb.sv:781` (声明 `mb_hit0_vec`)
+
+```systemverilog
+       778:     logic mb_hit0;
+       779:     logic mb_hit1;
+       780:     logic same_4k_miss01;
+       781: >>  logic [MB_DEPTH-1:0] mb_hit0_vec;
+       782:     logic [MB_DEPTH-1:0] mb_hit1_vec;
+       783:     
+       784:     // ------------------------------------------------------------
+```
+
 `mmu/rtl/mmu_l1dtlb.sv:782` (声明 `mb_hit1_vec`)
 
 ```systemverilog
@@ -1057,6 +1221,18 @@
       1083:     logic [PPN_WIDTH-1:0] utlb_upd_ppn;
       1084:     logic [FLG_WIDTH-1:0] utlb_upd_flg;
       1085:     
+```
+
+`mmu/rtl/mmu_l1dtlb.sv:1083` (声明 `utlb_upd_ppn`)
+
+```systemverilog
+      1080:     // 2. Global Update Signals (Shared Bus from Install Module)
+      1081:     // These are wire aliases for readability, matching the Install module outputs
+      1082:     logic [VPN_WIDTH-1:0] utlb_upd_vpn;
+      1083: >>  logic [PPN_WIDTH-1:0] utlb_upd_ppn;
+      1084:     logic [FLG_WIDTH-1:0] utlb_upd_flg;
+      1085:     
+      1086:     assign utlb_upd_vpn = utlb_refill_vpn;
 ```
 
 `mmu/rtl/mmu_l1dtlb.sv:1091` (声明 `ctc_inv_va_hit_clr`)
@@ -1161,45 +1337,43 @@
 ## 模块 `mmu_l1dtlb_mb_entry`
 
 源码：`mmu/rtl/mmu_l1dtlb_mb_entry.sv`
-原始未覆盖记录数：`21`；合并后唯一代码对象数：`17`。
+原始未覆盖记录数：`27`；合并后唯一代码对象数：`23`。
 
-> **注**：模块聚合 FSM=100.00，但 per-instance FSM（`state_r`）仍有未覆盖迁移，本报告补充列出——提取脚本 `extract_tlb_uncovered.py` 的 FSM 解析仅覆盖模块级 `FSM Coverage for Module` 区域，未覆盖 per-instance 的 `Coverage for Instance` 内的 FSM 表。
+### 行覆盖
 
-### FSM 状态迁移覆盖（per-instance，模块聚合仍显示 100.00）
+说明：这里列出执行次数不足的 RTL/SVA 语句；后面的代码块用 `>>` 标出对应源码行。
 
-| FSM | 未覆盖迁移 | 行号 | 影响实例 |
-| --- | --- | ---: | --- |
-| `state_r` | `STATE_WFG->STATE_ABT` | 146 | `gen_mb_entries[1]` |
-| `state_r` | `STATE_WFG->STATE_IDLE` | 237 | `gen_mb_entries[0..3]` |
+| 行号 | 未覆盖代码/对象 | URG 细节 |
+| ---: | --- | --- |
+| 200 | `state_nxt = STATE_IDLE;` | 0/N |
+| 228 | `default: state_nxt = STATE_IDLE;` | 0/N |
 
-`mmu/rtl/mmu_l1dtlb_mb_entry.sv:142-154` (STATE_WFG 状态的 next-state 逻辑):
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:200`
 
 ```systemverilog
-      142:         STATE_WFG: begin
-      143:             if (abort_this_cyc) begin
-      144:                 if (issue_sel && issue_grant) begin
-      145:                     // Race condition: Granted and Aborted same cycle -> go to ABT
-      146: >>                  state_nxt = STATE_ABT;
-      147:                 end else begin
-      148:                     state_nxt = STATE_IDLE;
-      149:                 end
-      150:             end else if (issue_sel && issue_grant) begin
-      151:                     // Successfully issued to L2TLB
-      152:                     state_nxt = STATE_WFC;
-      153:             end
-      154:         end
+       196:     
+       197:             STATE_WFI: begin
+       198:                 if (abort_this_cyc) begin
+       199:                     // Flush occurred while waiting to install
+       200: >>                  state_nxt = STATE_IDLE;
+       201:                 end else if (refill_gnt) begin
+       202:                     // Finally granted permission to write to L1TLB
+       203:                     state_nxt = STATE_IDLE;
+       204:                 end
 ```
 
-`mmu/rtl/mmu_l1dtlb_mb_entry.sv:235-241` (复位重置 FSM 回 IDLE):
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:228`
 
 ```systemverilog
-      235: always_ff @(posedge mb_clk or negedge cpurst_b) begin
-      236:     if (!cpurst_b) begin
-      237: >>      state_r <= STATE_IDLE;
-      238:     end else begin
-      239:         state_r <= state_nxt;
-      240:     end
-      241: end
+       224:                     state_nxt = STATE_IDLE;
+       225:                 end
+       226:             end
+       227:             
+       228: >>          default: state_nxt = STATE_IDLE;
+       229:         endcase
+       230:     end
+       231:     
+       232:     //!************************************************
 ```
 
 ### 条件覆盖
@@ -1313,6 +1487,29 @@
        291:         end
 ```
 
+### 分支覆盖
+
+说明：这里列出 if/case/三目表达式分支没有完全走到的位置；`URG 细节` 给出未覆盖组合。
+
+| 行号 | 未覆盖代码/对象 | URG 细节 |
+| ---: | --- | --- |
+| 130 | `130            case (state_r)` | STATE_WFI - - - - - - - - - - - 1 - - - - - - Not Covered |
+| 130 | `130            case (state_r)` | default - - - - - - - - - - - - - - - - - - Not Covered |
+
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:130`
+
+```systemverilog
+       126:     
+       127:     always_comb begin
+       128:         state_nxt = state_r;
+       129:         
+       130: >>      case (state_r)
+       131:             STATE_IDLE: begin
+       132:                 if (alloc_fire) begin
+       133:                     // [FIX 2]: Check for immediate Bypass Grant
+       134:                     if (issue_sel && issue_grant) begin
+```
+
 ### 翻转覆盖 - 端口
 
 说明：这里列出 TLB 实例端口上未发生完整 0->1 或 1->0 翻转的信号或位段。`未覆盖代码/对象` 列给出 `位段 -> 源码声明` 用于定位端口定义。参数化位段已聚合，`影响条目数` 表示同一信号模式命中的位段/实例数。
@@ -1320,6 +1517,8 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 18 | `cpurst_b -> input  logic                     cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 22 | `pad_yy_icg_scan_en -> input  logic                     pad_yy_icg_scan_en,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 40 | `refill_ppn[23:21] -> input  logic [PPN_WIDTH-1:0]     refill_ppn,        // Data payload` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 55 | `entry_ppn[15] -> output logic [PPN_WIDTH-1:0]     entry_ppn,         // Output latched PPN` | Toggle=No, 1->0=No, 0->1=Yes | OUTPUT | 2 |
 | 55 | `entry_ppn[27:20] -> output logic [PPN_WIDTH-1:0]     entry_ppn,         // Output latched PPN` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
 | 56 | `entry_flg[4] -> output logic [FLG_WIDTH-1:0]     entry_flg,         // Output latched Flags` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
@@ -1335,6 +1534,30 @@
         19:         input  logic                     forever_cpuclk,
         20:         input  logic                     mb_clk,
         21:         input  logic                     cp0_mmu_icg_en,
+```
+
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:22` (声明 `pad_yy_icg_scan_en`)
+
+```systemverilog
+        19:         input  logic                     forever_cpuclk,
+        20:         input  logic                     mb_clk,
+        21:         input  logic                     cp0_mmu_icg_en,
+        22: >>      input  logic                     pad_yy_icg_scan_en,
+        23:     
+        24:         //! Allocate Interface (from Allocator/Mux)
+        25:         input  logic                     alloc_vld,
+```
+
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:40` (声明 `refill_ppn`)
+
+```systemverilog
+        37:         input  logic                     refill_gnt,        // Permission to write to L1TLB RAM
+        38:         input  logic                     refill_pgflt,
+        39:         input  logic                     refill_acflt,
+        40: >>      input  logic [PPN_WIDTH-1:0]     refill_ppn,        // Data payload
+        41:         input  logic [FLG_WIDTH-1:0]     refill_flg,        // Data payload
+        42:         input  logic [2:0]		     refill_pgs,
+        43:         input  logic                     expt_hit,
 ```
 
 `mmu/rtl/mmu_l1dtlb_mb_entry.sv:55` (声明 `entry_ppn`)
@@ -1399,7 +1622,7 @@
 ## 模块 `mmu_l1dtlb_expt_cam`
 
 源码：`mmu/rtl/mmu_l1dtlb_expt_cam.sv`
-原始未覆盖记录数：`61`；合并后唯一代码对象数：`26`。
+原始未覆盖记录数：`52`；合并后唯一代码对象数：`27`。
 
 ### 条件覆盖
 
@@ -1514,20 +1737,21 @@
 | ---: | --- | --- | ---: |
 | - | `ent[1].pgflt` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
 | - | `ent[1].vpn[25]` | Toggle=No, 1->0=No, 0->1=No | 14 |
-| - | `ent[2].vpn[14:12]` | Toggle=No, 1->0=No, 0->1=No | 4 |
-| - | `ent[2].vpn[17:15]` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| - | `ent[2].vpn[26:20]` | Toggle=No, 1->0=No, 0->1=No | 6 |
+| - | `ent[2].vpn[15:12]` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| - | `ent[2].vpn[17:16]` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| - | `ent[2].vpn[26:20]` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | - | `ent[3].vpn[2:0]` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
 | - | `ent[3].vpn[11:10]` | Toggle=No, 1->0=No, 0->1=Yes | 3 |
-| - | `ent[3].vpn[19:15]` | Toggle=No, 1->0=No, 0->1=Yes | 5 |
-| - | `ent[3].iid[2:1]` | Toggle=No, 1->0=No, 0->1=Yes | 3 |
+| - | `ent[3].vpn[26:12]` | Toggle=No, 1->0=No, 0->1=No | 3 |
+| - | `ent[3].iid[2:1]` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
 | - | `ent[4].vpn[2:1]` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
-| - | `ent[5].iid[2]` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
+| - | `ent[4].iid[1]` | Toggle=No, 1->0=No, 0->1=No | 3 |
 | - | `ent[6].acflt` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
-| - | `ent[6].vpn[14:11]` | Toggle=No, 1->0=No, 0->1=No | 2 |
+| - | `ent[6].vpn[26:11]` | Toggle=No, 1->0=No, 0->1=No | 2 |
 | - | `ent[6].iid[6:5]` | Toggle=No, 1->0=No, 0->1=Yes | 2 |
 | - | `ent[7].iid[2:0]` | Toggle=No, 1->0=No, 0->1=Yes | 1 |
-| 70 | `hit1_vec[3] -> logic [CAM_DEPTH-1:0] hit0_vec, hit1_vec;` | Toggle=No, 1->0=No, 0->1=No | 2 |
+| 70 | `hit1_vec[3] -> logic [CAM_DEPTH-1:0] hit0_vec, hit1_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 70 | `hit1_vec[6:5] -> logic [CAM_DEPTH-1:0] hit0_vec, hit1_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 71 | `hit1_use_vec[6:3] -> logic [CAM_DEPTH-1:0] hit0_use_vec, hit1_use_vec;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 75 | `same_hit_entry -> logic consume0, consume1, same_hit_entry;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 77 | `same_wr_eid -> logic same_wr_eid;` | Toggle=No, 1->0=No, 0->1=No | 1 |
@@ -1583,7 +1807,7 @@
 ## 模块 `mmu_l1dtlb_hit_rd`
 
 源码：`mmu/rtl/mmu_l1dtlb_hit_rd.sv`
-原始未覆盖记录数：`190`；合并后唯一代码对象数：`94`。
+原始未覆盖记录数：`212`；合并后唯一代码对象数：`149`。
 
 ### 条件覆盖
 
@@ -1599,6 +1823,7 @@
 | 170 | `EXPRESSION (((((!dutlb_fin_flg[0])) || (((!dutlb_fin_flg[1])) && dutlb_fin_flg[2]) || (((!dutlb_fin_flg[1])) && dutlb_read_type_x && ( ! (cp0_mmu_mxr && dutlb_fin_flg[3]) ...` | 0 0 1 Not Covered | 1 |
 | 170 | `SUB-EXPRESSION (((!dutlb_fin_flg[0])) || (((!dutlb_fin_flg[1])) && dutlb_fin_flg[2]) || (((!dutlb_fin_flg[1])) && dutlb_read_type_x && ( ! (cp0_mmu_mxr && dutlb_fin_flg[3]) ))...` | 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 1 0 0 0 0 Not Covered; ... 共 5 种 | 5 |
 | 170 | `SUB-EXPRESSION (((!dutlb_fin_flg[1])) && dutlb_read_type_x && ( ! (cp0_mmu_mxr && dutlb_fin_flg[3]) ))` | 1 0 1 Not Covered; 1 1 1 Not Covered | 2 |
+| 170 | `SUB-EXPRESSION (((!dutlb_fin_flg[2])) && ((!dutlb_read_type_x)))` | 1 1 Not Covered; 1 0 Not Covered | 3 |
 | 170 | `SUB-EXPRESSION (dutlb_fin_flg[4] && cp0_supv_mode && ((!cp0_mmu_sum)))` | 1 0 1 Not Covered | 1 |
 | 170 | `SUB-EXPRESSION (((!dutlb_fin_flg[4])) && cp0_user_mode)` | 0 1 Not Covered | 1 |
 | 170 | `SUB-EXPRESSION (expt_match_x && expt_pgflt_x)` | 0 1 Not Covered | 1 |
@@ -1754,60 +1979,111 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 14 | `cpurst_b -> input  logic         cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 30 | `entry_flg_vec[0] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 57 |
-| 30 | `entry_flg_vec[5:4] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 30 | `entry_flg_vec[15:14] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[0] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 30 |
+| 30 | `entry_flg_vec[6:4] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[16:14] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[20:19] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[22:21] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[29:28] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[30:28] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[34:33] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[36:35] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[43:42] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[45:42] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[48:47] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[50:49] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[57:56] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[59:56] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[62:61] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[64:63] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[71:70] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[73:70] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[76:75] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[78:77] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[85:84] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[87:84] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[90:89] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[92:91] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[99:98] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[101:98] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[104:103] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[106:105] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[113:112] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[115:112] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[118:117] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[120:119] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[127:126] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[129:126] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[132:131] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[134:133] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[141:140] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[143:140] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[146:145] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[148:147] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[155:154] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[157:154] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[160:159] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[162:161] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[169:168] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[171:168] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[174:173] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[176:175] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[183:182] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[185:182] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[188:187] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[190:189] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[197:196] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[199:196] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[202:201] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[204:203] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 30 | `entry_flg_vec[211:210] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[213:210] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 30 | `entry_flg_vec[216:215] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 30 | `entry_flg_vec[218:217] -> input  logic [NUM_ENTRY*FLG_WIDTH-1:0]      entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[20] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 23 |
+| 32 | `entry_ppn_vec[23:21] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 32 | `entry_ppn_vec[27:24] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[48:47] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[51:49] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 32 | `entry_ppn_vec[55:52] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[76:75] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[79:77] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 32 | `entry_ppn_vec[83:80] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[92] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 30 |
+| 32 | `entry_ppn_vec[104:103] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[107:105] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 32 | `entry_ppn_vec[111:108] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[139:131] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[167:159] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[195:187] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[132:131] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[135:133] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[139:136] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[160:159] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[163:161] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[167:164] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[188:187] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[191:189] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[195:192] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 32 | `entry_ppn_vec[207:206] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 32 | `entry_ppn_vec[223:215] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[251:243] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[279:271] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[291:290] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[216:215] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[219:217] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[223:220] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[235:234] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[244:243] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[247:245] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[251:248] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[263:262] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[272:271] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[275:273] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[279:276] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[291:290] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[300:299] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[303:301] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 32 | `entry_ppn_vec[307:304] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 32 | `entry_ppn_vec[319:318] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 32 | `entry_ppn_vec[335:327] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[328:327] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[331:329] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[335:332] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[347:346] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[356:355] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[359:357] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 32 | `entry_ppn_vec[363:360] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[391:383] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[403:402] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 32 | `entry_ppn_vec[419:411] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[375:374] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[384:383] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[387:385] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[391:388] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[403:402] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[412:411] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[415:413] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[419:416] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 32 | `entry_ppn_vec[431:430] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 32 | `entry_ppn_vec[447:439] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[440:439] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 32 | `entry_ppn_vec[443:441] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 32 | `entry_ppn_vec[447:444] -> input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 35 | `pad_yy_icg_scan_en -> input  logic         pad_yy_icg_scan_en,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 39 | `biu_mmu_smp_disable -> input  logic         biu_mmu_smp_disable,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 74 | `mmu_lsu_stall_x -> output logic         mmu_lsu_stall_x,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
 | 82 | `sysmap_mmu_flg_x[0] -> input  logic [4 :0]  sysmap_mmu_flg_x,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
@@ -1846,6 +2122,18 @@
         33:     
         34:         // Miscellaneous
         35:         input  logic         pad_yy_icg_scan_en,
+```
+
+`mmu/rtl/mmu_l1dtlb_hit_rd.sv:35` (声明 `pad_yy_icg_scan_en`)
+
+```systemverilog
+        32:         input  logic [NUM_ENTRY*PPN_WIDTH-1:0]      entry_ppn_vec,
+        33:     
+        34:         // Miscellaneous
+        35: >>      input  logic         pad_yy_icg_scan_en,
+        36:         //input  logic [6 :0]  refill_id_flop,
+        37:     
+        38:         // DUTLB Control
 ```
 
 `mmu/rtl/mmu_l1dtlb_hit_rd.sv:39` (声明 `biu_mmu_smp_disable`)
@@ -1891,9 +2179,12 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 影响条目数 |
 | ---: | --- | --- | ---: |
 | 90 | `dutlb_entry_flg[0] -> logic [13:0]  dutlb_entry_flg;` | Toggle=No, 1->0=No, 0->1=No | 2 |
+| 90 | `dutlb_entry_flg[6:5] -> logic [13:0]  dutlb_entry_flg;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 91 | `dutlb_entry_pa[23:21] -> logic [27:0]  dutlb_entry_pa;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 92 | `dutlb_pa_buf[27] -> logic [27:0]  dutlb_pa_buf;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 93 | `jtlb_acc_fault_flop -> logic         jtlb_acc_fault_flop;` | Toggle=No, 1->0=No, 0->1=No | 1 |
-| 102 | `dutlb_fin_flg[0] -> logic [13:0]  dutlb_fin_flg;` | Toggle=No, 1->0=No, 0->1=No | 2 |
+| 102 | `dutlb_fin_flg[0] -> logic [13:0]  dutlb_fin_flg;` | Toggle=No, 1->0=No, 0->1=No | 1 |
+| 102 | `dutlb_fin_flg[6:5] -> logic [13:0]  dutlb_fin_flg;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 104 | `dutlb_fin_pgs[2:1] -> logic [2 :0]  dutlb_fin_pgs;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 106 | `dutlb_inst_id_hit -> logic         dutlb_inst_id_hit;` | Toggle=No, 1->0=No, 0->1=No | 1 |
 | 107 | `dutlb_off_flg[9:0] -> logic [13:0]  dutlb_off_flg;` | Toggle=No, 1->0=No, 0->1=No | 1 |
@@ -1914,6 +2205,18 @@
         91:     logic [27:0]  dutlb_entry_pa;
         92:     logic [27:0]  dutlb_pa_buf;
         93:     logic         jtlb_acc_fault_flop;
+```
+
+`mmu/rtl/mmu_l1dtlb_hit_rd.sv:91` (声明 `dutlb_entry_pa`)
+
+```systemverilog
+        88:     
+        89:     // Internal Signals
+        90:     logic [13:0]  dutlb_entry_flg;
+        91: >>  logic [27:0]  dutlb_entry_pa;
+        92:     logic [27:0]  dutlb_pa_buf;
+        93:     logic         jtlb_acc_fault_flop;
+        94:     logic         pmp_flg_vld;
 ```
 
 `mmu/rtl/mmu_l1dtlb_hit_rd.sv:92` (声明 `dutlb_pa_buf`)
@@ -2063,7 +2366,7 @@
 ## 模块 `mmu_l1dtlb_install`
 
 源码：`mmu/rtl/mmu_l1dtlb_install.sv`
-原始未覆盖记录数：`77`；合并后唯一代码对象数：`22`。
+原始未覆盖记录数：`65`；合并后唯一代码对象数：`23`。
 
 ### 条件覆盖
 
@@ -2118,24 +2421,25 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 16 | `cpurst_b -> input  logic                     cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 22 | `mb_entry_vpn[1][25] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 11 |
-| 22 | `mb_entry_vpn[3][16:15] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 5 |
+| 22 | `mb_entry_vpn[1][25] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 6 |
 | 22 | `mb_entry_vpn[7][12:10] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | - | `Other bits of mb_entry_vpn[7:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 24 | `mb_entry_pgs[1][2] -> input  logic [MB_DEPTH-1:0][2:0]	       mb_entry_pgs,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 7 |
 | - | `Other bits of mb_entry_pgs[7:0][2:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 28 | `mb_entry_ppn[0][15] -> input  logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 22 |
-| 28 | `mb_entry_ppn[3][14:12] -> input  logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 28 | `mb_entry_ppn[0][15] -> input  logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 18 |
 | 28 | `mb_entry_ppn[6][12:10] -> input  logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
-| 28 | `mb_entry_ppn[7][5:3] -> input  logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 28 | `mb_entry_ppn[7][5:4] -> input  logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | - | `Other bits of mb_entry_ppn[7:0][27:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 29 | `mb_entry_flg[0][8:7] -> input  logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 29 | `mb_entry_flg[2][2:0] -> input  logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 4 |
 | 29 | `mb_entry_flg[2][6:5] -> input  logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 6 |
 | 29 | `mb_entry_flg[6][3:0] -> input  logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
 | - | `Other bits of mb_entry_flg[7:0][13:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 40 | `jtlb_utlb_ref_ppn[20] -> input  logic [PPN_WIDTH-1:0]     jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 40 | `jtlb_utlb_ref_ppn[23:21] -> input  logic [PPN_WIDTH-1:0]     jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 40 | `jtlb_utlb_ref_ppn[27:24] -> input  logic [PPN_WIDTH-1:0]     jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 60 | `utlb_refill_vpn[26] -> output logic [VPN_WIDTH-1:0]     utlb_refill_vpn,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
+| 61 | `utlb_refill_ppn[23:21] -> output logic [PPN_WIDTH-1:0]     utlb_refill_ppn,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
 
 `mmu/rtl/mmu_l1dtlb_install.sv:16` (声明 `cpurst_b`)
 
@@ -2221,10 +2525,22 @@
         63:         output logic [2:0]		     utlb_refill_pgs,
 ```
 
+`mmu/rtl/mmu_l1dtlb_install.sv:61` (声明 `utlb_refill_ppn`)
+
+```systemverilog
+        58:         output logic                     utlb_refill_vld,
+        59:         output logic [3:0]               utlb_refill_idx,
+        60:         output logic [VPN_WIDTH-1:0]     utlb_refill_vpn,
+        61: >>      output logic [PPN_WIDTH-1:0]     utlb_refill_ppn,
+        62:         output logic [FLG_WIDTH-1:0]     utlb_refill_flg,
+        63:         output logic [2:0]		     utlb_refill_pgs,
+        64:         
+```
+
 ## 模块 `mmu_l1dtlb_scheduler`
 
 源码：`mmu/rtl/mmu_l1dtlb_scheduler.sv`
-原始未覆盖记录数：`25`；合并后唯一代码对象数：`10`。
+原始未覆盖记录数：`15`；合并后唯一代码对象数：`9`。
 
 ### 条件覆盖
 
@@ -2279,8 +2595,7 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 16 | `cpurst_b -> input  logic                     cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 22 | `mb_entry_vpn[1][25] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 11 |
-| 22 | `mb_entry_vpn[3][16:15] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 5 |
+| 22 | `mb_entry_vpn[1][25] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 6 |
 | 22 | `mb_entry_vpn[7][12:10] -> input  logic [MB_DEPTH-1:0][VPN_WIDTH-1:0] mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | - | `Other bits of mb_entry_vpn[7:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 
@@ -2344,7 +2659,7 @@
 ## 模块 `mmu_l1itlb`
 
 源码：`mmu/rtl/mmu_l1itlb.sv`
-原始未覆盖记录数：`462`；合并后唯一代码对象数：`404`。
+原始未覆盖记录数：`476`；合并后唯一代码对象数：`415`。
 
 ### 行覆盖
 
@@ -2352,9 +2667,39 @@
 
 | 行号 | 未覆盖代码/对象 | URG 细节 |
 | ---: | --- | --- |
+| 753 | `ref_nxt_st[2:0] = ABT;` | 0/N |
+| 755 | `ref_nxt_st[2:0] = IDLE;` | 0/N |
 | 759 | `ref_nxt_st[2:0] = WFG;` | 0/N |
 | 763 | `ref_nxt_st[2:0] = IDLE;` | 0/N |
 | 783 | `ref_nxt_st[2:0] = IDLE;` | 0/N |
+
+`mmu/rtl/mmu_l1itlb.sv:753`
+
+```systemverilog
+       749:                 ref_nxt_st[2:0] = IDLE;
+       750:             end
+       751:             WFG: begin
+       752:               if(ifu_mmu_abort && credit_cnt != 1'b0)
+       753: >>              ref_nxt_st[2:0] = ABT;
+       754:               else if(ifu_mmu_abort)
+       755:                 ref_nxt_st[2:0] = IDLE;
+       756:               else if(credit_cnt != 1'b0)
+       757:                 ref_nxt_st[2:0] = WFC;
+```
+
+`mmu/rtl/mmu_l1itlb.sv:755`
+
+```systemverilog
+       751:             WFG: begin
+       752:               if(ifu_mmu_abort && credit_cnt != 1'b0)
+       753:                 ref_nxt_st[2:0] = ABT;
+       754:               else if(ifu_mmu_abort)
+       755: >>              ref_nxt_st[2:0] = IDLE;
+       756:               else if(credit_cnt != 1'b0)
+       757:                 ref_nxt_st[2:0] = WFC;
+       758:               else
+       759:                 ref_nxt_st[2:0] = WFG;
+```
 
 `mmu/rtl/mmu_l1itlb.sv:759`
 
@@ -2412,14 +2757,16 @@
 | 548 | `SUB-EXPRESSION ((ifu_mmu_va[(VPN_WIDTH + 10)] && ((!(&ifu_mmu_va[62:(VPN_WIDTH + 11)])))) || (((!ifu_mmu_va[(VPN_WIDTH + 10)])) && ((|ifu_mmu_va[62:(VPN_WIDTH + 11)])))))` | 0 1 Not Covered | 1 |
 | 548 | `SUB-EXPRESSION (ifu_mmu_va[(VPN_WIDTH + 10)] && ((!(&ifu_mmu_va[62:(VPN_WIDTH + 11)]))))` | 1 0 Not Covered | 1 |
 | 548 | `SUB-EXPRESSION (((!ifu_mmu_va[(VPN_WIDTH + 10)])) && ((|ifu_mmu_va[62:(VPN_WIDTH + 11)])))` | 1 1 Not Covered | 1 |
-| 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[0])) || (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2]) || ((!iutlb_flg_aft_bypass[3])) || (iutlb_flg_aft_bypass[4] && cp0_su...` | 0 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 0 0 1 0 0 0 Not Covered; ... 共 7 种 | 7 |
+| 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[0])) || (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2]) || ((!iutlb_flg_aft_bypass[3])) || (iutlb_flg_aft_bypass[4] && cp0_su...` | 0 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 0 0 1 0 0 0 Not Covered; ... 共 8 种 | 8 |
 | 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2])` | 1 1 Not Covered | 1 |
 | 551 | `SUB-EXPRESSION (iutlb_flg_aft_bypass[4] && cp0_supv_mode && ((!cp0_mmu_sum)))` | 1 0 1 Not Covered; 1 1 0 Not Covered; 1 1 1 Not Covered | 3 |
-| 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[4])) && cp0_user_mode && regs_mmu_en)` | 0 1 1 Not Covered | 1 |
+| 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[4])) && cp0_user_mode && regs_mmu_en)` | 0 1 1 Not Covered; 1 1 0 Not Covered | 2 |
 | 566 | `EXPRESSION (jtlb_acc_fault_flop || (((!pmp_mmu_flg2[2])) && ( ! (cp0_mach_mode && ((!pmp_mmu_flg2[3]))) ) && pmp_flg_vld))` | 0 1 Not Covered | 1 |
 | 566 | `SUB-EXPRESSION (((!pmp_mmu_flg2[2])) && ( ! (cp0_mach_mode && ((!pmp_mmu_flg2[3]))) ) && pmp_flg_vld)` | 1 0 1 Not Covered; 1 1 1 Not Covered | 2 |
 | 566 | `SUB-EXPRESSION (cp0_mach_mode && ((!pmp_mmu_flg2[3])))` | 1 0 Not Covered | 1 |
 | 727 | `EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit_vld)) && ((!iutlb_off_hit)) && ((!cp0_mmu_no_op_req)))` | 1 1 0 1 Not Covered; 1 1 1 0 Not Covered | 2 |
+| 752 | `EXPRESSION (ifu_mmu_abort && (credit_cnt != 1'b0))` | 1 0 Not Covered; 1 1 Not Covered | 2 |
+| 752 | `SUB-EXPRESSION (credit_cnt != 1'b0)` | 0 Not Covered | 1 |
 | 756 | `EXPRESSION (credit_cnt != 1'b0)` | 0 Not Covered | 1 |
 | 762 | `EXPRESSION (ifu_mmu_abort && l1itlb_ref_cmplt)` | 1 1 Not Covered | 1 |
 | 766 | `EXPRESSION (l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))` | 0 1 Not Covered | 1 |
@@ -2524,6 +2871,18 @@
        730:                                            && !cp0_mmu_no_op_req;
 ```
 
+`mmu/rtl/mmu_l1itlb.sv:752`
+
+```systemverilog
+       749:                 ref_nxt_st[2:0] = IDLE;
+       750:             end
+       751:             WFG: begin
+       752: >>            if(ifu_mmu_abort && credit_cnt != 1'b0)
+       753:                 ref_nxt_st[2:0] = ABT;
+       754:               else if(ifu_mmu_abort)
+       755:                 ref_nxt_st[2:0] = IDLE;
+```
+
 `mmu/rtl/mmu_l1itlb.sv:756`
 
 ```systemverilog
@@ -2614,6 +2973,8 @@
 
 | 行号 | 未覆盖代码/对象 | URG 细节 |
 | ---: | --- | --- |
+| 742 | `742            case (ref_cur_st)` | WFG - - 1 - - - - - - - Not Covered |
+| 742 | `742            case (ref_cur_st)` | WFG - - 0 1 - - - - - - Not Covered |
 | 742 | `742            case (ref_cur_st)` | WFG - - 0 0 0 - - - - - Not Covered |
 | 742 | `742            case (ref_cur_st)` | WFC - - - - - 1 - - - - Not Covered |
 | 742 | `742            case (ref_cur_st)` | default - - - - - - - - - - Not Covered |
@@ -2632,6 +2993,45 @@
        746:               else if(iutlb_miss_vld)
 ```
 
+### FSM 状态迁移覆盖
+
+| FSM | 未覆盖迁移 | 行号 |
+| --- | --- | ---: |
+| `ref_cur_st` | `WFG->IDLE` | 735 |
+| `ref_cur_st` | `WFG->ABT` | 753 |
+
+`mmu/rtl/mmu_l1itlb.sv:735` (FSM `ref_cur_st` 的 `WFG->IDLE` 迁移)
+
+```systemverilog
+       730:                                            && !cp0_mmu_no_op_req;
+       731:     
+       732:     always @(posedge iutlb_clk or negedge cpurst_b)
+       733:     begin
+       734:       if (!cpurst_b)
+       735: >>      ref_cur_st[2:0] <= 3'b0;
+       736:       else
+       737:         ref_cur_st[2:0] <= ref_nxt_st[2:0];
+       738:     end
+       739:     
+       740:     // &CombBeg; @259
+```
+
+`mmu/rtl/mmu_l1itlb.sv:753` (FSM `ref_cur_st` 的 `WFG->ABT` 迁移)
+
+```systemverilog
+       748:               else
+       749:                 ref_nxt_st[2:0] = IDLE;
+       750:             end
+       751:             WFG: begin
+       752:               if(ifu_mmu_abort && credit_cnt != 1'b0)
+       753: >>              ref_nxt_st[2:0] = ABT;
+       754:               else if(ifu_mmu_abort)
+       755:                 ref_nxt_st[2:0] = IDLE;
+       756:               else if(credit_cnt != 1'b0)
+       757:                 ref_nxt_st[2:0] = WFC;
+       758:               else
+```
+
 ### 翻转覆盖 - 端口
 
 说明：这里列出 TLB 实例端口上未发生完整 0->1 或 1->0 翻转的信号或位段。`未覆盖代码/对象` 列给出 `位段 -> 源码声明` 用于定位端口定义。参数化位段已聚合，`影响条目数` 表示同一信号模式命中的位段/实例数。
@@ -2639,6 +3039,7 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 13 | `cpurst_b -> input  logic         cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 27 | `pad_yy_icg_scan_en -> input  logic         pad_yy_icg_scan_en,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 33 | `ifu_mmu_va[62] -> input  logic [62:0]  ifu_mmu_va,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 37 | `mmu_ifu_pa[23:20] -> output logic [27:0]  mmu_ifu_pa,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
 | 37 | `mmu_ifu_pa[27:25] -> output logic [27:0]  mmu_ifu_pa,` | Toggle=No, 1->0=No, 0->1=No | OUTPUT | 1 |
@@ -2647,6 +3048,8 @@
 | 48 | `pmp_mmu_flg2[3] -> input  logic [3 :0]  pmp_mmu_flg2,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 54 | `sysmap_mmu_flg2[0] -> input  logic [4 :0]  sysmap_mmu_flg2,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 59 | `hpcp_mmu_cnt_en -> input  logic         hpcp_mmu_cnt_en,` | Toggle=No, 1->0=Yes, 0->1=No | INPUT | 1 |
+| 100 | `jtlb_utlb_ref_ppn[20] -> input  logic [27:0]  jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 100 | `jtlb_utlb_ref_ppn[23:21] -> input  logic [27:0]  jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 100 | `jtlb_utlb_ref_ppn[27:24] -> input  logic [27:0]  jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 
 `mmu/rtl/mmu_l1itlb.sv:13` (声明 `cpurst_b`)
@@ -2659,6 +3062,18 @@
         14:     input  logic         forever_cpuclk,         
         15:     input  logic         utlb_clk,               
         16:     
+```
+
+`mmu/rtl/mmu_l1itlb.sv:27` (声明 `pad_yy_icg_scan_en`)
+
+```systemverilog
+        24:     input  logic         regs_mmu_en,            
+        25:     input  logic         regs_utlb_clr,          
+        26:     
+        27: >>  input  logic         pad_yy_icg_scan_en,     
+        28:     
+        29:     //!**************************************************
+        30:     //! IFU <=> MMU Interface
 ```
 
 `mmu/rtl/mmu_l1itlb.sv:33` (声明 `ifu_mmu_va`)
@@ -4608,7 +5023,7 @@
 ## 模块 `ct_mmu_iutlb_entry`
 
 源码：`mmu/rtl/ct_mmu_iutlb_entry.v`
-原始未覆盖记录数：`21`；合并后唯一代码对象数：`21`。
+原始未覆盖记录数：`22`；合并后唯一代码对象数：`22`。
 
 ### 条件覆盖
 
@@ -4638,6 +5053,7 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 20 | `cpurst_b -> input  logic         cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 22 | `pad_yy_icg_scan_en -> input  logic         pad_yy_icg_scan_en,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 31 | `utlb_swp_flg[4] -> input  logic [13:0]  utlb_swp_flg,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 31 | `utlb_swp_flg[8:7] -> input  logic [13:0]  utlb_swp_flg,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 33 | `utlb_swp_ppn[23:20] -> input  logic [27:0]  utlb_swp_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
@@ -4662,6 +5078,18 @@
         21:     input  logic [26:0]  lsu_mmu_tlb_va,         
         22:     input  logic         pad_yy_icg_scan_en,     
         23:     input  logic         regs_utlb_clr,          
+```
+
+`mmu/rtl/ct_mmu_iutlb_entry.v:22` (声明 `pad_yy_icg_scan_en`)
+
+```systemverilog
+        19:     input  logic         cp0_mmu_icg_en,         
+        20:     input  logic         cpurst_b,               
+        21:     input  logic [26:0]  lsu_mmu_tlb_va,         
+        22: >>  input  logic         pad_yy_icg_scan_en,     
+        23:     input  logic         regs_utlb_clr,          
+        24:     input  logic         tlboper_utlb_clr,       
+        25:     input  logic         tlboper_utlb_inv_va_req, 
 ```
 
 `mmu/rtl/ct_mmu_iutlb_entry.v:31` (声明 `utlb_swp_flg`)
@@ -4811,7 +5239,7 @@
 ## 模块 `ct_mmu_iutlb_fst_entry`
 
 源码：`mmu/rtl/ct_mmu_iutlb_fst_entry.v`
-原始未覆盖记录数：`26`；合并后唯一代码对象数：`24`。
+原始未覆盖记录数：`27`；合并后唯一代码对象数：`25`。
 
 ### 条件覆盖
 
@@ -4840,6 +5268,7 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 20 | `cpurst_b -> input  logic         cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 22 | `pad_yy_icg_scan_en -> input  logic         pad_yy_icg_scan_en,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 30 | `utlb_fst_swp_flg[4] -> input  logic [13:0]  utlb_fst_swp_flg,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 30 | `utlb_fst_swp_flg[8:7] -> input  logic [13:0]  utlb_fst_swp_flg,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 32 | `utlb_fst_swp_ppn[23:20] -> input  logic [27:0]  utlb_fst_swp_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
@@ -4866,6 +5295,18 @@
         21:     input  logic [26:0]  lsu_mmu_tlb_va,         
         22:     input  logic         pad_yy_icg_scan_en,     
         23:     input  logic         regs_utlb_clr,          
+```
+
+`mmu/rtl/ct_mmu_iutlb_fst_entry.v:22` (声明 `pad_yy_icg_scan_en`)
+
+```systemverilog
+        19:     input  logic         cp0_mmu_icg_en,         
+        20:     input  logic         cpurst_b,               
+        21:     input  logic [26:0]  lsu_mmu_tlb_va,         
+        22: >>  input  logic         pad_yy_icg_scan_en,     
+        23:     input  logic         regs_utlb_clr,          
+        24:     input  logic         tlboper_utlb_clr,       
+        25:     input  logic         tlboper_utlb_inv_va_req, 
 ```
 
 `mmu/rtl/ct_mmu_iutlb_fst_entry.v:30` (声明 `utlb_fst_swp_flg`)
@@ -5017,7 +5458,7 @@
 ## 模块 `mmu_l1dtlb_sva`
 
 源码：`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv`
-原始未覆盖记录数：`107`；合并后唯一代码对象数：`22`。
+原始未覆盖记录数：`103`；合并后唯一代码对象数：`18`。
 
 ### 翻转覆盖 - 端口
 
@@ -5026,24 +5467,20 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 22 | `cpurst_b -> input logic cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 59 | `mb_entry_vpn[1][25] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 11 |
-| 59 | `mb_entry_vpn[3][16:15] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 5 |
+| 59 | `mb_entry_vpn[1][25] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 6 |
 | 59 | `mb_entry_vpn[7][12:10] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | - | `Other bits of mb_entry_vpn[7:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 68 | `l1dtlb_ent_vpn[0][23] -> input logic [NUM_ENTRY-1:0][VPN_WIDTH-1:0] l1dtlb_ent_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 15 |
+| 68 | `l1dtlb_ent_vpn[0][23] -> input logic [NUM_ENTRY-1:0][VPN_WIDTH-1:0] l1dtlb_ent_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 8 |
 | 68 | `l1dtlb_ent_vpn[2][25:22] -> input logic [NUM_ENTRY-1:0][VPN_WIDTH-1:0] l1dtlb_ent_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 68 | `l1dtlb_ent_vpn[9][10:9] -> input logic [NUM_ENTRY-1:0][VPN_WIDTH-1:0] l1dtlb_ent_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
-| 68 | `l1dtlb_ent_vpn[11][11:9] -> input logic [NUM_ENTRY-1:0][VPN_WIDTH-1:0] l1dtlb_ent_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
 | - | `Other bits of l1dtlb_ent_vpn[15:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 69 | `entry_ppn[0][27:24] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 6 |
-| 69 | `entry_ppn[3][8] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 26 |
-| 69 | `entry_ppn[4][27:19] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 10 |
-| 69 | `entry_ppn[10][11:10] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
+| 69 | `entry_ppn[0][20] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 23 |
+| 69 | `entry_ppn[0][27:24] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 16 |
+| 69 | `entry_ppn[1][20:19] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 15 |
 | - | `Other bits of entry_ppn[15:0][27:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 70 | `l1dtlb_ent_pgs[4][2] -> input logic [NUM_ENTRY-1:0][2:0]           l1dtlb_ent_pgs,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
-| 70 | `l1dtlb_ent_pgs[7][1:0] -> input logic [NUM_ENTRY-1:0][2:0]           l1dtlb_ent_pgs,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 9 |
+| 70 | `l1dtlb_ent_pgs[6][1] -> input logic [NUM_ENTRY-1:0][2:0]           l1dtlb_ent_pgs,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 10 |
 | - | `Other bits of l1dtlb_ent_pgs[15:0][2:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 116 | `utlb_refill_vpn[26] -> input logic [VPN_WIDTH-1:0] utlb_refill_vpn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 117 | `utlb_refill_ppn[23:21] -> input logic [PPN_WIDTH-1:0] utlb_refill_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 136 | `expt_wr1_acflt -> input logic expt_wr1_acflt` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:22` (声明 `cpurst_b`)
@@ -5118,6 +5555,18 @@
        119:         input logic [NUM_ENTRY-1:0] entry_upd,
 ```
 
+`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:117` (声明 `utlb_refill_ppn`)
+
+```systemverilog
+       114:         input logic utlb_refill_vld,
+       115:         input logic [3:0] utlb_refill_idx,
+       116:         input logic [VPN_WIDTH-1:0] utlb_refill_vpn,
+       117: >>      input logic [PPN_WIDTH-1:0] utlb_refill_ppn,
+       118:         input logic [2:0] utlb_refill_pgs,
+       119:         input logic [NUM_ENTRY-1:0] entry_upd,
+       120:         input logic plru_refill_updt,
+```
+
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:136` (声明 `expt_wr1_acflt`)
 
 ```systemverilog
@@ -5136,8 +5585,8 @@
 
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `gen_l1dtlb_entry_sva[10].a_va8_inv_clears_matching_entry` | assertion | 252988892 | 0 | 7 |
-| `cp_l1dtlb_c001_reset_then_miss` | cover | 252988892 | 0 | 1 |
+| `gen_l1dtlb_entry_sva[10].a_va8_inv_clears_matching_entry` | assertion | 212034487 | 0 | 14 |
+| `cp_l1dtlb_c001_reset_then_miss` | cover | 212034487 | 0 | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:288` (`a_va8_inv_clears_matching_entry`)
 
@@ -5170,7 +5619,7 @@
 ## 模块 `mmu_l1dtlb_mb_entry_sva`
 
 源码：`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv`
-原始未覆盖记录数：`8`；合并后唯一代码对象数：`7`。
+原始未覆盖记录数：`10`；合并后唯一代码对象数：`9`。
 
 ### 翻转覆盖 - 端口
 
@@ -5179,6 +5628,7 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 22 | `cpurst_b -> input logic cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 626 | `refill_ppn[23:21] -> input logic [PPN_WIDTH-1:0] refill_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 69 | `entry_ppn[15] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
 | 69 | `entry_ppn[27:20] -> input logic [NUM_ENTRY-1:0][PPN_WIDTH-1:0] entry_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 635 | `entry_flg[4] -> input logic [FLG_WIDTH-1:0] entry_flg,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
@@ -5194,6 +5644,18 @@
         23:     
         24:         input logic regs_utlb_clr,
         25:         input logic rtu_yy_xx_flush,
+```
+
+`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:626` (声明 `refill_ppn`)
+
+```systemverilog
+       623:         input logic refill_gnt,
+       624:         input logic refill_pgflt,
+       625:         input logic refill_acflt,
+       626: >>      input logic [PPN_WIDTH-1:0] refill_ppn,
+       627:         input logic [FLG_WIDTH-1:0] refill_flg,
+       628:         input logic [2:0] refill_pgs,
+       629:         input logic expt_hit,
 ```
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:69` (声明 `entry_ppn`)
@@ -5226,8 +5688,9 @@
 
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `a_idle_flush_blocks_alloc` | assertion | 2034603960 | 0 | 1 |
-| `a_wfi_data_stable_without_grant` | assertion | 2034603960 | 0 | 1 |
+| `a_idle_flush_blocks_alloc` | assertion | 1696275896 | 0 | 1 |
+| `a_wfi_data_stable_without_grant` | assertion | 1696275896 | 0 | 1 |
+| `a_wfi_flush_to_idle` | assertion | 1696275896 | 0 | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:676` (`a_idle_flush_blocks_alloc`)
 
@@ -5255,6 +5718,20 @@
        682:         |=> (entry_state == STATE_WFI
        683:           && entry_vpn == $past(entry_vpn)
        684:           && entry_ppn == $past(entry_ppn)
+```
+
+`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:717` (`a_wfi_flush_to_idle`)
+
+```systemverilog
+       713:     
+       714:       a_wfc_flush_refill_to_idle: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
+       715:         (entry_state == STATE_WFC && rtu_yy_xx_flush && refill_vld) |=> entry_state == STATE_IDLE);
+       716:     
+       717: >>    a_wfi_flush_to_idle: assert property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
+       718:         (entry_state == STATE_WFI && rtu_yy_xx_flush) |=> entry_state == STATE_IDLE);
+       719:     
+       720:       cp_l1dtlb_c017_stale_or_abt_refill: cover property (@(posedge mb_clk) disable iff (`L2TLB_NEG_DISABLE)
+       721:         (entry_state inside {STATE_IDLE, STATE_PGFLT, STATE_ACFLT, STATE_ABT}) && refill_vld);
 ```
 
 ## 模块 `mmu_l1dtlb_expt_cam_sva`
@@ -5298,7 +5775,7 @@
 ## 模块 `mmu_l1dtlb_install_sva`
 
 源码：`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv`
-原始未覆盖记录数：`70`；合并后唯一代码对象数：`19`。
+原始未覆盖记录数：`58`；合并后唯一代码对象数：`20`。
 
 ### 翻转覆盖 - 端口
 
@@ -5307,14 +5784,12 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 22 | `cpurst_b -> input logic cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 59 | `mb_entry_vpn[1][25] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 11 |
-| 59 | `mb_entry_vpn[3][16:15] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 5 |
+| 59 | `mb_entry_vpn[1][25] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 6 |
 | 59 | `mb_entry_vpn[7][12:10] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | - | `Other bits of mb_entry_vpn[7:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 872 | `mb_entry_ppn[0][15] -> input logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 22 |
-| 872 | `mb_entry_ppn[3][14:12] -> input logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 872 | `mb_entry_ppn[0][15] -> input logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 18 |
 | 872 | `mb_entry_ppn[6][12:10] -> input logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 2 |
-| 872 | `mb_entry_ppn[7][5:3] -> input logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 872 | `mb_entry_ppn[7][5:4] -> input logic [MB_DEPTH-1:0][PPN_WIDTH-1:0] mb_entry_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | - | `Other bits of mb_entry_ppn[7:0][27:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 873 | `mb_entry_flg[0][8:7] -> input logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 873 | `mb_entry_flg[2][2:0] -> input logic [MB_DEPTH-1:0][FLG_WIDTH-1:0] mb_entry_flg,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 4 |
@@ -5323,8 +5798,11 @@
 | - | `Other bits of mb_entry_flg[7:0][13:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 874 | `mb_entry_pgs[1][2] -> input logic [MB_DEPTH-1:0][2:0] mb_entry_pgs,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 7 |
 | - | `Other bits of mb_entry_pgs[7:0][2:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 881 | `jtlb_utlb_ref_ppn[20] -> input logic [PPN_WIDTH-1:0] jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 881 | `jtlb_utlb_ref_ppn[23:21] -> input logic [PPN_WIDTH-1:0] jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 881 | `jtlb_utlb_ref_ppn[27:24] -> input logic [PPN_WIDTH-1:0] jtlb_utlb_ref_ppn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 116 | `utlb_refill_vpn[26] -> input logic [VPN_WIDTH-1:0] utlb_refill_vpn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 117 | `utlb_refill_ppn[23:21] -> input logic [PPN_WIDTH-1:0] utlb_refill_ppn,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:22` (声明 `cpurst_b`)
 
@@ -5410,10 +5888,22 @@
        119:         input logic [NUM_ENTRY-1:0] entry_upd,
 ```
 
+`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:117` (声明 `utlb_refill_ppn`)
+
+```systemverilog
+       114:         input logic utlb_refill_vld,
+       115:         input logic [3:0] utlb_refill_idx,
+       116:         input logic [VPN_WIDTH-1:0] utlb_refill_vpn,
+       117: >>      input logic [PPN_WIDTH-1:0] utlb_refill_ppn,
+       118:         input logic [2:0] utlb_refill_pgs,
+       119:         input logic [NUM_ENTRY-1:0] entry_upd,
+       120:         input logic plru_refill_updt,
+```
+
 ## 模块 `mmu_l1dtlb_hit_rd_sva`
 
 源码：`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv`
-原始未覆盖记录数：`143`；合并后唯一代码对象数：`58`。
+原始未覆盖记录数：`159`；合并后唯一代码对象数：`108`。
 
 ### 翻转覆盖 - 端口
 
@@ -5422,60 +5912,110 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 22 | `cpurst_b -> input logic cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1115 | `entry_flg_vec[0] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 57 |
-| 1115 | `entry_flg_vec[5:4] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1115 | `entry_flg_vec[15:14] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[0] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 30 |
+| 1115 | `entry_flg_vec[6:4] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[16:14] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[20:19] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[22:21] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[29:28] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[30:28] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[34:33] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[36:35] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[43:42] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[45:42] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[48:47] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[50:49] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[57:56] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[59:56] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[62:61] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[64:63] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[71:70] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[73:70] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[76:75] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[78:77] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[85:84] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[87:84] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[90:89] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[92:91] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[99:98] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[101:98] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[104:103] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[106:105] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[113:112] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[115:112] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[118:117] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[120:119] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[127:126] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[129:126] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[132:131] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[134:133] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[141:140] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[143:140] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[146:145] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[148:147] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[155:154] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[157:154] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[160:159] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[162:161] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[169:168] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[171:168] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[174:173] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[176:175] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[183:182] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[185:182] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[188:187] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[190:189] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[197:196] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[199:196] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[202:201] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[204:203] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1115 | `entry_flg_vec[211:210] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[213:210] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1115 | `entry_flg_vec[216:215] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1115 | `entry_flg_vec[218:217] -> input logic [NUM_ENTRY*FLG_WIDTH-1:0] entry_flg_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[20] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 23 |
+| 1117 | `entry_ppn_vec[23:21] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 1117 | `entry_ppn_vec[27:24] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[48:47] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[51:49] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 1117 | `entry_ppn_vec[55:52] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[76:75] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[79:77] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 1117 | `entry_ppn_vec[83:80] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[92] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 30 |
+| 1117 | `entry_ppn_vec[104:103] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[107:105] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 1117 | `entry_ppn_vec[111:108] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[139:131] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[167:159] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[195:187] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[132:131] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[135:133] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[139:136] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[160:159] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[163:161] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[167:164] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[188:187] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[191:189] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[195:192] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1117 | `entry_ppn_vec[207:206] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1117 | `entry_ppn_vec[223:215] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[251:243] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[279:271] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[291:290] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[216:215] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[219:217] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[223:220] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[235:234] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[244:243] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[247:245] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[251:248] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[263:262] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[272:271] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[275:273] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[279:276] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[291:290] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[300:299] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[303:301] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 1117 | `entry_ppn_vec[307:304] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1117 | `entry_ppn_vec[319:318] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1117 | `entry_ppn_vec[335:327] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[328:327] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[331:329] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[335:332] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[347:346] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[356:355] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[359:357] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 1117 | `entry_ppn_vec[363:360] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[391:383] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[403:402] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 1117 | `entry_ppn_vec[419:411] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[375:374] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[384:383] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[387:385] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[391:388] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[403:402] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[412:411] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[415:413] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[419:416] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1117 | `entry_ppn_vec[431:430] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
-| 1117 | `entry_ppn_vec[447:439] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[440:439] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
+| 1117 | `entry_ppn_vec[443:441] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
+| 1117 | `entry_ppn_vec[447:444] -> input logic [NUM_ENTRY*PPN_WIDTH-1:0] entry_ppn_vec,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | 1137 | `mmu_lsu_stall_x -> input logic mmu_lsu_stall_x,` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:22` (声明 `cpurst_b`)
@@ -5532,8 +6072,8 @@
 
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `a_expt_entry_overlap_is_terminal_replay` | assertion | 508650990 | 0 | 1 |
-| `cp_l1dtlb_expt_entry_overlap_replay` | cover | 508650990 | 0 | 1 |
+| `a_expt_entry_overlap_is_terminal_replay` | assertion | 424068974 | 0 | 1 |
+| `cp_l1dtlb_expt_entry_overlap_replay` | cover | 424068974 | 0 | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:1174` (`a_expt_entry_overlap_is_terminal_replay`)
 
@@ -5594,8 +6134,8 @@
 
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `a_same_4k_dual_miss_dedup` | assertion | 254325495 | 0 | 1 |
-| `cp_l1dtlb_c004_same_vpn_dedup` | cover | 254325495 | 0 | 1 |
+| `a_same_4k_dual_miss_dedup` | assertion | 212034487 | 0 | 1 |
+| `cp_l1dtlb_c004_same_vpn_dedup` | cover | 212034487 | 0 | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:575` (`a_same_4k_dual_miss_dedup`)
 
@@ -5628,7 +6168,7 @@
 ## 模块 `mmu_l1dtlb_scheduler_sva`
 
 源码：`mmu_verification/testbench/top/mmu_l1dtlb_sva.sv`
-原始未覆盖记录数：`20`；合并后唯一代码对象数：`6`。
+原始未覆盖记录数：`10`；合并后唯一代码对象数：`5`。
 
 ### 翻转覆盖 - 端口
 
@@ -5637,8 +6177,7 @@
 | 行号 | 未覆盖代码/对象 | URG 细节 | 方向 | 影响条目数 |
 | ---: | --- | --- | --- | ---: |
 | 22 | `cpurst_b -> input logic cpurst_b,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
-| 59 | `mb_entry_vpn[1][25] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 11 |
-| 59 | `mb_entry_vpn[3][16:15] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 5 |
+| 59 | `mb_entry_vpn[1][25] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 6 |
 | 59 | `mb_entry_vpn[7][12:10] -> input logic [MB_DEPTH-1:0][VPN_WIDTH-1:0]  mb_entry_vpn,` | Toggle=No, 1->0=No, 0->1=Yes | INPUT | 1 |
 | - | `Other bits of mb_entry_vpn[7:0][26:0]` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |
 | 761 | `credit_cnt[4] -> input logic [$clog2(CREDIT_MAX+1):0] credit_cnt` | Toggle=No, 1->0=No, 0->1=No | INPUT | 1 |

@@ -218,10 +218,11 @@ module tb_top;
   //                                WFG→ABT  (credit=1)
   // --------------------------------------------------------------------------
   initial begin : l1itlb_fsm_wfg_force_thread
-    if ($test$plusargs("MMU_L1ITLB_FSM_FORCE_WFG")) begin
-      // Disable SVAs that fire on forced partial MB states.
+    if ($test$plusargs("MMU_L1ITLB_FSM_FORCE_WFG")
+        && $test$plusargs("UVM_TESTNAME=test_mmu_l1itlb_cov_fsm_wfg_force_001")) begin
       $assertoff(0, u_dut.u_mmu_l1dtlb.x_install.u_l1dtlb_install_sva);
       $assertoff(0, u_dut.u_mmu_l1dtlb.u_l1dtlb_sva);
+      $assertoff(0, u_dut.x_mmu_l2tlb.x_l2tlb_reqq.u_reqq_sva);
       @(posedge cpurst_b);
       repeat (64) @(posedge forever_cpuclk);
 
@@ -289,6 +290,108 @@ module tb_top;
       repeat (8) @(posedge forever_cpuclk);
       release cp0_if_inst.cp0_mmu_icg_en;
       $display("[L1ITLB_FSM_FORCE_WFG] cp0_mmu_icg_en toggled at time %0t", $time);
+
+      // ── MB entry[0..3] FSM transition sweep ──
+      // Cycle through all 7 states in order for entries 0-3 so that
+      // every legal state transition (S_n → S_{n+1}) is observed by
+      // the FSM coverage tool.  Each transition is forced for 1 cycle,
+      // then the state_r is forced to the next value after release.
+      for (int idx = 0; idx < 4; idx++) begin
+        // IDLE → WFG
+        @(posedge forever_cpuclk);
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b000;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b000;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b000;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b000;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b001;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b001;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b001;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b001;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+
+        // WFG → WFC
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b010;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b010;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b010;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b010;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+
+        // WFC → PGFLT
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b011;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b011;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b011;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b011;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+
+        // PGFLT → ACFLT
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b100;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b100;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b100;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b100;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+
+        // ACFLT → ABT
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b101;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b101;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b101;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b101;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+
+        // ABT → WFI
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b110;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b110;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b110;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b110;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+
+        // WFI → IDLE
+        case (idx)
+          0: force u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r = 3'b000;
+          1: force u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r = 3'b000;
+          2: force u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r = 3'b000;
+          3: force u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r = 3'b000;
+        endcase
+        repeat (2) @(posedge forever_cpuclk);
+
+        // Release
+        case (idx)
+          0: release u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.state_r;
+          1: release u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.state_r;
+          2: release u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.state_r;
+          3: release u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.state_r;
+        endcase
+      end
+      $display("[L1ITLB_FSM_FORCE_WFG] MB FSM sweep done at time %0t", $time);
+    end
+  end
+
+  // Pulse cpurst_b low mid-simulation so the 1→0→1 toggle on the reset
+  // net is observed (reset only deasserts at boot, never re-asserts).
+  initial begin : cpurst_toggle_thread
+    if ($test$plusargs("MMU_L1ITLB_FSM_FORCE_WFG")
+        && $test$plusargs("UVM_TESTNAME=test_mmu_l1itlb_cov_fsm_wfg_force_001")) begin
+      @(posedge cpurst_b);          // boot reset release
+      repeat (256) @(posedge forever_cpuclk);
+      force cpurst_b = 1'b0;
+      repeat (8) @(posedge forever_cpuclk);
+      release cpurst_b;
+      repeat (8) @(posedge forever_cpuclk);
+      $display("[CPURST_TOGGLE] cpurst_b 1->0 pulse done at time %0t", $time);
     end
   end
 

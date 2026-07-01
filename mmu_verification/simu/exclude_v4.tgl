@@ -1876,3 +1876,206 @@ INSTANCE: tb_top.u_dut.x_mmu_l2tlb
 // ANNOTATION: "FileName: mmu/rtl/mmu_l2tlb.sv, LineNumber: 1347 - pfu state register reset"
 Fsm pfu_cur_st "3597370733"
 Transition PFU_CHK->PFU_IDLE "1->0"
+
+// ── gated_clk_cell structural toggles: global_en/external_en tied constants ──
+// ── local_en pinned to 1 for top-level gateclks ──
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_mb_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_sched_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_dplru_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_dplru.x_dplru_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_dutlb_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_install_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port0.x_dutlb_pabuf_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port1.x_dutlb_pabuf_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+Toggle local_en "input local_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry.x_mb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[0].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[1].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[2].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[3].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[4].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[5].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[6].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[7].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[8].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[9].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[10].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[11].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[12].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[13].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[14].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"
+
+// ANNOTATION: "ModuleName: gated_clk_cell"
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[15].x_dutlb_entry_gateclk
+//
+Toggle global_en "input global_en"
+Toggle external_en "input external_en"

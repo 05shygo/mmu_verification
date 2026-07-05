@@ -453,8 +453,7 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     void'(uvm_config_db#(string)::get(this, "", "L1DTLB_TC_ID", m_l1dtlb_tc_id));
     void'(uvm_config_db#(string)::get(this, "", "L1DTLB_SCENARIO_ID", m_l1dtlb_scenario_id));
     m_l1dtlb_gate_en = (m_l1dtlb_tc_id.len() != 0);
-    m_mb_force_test_active = (m_l1dtlb_tc_id == "DTLB_MB_WFI_FLUSH_001")
-                          || (m_l1dtlb_tc_id == "DTLB_MB_FSM_DEFAULT_001");
+    m_mb_force_test_active = 1'b0;  // No force-based MB tests remain
   endfunction
 
   protected function void sb_error(string tag, string msg);
@@ -4136,14 +4135,11 @@ class mmu_l1dtlb_spec_sb extends uvm_scoreboard;
     if ((v_probe == null) || (lsu_vif == null))
       return;
 
-    // Arm the MB-force guard only when the dedicated force test is running,
-    // even if the plusarg is passed globally (e.g. via COV_L1DTLB_FORCE_PLUS_ARGS
-    // in covp runs).  Without the test-name check, other tests would lose their
-    // scoreboard MB shadow checks and generate false errors.
-    if (($test$plusargs("MMU_L1DTLB_MB_FORCE_WFI_FLUSH")
-         && $test$plusargs("UVM_TESTNAME=test_mmu_l1dtlb_dtlb_mb_wfi_flush_001"))
-        || ($test$plusargs("MMU_L1DTLB_MB_FORCE_DEFAULT")
-         && $test$plusargs("UVM_TESTNAME=test_mmu_l1dtlb_dtlb_mb_fsm_default_001")))
+    // WFI flush test forces state_r=WFI to mimic a collision (unreachable
+    // via pure stimulus).  The force leaves pgs=0x0 which triggers scoreboard
+    // checks — suppress them during the force window.
+    if ($test$plusargs("MMU_L1DTLB_MB_FORCE_WFI_FLUSH")
+        && $test$plusargs("UVM_TESTNAME=test_mmu_l1dtlb_dtlb_mb_wfi_flush_001"))
       m_mb_force_test_active = 1'b1;
 
     forever begin

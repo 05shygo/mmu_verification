@@ -779,8 +779,11 @@ always_comb begin
           else
             ref_nxt_st[2:0] = ABT;
         end
+        // Waived from coverage: unreachable encoding; SEU-only, not testable.
         default: begin
+           // coverage off
            ref_nxt_st[2:0] = IDLE;
+           // coverage on
         end
     endcase
 // &CombEnd; @310

@@ -1,0 +1,63 @@
+#=============================================================================
+# .synopsys_fc.setup  for  ct_mmu_top  ->  ASAP7 7nm (asap7sc7p5t_28)
+# Synopsys Fusion Compiler (fc_shell) -- DC-compatible Tcl synthesis flow
+#=============================================================================
+
+# -------------------------------------------------------------------------
+# 0. PDK / project path variables
+# -------------------------------------------------------------------------
+set PDK_DIR    "/home/IC1/tools/asap7/asap7sc7p5t_28"
+set NLDM_DIR   "$PDK_DIR/LIB/NLDM"
+set PROJ_DIR   "/x2025/GPrj1/IC1/mmu_verification"
+set RTL_DIR    "$PROJ_DIR/mmu/rtl"
+set SYN_DIR    "$PROJ_DIR/syn"
+set SCRIPT_DIR "$SYN_DIR/scripts"
+set FC_DIR     "$SYN_DIR/fc"
+
+# -------------------------------------------------------------------------
+# 1. search_path : tell DC where to find RTL, libs, scripts, etc.
+# -------------------------------------------------------------------------
+lappend search_path $RTL_DIR
+lappend search_path "$RTL_DIR/relate_rtl/clk"
+lappend search_path "$RTL_DIR/relate_rtl/rtu"
+lappend search_path "$RTL_DIR/relate rtl/clk"
+lappend search_path "$RTL_DIR/relate rtl/rtu"
+lappend search_path $SCRIPT_DIR
+lappend search_path $FC_DIR
+lappend search_path $FC_DIR/scripts
+lappend search_path $NLDM_DIR
+lappend search_path "$PDK_DIR/Verilog"
+
+# -------------------------------------------------------------------------
+# 2. Target library (cells available to the synthesizer for mapping)
+#    ASAP7 RVT, typical corner (TT, 0.7V, 25C), NLDM
+#    FC compiles the .lib on demand during compile/link.
+# -------------------------------------------------------------------------
+set target_library [list \
+    $NLDM_DIR/asap7sc7p5t_SIMPLE_RVT_TT_nldm_211120.lib \
+    $NLDM_DIR/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib \
+    $NLDM_DIR/asap7sc7p5t_SEQ_RVT_TT_nldm_220123.lib    \
+    $NLDM_DIR/asap7sc7p5t_AO_RVT_TT_nldm_211120.lib     \
+    $NLDM_DIR/asap7sc7p5t_OA_RVT_TT_nldm_211120.lib     \
+]
+
+# -------------------------------------------------------------------------
+# 3. Link library (cells used to resolve the netlist; '*' = design itself)
+# -------------------------------------------------------------------------
+set link_library [list "*" {*}$target_library]
+
+# -------------------------------------------------------------------------
+# 5. Generic HDL settings
+# -------------------------------------------------------------------------
+set hdlin_instantiate_modules_names   "true"
+set hdlin_auto_save_templates         "false"
+set hdlin_enable_rtldrc_info          "true"
+set verilogout_no_tri                 "true"
+set hdlin_check_no_latch              "false"
+set hdlin_sv_packages_extern          "true"
+
+# allow SystemVerilog 'logic', packed/unpacked arrays, etc.
+set hdlin_define_vlog_file_type       "SV"
+set svlib_preference                  "sv"
+
+echo ".synopsys_fc.setup loaded: ASAP7 RVT TT, target=[llength $target_library] libs"

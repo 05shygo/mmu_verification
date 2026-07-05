@@ -225,7 +225,10 @@ always_comb begin
             end
         end
         
+        // Waived: unreachable encoding 3'b111; SEU-only, not testable.
+        // coverage off
         default: state_nxt = STATE_IDLE;
+        // coverage on
     endcase
 end
 

@@ -1,0 +1,43 @@
+ 
+                              Library Manager (TM)
+
+                Version V-2023.12-SP5 for linux64 - Aug 01, 2024
+                           Base build date 2024-07-01
+
+                    Copyright (c) 1988 - 2024 Synopsys, Inc.
+   This software and the associated documentation are proprietary to Synopsys,
+ Inc. This software may only be used in accordance with the terms and conditions
+ of a written license agreement with Synopsys, Inc. All other use, reproduction,
+   or distribution of this software is strictly prohibited.  Licensed Products
+     communicate with Synopsys servers for the purpose of providing software
+    updates, detecting software piracy and verifying that customers are using
+    Licensed Products in conformity with the applicable License Key for such
+  Licensed Products. Synopsys will use information gathered in connection with
+    this process to deliver software updates and pursue software pirates and
+                                   infringers.
+
+ Inclusivity & Diversity - Visit SolvNetPlus to read the "Synopsys Statement on
+            Inclusivity and Diversity" (Refer to article 000036315 at
+                        https://solvnetplus.synopsys.com)
+
+set NLDM "/home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM"
+/home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM
+echo "trying read_lib in lm_shell..."
+trying read_lib in lm_shell...
+if {[catch {read_lib $NLDM/asap7sc7p5t_INVBUF_RVT_TT_nldm_220122.lib} err]} {
+    echo "read_lib FAILED: [lindex [split $err \n] 0]"
+} else {
+    echo "read_lib OK, got: $lib"
+    echo "libs: [get_libs *]"
+    echo "trying write_lib to .db..."
+    write_lib [get_libs *] -format db -output /tmp/asap7_invbuf
+    echo "write_lib done"
+}
+Error: Cannot read LIB because there is no library workspace. (LMUI-005)
+read_lib FAILED: 
+quit
+Maximum memory usage for this session: 401.29 MB
+CPU usage for this session:      0 seconds (  0.00 hours)
+Elapsed time for this session:      5 seconds (  0.00 hours)
+Thank you for using Library Manager.
+

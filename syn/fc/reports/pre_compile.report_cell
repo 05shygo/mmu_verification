@@ -1,0 +1,34 @@
+****************************************
+Report : reference
+Design : ct_mmu_top
+Version: V-2023.12-SP5
+Date   : Fri Jul  3 13:04:56 2026
+****************************************
+
+Attributes
+    b - black-box (unknown)
+    h - hierarchical
+    n - noncombinational
+    u - contains unmapped logic
+    E - extracted timing model
+    Q - Quick timing model (QTM)
+    s - synthetic operator
+
+
+Reference          Library       Unit Area   Count    Total Area   Attributes
+--------------------------------------------------------------------------------
+WVGTECH_NOT        __wvGtech__        0.00       1          0.00   
+WVGTECH_OR7        __wvGtech__        0.00       1          0.00   
+ct_mmu_regs                           0.00       1          0.00   h
+ct_mmu_sysmap                         0.00       7          0.00   h
+ct_mmu_tlboper                        0.00       1          0.00   h
+gated_clk_cell                        0.00       1          0.00   h
+mmu_arb_TRANS_ID_WIDTH4               0.00       1          0.00   h
+mmu_l1dtlb                            0.00       1          0.00   h
+mmu_l1itlb                            0.00       1          0.00   h
+mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4
+                                      0.00       1          0.00   h
+ptw_ID_WIDTH7                         0.00       1          0.00   h
+--------------------------------------------------------------------------------
+Total 11 references                                         0.00
+1

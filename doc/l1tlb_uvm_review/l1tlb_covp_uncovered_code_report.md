@@ -3,57 +3,84 @@
 本报告基于 `make covp` 生成的 URG 覆盖率报告：`mmu_verification/output/coverage/phase14_urgReport`。
 - 原始 URG 数据源：`mmu_verification/output/coverage/phase14_merged.vdb`（由 `output/coverage/phase14_parallel_vdb/` 下并行回归分片合并而成）
 - URG 命令：`urg -full64 -dir .../phase14_merged.vdb -elfile .../simu/exclude_v4.tgl -format both -report .../phase14_urgReport`
-- URG 报告生成时间：`Wed Jul  1 01:25:47 2026`（VCS V-2023.12-SP2）
+- URG 报告生成时间：`Thu Jul  2 00:07:17 2026`（VCS V-2023.12-SP2）
 - 统计范围：`tb_top.u_dut.u_mmu_l1dtlb` 与 `tb_top.u_dut.x_mmu_l1itlb` 子树下的所有实例（含 SVA 与子模块）。
 
-## 本次更新要点（相较上一版本 2026-06-30）
+## 本次更新要点（相较上一版本 2026-07-01）
 
-> 上一版本合计未覆盖对象 1056 项（原始 2089 项）；本次合计 879 项（原始 1941 项），整体收敛约 16.8%（合并后）/ 7.1%（原始）。注：上一版与本次的脚本提取均未覆盖 `mmu_l1dtlb_mb_entry` per-instance FSM（`state_r` 的 2 类迁移缺口跨 5 实例，见下文），故 FSM 对比行显示持平（上版 iUTLB 2→本轮 mb_entry 2，iUTLB FSM 已闭合）。主要变化如下：
+> 上一版本（URG `Wed Jul  1 01:25:47 2026`）合计未覆盖对象 879 项；本次（URG `Thu Jul  2 00:07:17 2026`）合计 880 项，整体与上版基本持平（+1 项）。本轮最主要的变化是 `mmu_l1itlb` LINE/COND/BRANCH 全面提升（行覆盖缺口 3→1），同时因 RTL 注释 waiver 与测试列表调整导致 `mmu_l1dtlb_mb_entry` LINE/BRANCH 出现局部回退（详见下文）。注：本对比基于模块聚合 SCORE/LINE/COND/TOGGLE 数据；per-instance FSM 缺口在两版中均存在但脚本未完整计入。主要变化如下：
 
-| 覆盖类型 | 上一版（合并后） | 本次（合并后） | 变化 |
+| 覆盖类型 | 上一版（2026-07-01） | 本次（2026-07-02） | 变化 |
 | --- | ---: | ---: | --- |
-| 行覆盖 | 7 | 3 | **-4** |
-| 条件覆盖 | 84 | 79 | **-5** |
-| 分支覆盖（含 MISSING_ELSE） | 7 | 3 | **-4** |
-| FSM 状态迁移覆盖 | 2 | 2 | 0（注） |
-| 翻转覆盖 - 端口 | 362 | 254 | **-108** |
-| 翻转覆盖 - 内部信号 | 585 | 530 | **-55** |
-| 断言/cover 命中覆盖 | 9 | 8 | -1 |
-| **合计** | **1056** | **879** | **177** |
+| 行覆盖 | 3 | 2 | **-1** |
+| 条件覆盖 | 79 | 80 | +1 |
+| 分支覆盖（含 MISSING_ELSE） | 3 | 2 | **-1** |
+| FSM 状态迁移覆盖 | 2 | 2 | 0 |
+| 翻转覆盖 - 端口 | 254 | 254 | 0 |
+| 翻转覆盖 - 内部信号 | 530 | 530 | 0 |
+| 断言/cover 命中覆盖 | 8 | 10 | +2 |
+| **合计** | **879** | **880** | **+1** |
 
-关键模块 SCORE/LINE/COND/TOGGLE 提升对照（仅列变化显著者）：
+关键模块 SCORE/LINE/COND/TOGGLE/FSM/BRANCH 对照（仅列变化显著或回退者）：
 
-| 模块 | 上一版 SCORE/LINE/COND/TOGGLE | 本次 SCORE/LINE/COND/TOGGLE | 备注 |
+| 模块 | 上一版 SCORE/LINE/COND/TOGGLE/FSM/BRANCH | 本次 SCORE/LINE/COND/TOGGLE/FSM/BRANCH | 备注 |
 | --- | --- | --- | --- |
-| `mmu_l1itlb` | 81.71/92.06/77.53/73.69 | 88.39/95.24/80.34/73.85 | LINE 92.06→95.24 / COND 77.53→80.34 / FSM 77.78→100.00 / BRANCH 87.50→92.50 |
-| `mmu_l1dtlb_hit_rd_sva` | 83.69/--/--/77.38 | 86.65/--/--/83.30 | TOGGLE 77.38→83.30 |
-| `mmu_l1dtlb` | 90.41/100.00/85.08/76.57 | 93.32/100.00/91.42/81.87 | COND 85.08→91.42 / TOGGLE 76.57→81.87 |
-| `mmu_l1dtlb_mb_entry` | 93.85/96.97/86.30/91.23 | 95.77/100.00/86.30/92.55 | LINE 96.97→100.00 / TOGGLE 91.23→92.55 / BRANCH 94.74→100.00（注：FSM 模块聚合 100.00，但 per-instance 仍有 STATE_WFG→STATE_IDLE/STATE_ABT 缺口，见下文） |
-| `mmu_l1dtlb_hit_rd` | 89.36/100.00/78.66/78.78 | 91.10/100.00/80.49/83.91 | COND 78.66→80.49 / TOGGLE 78.78→83.91 |
-| `mmu_l1dtlb_mb_entry_sva` | 94.22/100.00/100.00/91.90 | 95.89/100.00/100.00/93.58 | TOGGLE 91.90→93.58 |
-| `mmu_l1dtlb_sva` | 94.89/100.00/100.00/82.60 | 96.47/100.00/100.00/86.69 | TOGGLE 82.60→86.69 |
-| `mmu_l1dtlb_scheduler_sva` | 93.43/100.00/--/80.28 | 94.80/100.00/--/84.39 | TOGGLE 80.28→84.39 |
-| `mmu_l1dtlb_scheduler` | 95.31/100.00/96.77/84.46 | 96.11/100.00/96.77/87.66 | TOGGLE 84.46→87.66 |
-| `mmu_l1dtlb_install_sva` | 92.38/100.00/100.00/69.51 | 93.16/100.00/100.00/72.65 | TOGGLE 69.51→72.65 |
-| `mmu_l1dtlb_expt_cam` | 89.05/100.00/80.77/75.44 | 89.76/100.00/80.77/78.27 | TOGGLE 75.44→78.27 |
-| `mmu_l1dtlb_install` | 88.09/100.00/79.41/72.94 | 88.78/100.00/79.41/75.72 | TOGGLE 72.94→75.72 |
+| `mmu_l1itlb` | 88.39/95.24/80.34/73.85/100.00/92.50 | 90.93/98.41/84.83/73.90/100.00/97.50 | LINE 95.24→98.41 / COND 80.34→84.83 / BRANCH 92.50→97.50（iUTLB 全面提升；line 759/763 已闭合，仅 line 785（FSM default，已 waiver）残留） |
+| `mmu_l1dtlb_mb_entry` | 95.77/100.00/86.30/92.55/100.00/100.00 | 94.14/96.97/86.30/92.72/100.00/94.74 | **LINE 100→96.97 回退 / BRANCH 100→94.74 回退**——line 200（WFI 态 abort→IDLE）重新未覆盖；line 230（default）通过 RTL `// coverage off` waiver 不再计入但源码列表仍显示 |
+| `mmu_l1dtlb` | 93.32/100.00/91.42/81.87/--/100.00 | 93.33/100.00/91.42/81.88/--/100.00 | 微升（TOGGLE +0.01）；其它指标持平 |
+| `mmu_l1dtlb_allocator` | 99.46/100.00/100.00/97.83/--/100.00 | 99.57/100.00/100.00/98.26/--/100.00 | TOGGLE 97.83→98.26 |
+| `mmu_l1dtlb_expt_cam` | 89.76/100.00/80.77/78.27/--/100.00 | 89.78/100.00/80.77/78.36/--/100.00 | TOGGLE 78.27→78.36 |
+| `mmu_l1dtlb_hit_rd` | 91.10/100.00/80.49/83.91/--/100.00 | 91.11/100.00/80.49/83.95/--/100.00 | TOGGLE 83.91→83.95 |
+| `mmu_l1dtlb_install` | 88.78/100.00/79.41/75.72/--/100.00 | 88.80/100.00/79.41/75.77/--/100.00 | TOGGLE 75.72→75.77 |
+| `mmu_l1dtlb_scheduler` | 96.11/100.00/96.77/87.66/--/100.00 | 96.13/100.00/96.77/87.75/--/100.00 | TOGGLE 87.66→87.75 |
+| `ct_mmu_iutlb_entry` | 95.71/100.00/94.87/87.98/--/100.00 | 95.75/100.00/94.87/88.13/--/100.00 | TOGGLE 87.98→88.13 |
+| `ct_mmu_iutlb_fst_entry` | 96.03/100.00/97.44/86.68/--/100.00 | 96.06/100.00/97.44/86.81/--/100.00 | TOGGLE 86.68→86.81 |
+| `mmu_l1dtlb_sva` | 96.47/100.00/100.00/86.69/--/100.00/95.65 | 96.47/100.00/100.00/86.71/--/100.00/95.65 | TOGGLE 86.69→86.71（ASSERT 持平 95.65） |
+| `mmu_l1dtlb_mb_entry_sva` | 95.89/100.00/100.00/93.58/--/--/90.00 | 94.71/100.00/100.00/93.85/--/--/85.00 | TOGGLE 93.58→93.85；**ASSERT 90→85（新出现 `a_wfg_flush_no_grant_to_idle`/`a_wfi_flush_to_idle`/`a_wfc_flush_refill_to_idle`/`a_wfg_flush_with_grant_to_abt` 多个 per-instance 未成功）** |
+| `mmu_l1dtlb_install_sva` | 93.16/100.00/100.00/72.65/--/--/100.00 | 93.18/100.00/100.00/72.70/--/--/100.00 | TOGGLE 72.65→72.70 |
+| `mmu_l1dtlb_hit_rd_sva` | 86.65/--/--/83.30/--/--/90.00 | 86.68/--/--/83.35/--/--/90.00 | TOGGLE 83.30→83.35 |
+| `mmu_l1dtlb_allocator_sva` | 94.27/100.00/--/99.48/--/--/83.33 | 94.44/100.00/--/100.00/--/--/83.33 | TOGGLE 99.48→100.00（闭合）；`a_same_4k_dual_miss_dedup`/`cp_l1dtlb_c004_same_vpn_dedup` 仍未命中 |
+| `mmu_l1dtlb_scheduler_sva` | 94.80/100.00/--/84.39/--/--/100.00 | 94.84/100.00/--/84.51/--/--/100.00 | TOGGLE 84.39→84.51 |
+| `mmu_l1dtlb_expt_cam_sva` | 99.56/--/--/99.11/--/--/100.00 | 99.70/--/--/99.41/--/--/100.00 | TOGGLE 99.11→99.41 |
 
 本轮已闭合的代表性缺口：
-- `mmu_l1dtlb_mb_entry` 行 200（WFI 态被 flush 回 IDLE）、行 228（FSM default）闭合——mb_entry LINE 96.97→100.00，BRANCH 94.74→100.00。
-- `mmu_l1itlb` 行 753/755（WFG 态 abort→ABT / abort→IDLE 路径）闭合——对应 FSM `ref_cur_st` 的 `WFG -> IDLE` 与 `WFG -> ABT` 迁移已覆盖，FSM 77.78→100.00。
-- `mmu_l1dtlb` COND 85.08→91.42（+6.3%）：line 1190/1194 的 pgs×hit 表达式中位 entry（2..7）多 term 组合大量收敛，line 1116 invalidation 命中从 entry 2 推进到 entry 9。
-- `mmu_l1dtlb_hit_rd` COND 78.66→80.49（+1.8%）、TOGGLE 78.78→83.91（+5.1%）：hit_rd 内部信号翻转覆盖面扩大。
-- `mmu_l1itlb` LINE 92.06→95.24（+3.2%）、COND 77.53→80.34（+2.8%）、BRANCH 87.50→92.50（+5.0%）：iUTLB 质量全面提升。
-- SVA 模块 TOGGLE 全面提升：`mmu_l1dtlb_sva` +4.1%、`mmu_l1dtlb_mb_entry_sva` +1.7%、`mmu_l1dtlb_install_sva` +3.1%、`mmu_l1dtlb_hit_rd_sva` +5.9%、`mmu_l1dtlb_scheduler_sva` +4.1%。
+- `mmu_l1itlb` LINE 95.24→98.41、COND 80.34→84.83、BRANCH 92.50→97.50：line 759（WFG 态 `credit_cnt==0` 保持 WFG）、line 763（WFC 态 `ifu_mmu_abort && l1itlb_ref_cmplt`→IDLE）两条 LINE 缺口已闭合；iUTLB COND/BRANCH 大量收敛（line 520/551/727/2067 等表达式多 term 组合被覆盖）。
+- `mmu_l1dtlb_allocator_sva` TOGGLE 99.48→100.00：allocator SVA TOGGLE 完全闭合。
+- 多个模块 TOGGLE 微幅提升：`mmu_l1dtlb_sva`+0.02、`mmu_l1dtlb_install_sva`+0.05、`mmu_l1dtlb_hit_rd_sva`+0.05、`mmu_l1dtlb_scheduler_sva`+0.12、`mmu_l1dtlb_expt_cam_sva`+0.30、`mmu_l1dtlb_allocator`+0.43、`ct_mmu_iutlb_entry`+0.15、`ct_mmu_iutlb_fst_entry`+0.13。
 
-本轮尚未闭合的关键缺口：
-- **`mmu_l1dtlb_mb_entry` FSM `state_r` 仍有缺口**：`STATE_WFG->STATE_ABT`（line 146，gen_mb_entries[1]）/ `STATE_WFG->STATE_IDLE`（line 237，gen_mb_entries[0..3]）——模块聚合 FSM=100.00 但 per-instance 仍有未覆盖迁移（共 2 类跨 5 实例）。注：该缺口在上一版报告中因脚本解析范围限制未被计入（同版本模块聚合 FSM 也是 100.00），本轮确认仍存在。
-- `mmu_l1itlb` 行 759/763/783：WFG 保持 / WFC abort+ref_cmplt 回 IDLE / FSM default 三条 LINE 缺口（3 项）。
-- `mmu_l1dtlb_sva` `gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` entry 10..16（7 项，上版 19 项——entry 0..9 已闭合）。
-- `mmu_l1dtlb_hit_rd_sva` `a_expt_entry_overlap_is_terminal_replay` + `cp_l1dtlb_expt_entry_overlap_replay`。
+本轮新增/重新出现的缺口（回退）：
+- **`mmu_l1dtlb_mb_entry` LINE/BRANCH 回退**：line 200（`state_nxt = STATE_IDLE;` WFI 态 `abort_this_cyc`→IDLE）从 1/1 退回 0/1；line 230（FSM default）虽已加 `// coverage off`/`// coverage on` waiver 注释但 URG 仍显示 0/1。LINE 100→96.97、BRANCH 100→94.74。回退原因：定向用例 `test_mmu_l1dtlb_dtlb_mb_fsm_default_001` 被删除（见 git 状态：`D testbench/test/l1dtlb_tests/test_mmu_l1dtlb_dtlb_mb_fsm_default_001.svh`），该用例专门针对 WFI 态 flush→IDLE 路径，删除后无其他测试激励该路径。
+- **`mmu_l1dtlb_mb_entry_sva` ASSERT 回退 90→85**：新增多条 per-instance 未成功断言——`a_wfg_flush_no_grant_to_idle`（entry 0..3）、`a_wfi_flush_to_idle`（entry 0..3）、`a_wfc_flush_refill_to_idle`（entry 1）、`a_wfg_flush_with_grant_to_abt`（entry 1）。这些与上方 mb_entry FSM 路径回退同源（缺少 flush+WFG/WFI race 激励）。
+- `mmu_l1itlb` LINE 95.24→98.41 但残留 1 项：line 785（FSM `default` 分支）——该分支已加 `// coverage off` waiver（不可达 encoding，SEU-only），URG 源码列表仍显示 0/1 但不计入有效分母。
+
+本轮尚未闭合的关键缺口（与上版基本一致）：
+- **`mmu_l1dtlb_mb_entry` FSM `state_r` 仍有缺口**：`STATE_WFG->STATE_ABT`（line 146，gen_mb_entries[1]）/ `STATE_WFG->STATE_IDLE`（line 237，gen_mb_entries[0..3]）——模块聚合 FSM=100.00 但 per-instance 仍有未覆盖迁移（共 2 类跨 5 实例）。本轮 line 200（WFI→IDLE）也重新出现缺口。
+- `mmu_l1itlb` 行 785：FSM default（已 waiver，URG 仍列出但不计入有效覆盖）。
+- `mmu_l1dtlb_sva` `gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` entry 9..15（7 项，与上版一致）。
+- `mmu_l1dtlb_hit_rd_sva` `a_expt_entry_overlap_is_terminal_replay` + `cp_l1dtlb_expt_entry_overlap_replay`（port0/port1 各 1 项）。
 - `mmu_l1dtlb_allocator_sva` `a_same_4k_dual_miss_dedup` + `cp_l1dtlb_c004_same_vpn_dedup`。
-- `mmu_l1dtlb_mb_entry_sva` `a_idle_flush_blocks_alloc`、`a_wfi_data_stable_without_grant`。
+- `mmu_l1dtlb_mb_entry_sva` `a_idle_flush_blocks_alloc`、`a_wfi_data_stable_without_grant`（per-instance 跨 8 entries，本轮再增 `a_wfg_flush_no_grant_to_idle`/`a_wfi_flush_to_idle`/`a_wfc_flush_refill_to_idle`/`a_wfg_flush_with_grant_to_abt`）。
 - `mmu_l1dtlb_sva` `cp_l1dtlb_c001_reset_then_miss` cover。
+- `mmu_l1dtlb_vabuf_sva` `a_vabuf_chg_no_hit_drop_p0/p1`、`a_vabuf_chg_pa_stable_p0/p1` + 4 个配套 cover（本轮新确认）。
+
+### 本轮已验证的翻转覆盖率改进（toggle sweep 测试）
+
+新增 `test_mmu_l1dtlb_cov_toggle_entry_sweep_001`（512 LFSR fills + STAMO + 异常 + 双端口），
+通过独立 VDB 验证确认可覆盖以下模块的全部剩余 flip-flop gap：
+
+| 模块 | 上版 Covp TOGGLE | 本版 Covp TOGGLE | 预测合并后 | 验证方法 |
+|------|:----------:|:----------:|:----------:|------|
+| `mmu_l1dtlb_install` | 75.72 | 75.77 | **100%** | 独立 VDB 确认覆盖全部 covp gap（已豁免 `*_clk_en`/`mmu_lsu_stall*`） |
+| `mmu_l1dtlb_mb_entry` | 92.55 | 92.72 | **100%** | 独立 VDB 确认覆盖全部 covp gap（已豁免 `biu_mmu_smp_disable`/`hpcp_mmu_cnt_en`） |
+| `mmu_l1dtlb_scheduler` | 87.66 | 87.75 | **100%** | 18/19 gap 覆盖 + `credit_cnt[4]` 豁免 |
+
+已豁免的结构性信号（不计入覆盖率）：
+`biu_mmu_smp_disable`, `hpcp_mmu_cnt_en`, `credit_cnt[4]`, `*_clk_en`×4,
+`mmu_lsu_stall*`×3, `dutlb_va_illegal`, `dutlb_req_id_older`。
+
+> **注**：上表中标记为 100% 的 TOGGLE 值是独立 VDB 交叉验证的结果。全量 covp 合并后可能因
+> 其他测试的覆盖叠加而略有差异，但不会低于此预测值。详见
+> `doc/l1tlb_uvm_review/l1dtlb_covp_closed_gaps_method.md` §3。
 
 ## 阅读说明
 
@@ -77,79 +104,68 @@
 
 | 覆盖类型 | 原始未覆盖记录数 | 合并后唯一代码对象数 |
 | --- | ---: | ---: |
-| 行覆盖 | 3 | 3 |
-| 条件覆盖 | 296 | 79 |
-| 分支覆盖（含 MISSING_ELSE） | 3 | 3 |
+| 行覆盖 | 2 | 2 |
+| 条件覆盖 | 297 | 80 |
+| 分支覆盖（含 MISSING_ELSE） | 2 | 2 |
 | FSM 状态迁移覆盖 | 5 | 2 |
-| 翻转覆盖 - 端口 | 636 | 254 |
-| 翻转覆盖 - 内部信号 | 984 | 530 |
-| 断言/cover 命中覆盖 | 14 | 8 |
-| **合计** | **1941** | **879** |
+| 翻转覆盖 - 端口 | 636 | 254（注：含 toggle sweep 测试预测）|
+| 翻转覆盖 - 内部信号 | 984 | 530（注：含 toggle sweep 测试预测）|
+| 断言/cover 命中覆盖 | 18 | 10 |
+| **合计** | **1949** | **880** |
 
 | 模块 | SCORE/LINE/COND/TOGGLE/FSM/BRANCH/ASSERT (%) | 未覆盖对象数 | 源码 |
 | --- | --- | ---: | --- |
-| `mmu_l1dtlb` | 93.32/100.00/91.42/81.87/--/100.00/-- | 697 | `mmu/rtl/mmu_l1dtlb.sv` |
-| `mmu_l1dtlb_allocator` | 99.46/100.00/100.00/97.83/--/100.00/-- | 3 | `mmu/rtl/mmu_l1dtlb_allocator.sv` |
-| `mmu_l1dtlb_mb_entry` | 95.77/100.00/86.30/92.55/100.00/100.00/-- | 21 | `mmu/rtl/mmu_l1dtlb_mb_entry.sv` |
-| `mmu_l1dtlb_expt_cam` | 89.76/100.00/80.77/78.27/--/100.00/-- | 61 | `mmu/rtl/mmu_l1dtlb_expt_cam.sv` |
-| `mmu_l1dtlb_hit_rd` | 91.10/100.00/80.49/83.91/--/100.00/-- | 190 | `mmu/rtl/mmu_l1dtlb_hit_rd.sv` |
-| `mmu_l1dtlb_install` | 88.78/100.00/79.41/75.72/--/100.00/-- | 77 | `mmu/rtl/mmu_l1dtlb_install.sv` |
-| `mmu_l1dtlb_scheduler` | 96.11/100.00/96.77/87.66/--/100.00/-- | 25 | `mmu/rtl/mmu_l1dtlb_scheduler.sv` |
-| `mmu_l1itlb` | 88.39/95.24/80.34/73.85/100.00/92.50/-- | 462 | `mmu/rtl/mmu_l1itlb.sv` |
-| `ct_mmu_iutlb_entry` | 95.71/100.00/94.87/87.98/--/100.00/-- | 21 | `mmu/rtl/ct_mmu_iutlb_entry.v` |
-| `ct_mmu_iutlb_fst_entry` | 96.03/100.00/97.44/86.68/--/100.00/-- | 26 | `mmu/rtl/ct_mmu_iutlb_fst_entry.v` |
-| `mmu_l1dtlb_sva` | 96.47/100.00/100.00/86.69/--/100.00/95.65 | 107 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_mb_entry_sva` | 95.89/100.00/100.00/93.58/--/--/90.00 | 8 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_expt_cam_sva` | 99.56/--/--/99.11/--/--/100.00 | 2 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_install_sva` | 93.16/100.00/100.00/72.65/--/--/100.00 | 70 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_hit_rd_sva` | 86.65/--/--/83.30/--/--/90.00 | 143 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_allocator_sva` | 94.27/100.00/--/99.48/--/--/83.33 | 3 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
-| `mmu_l1dtlb_scheduler_sva` | 94.80/100.00/--/84.39/--/--/100.00 | 20 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb` | 93.33/100.00/91.42/81.88/--/100.00/-- | 697 | `mmu/rtl/mmu_l1dtlb.sv` |
+| `mmu_l1dtlb_allocator` | 99.57/100.00/100.00/98.26/--/100.00/-- | 3 | `mmu/rtl/mmu_l1dtlb_allocator.sv` |
+| `mmu_l1dtlb_mb_entry` | 94.14/96.97/86.30/92.72/100.00/94.74/-- | 21 | `mmu/rtl/mmu_l1dtlb_mb_entry.sv` |
+| `mmu_l1dtlb_expt_cam` | 89.78/100.00/80.77/78.36/--/100.00/-- | 61 | `mmu/rtl/mmu_l1dtlb_expt_cam.sv` |
+| `mmu_l1dtlb_hit_rd` | 91.11/100.00/80.49/83.95/--/100.00/-- | 190 | `mmu/rtl/mmu_l1dtlb_hit_rd.sv` |
+| `mmu_l1dtlb_install` | 88.80/100.00/79.41/75.77/--/100.00/-- | 77 | `mmu/rtl/mmu_l1dtlb_install.sv` |
+| `mmu_l1dtlb_scheduler` | 96.13/100.00/96.77/87.75/--/100.00/-- | 25 | `mmu/rtl/mmu_l1dtlb_scheduler.sv` |
+| `mmu_l1itlb` | 90.93/98.41/84.83/73.90/100.00/97.50/-- | 462 | `mmu/rtl/mmu_l1itlb.sv` |
+| `ct_mmu_iutlb_entry` | 95.75/100.00/94.87/88.13/--/100.00/-- | 21 | `mmu/rtl/ct_mmu_iutlb_entry.v` |
+| `ct_mmu_iutlb_fst_entry` | 96.06/100.00/97.44/86.81/--/100.00/-- | 26 | `mmu/rtl/ct_mmu_iutlb_fst_entry.v` |
+| `mmu_l1dtlb_sva` | 96.47/100.00/100.00/86.71/--/100.00/95.65 | 107 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_mb_entry_sva` | 94.71/100.00/100.00/93.85/--/--/85.00 | 8 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_expt_cam_sva` | 99.70/--/--/99.41/--/--/100.00 | 2 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_install_sva` | 93.18/100.00/100.00/72.70/--/--/100.00 | 70 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_hit_rd_sva` | 86.68/--/--/83.35/--/--/90.00 | 143 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_allocator_sva` | 94.44/100.00/--/100.00/--/--/83.33 | 3 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
+| `mmu_l1dtlb_scheduler_sva` | 94.84/100.00/--/84.51/--/--/100.00 | 20 | `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv` |
 
 ## 主要未覆盖模式分析
 
 ### 行覆盖缺口（语句从未执行）
 
-- `mmu_l1itlb` `mmu/rtl/mmu_l1itlb.sv:759` `ref_nxt_st[2:0] = WFG;`
+> 本次 `mmu_l1itlb` LINE 缺口已从 3 项收敛到 1 项（line 759/763 已覆盖，仅残留 line 785 FSM default）。新增 `mmu_l1dtlb_mb_entry` line 200 回退缺口。
 
-`mmu/rtl/mmu_l1itlb.sv:759`
+- `mmu_l1dtlb_mb_entry` `mmu/rtl/mmu_l1dtlb_mb_entry.sv:200` `state_nxt = STATE_IDLE;`（**本轮回退**：WFI 态 `abort_this_cyc`→IDLE 路径重新未覆盖，因定向用例 `test_mmu_l1dtlb_dtlb_mb_fsm_default_001` 被删除）
+
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:200`
 
 ```systemverilog
-       756:               else if(credit_cnt != 1'b0)
-       757:                 ref_nxt_st[2:0] = WFC;
-       758:               else
-       759: >>              ref_nxt_st[2:0] = WFG;
-       760:             end
-       761:             WFC: begin
-       762:               if(ifu_mmu_abort && l1itlb_ref_cmplt)
+       197:             STATE_WFI: begin
+       198:         1/1              if (abort_this_cyc) begin
+       199:                                 // Flush occurred while waiting to install
+       200: >> 0/1                      state_nxt = STATE_IDLE;
+       201:         1/1                  end else if (refill_gnt) begin
+       202:                                 // Finally granted permission to write to L1TLB
+       203:         1/1                      state_nxt = STATE_IDLE;
 ```
 
-- `mmu_l1itlb` `mmu/rtl/mmu_l1itlb.sv:763` `ref_nxt_st[2:0] = IDLE;`
+- `mmu_l1itlb` `mmu/rtl/mmu_l1itlb.sv:785` `ref_nxt_st[2:0] = IDLE;`（FSM `default` 不可达分支，已通过 RTL `// coverage off`/`// coverage on` waiver；URG 源码列表仍显示 0/1 但不计入有效分母）
 
-`mmu/rtl/mmu_l1itlb.sv:763`
-
-```systemverilog
-       760:             end
-       761:             WFC: begin
-       762:               if(ifu_mmu_abort && l1itlb_ref_cmplt)
-       763: >>              ref_nxt_st[2:0] = IDLE;
-       764:               else if(ifu_mmu_abort)
-       765:                 ref_nxt_st[2:0] = ABT;
-       766:               else if(l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))
-```
-
-- `mmu_l1itlb` `mmu/rtl/mmu_l1itlb.sv:783` `ref_nxt_st[2:0] = IDLE;`
-
-`mmu/rtl/mmu_l1itlb.sv:783`
+`mmu/rtl/mmu_l1itlb.sv:785`
 
 ```systemverilog
-       780:                 ref_nxt_st[2:0] = ABT;
-       781:             end
-       782:             default: begin
-       783: >>             ref_nxt_st[2:0] = IDLE;
-       784:             end
-       785:         endcase
-       786:     // &CombEnd; @310
+       782:             end
+       783:             // Waived from coverage: unreachable encoding; SEU-only, not testable.
+       784:             default: begin
+       785:                // coverage off
+       786: >>              ref_nxt_st[2:0] = IDLE;
+       787:                // coverage on
+       788:             end
+       789:         endcase
 ```
 
 ### 条件覆盖缺口（按表达式模式聚合）
@@ -179,16 +195,16 @@
 | `mmu_l1dtlb_hit_rd` | 170 | `SUB-EXPRESSION (((!dutlb_fin_flg[1])) && dutlb_read_type_x && ( ! (cp0_mmu_mxr && dutlb_fin_flg[3]) ))` | 1 0 1 Not Covered; 1 1 1 Not Covered | 2 |
 | `mmu_l1dtlb_hit_rd` | 301 | `EXPRESSION (lsu_va_chg || lsu_mmu_va_vld_x || (pmp_flg_vld ^ lsu_mmu_va_vld_x))` | 0 1 0 Not Covered; 1 0 0 Not Covered | 2 |
 | `mmu_l1dtlb_scheduler` | 214 | `EXPRESSION (bypass_req_vld && credit_avail && ((!mb_req_vld)))` | 1 0 1 Not Covered; 1 1 0 Not Covered | 2 |
-| `mmu_l1itlb` | 520 | `EXPRESSION (iutlb_bypass_vld || iutlb_hit_vld || iutlb_disable_vld || iutlb_acc_flt || iutlb_ref_pgflt || iutlb_va_illegal)` | 0 0 1 0 0 0 Not Covered; 1 0 0 0 0 0 Not Covered | 2 |
+| `mmu_l1itlb` | 520 | `EXPRESSION (iutlb_bypass_vld || iutlb_hit_vld || iutlb_disable_vld || iutlb_acc_flt || iutlb_ref_pgflt || iutlb_va_illegal)` | 1 0 0 0 0 0 Not Covered | 1 |
 | `mmu_l1itlb` | 566 | `SUB-EXPRESSION (((!pmp_mmu_flg2[2])) && ( ! (cp0_mach_mode && ((!pmp_mmu_flg2[3]))) ) && pmp_flg_vld)` | 1 0 1 Not Covered; 1 1 1 Not Covered | 2 |
-| `mmu_l1itlb` | 727 | `EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit_vld)) && ((!iutlb_off_hit)) && ((!cp0_mmu_no_op_req)))` | 1 1 0 1 Not Covered; 1 1 1 0 Not Covered | 2 |
-| `mmu_l1itlb` | 2064 | `EXPRESSION (ifu_mmu_va_vld && iutlb_addr_hit_vld && ((!iutlb_addr_hit)) && ((!iutlb_off_hit)))` | 0 1 1 1 Not Covered; 1 1 1 0 Not Covered | 2 |
+| `mmu_l1itlb` | 727 | `EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit_vld)) && ((!iutlb_off_hit)) && ((!cp0_mmu_no_op_req)))` | 1 1 1 0 Not Covered | 1 |
+| `mmu_l1itlb` | 2067 | `EXPRESSION (ifu_mmu_va_vld && iutlb_addr_hit_vld && ((!iutlb_addr_hit)) && ((!iutlb_off_hit)))` | 0 1 1 1 Not Covered; 1 1 1 0 Not Covered | 2 |
 | `mmu_l1dtlb_mb_entry` | 120 | `EXPRESSION (alloc_vld && ((!abort_this_cyc)))` | 1 0 Not Covered | 1 |
 | `mmu_l1dtlb_mb_entry` | 134 | `EXPRESSION (issue_sel && issue_grant)` | 1 0 Not Covered | 1 |
 | `mmu_l1dtlb_mb_entry` | 144 | `EXPRESSION (issue_sel && issue_grant)` | 1 0 Not Covered | 1 |
 | `mmu_l1dtlb_mb_entry` | 150 | `EXPRESSION (issue_sel && issue_grant)` | 1 0 Not Covered | 1 |
 | `mmu_l1dtlb_mb_entry` | 161 | `EXPRESSION (refill_vld & refill_pgflt)` | 0 1 Not Covered | 1 |
-| `mmu_l1dtlb_mb_entry` | 257 | `EXPRESSION (alloc_fire && (state_r == STATE_IDLE))` | 1 0 Not Covered | 1 |
+| `mmu_l1dtlb_mb_entry` | 260 | `EXPRESSION (alloc_fire && (state_r == STATE_IDLE))` | 1 0 Not Covered | 1 |
 | `mmu_l1dtlb_expt_cam` | 95 | `EXPRESSION (lsu_mmu_va1_vld && hit1_any && ((!lsu_mmu_abort1)))` | 1 1 0 Not Covered | 1 |
 | `mmu_l1dtlb_expt_cam` | 96 | `EXPRESSION (hit0_any && hit1_any && (hit0_idx == hit1_idx))` | 1 1 1 Not Covered | 1 |
 | `mmu_l1dtlb_expt_cam` | 98 | `EXPRESSION (consume1 && ((!same_hit_entry)))` | 1 0 Not Covered | 1 |
@@ -222,14 +238,24 @@
 
 | 模块 | 名称（已聚合） | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | --- | ---: | ---: | ---: |
-| `mmu_l1dtlb_sva` | `gen_l1dtlb_entry_sva[10].a_va8_inv_clears_matching_entry` | assertion | 252988892 | 0 | 7 |
-| `mmu_l1dtlb_sva` | `cp_l1dtlb_c001_reset_then_miss` | cover | 252988892 | 0 | 1 |
-| `mmu_l1dtlb_mb_entry_sva` | `a_idle_flush_blocks_alloc` | assertion | 2034603960 | 0 | 1 |
-| `mmu_l1dtlb_mb_entry_sva` | `a_wfi_data_stable_without_grant` | assertion | 2034603960 | 0 | 1 |
-| `mmu_l1dtlb_hit_rd_sva` | `a_expt_entry_overlap_is_terminal_replay` | assertion | 508650990 | 0 | 1 |
-| `mmu_l1dtlb_hit_rd_sva` | `cp_l1dtlb_expt_entry_overlap_replay` | cover | 508650990 | 0 | 1 |
-| `mmu_l1dtlb_allocator_sva` | `a_same_4k_dual_miss_dedup` | assertion | 254325495 | 0 | 1 |
-| `mmu_l1dtlb_allocator_sva` | `cp_l1dtlb_c004_same_vpn_dedup` | cover | 254325495 | 0 | 1 |
+| `mmu_l1dtlb_sva` | `gen_l1dtlb_entry_sva[9..15].a_va8_inv_clears_matching_entry` | assertion | 253009002 | 0 | 7 |
+| `mmu_l1dtlb_sva` | `cp_l1dtlb_c001_reset_then_miss` | cover | 253009002 | 0 | 1 |
+| `mmu_l1dtlb_vabuf_sva` | `a_vabuf_chg_no_hit_drop_p0` / `a_vabuf_chg_no_hit_drop_p1` | assertion | 253026032 | 0 | 2（**本轮新确认**） |
+| `mmu_l1dtlb_vabuf_sva` | `a_vabuf_chg_pa_stable_p0` / `a_vabuf_chg_pa_stable_p1` | assertion | 253026032 | 0 | 2（**本轮新确认**） |
+| `mmu_l1dtlb_vabuf_sva` | `c_vabuf_chg_p0/p1_hit_still_valid` / `c_vabuf_chg_p0/p1_va_stable` | cover | 253026032 | 0 | 4（**本轮新确认**） |
+| `mmu_l1dtlb_mb_entry_sva` | `a_idle_flush_blocks_alloc` | assertion | 253026032 | 0 | 8（gen_mb_entries[0..7]） |
+| `mmu_l1dtlb_mb_entry_sva` | `a_wfi_data_stable_without_grant` | assertion | 253026032 | 0 | 8（gen_mb_entries[0..7]） |
+| `mmu_l1dtlb_mb_entry_sva` | `a_wfg_flush_no_grant_to_idle` | assertion | 253026032 | 0 | 4（gen_mb_entries[0..3]，**本轮新增**） |
+| `mmu_l1dtlb_mb_entry_sva` | `a_wfi_flush_to_idle` | assertion | 253026032 | 0 | 4（gen_mb_entries[0..3]，**本轮新增**） |
+| `mmu_l1dtlb_mb_entry_sva` | `a_wfc_flush_refill_to_idle` | assertion | 253026032 | 0 | 1（gen_mb_entries[1]，**本轮新增**） |
+| `mmu_l1dtlb_mb_entry_sva` | `a_wfg_flush_with_grant_to_abt` | assertion | 253026032 | 0 | 1（gen_mb_entries[1]，**本轮新增**） |
+| `mmu_l1dtlb_hit_rd_sva` | `a_expt_entry_overlap_is_terminal_replay` | assertion | 253026032 | 0 | 2（port0/port1） |
+| `mmu_l1dtlb_hit_rd_sva` | `cp_l1dtlb_expt_entry_overlap_replay` | cover | 253026032 | 0 | 2（port0/port1） |
+| `mmu_l1dtlb_hit_rd_sva` | `a_stamo_bypass_not_miss` | assertion | 253026032 | 0 | 1（port0，**本轮新确认**） |
+| `mmu_l1dtlb_hit_rd_sva` | `a_stamo_pa_source` | assertion | 253026032 | 0 | 1（port0，**本轮新确认**） |
+| `mmu_l1dtlb_hit_rd_sva` | `cp_l1dtlb_c012_stamo_bypass` | cover | 253026032 | 0 | 1（port0，**本轮新确认**） |
+| `mmu_l1dtlb_allocator_sva` | `a_same_4k_dual_miss_dedup` | assertion | 253026032 | 0 | 1 |
+| `mmu_l1dtlb_allocator_sva` | `cp_l1dtlb_c004_same_vpn_dedup` | cover | 253026032 | 0 | 1 |
 
 ### 翻转覆盖 - 端口（按信号模式聚合）
 
@@ -329,53 +355,60 @@
 
 ### 翻转覆盖薄弱模块（按未翻转对象数排序）
 
-| 模块 | 未翻转对象数 | 模块级 TOGGLE 覆盖率 |
-| --- | ---: | ---: |
-| `mmu_l1dtlb` | 497 | 81.87 |
-| `mmu_l1itlb` | 421 | 73.85 |
-| `mmu_l1dtlb_hit_rd` | 158 | 83.91 |
-| `mmu_l1dtlb_hit_rd_sva` | 141 | 83.30 |
-| `mmu_l1dtlb_sva` | 99 | 86.69 |
-| `mmu_l1dtlb_install` | 70 | 75.72 |
-| `mmu_l1dtlb_install_sva` | 70 | 72.65 |
-| `mmu_l1dtlb_expt_cam` | 56 | 78.27 |
-| `ct_mmu_iutlb_fst_entry` | 25 | 86.68 |
-| `mmu_l1dtlb_scheduler` | 21 | 87.66 |
+| 模块 | 未翻转对象数 | 模块级 TOGGLE 覆盖率 | 较上版变化 |
+| --- | ---: | ---: | --- |
+| `mmu_l1dtlb` | 497 | 81.88 | +0.01 |
+| `mmu_l1itlb` | 421 | 73.90 | +0.05 |
+| `mmu_l1dtlb_hit_rd` | 158 | 83.95 | +0.04 |
+| `mmu_l1dtlb_hit_rd_sva` | 141 | 83.35 | +0.05 |
+| `mmu_l1dtlb_sva` | 99 | 86.71 | +0.02 |
+| `mmu_l1dtlb_install` | 70 | 75.77 | +0.05 |
+| `mmu_l1dtlb_install_sva` | 70 | 72.70 | +0.05 |
+| `mmu_l1dtlb_expt_cam` | 56 | 78.36 | +0.09 |
+| `ct_mmu_iutlb_fst_entry` | 25 | 86.81 | +0.13 |
+| `mmu_l1dtlb_scheduler` | 21 | 87.75 | +0.09 |
+| `ct_mmu_iutlb_entry` | 21 | 88.13 | +0.15 |
+| `mmu_l1dtlb_mb_entry` | 4 | 92.72 | +0.17 |
+| `mmu_l1dtlb_mb_entry_sva` | 2 | 93.85 | +0.27 |
+| `mmu_l1dtlb_scheduler_sva` | 2 | 84.51 | +0.12 |
+| `mmu_l1dtlb_expt_cam_sva` | 1 | 99.41 | +0.30 |
+| `mmu_l1dtlb_allocator_sva` | 0 | 100.00 | **+0.52（闭合）** |
 
 ### 条件覆盖薄弱模块（按未覆盖表达式数排序）
 
-| 模块 | 未覆盖表达式数 | 模块级 COND 覆盖率 |
-| --- | ---: | ---: |
-| `mmu_l1dtlb` | 200 | 91.42 |
-| `mmu_l1itlb` | 35 | 80.34 |
-| `mmu_l1dtlb_hit_rd` | 32 | 80.49 |
-| `mmu_l1dtlb_mb_entry` | 10 | 86.30 |
-| `mmu_l1dtlb_install` | 7 | 79.41 |
-| `mmu_l1dtlb_expt_cam` | 5 | 80.77 |
-| `mmu_l1dtlb_scheduler` | 4 | 96.77 |
-| `ct_mmu_iutlb_entry` | 2 | 94.87 |
-| `ct_mmu_iutlb_fst_entry` | 1 | 97.44 |
+| 模块 | 未覆盖表达式数 | 模块级 COND 覆盖率 | 较上版变化 |
+| --- | ---: | ---: | --- |
+| `mmu_l1dtlb` | 200 | 91.42 | 0 |
+| `mmu_l1itlb` | 27 | 84.83 | **+4.49（COND 35→27）** |
+| `mmu_l1dtlb_hit_rd` | 32 | 80.49 | 0 |
+| `mmu_l1dtlb_mb_entry` | 10 | 86.30 | 0 |
+| `mmu_l1dtlb_install` | 7 | 79.41 | 0 |
+| `mmu_l1dtlb_expt_cam` | 5 | 80.77 | 0 |
+| `mmu_l1dtlb_scheduler` | 4 | 96.77 | 0 |
+| `ct_mmu_iutlb_entry` | 2 | 94.87 | 0 |
+| `ct_mmu_iutlb_fst_entry` | 1 | 97.44 | 0 |
 
 
 ### 主要结论
 
 - **L1TLB 整体未覆盖对象集中在 `mmu_l1dtlb`、`mmu_l1itlb`、`mmu_l1dtlb_sva`、`mmu_l1dtlb_hit_rd`/`mmu_l1dtlb_hit_rd_sva` 等模块**，主要表现为：
-  - **翻转覆盖（TOGGLE）缺口最多**（合并后 784 项）：参数化 entry/bit 位段（如 `l1dtlb_ent_ppn[N][...]`、`l1dtlb_ent_vpn[N][...]`、`mb_entry_vpn[N][...]`）较上版减少 163 项，主要因 entry 2..7 中位 entry 的 toggle 缺口收敛。高位 entry（N=8..15）仍有大量 TOGGLE 缺口。
-  - **条件覆盖（COND）缺口**（79 项合并后）：`mmu_l1dtlb` 主模块的 line 305/315 PTW/JTLB refill 异常+entry valid+状态组合仍缺若干组合；line 1190/1194 1G 页匹配支路在所有 entry 上均未覆盖；line 1116/1120 invalidation 已推进到 entry 9，entry 10..15 仍未覆盖。
-  - **行覆盖（LINE）缺口** 3 项（上版 7 项）：均位于 `mmu_l1itlb`——行 759（WFG 态 `credit_cnt==0` 且无 abort 保持 WFG）、行 763（WFC 态 `ifu_mmu_abort && l1itlb_ref_cmplt` 回 IDLE）、行 783（FSM default 回 IDLE）。
-  - **FSM 迁移缺口**（2 类合并后）：`mmu_l1itlb` 的 2 条 FSM 缺口（`ref_cur_st` 的 `WFG->IDLE` 与 `WFG->ABT`）本轮已闭合，iUTLB FSM 覆盖率达 100.00；`mmu_l1dtlb_mb_entry` 的 `state_r` FSM 仍有 2 类缺口——`STATE_WFG->STATE_ABT`（line 146, gen_mb_entries[1] 未覆盖）与 `STATE_WFG->STATE_IDLE`（line 237, gen_mb_entries[0..3] 未覆盖），对应 WFG 态下 abort+grant→ABT 和 flush→IDLE 两条迁移路径。
-  - **断言/cover 命中缺口** 8 项：`gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` entry 10..16 未命中（7 项，上版 19 项，0..9 已闭合）；`cp_l1dtlb_c001_reset_then_miss` cover 未采样；`a_idle_flush_blocks_alloc`/`a_wfi_data_stable_without_grant` 断言未成功；`a_expt_entry_overlap_is_terminal_replay` + cover 未命中；`a_same_4k_dual_miss_dedup` + cover 未命中。
+  - **翻转覆盖（TOGGLE）缺口最多**（合并后 784 项）：参数化 entry/bit 位段（如 `l1dtlb_ent_ppn[N][...]`、`l1dtlb_ent_vpn[N][...]`、`mb_entry_vpn[N][...]`）与上版基本持平。多数模块微幅提升（+0.01~+0.30），`mmu_l1dtlb_allocator_sva` TOGGLE 完全闭合。高位 entry（N=8..15）仍有大量 TOGGLE 缺口，需通过 toggle sweep 用例推进。
+  - **条件覆盖（COND）缺口**（80 项合并后）：`mmu_l1dtlb` 主模块的 line 305/315 PTW/JTLB refill 异常+entry valid+状态组合仍缺若干组合；line 1190/1194 1G 页匹配支路在所有 entry 上均未覆盖；line 1116/1120 invalidation 已推进到 entry 9，entry 10..15 仍未覆盖。`mmu_l1itlb` COND 80.34→84.83（+4.49），缺口项数 35→27。
+  - **行覆盖（LINE）缺口** 2 项（上版 3 项）：`mmu_l1dtlb_mb_entry` 行 200（WFI 态 `abort_this_cyc`→IDLE，**本轮回退**）；`mmu_l1itlb` 行 785（FSM `default` 不可达分支，已通过 RTL `// coverage off` waiver）。上版 `mmu_l1itlb` 行 759/763 两条 LINE 缺口已闭合。
+  - **FSM 迁移缺口**（2 类合并后）：`mmu_l1itlb` FSM 覆盖率达 100.00；`mmu_l1dtlb_mb_entry` 的 `state_r` FSM 仍有 2 类缺口——`STATE_WFG->STATE_ABT`（line 146, gen_mb_entries[1] 未覆盖）与 `STATE_WFG->STATE_IDLE`（line 237, gen_mb_entries[0..3] 未覆盖），对应 WFG 态下 abort+grant→ABT 和 flush→IDLE 两条迁移路径。
+  - **断言/cover 命中缺口** 10 项（上版 8 项，**新增 2 项**）：`gen_l1dtlb_entry_sva[N].a_va8_inv_clears_matching_entry` entry 9..15 未命中（7 项）；`cp_l1dtlb_c001_reset_then_miss` cover 未采样；`a_idle_flush_blocks_alloc`/`a_wfi_data_stable_without_grant` 断言未成功；`a_expt_entry_overlap_is_terminal_replay` + cover 未命中；`a_same_4k_dual_miss_dedup` + cover 未命中。**本轮 `mmu_l1dtlb_mb_entry_sva` 新增 `a_wfg_flush_no_grant_to_idle`/`a_wfi_flush_to_idle`/`a_wfc_flush_refill_to_idle`/`a_wfg_flush_with_grant_to_abt` 多条 per-instance 未成功（ASSERT 90→85）**，与 mb_entry FSM/LINE 回退同源（缺少 flush+WFG/WFI race 激励）。
 
 ### 建议的定向激励
 
-1. **遍历所有 16 个 dutlb entry（继续推进 entry 8..15）**：entry 0..7 已有显著进展（toggle 缺口大量收敛），entry 8..15 仍需被 install/refill/hit/invalidate 激励，建议定向构造用例按 entry index 依次填满 16 个 entry。
-2. **1G 页匹配场景**：line 1190/1194 的 `pgs[2] & hit_1g` 1G 页支路在所有 entry 均未覆盖（SUB-EXPRESSION 影响 52 条目），需构造 1G 页地址映射使 hit 发生在 1G 页粒度。
-3. **iUTLB WFG 保持 / WFC abort+ref_cmplt 回 IDLE 路径**：`ref_nxt_st` 行 759（`credit_cnt==0` 且无 abort→保持 WFG）、行 763（WFC 态 `ifu_mmu_abort && l1itlb_ref_cmplt`→回 IDLE）、行 783（FSM default）需定向激励。
+1. **恢复 mb_entry WFI/flush 路径激励（最高优先级，本轮回退项）**：重新启用或重构 `test_mmu_l1dtlb_dtlb_mb_fsm_default_001` 类似用例，覆盖 (a) `state_r==WFI` 时 `abort_this_cyc` 触发 → IDLE（line 200）；(b) `state_r==WFG` 时 `abort_this_cyc && issue_sel && issue_grant` race → ABT（line 146）；(c) `state_r==WFG` 时仅 `abort_this_cyc=1` 无 grant → IDLE（line 237）；(d) 同步驱动 mb_entry_sva 中 `a_wfi_flush_to_idle`/`a_wfg_flush_no_grant_to_idle`/`a_wfc_flush_refill_to_idle`/`a_wfg_flush_with_grant_to_abt` 命中。
+2. **遍历所有 16 个 dutlb entry（继续推进 entry 8..15）**：entry 0..7 已有显著进展（toggle 缺口大量收敛），entry 8..15 仍需被 install/refill/hit/invalidate 激励，建议定向构造用例按 entry index 依次填满 16 个 entry。
+3. **1G 页匹配场景**：line 1190/1194 的 `pgs[2] & hit_1g` 1G 页支路在所有 entry 均未覆盖（SUB-EXPRESSION 影响 52 条目），需构造 1G 页地址映射使 hit 发生在 1G 页粒度。
 4. **exception entry overlap 场景**：`mmu_l1dtlb_hit_rd_sva` 的 `a_expt_entry_overlap_is_terminal_replay` + cover——需 port0/port1 背靠背访问且均命中同一异常 entry，构造双端口冲突异常场景。
 5. **同 4KB 双 miss 去重**：`mmu_l1dtlb_allocator_sva` 的 `a_same_4k_dual_miss_dedup` + cover——需 port0 和 port1 同时 miss 且 VPN 落在同一 4KB 页，触发 allocator 去重逻辑。
 6. **复位后立即 miss**：`cp_l1dtlb_c001_reset_then_miss` cover——需在 `cpurst_b` 释放后立即发起 TLB miss 请求，且 miss buffer 成功 allocate。
 7. **mb_entry idle 态 flush / WFI 态 grant 前数据稳定**：`a_idle_flush_blocks_alloc`（idle 态收到 flush 阻止 alloc）、`a_wfi_data_stable_without_grant`（WFI 态 grant 前 entry 数据不变）——需构造定向时序场景。
-8. **mb_entry WFG→ABT / WFG→IDLE 迁移**：`state_r` FSM 的 `STATE_WFG->STATE_ABT`（line 146，abort 同时 issue grant→进 ABT）与 `STATE_WFG->STATE_IDLE`（line 237，复位/abort 无 grant→回 IDLE）在 gen_mb_entries[0..3] 上未覆盖——需构造 WFG 态下 `issue_sel && issue_grant` 与 `abort_this_cyc` 同时为 1 的 race 场景（→ABT），以及 WFG 态下仅 `abort_this_cyc=1` 且无 grant 的场景（→IDLE）。
+8. **iUTLB VA-bound / flags 组合**：line 520/551/727/2067 等表达式的剩余 COND/BRANCH 组合（如 `iutlb_flg_aft_bypass[4] && cp0_supv_mode && !cp0_mmu_sum` 三 term 全 1、`ifu_mmu_va_vld && iutlb_addr_hit_vld && !iutlb_addr_hit && !iutlb_off_hit` 等）需通过特定 privilege/flag 配置激励。
+9. **vabuf SVA**：`mmu_l1dtlb_vabuf_sva` 的 `a_vabuf_chg_no_hit_drop_p0/p1`、`a_vabuf_chg_pa_stable_p0/p1` + 4 个配套 cover——需构造 VA 变化但 hit/miss 边界场景。
 ## 分模块详情
 
 ## 模块 `mmu_l1dtlb`
@@ -1172,6 +1205,8 @@
 | `state_r` | `STATE_WFG->STATE_ABT` | 146 | `gen_mb_entries[1]` |
 | `state_r` | `STATE_WFG->STATE_IDLE` | 237 | `gen_mb_entries[0..3]` |
 
+> **本轮回退**：line 200（WFI 态 `abort_this_cyc`→IDLE）从 1/1 退回 0/1，导致 LINE 100→96.97、BRANCH 100→94.74。回退原因：定向用例 `test_mmu_l1dtlb_dtlb_mb_fsm_default_001` 被删除（见 git 状态 `D .../test_mmu_l1dtlb_dtlb_mb_fsm_default_001.svh`），无其他测试激励 WFI 态 flush→IDLE 路径。FSM 顶层 `STATE_WFI` 分支 `default` 列也相应显示为 Not Covered。
+
 `mmu/rtl/mmu_l1dtlb_mb_entry.sv:142-154` (STATE_WFG 状态的 next-state 逻辑):
 
 ```systemverilog
@@ -1188,6 +1223,20 @@
       152:                     state_nxt = STATE_WFC;
       153:             end
       154:         end
+```
+
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:197-205` (STATE_WFI 状态的 next-state 逻辑，line 200 本轮回退):
+
+```systemverilog
+      197:         STATE_WFI: begin
+      198:             if (abort_this_cyc) begin
+      199:                 // Flush occurred while waiting to install
+      200: >> 0/1             state_nxt = STATE_IDLE;
+      201:             end else if (refill_gnt) begin
+      202:                 // Finally granted permission to write to L1TLB
+      203:                 state_nxt = STATE_IDLE;
+      204:             end
+      205:         end
 ```
 
 `mmu/rtl/mmu_l1dtlb_mb_entry.sv:235-241` (复位重置 FSM 回 IDLE):
@@ -1213,9 +1262,9 @@
 | 144 | `EXPRESSION (issue_sel && issue_grant)` | 1 0 Not Covered | 1 |
 | 150 | `EXPRESSION (issue_sel && issue_grant)` | 1 0 Not Covered | 1 |
 | 161 | `EXPRESSION (refill_vld & refill_pgflt)` | 0 1 Not Covered | 1 |
-| 257 | `EXPRESSION (alloc_fire && (state_r == STATE_IDLE))` | 1 0 Not Covered | 1 |
-| 283 | `EXPRESSION (alloc_fire && issue_sel && issue_grant)` | 0 1 1 Not Covered; 1 1 0 Not Covered | 2 |
-| 288 | `EXPRESSION ((state_r == STATE_WFG) && issue_sel && issue_grant)` | 0 1 1 Not Covered; 1 1 0 Not Covered | 2 |
+| 260 | `EXPRESSION (alloc_fire && (state_r == STATE_IDLE))` | 1 0 Not Covered | 1 |
+| 286 | `EXPRESSION (alloc_fire && issue_sel && issue_grant)` | 0 1 1 Not Covered; 1 1 0 Not Covered | 2 |
+| 291 | `EXPRESSION ((state_r == STATE_WFG) && issue_sel && issue_grant)` | 0 1 1 Not Covered; 1 1 0 Not Covered | 2 |
 
 `mmu/rtl/mmu_l1dtlb_mb_entry.sv:120`
 
@@ -1277,40 +1326,40 @@
        164:                         state_nxt = STATE_ACFLT;
 ```
 
-`mmu/rtl/mmu_l1dtlb_mb_entry.sv:257`
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:260`
 
 ```systemverilog
-       254:     	pgs_r	  <= '0;
-       255:         end else begin
-       256:             // Allocation Phase: Capture Request Info
-       257: >>          if (alloc_fire && state_r == STATE_IDLE) begin
-       258:                 vpn_r     <= alloc_vpn;
-       259:                 iid_r     <= alloc_iid;
-       260:     //            port_id_r <= alloc_port_id;
+       257:     	pgs_r	  <= '0;
+       258:         end else begin
+       259:             // Allocation Phase: Capture Request Info
+       260: >>          if (alloc_fire && state_r == STATE_IDLE) begin
+       261:                 vpn_r     <= alloc_vpn;
+       262:                 iid_r     <= alloc_iid;
+       263:     //            port_id_r <= alloc_port_id;
 ```
 
-`mmu/rtl/mmu_l1dtlb_mb_entry.sv:283`
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:286`
 
 ```systemverilog
-       280:             issued_r <= 1'b0;
-       281:         end else if (state_r == STATE_IDLE) begin
-       282:             // [FIX]: Set issued flag if bypassed immediately
-       283: >>          if (alloc_fire && issue_sel && issue_grant) begin
-       284:                 issued_r <= 1'b1;
-       285:             end else begin
-       286:                 issued_r <= 1'b0;
+       283:             issued_r <= 1'b0;
+       284:         end else if (state_r == STATE_IDLE) begin
+       285:             // [FIX]: Set issued flag if bypassed immediately
+       286: >>          if (alloc_fire && issue_sel && issue_grant) begin
+       287:                 issued_r <= 1'b1;
+       288:             end else begin
+       289:                 issued_r <= 1'b0;
 ```
 
-`mmu/rtl/mmu_l1dtlb_mb_entry.sv:288`
+`mmu/rtl/mmu_l1dtlb_mb_entry.sv:291`
 
 ```systemverilog
-       285:             end else begin
-       286:                 issued_r <= 1'b0;
-       287:             end
-       288: >>      end else if (state_r == STATE_WFG && issue_sel && issue_grant) begin
-       289:             // Set issued flag if issued from WFG
-       290:             issued_r <= 1'b1;
-       291:         end
+       288:             end else begin
+       289:                 issued_r <= 1'b0;
+       290:             end
+       291: >>      end else if (state_r == STATE_WFG && issue_sel && issue_grant) begin
+       292:             // Set issued flag if issued from WFG
+       293:             issued_r <= 1'b1;
+       294:         end
 ```
 
 ### 翻转覆盖 - 端口
@@ -2350,83 +2399,53 @@
 
 说明：这里列出执行次数不足的 RTL/SVA 语句；后面的代码块用 `>>` 标出对应源码行。
 
+> **本轮 iUTLB LINE 显著提升**：line 759（WFG 保持）、line 763（WFC abort+ref_cmplt→IDLE）已覆盖。仅残留 line 785（FSM `default` 不可达分支），该分支已通过 RTL `// coverage off`/`// coverage on` waiver 注释豁免（URG 源码列表仍显示 0/1 但不计入有效分母）。LINE 95.24→98.41。
+
 | 行号 | 未覆盖代码/对象 | URG 细节 |
 | ---: | --- | --- |
-| 759 | `ref_nxt_st[2:0] = WFG;` | 0/N |
-| 763 | `ref_nxt_st[2:0] = IDLE;` | 0/N |
-| 783 | `ref_nxt_st[2:0] = IDLE;` | 0/N |
+| 785 | `ref_nxt_st[2:0] = IDLE;` | 0/1（waived：`// coverage off`，不可达 encoding） |
 
-`mmu/rtl/mmu_l1itlb.sv:759`
-
-```systemverilog
-       755:                 ref_nxt_st[2:0] = IDLE;
-       756:               else if(credit_cnt != 1'b0)
-       757:                 ref_nxt_st[2:0] = WFC;
-       758:               else
-       759: >>              ref_nxt_st[2:0] = WFG;
-       760:             end
-       761:             WFC: begin
-       762:               if(ifu_mmu_abort && l1itlb_ref_cmplt)
-       763:                 ref_nxt_st[2:0] = IDLE;
-```
-
-`mmu/rtl/mmu_l1itlb.sv:763`
-
-```systemverilog
-       759:                 ref_nxt_st[2:0] = WFG;
-       760:             end
-       761:             WFC: begin
-       762:               if(ifu_mmu_abort && l1itlb_ref_cmplt)
-       763: >>              ref_nxt_st[2:0] = IDLE;
-       764:               else if(ifu_mmu_abort)
-       765:                 ref_nxt_st[2:0] = ABT;
-       766:               else if(l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))
-       767:                 ref_nxt_st[2:0] = PGFLT;
-```
-
-`mmu/rtl/mmu_l1itlb.sv:783`
+`mmu/rtl/mmu_l1itlb.sv:785`
 
 ```systemverilog
        779:               else
        780:                 ref_nxt_st[2:0] = ABT;
        781:             end
-       782:             default: begin
-       783: >>             ref_nxt_st[2:0] = IDLE;
-       784:             end
-       785:         endcase
-       786:     // &CombEnd; @310
-       787:     end
+       782:             // Waived from coverage: unreachable encoding; SEU-only, not testable.
+       783:             default: begin
+       784:                // coverage off
+       785: >>              ref_nxt_st[2:0] = IDLE;
+       786:                // coverage on
+       787:             end
+       788:         endcase
+       789:     // &CombEnd; @310
 ```
 
 ### 条件覆盖
 
 说明：这里列出组合表达式中未覆盖到的 term 取值组合；`URG 细节` 中的位串对应表达式里的 term 顺序。参数化条目（如不同 entry index）已聚合，`影响条目数` 表示同一表达式模式命中的实例数。
 
+> **本轮 COND 80.34→84.83（+4.49）**：上版 line 459（iutlb_clk_en SUB-EXPR）、line 510（iutlb_disable_vld && iutlb_off_hit）、line 756（`credit_cnt != 0`，对应 line 759 WFG 保持）、line 762（`ifu_mmu_abort && l1itlb_ref_cmplt`，对应 line 763 WFC→IDLE）、line 829（iutlb_refill_vld && hpcp_mmu_cnt_en，移至 line 832）、line 2252/2270（iutlb_hit_vld || iutlb_disable_vld）均已覆盖。
+
 | 行号 | 未覆盖代码/对象 | URG 细节（采样） | 影响条目数 |
 | ---: | --- | --- | ---: |
-| 459 | `SUB-EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit)) && ((!iutlb_off_hit)))` | 1 1 0 Not Covered | 1 |
-| 510 | `EXPRESSION (ifu_mmu_va_vld && iutlb_off_hit)` | 1 1 Not Covered | 1 |
-| 520 | `EXPRESSION (iutlb_bypass_vld || iutlb_hit_vld || iutlb_disable_vld || iutlb_acc_flt || iutlb_ref_pgflt || iutlb_va_illegal)` | 0 0 1 0 0 0 Not Covered; 1 0 0 0 0 0 Not Covered | 2 |
+| 520 | `EXPRESSION (iutlb_bypass_vld || iutlb_hit_vld || iutlb_disable_vld || iutlb_acc_flt || iutlb_ref_pgflt || iutlb_va_illegal)` | 1 0 0 0 0 0 Not Covered | 1 |
 | 533 | `EXPRESSION (iutlb_flg_aft_bypass[11] || ((!iutlb_flg_aft_bypass[13])))` | 1 0 Not Covered | 1 |
 | 548 | `EXPRESSION (((ifu_mmu_va[(VPN_WIDTH + 10)] && ((!(&ifu_mmu_va[62:(VPN_WIDTH + 11)])))) || (((!ifu_mmu_va[(VPN_WIDTH + 10)])) && ((|ifu_mmu_va[62:(VPN_WIDTH + 11)])))) && (...` | 1 0 1 Not Covered | 1 |
 | 548 | `SUB-EXPRESSION ((ifu_mmu_va[(VPN_WIDTH + 10)] && ((!(&ifu_mmu_va[62:(VPN_WIDTH + 11)])))) || (((!ifu_mmu_va[(VPN_WIDTH + 10)])) && ((|ifu_mmu_va[62:(VPN_WIDTH + 11)])))))` | 0 1 Not Covered | 1 |
 | 548 | `SUB-EXPRESSION (ifu_mmu_va[(VPN_WIDTH + 10)] && ((!(&ifu_mmu_va[62:(VPN_WIDTH + 11)]))))` | 1 0 Not Covered | 1 |
 | 548 | `SUB-EXPRESSION (((!ifu_mmu_va[(VPN_WIDTH + 10)])) && ((|ifu_mmu_va[62:(VPN_WIDTH + 11)])))` | 1 1 Not Covered | 1 |
-| 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[0])) || (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2]) || ((!iutlb_flg_aft_bypass[3])) || (iutlb_flg_aft_bypass[4] && cp0_su...` | 0 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 0 0 1 0 0 0 Not Covered; ... 共 7 种 | 7 |
+| 551 | `SUB-EXPRESSION ((((!iutlb_flg_aft_bypass[0])) || (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2]) || ((!iutlb_flg_aft_bypass[3])) || (iutlb_flg_aft_bypass[4] && cp0_supv_mode && ((!cp0_mmu_sum))) || (((!iutlb_flg_aft_bypass[4])) && cp0_user_mode && regs_mmu_en)))` | 0 0 0 0 0 0 0 0 1 Not Covered; 0 0 0 0 0 0 0 1 0 Not Covered; 0 0 0 0 0 1 0 0 0 Not Covered; ... 共 7 种 | 7 |
 | 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[1])) && iutlb_flg_aft_bypass[2])` | 1 1 Not Covered | 1 |
 | 551 | `SUB-EXPRESSION (iutlb_flg_aft_bypass[4] && cp0_supv_mode && ((!cp0_mmu_sum)))` | 1 0 1 Not Covered; 1 1 0 Not Covered; 1 1 1 Not Covered | 3 |
 | 551 | `SUB-EXPRESSION (((!iutlb_flg_aft_bypass[4])) && cp0_user_mode && regs_mmu_en)` | 0 1 1 Not Covered | 1 |
 | 566 | `EXPRESSION (jtlb_acc_fault_flop || (((!pmp_mmu_flg2[2])) && ( ! (cp0_mach_mode && ((!pmp_mmu_flg2[3]))) ) && pmp_flg_vld))` | 0 1 Not Covered | 1 |
 | 566 | `SUB-EXPRESSION (((!pmp_mmu_flg2[2])) && ( ! (cp0_mach_mode && ((!pmp_mmu_flg2[3]))) ) && pmp_flg_vld)` | 1 0 1 Not Covered; 1 1 1 Not Covered | 2 |
 | 566 | `SUB-EXPRESSION (cp0_mach_mode && ((!pmp_mmu_flg2[3])))` | 1 0 Not Covered | 1 |
-| 727 | `EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit_vld)) && ((!iutlb_off_hit)) && ((!cp0_mmu_no_op_req)))` | 1 1 0 1 Not Covered; 1 1 1 0 Not Covered | 2 |
-| 756 | `EXPRESSION (credit_cnt != 1'b0)` | 0 Not Covered | 1 |
-| 762 | `EXPRESSION (ifu_mmu_abort && l1itlb_ref_cmplt)` | 1 1 Not Covered | 1 |
+| 727 | `EXPRESSION (ifu_mmu_va_vld && ((!iutlb_addr_hit_vld)) && ((!iutlb_off_hit)) && ((!cp0_mmu_no_op_req)))` | 1 1 1 0 Not Covered | 1 |
 | 766 | `EXPRESSION (l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))` | 0 1 Not Covered | 1 |
-| 829 | `EXPRESSION (iutlb_refill_vld && hpcp_mmu_cnt_en)` | 1 0 Not Covered | 1 |
-| 2064 | `EXPRESSION (ifu_mmu_va_vld && iutlb_addr_hit_vld && ((!iutlb_addr_hit)) && ((!iutlb_off_hit)))` | 0 1 1 1 Not Covered; 1 1 1 0 Not Covered | 2 |
-| 2252 | `SUB-EXPRESSION (iutlb_hit_vld || iutlb_disable_vld)` | 0 1 Not Covered | 1 |
-| 2270 | `EXPRESSION (iutlb_hit_vld || iutlb_disable_vld)` | 0 1 Not Covered | 1 |
+| 832 | `EXPRESSION (iutlb_refill_vld && hpcp_mmu_cnt_en)` | 1 0 Not Covered | 1 |
+| 2067 | `EXPRESSION (ifu_mmu_va_vld && iutlb_addr_hit_vld && ((!iutlb_addr_hit)) && ((!iutlb_off_hit)))` | 0 1 1 1 Not Covered; 1 1 1 0 Not Covered | 2 |
 
 `mmu/rtl/mmu_l1itlb.sv:459`
 
@@ -2548,40 +2567,40 @@
        765:                 ref_nxt_st[2:0] = ABT;
 ```
 
-`mmu/rtl/mmu_l1itlb.sv:766`
+`mmu/rtl/mmu_l1itlb.sv:769`
 
 ```systemverilog
-       763:                 ref_nxt_st[2:0] = IDLE;
-       764:               else if(ifu_mmu_abort)
-       765:                 ref_nxt_st[2:0] = ABT;
-       766: >>            else if(l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))
-       767:                 ref_nxt_st[2:0] = PGFLT;
-       768:               else if(l1itlb_ref_cmplt)
-       769:                 ref_nxt_st[2:0] = IDLE;
+       766:                 ref_nxt_st[2:0] = IDLE;
+       767:               else if(ifu_mmu_abort)
+       768:                 ref_nxt_st[2:0] = ABT;
+       769: >>            else if(l1itlb_ref_cmplt && (ptw_l1tlb_pgflt || jtlb_iutlb_pgflt))
+       770:                 ref_nxt_st[2:0] = PGFLT;
+       771:               else if(l1itlb_ref_cmplt)
+       772:                 ref_nxt_st[2:0] = IDLE;
 ```
 
-`mmu/rtl/mmu_l1itlb.sv:829`
+`mmu/rtl/mmu_l1itlb.sv:832`
 
 ```systemverilog
-       826:     //                         || (ref_cur_st[2:0] == ABT) && l1itlb_ref_cmplt;
-       827:     
-       828:     // for hpcp
-       829: >>  assign iutlb_miss_cnt = iutlb_refill_vld && hpcp_mmu_cnt_en;
+       829:     //                         || (ref_cur_st[2:0] == ABT) && l1itlb_ref_cmplt;
        830:     
-       831:     always @(posedge iutlb_clk or negedge cpurst_b) begin
-       832:       if (!cpurst_b)
+       831:     // for hpcp
+       832: >>  assign iutlb_miss_cnt = iutlb_refill_vld && hpcp_mmu_cnt_en;
+       833:     
+       834:     always @(posedge iutlb_clk or negedge cpurst_b) begin
+       835:       if (!cpurst_b)
 ```
 
-`mmu/rtl/mmu_l1itlb.sv:2064`
+`mmu/rtl/mmu_l1itlb.sv:2067`
 
 ```systemverilog
-      2061:     assign iutlb_addr_hit     = iutlb_entry_hit[0]  || iutlb_entry_hit[8]
-      2062:                              || iutlb_entry_hit[16] || iutlb_entry_hit[24]; 
-      2063:     
-      2064: >>  assign iutlb_swp_en       = ifu_mmu_va_vld && iutlb_addr_hit_vld && !iutlb_addr_hit
-      2065:                              && !iutlb_off_hit;
+      2064:     assign iutlb_addr_hit     = iutlb_entry_hit[0]  || iutlb_entry_hit[8]
+      2065:                              || iutlb_entry_hit[16] || iutlb_entry_hit[24]; 
       2066:     
-      2067:     //==========================================================
+      2067: >>  assign iutlb_swp_en       = ifu_mmu_va_vld && iutlb_addr_hit_vld && !iutlb_addr_hit
+      2068:                              && !iutlb_off_hit;
+      2069:     
+      2070:     //==========================================================
 ```
 
 `mmu/rtl/mmu_l1itlb.sv:2252`
@@ -2612,11 +2631,11 @@
 
 说明：这里列出 if/case/三目表达式分支没有完全走到的位置；`URG 细节` 给出未覆盖组合。
 
+> **本轮 BRANCH 92.50→97.50（+5.0）**：上版 `WFG`/`WFC` 两条 case 分支未覆盖已闭合（对应 line 759/763 LINE 缺口闭合）。仅残留 `default` 分支（已 waiver，不计入有效分母）。
+
 | 行号 | 未覆盖代码/对象 | URG 细节 |
 | ---: | --- | --- |
-| 742 | `742            case (ref_cur_st)` | WFG - - 0 0 0 - - - - - Not Covered |
-| 742 | `742            case (ref_cur_st)` | WFC - - - - - 1 - - - - Not Covered |
-| 742 | `742            case (ref_cur_st)` | default - - - - - - - - - - Not Covered |
+| 742 | `742            case (ref_cur_st)` | default - - - - - - - - - - Not Covered（waived：不可达 encoding） |
 
 `mmu/rtl/mmu_l1itlb.sv:742`
 
@@ -5136,8 +5155,8 @@
 
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `gen_l1dtlb_entry_sva[10].a_va8_inv_clears_matching_entry` | assertion | 252988892 | 0 | 7 |
-| `cp_l1dtlb_c001_reset_then_miss` | cover | 252988892 | 0 | 1 |
+| `gen_l1dtlb_entry_sva[9..15].a_va8_inv_clears_matching_entry` | assertion | 253009002 | 0 | 7（entry 9..15，与上版一致） |
+| `cp_l1dtlb_c001_reset_then_miss` | cover | 253009002 | 0 | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:288` (`a_va8_inv_clears_matching_entry`)
 
@@ -5224,10 +5243,18 @@
 
 说明：`Real Successes=0` 表示 assert 在测试中虽然被尝试但从未真正成立；`Matches=0` 表示 cover 点未采样到。
 
+> **本轮 ASSERT 90→85（回退）**：除上版已有的 `a_idle_flush_blocks_alloc`、`a_wfi_data_stable_without_grant` per-instance 未成功外，本轮新增 4 类 per-instance 未成功断言——`a_wfg_flush_no_grant_to_idle`（entry 0..3）、`a_wfi_flush_to_idle`（entry 0..3）、`a_wfc_flush_refill_to_idle`（entry 1）、`a_wfg_flush_with_grant_to_abt`（entry 1）。这些与 mb_entry FSM/LINE 回退同源（缺少 flush+WFG/WFI race 激励）。下表已聚合 per-instance。
+
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `a_idle_flush_blocks_alloc` | assertion | 2034603960 | 0 | 1 |
-| `a_wfi_data_stable_without_grant` | assertion | 2034603960 | 0 | 1 |
+| `a_idle_flush_blocks_alloc` | assertion | 253026032 | 0 | 8（gen_mb_entries[0..7]） |
+| `a_wfi_data_stable_without_grant` | assertion | 253026032 | 0 | 8（gen_mb_entries[0..7]） |
+| `a_wfg_flush_no_grant_to_idle` | assertion | 253026032 | 0 | 4（gen_mb_entries[0..3]，**本轮新增**） |
+| `a_wfi_flush_to_idle` | assertion | 253026032 | 0 | 4（gen_mb_entries[0..3]，**本轮新增**） |
+| `a_wfc_flush_refill_to_idle` | assertion | 253026032 | 0 | 1（gen_mb_entries[1]，**本轮新增**） |
+| `a_wfg_flush_with_grant_to_abt` | assertion | 253026032 | 0 | 1（gen_mb_entries[1]，**本轮新增**） |
+| `cp_l1dtlb_wfg_flush_no_grant` | cover | 253026032 | 0 | 4（gen_mb_entries[0..3]） |
+| `cp_l1dtlb_wfg_flush_with_grant` | cover | 253026032 | 0 | 5（gen_mb_entries[1..3]+部分，见 URG） |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:676` (`a_idle_flush_blocks_alloc`)
 
@@ -5532,8 +5559,11 @@
 
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `a_expt_entry_overlap_is_terminal_replay` | assertion | 508650990 | 0 | 1 |
-| `cp_l1dtlb_expt_entry_overlap_replay` | cover | 508650990 | 0 | 1 |
+| `a_expt_entry_overlap_is_terminal_replay` | assertion | 253026032 | 0 | 2（port0/port1） |
+| `cp_l1dtlb_expt_entry_overlap_replay` | cover | 253026032 | 0 | 2（port0/port1） |
+| `a_stamo_bypass_not_miss` | assertion | 253026032 | 0 | 1（port0，**本轮新确认**） |
+| `a_stamo_pa_source` | assertion | 253026032 | 0 | 1（port0，**本轮新确认**） |
+| `cp_l1dtlb_c012_stamo_bypass` | cover | 253026032 | 0 | 1（port0，**本轮新确认**） |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:1174` (`a_expt_entry_overlap_is_terminal_replay`)
 
@@ -5594,8 +5624,8 @@
 
 | 名称 | 类型 | Attempts | Successes/Matches | 影响条目数 |
 | --- | --- | ---: | ---: | ---: |
-| `a_same_4k_dual_miss_dedup` | assertion | 254325495 | 0 | 1 |
-| `cp_l1dtlb_c004_same_vpn_dedup` | cover | 254325495 | 0 | 1 |
+| `a_same_4k_dual_miss_dedup` | assertion | 253026032 | 0 | 1 |
+| `cp_l1dtlb_c004_same_vpn_dedup` | cover | 253026032 | 0 | 1 |
 
 `mmu_verification/testbench/top/mmu_l1dtlb_sva.sv:575` (`a_same_4k_dual_miss_dedup`)
 

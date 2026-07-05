@@ -1,0 +1,108 @@
+set search_path [list . /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/syn_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/sim_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/libraries/syn /x2025/GPrj1/IC1/mmu_verification/mmu/rtl /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/clk /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/rtu {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/clk} {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/rtu} /x2025/GPrj1/IC1/mmu_verification/syn/scripts /x2025/GPrj1/IC1/mmu_verification/syn/fc /x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM /home/IC1/tools/asap7/asap7sc7p5t_28/Verilog ] 
+analyze -format sverilog -define MMU_EXPT_TRACE_ONCE_EN -define PA_WIDTH=40  "/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/sysmap.h /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_entry.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_huge_entry.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_entry.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_fst_entry.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_data_array.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_rrpv_array.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_tag_array.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap_hit.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_allocator.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_expt_cam.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_install.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_replacement_policy.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq_entry.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq.sv /x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts/mmu_l2tlb_rrpv_wbuf_fc.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/one_to_four_xbar.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/PDE_cache.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ptw_mbuf.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ptw.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/clk/gated_clk_cell.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/rtu/ct_rtu_compare_iid.v" 
+C/x2025/GPrj1/IC1/mmu_verification/syn/fc
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/sysmap.h
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v
+ct_mmu_dplru
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_entry.v
+ct_mmu_dutlb_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_huge_entry.v
+ct_mmu_dutlb_huge_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v
+ct_mmu_iplru
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_entry.v
+ct_mmu_iutlb_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_fst_entry.v
+ct_mmu_iutlb_fst_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_data_array.sv
+ct_mmu_l2tlb_data_array
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_rrpv_array.sv
+ct_mmu_l2tlb_rrpv_array
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_tag_array.sv
+ct_mmu_l2tlb_tag_array
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v
+ct_mmu_regs
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap_hit.v
+ct_mmu_sysmap_hit
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap.v
+ct_mmu_sysmap
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v
+ct_mmu_tlboper
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv
+L1PDE_cache
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv
+L2PDE_cache
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv
+mbuf_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv
+mmu_arb
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_allocator.sv
+mmu_l1dtlb_allocator
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_expt_cam.sv
+mmu_l1dtlb_expt_cam
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv
+mmu_l1dtlb_hit_rd
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_install.sv
+mmu_l1dtlb_install
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv
+mmu_l1dtlb_mb_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv
+mmu_l1dtlb_scheduler
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv
+mmu_l1dtlb
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv
+mmu_l1itlb
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv
+mmu_l2tlb_mb_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb.sv
+mmu_l2tlb_mb
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_replacement_policy.sv
+mmu_l2tlb_replacement_policy
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq_entry.sv
+mmu_l2tlb_reqq_entry
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq.sv
+mmu_l2tlb_reqq
+/x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts/mmu_l2tlb_rrpv_wbuf_fc.sv
+mmu_l2tlb_rrpv_wbuf
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb.sv
+mmu_l2tlb
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/one_to_four_xbar.sv
+one_to_four_xbar
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/PDE_cache.sv
+PDE_cache
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv
+pplru
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ptw_mbuf.sv
+ptw_mbuf
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ptw.sv
+ptw
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv
+twu
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/clk/gated_clk_cell.v
+gated_clk_cell
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/rtu/ct_rtu_compare_iid.v
+ct_rtu_compare_iid
+set search_path [list . /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/syn_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/sim_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/libraries/syn /x2025/GPrj1/IC1/mmu_verification/mmu/rtl /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/clk /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/rtu {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/clk} {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/rtu} /x2025/GPrj1/IC1/mmu_verification/syn/scripts /x2025/GPrj1/IC1/mmu_verification/syn/fc /x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM /home/IC1/tools/asap7/asap7sc7p5t_28/Verilog ] 
+analyze -format sverilog  "/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spsram_256x196.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spsram_256x84.v /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spram_wrapper.sv" 
+C/x2025/GPrj1/IC1/mmu_verification/syn/fc
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spsram_256x196.v
+ct_spsram_256x196
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spsram_256x84.v
+ct_spsram_256x84
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_spram_wrapper.sv
+ct_spsram_wrapper
+set search_path [list . /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/syn_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/sim_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/libraries/syn /x2025/GPrj1/IC1/mmu_verification/mmu/rtl /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/clk /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/rtu {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/clk} {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/rtu} /x2025/GPrj1/IC1/mmu_verification/syn/scripts /x2025/GPrj1/IC1/mmu_verification/syn/fc /x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM /home/IC1/tools/asap7/asap7sc7p5t_28/Verilog ] 
+analyze -format sverilog  "/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_fpga_ram.sv /x2025/GPrj1/IC1/mmu_verification/syn/scripts/ct_f_spsram_behav.v" 
+C/x2025/GPrj1/IC1/mmu_verification/syn/fc
+/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_fpga_ram.sv
+mmu_fpga_ram
+/x2025/GPrj1/IC1/mmu_verification/syn/scripts/ct_f_spsram_behav.v
+ct_f_spsram_256x196
+ct_f_spsram_256x84
+set search_path [list . /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/syn_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/dw/sim_ver /mnt/tools/synopsys/fc/V-2023.12-SP5/libraries/syn /x2025/GPrj1/IC1/mmu_verification/mmu/rtl /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/clk /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate_rtl/rtu {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/clk} {/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/relate rtl/rtu} /x2025/GPrj1/IC1/mmu_verification/syn/scripts /x2025/GPrj1/IC1/mmu_verification/syn/fc /x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts /home/IC1/tools/asap7/asap7sc7p5t_28/LIB/NLDM /home/IC1/tools/asap7/asap7sc7p5t_28/Verilog ] 
+analyze -format sverilog  "/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_top.v" 
+C/x2025/GPrj1/IC1/mmu_verification/syn/fc
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_top.v
+ct_mmu_top
+elaborate ct_mmu_top
+set_top_module ct_mmu_top

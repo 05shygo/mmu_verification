@@ -240,10 +240,21 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
       "DTLB_REFILL_002",
       "DTLB_INSTALL_ARB_001",
       "DTLB_INSTALL_ID_CHK_001",
-      "DTLB_INSTALL_VISIBILITY_001",
+      "DTLB_INSTALL_VISIBILITY_001": begin
+        scn = L1DTLB_SCN_REFILL;
+        sid = "L1DTLB_TS_INSTALL_ARB_WFI_PTW_L2";
+        intent = "install arbiter WFI/PTW/L2 priority";
+      end
       "DTLB_MB_FSM_WFI_001",
       "DTLB_WFI_DATA_HOLD_001",
       "DTLB_REFILL_STALE_ID_001",
+      "DTLB_MB_WFI_FLUSH_001",
+      "DTLB_TOGGLE_ENTRY_SWEEP_001",
+      "DTLB_EXPT_ENTRY_PRECISE_001": begin
+        scn = L1DTLB_SCN_REFILL;
+        sid = "L1DTLB_TS_REFILL_MISC";
+        intent = "directed refill scenarios";
+      end
       "DTLB_ENTRY_FIELD_MODEL_001",
       "DTLB_MB_WFI_FLUSH_001",
       "DTLB_MB_FSM_DEFAULT_001": begin
@@ -4547,6 +4558,117 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
         UVM_LOW)
     end
     wait_lsu_cycles(40);
+  endtask
+
+  // --------------------------------------------------------------------------
+  // DTLB_TOGGLE_ENTRY_SWEEP_001 — 512 LFSR fills + STAMO + exceptions
+  // --------------------------------------------------------------------------
+  protected task scenario_toggle_entry_sweep();
+    bit [31:0] lfsr; lfsr = 32'hACE1;
+    do_bringup(256, 39'h10_0000);
+    configure_ptw_delay(1, 2);
+    for (int i = 0; i < 512; i++) begin
+      int unsigned vi; vi = i & 255;
+      lfsr = {lfsr[30:0], lfsr[31] ^ lfsr[21] ^ lfsr[1] ^ lfsr[0]};
+      cp0_tlbwr_entry(va_page(vi), ppn_t'(lfsr[27:0]),
+        ((va_page(vi) >> 12) & 'hff), 1'b1, 1'b0);
+      raw_pipe0(va_page(vi), 7'((i + 1) & 7'h7f));
+      if ((i & 7) == 7) begin wait_lsu_cycles(32); raw_rtu_flush(); wait_lsu_cycles(32); end
+    end
+    wait_lsu_cycles(128); raw_rtu_flush(); wait_lsu_cycles(64);
+    for (int e = 0; e < 16; e++) begin
+      raw_pipe01(va_page(e), va_page(e + 16), 7'd1, 7'd2, 1'b0, 1'b1); wait_lsu_cycles(8);
+    end
+    // STAMO
+    for (int i = 0; i < 32; i++) begin
+      int unsigned va = 700 + i;
+      bit [27:0] pa; pa = {28{i[0]}} ^ (28'(i+1));
+      cp0_tlbwr_entry(va_page(va), ppn_t'(m_leaf_ppn0 + ppn_t'(va)),
+        ((va_page(va) >> 12) & 'hff), 1'b1, 1'b0);
+      raw_pipe1_with_stamo(va_page(va), 7'((i+50) & 7'h7f), pa, 1'b1); wait_lsu_cycles(4);
+      raw_pipe0_with_stamo_negative(va_page(va), 7'((i+60) & 7'h7f), ~pa, 1'b1); wait_lsu_cycles(4);
+    end
+    wait_lsu_cycles(256); raw_rtu_flush(); wait_lsu_cycles(64);
+    // Page faults
+    configure_ptw_delay(4, 4);
+    for (int e = 0; e < 10; e++) begin
+      int unsigned va = 40 + e;
+      map_special_page(va, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+      raw_pipe0(va_page(va), 7'((e + 20) & 7'h7f), 1'b0); wait_lsu_cycles(8);
+    end
+    wait_lsu_cycles(256); raw_rtu_flush(); wait_lsu_cycles(64);
+    // Access faults
+    force_ptw_bus_error_by_count(10, 1'b1);
+    for (int e = 0; e < 10; e++) begin
+      int unsigned va = 60 + e;
+      raw_pipe0(va_page(va), 7'((e + 30) & 7'h7f), 1'b0); wait_lsu_cycles(8);
+    end
+    force_ptw_bus_error_by_count(1, 1'b0);
+    wait_lsu_cycles(256); raw_rtu_flush(); wait_lsu_cycles(64);
+    // Credit
+    for (int i = 0; i < 32; i++) begin
+      int unsigned va = 200 + i;
+      cp0_tlbwr_entry(va_page(va), ppn_t'(m_leaf_ppn0 + ppn_t'(va)),
+        ((va_page(va) >> 12) & 'hff), 1'b1, 1'b0);
+      raw_pipe0(va_page(va), 7'((i + 1) & 7'h7f)); wait_lsu_cycles(1);
+    end
+    wait_lsu_cycles(1024);
+    configure_ptw_delay(1, 4);
+    wait_lsu_cycles(128); raw_rtu_flush();
+    m_env_h.wait_for_quiescent_midtest("toggle_sweep_done", 524288, 16);
+  endtask
+
+  // --------------------------------------------------------------------------
+  // DTLB_EXPT_ENTRY_PRECISE_001 — precision exception CAM entry fill
+  // Targets: ent[1].pgflt, ent[6].acflt, ent[7].acflt, same_hit_entry
+  // Waived: expt_wr1_acflt (RTL 1'b0), same_wr_eid (PTW/JTLB != eid)
+  // --------------------------------------------------------------------------
+  protected task scenario_expt_entry_precise();
+    bit m, a;
+    do_bringup(192, 39'h10_0000);
+    wait_l1d_mb_empty("ep", m, 2048);
+    if (!m) begin raw_rtu_flush(); wait_l1d_mb_empty("epd", m, 1024); end
+    // ent[1].pgflt: pre-fill MB[0]
+    configure_ptw_delay(4, 4);
+    map_special_page(40, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    raw_pipe0(va_page(40), 7'd1, 1'b0); wait_lsu_cycles(32);
+    raw_pipe0(va_page(40), 7'd1, 1'b0);
+    wait_l1d_expt_write("e1"); wait_lsu_cycles(32);
+    raw_rtu_flush(); wait_l1d_mb_empty("e1d", m, 1024);
+    // ent[6].acflt: pre-fill MB[0..5]
+    for (int i = 0; i < 6; i++) begin
+      int unsigned v = 50 + i;
+      cp0_tlbwr_entry(va_page(v), ppn_t'(m_leaf_ppn0 + ppn_t'(v)),
+        ((va_page(v) >> 12) & 'hff), 1'b1, 1'b0);
+      raw_pipe0(va_page(v), 7'(7'd10 + i[6:0])); wait_lsu_cycles(8);
+    end
+    wait_lsu_cycles(64);
+    force_ptw_bus_error_by_count(1, 1'b1);
+    raw_pipe0(va_page(60), 7'd20, 1'b0);
+    wait_l1d_access_expt_write("e6a", a);
+    force_ptw_bus_error_by_count(1, 1'b0);
+    wait_lsu_cycles(32); raw_rtu_flush(); wait_l1d_mb_empty("e6d", m, 1024);
+    // ent[7].acflt: pre-fill MB[0..6]
+    for (int i = 0; i < 7; i++) begin
+      int unsigned v = 70 + i;
+      cp0_tlbwr_entry(va_page(v), ppn_t'(m_leaf_ppn0 + ppn_t'(v)),
+        ((va_page(v) >> 12) & 'hff), 1'b1, 1'b0);
+      raw_pipe0(va_page(v), 7'(7'd30 + i[6:0])); wait_lsu_cycles(8);
+    end
+    wait_lsu_cycles(64);
+    force_ptw_bus_error_by_count(1, 1'b1);
+    raw_pipe0(va_page(80), 7'd40, 1'b0);
+    wait_l1d_access_expt_write("e7a", a);
+    force_ptw_bus_error_by_count(1, 1'b0);
+    wait_lsu_cycles(32); raw_rtu_flush(); wait_l1d_mb_empty("e7d", m, 1024);
+    // same_hit_entry
+    map_special_page(90, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    raw_pipe0(va_page(90), 7'd50, 1'b0);
+    wait_l1d_expt_write("sh"); wait_lsu_cycles(16);
+    raw_pipe01(va_page(90), va_page(90), 7'd50, 7'd50, 1'b0, 1'b1);
+    wait_lsu_cycles(64); raw_rtu_flush(); wait_l1d_mb_empty("shd", m, 1024);
+    configure_ptw_delay(1, 4);
+    m_env_h.wait_for_quiescent_midtest("ep_done", 524288, 16);
   endtask
 
 endclass : l1dtlb_directed_vseq

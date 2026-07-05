@@ -1,0 +1,2618 @@
+
+
+
+                              Fusion Compiler (TM)
+
+                Version V-2023.12-SP5 for linux64 - Aug 01, 2024
+                           Base build date 2024-07-01
+
+                    Copyright (c) 1988 - 2024 Synopsys, Inc.
+   This software and the associated documentation are proprietary to Synopsys,
+ Inc. This software may only be used in accordance with the terms and conditions
+ of a written license agreement with Synopsys, Inc. All other use, reproduction,
+   or distribution of this software is strictly prohibited.  Licensed Products
+     communicate with Synopsys servers for the purpose of providing software
+    updates, detecting software piracy and verifying that customers are using
+    Licensed Products in conformity with the applicable License Key for such
+  Licensed Products. Synopsys will use information gathered in connection with
+    this process to deliver software updates and pursue software pirates and
+                                   infringers.
+
+ Inclusivity & Diversity - Visit SolvNetPlus to read the "Synopsys Statement on
+            Inclusivity and Diversity" (Refer to article 000036315 at
+                        https://solvnetplus.synopsys.com)
+ 
+#=============================================================================
+# smoke.tcl : RTL read + elaborate + link sanity check (NO compile)
+# Goal: verify all source files parse, hierarchy resolves, no undefined
+#       references -- before committing to a long compile_ultra run.
+#=============================================================================
+set ::CLK_PERIOD_NS     1.4
+1.4
+set ::TOP               ct_mmu_top
+ct_mmu_top
+set ::USE_SRAM_BLACKBOX 1
+1
+set ::FC_DIR            /x2025/GPrj1/IC1/mmu_verification/syn/fc
+/x2025/GPrj1/IC1/mmu_verification/syn/fc
+set ::LOG_DIR           $::FC_DIR/logs
+/x2025/GPrj1/IC1/mmu_verification/syn/fc/logs
+file mkdir $::LOG_DIR
+# source library setup
+source $::FC_DIR/.synopsys_fc.setup
+.synopsys_fc.setup loaded: ASAP7 RVT TT, target=5 libs
+echo "============================================================"
+============================================================
+echo " SMOKE TEST : RTL parse + elaborate + link"
+ SMOKE TEST : RTL parse + elaborate + link
+echo "============================================================"
+============================================================
+set t0 [clock seconds]
+1783051365
+set rtl_root /x2025/GPrj1/IC1/mmu_verification/mmu/rtl
+/x2025/GPrj1/IC1/mmu_verification/mmu/rtl
+set syn_src  /x2025/GPrj1/IC1/mmu_verification/syn/scripts
+/x2025/GPrj1/IC1/mmu_verification/syn/scripts
+if {[catch {
+    analyze -format sverilog -define MMU_EXPT_TRACE_ONCE_EN -define PA_WIDTH=40 [list \
+        $rtl_root/sysmap.h \
+        $rtl_root/ct_mmu_dplru.v \
+        $rtl_root/ct_mmu_dutlb_entry.v \
+        $rtl_root/ct_mmu_dutlb_huge_entry.v \
+        $rtl_root/ct_mmu_iplru.v \
+        $rtl_root/ct_mmu_iutlb_entry.v \
+        $rtl_root/ct_mmu_iutlb_fst_entry.v \
+        $rtl_root/ct_mmu_l2tlb_data_array.sv \
+        $rtl_root/ct_mmu_l2tlb_rrpv_array.sv \
+        $rtl_root/ct_mmu_l2tlb_tag_array.sv \
+        $rtl_root/ct_mmu_regs.v \
+        $rtl_root/ct_mmu_sysmap_hit.v \
+        $rtl_root/ct_mmu_sysmap.v \
+        $rtl_root/ct_mmu_tlboper.v \
+        $rtl_root/L1PDE_cache.sv \
+        $rtl_root/L2PDE_cache.sv \
+        $rtl_root/mbuf_entry.sv \
+        $rtl_root/mmu_arb.sv \
+        $rtl_root/mmu_l1dtlb_allocator.sv \
+        $rtl_root/mmu_l1dtlb_expt_cam.sv \
+        $rtl_root/mmu_l1dtlb_hit_rd.sv \
+        $rtl_root/mmu_l1dtlb_install.sv \
+        $rtl_root/mmu_l1dtlb_mb_entry.sv \
+        $rtl_root/mmu_l1dtlb_scheduler.sv \
+        $rtl_root/mmu_l1dtlb.sv \
+        $rtl_root/mmu_l1itlb.sv \
+        $rtl_root/mmu_l2tlb_mb_entry.sv \
+        $rtl_root/mmu_l2tlb_mb.sv \
+        $rtl_root/mmu_l2tlb_replacement_policy.sv \
+        $rtl_root/mmu_l2tlb_reqq_entry.sv \
+        $rtl_root/mmu_l2tlb_reqq.sv \
+        $::FC_DIR/scripts/mmu_l2tlb_rrpv_wbuf_fc.sv \
+        $rtl_root/mmu_l2tlb.sv \
+        $rtl_root/one_to_four_xbar.sv \
+        $rtl_root/PDE_cache.sv \
+        $rtl_root/pplru.sv \
+        $rtl_root/ptw_mbuf.sv \
+        $rtl_root/ptw.sv \
+        $rtl_root/twu.sv \
+        $rtl_root/relate_rtl/clk/gated_clk_cell.v \
+        $rtl_root/relate_rtl/rtu/ct_rtu_compare_iid.v \
+        $rtl_root/ct_spsram_256x196.v \
+        $rtl_root/ct_spsram_256x84.v \
+        $rtl_root/ct_spram_wrapper.sv \
+        $::FC_DIR/scripts/sram_blackboxes.v \
+        $rtl_root/ct_mmu_top.v \
+    ]
+} err]} {
+    echo "ERROR during analyze: $err"
+}
+Warning: duplicate option '-define' overrides previous value. (CMD-018)
+Running PRESTO HDLC
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/sysmap.h
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_entry.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dutlb_huge_entry.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_entry.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_fst_entry.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_data_array.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_rrpv_array.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_l2tlb_tag_array.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap_hit.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap.v
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v:278: Parameter keyword used in local parameter declaration. (VER-329)
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv:127: the undeclared symbol 'L1PDE_hit' assumed to have the default net type, which is 'wire'. (VER-936)
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv:143: the undeclared symbol 'L2PDE_hit' assumed to have the default net type, which is 'wire'. (VER-936)
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv:329: the undeclared symbol 'tlboper_wen' assumed to have the default net type, which is 'wire'. (VER-936)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv:568: the undeclared symbol 'tlboper_idx_not_va_sel' assumed to have the default net type, which is 'wire'. (VER-936)
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_allocator.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_expt_cam.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv:87: Parameter keyword used in local parameter declaration. (VER-329)
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_install.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv:1104: the undeclared symbol 'l1dtlb_entry_gating_clr' assumed to have the default net type, which is 'wire'. (VER-936)
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_replacement_policy.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq_entry.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_reqq.sv
+Compiling source file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_fc.sv
+Error:  Unable to open file `/x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_fc.sv': No such file or directory. (VER-41)
+*** Presto compilation terminated with 1 errors. ***
+Error: Presto analyze failed 
+Elapsed = 00:00:00.30, CPU = 00:00:00.12
+echo "(1/3) analyze OK"
+(1/3) analyze OK
+if {[catch {elaborate $::TOP} err]} {
+    echo "ERROR during elaborate: $err"
+}
+Presto compilation completed successfully. (ct_mmu_top)
+Information: Elaborating HDL template WORK:gated_clk_cell instantiated from 'ct_mmu_top'. (ELAB-193)
+Presto compilation completed successfully. (gated_clk_cell)
+Information: Elaborating HDL template WORK:mmu_l1itlb instantiated from 'ct_mmu_top'. (ELAB-193)
+
+Statistics for case statements in always block at line 741 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           742            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 650 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+| iutlb_plru_read_hit_reg | Flip-flop |  32   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===================================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 732 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   ref_cur_st_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 797 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   credit_cnt_reg    | Flip-flop |   1   |  N  | N  | N  | Y  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 834 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   iutlb_miss_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 2211 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  iutlb_fst_wen_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  iutlb_fst_wen_reg  | Flip-flop |   1   |  N  | Y  | N  | Y  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 2258 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+| jtlb_acc_fault_flop_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===================================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 2301 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   pmp_flg_vld_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1itlb line 2311 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1itlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  iutlb_pa_buf_reg   | Flip-flop |  28   |  Y  | Y  | N  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l1itlb)
+Information: Elaborating HDL template WORK:mmu_l1dtlb instantiated from 'ct_mmu_top'. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb line 730 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| miss0_is_store_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|   miss0_vld_q_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|   miss0_vpn_q_reg   | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   miss0_iid_q_reg   | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  miss0_abort_q_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb line 752 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| miss1_is_store_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|   miss1_vld_q_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|   miss1_vpn_q_reg   | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   miss1_iid_q_reg   | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  miss1_abort_q_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb line 1142 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| l1dtlb_ent_vld_reg  | Flip-flop |  16   |  N  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb line 1152 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_vpn_reg  | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_ppn_reg  | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| l1dtlb_ent_flg_reg  | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l1dtlb)
+Information: Elaborating HDL template WORK:mmu_l2tlb instantiated from 'ct_mmu_top' with the parameters {L1EID_WIDTH=3,L2EID_WIDTH=4}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv:1295: signed to unsigned part selection occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv:1385: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+
+Statistics for case statements in always block at line 1355 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           1357           |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 664 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     raw_vld_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 674 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   raw_is_dtlb_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|     raw_vpn_reg     | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     raw_eid_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  raw_queue_id_reg   | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| raw_bank_index_reg  | Flip-flop |  64   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  raw_way_mask_reg   | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| raw_cmp_with_va_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+| raw_arb_pre_pgs_reg | Flip-flop |  24   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  raw_acc_type_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 768 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+==================================================================================
+|     Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+==================================================================================
+| final_way_hit_kid5_reg | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_way_hit_kid0_reg | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_way_hit_kid1_reg | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_way_hit_kid2_reg | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_way_hit_kid3_reg | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_way_hit_kid4_reg | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+==================================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 787 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  final_way_flg_reg  | Flip-flop |  112  |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  final_way_vld_reg  | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  final_way_vpn_reg  | Flip-flop |  216  |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  final_way_pgs_reg  | Flip-flop |  24   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_way_asid_reg  | Flip-flop |  128  |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   final_way_g_reg   | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  final_way_ppn_reg  | Flip-flop |  224  |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 819 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    final_vld_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 826 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+=================================================================================
+|     Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+=================================================================================
+|   final_is_dtlb_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|     final_vpn_reg     | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     final_eid_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  final_queue_id_reg   | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_bank_index_reg  | Flip-flop |  64   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| final_cmp_with_va_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|  tlboper_way_sel_reg  | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  final_acc_type_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+=================================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 1346 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   pfu_cur_st_reg    | Flip-flop |   2   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4 line 1506 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  pfu_share_buf_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|   pfu_pa_buf_reg    | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   pfu_sec_buf_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_mmu_l2tlb.sv:1391: Netlist for always_ff block is empty. (ELAB-984)
+Presto compilation completed successfully. (mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4)
+Information: Elaborating HDL template WORK:mmu_arb instantiated from 'ct_mmu_top' with the parameters {TRANS_ID_WIDTH=4}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv:375: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv:452: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+
+Statistics for case statements in always block at line 355 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           356            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 383 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           384            |    auto/auto     |
+|           386            |    auto/auto     |
+|           402            |    auto/auto     |
+|           418            |    auto/auto     |
+|           434            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine mmu_arb_TRANS_ID_WIDTH4 line 195 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   tlboper_on_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_arb_TRANS_ID_WIDTH4 line 204 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     ptw_on_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_arb_TRANS_ID_WIDTH4 line 219 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| ptw_write_req1_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_arb_TRANS_ID_WIDTH4 line 229 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| ptw_write_req2_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_arb_TRANS_ID_WIDTH4 line 241 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'.
+==================================================================================
+|     Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+==================================================================================
+| ptw_l2tlb_data_in1_reg | Flip-flop |  42   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   ptw_write_vpn1_reg   | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| ptw_l2tlb_tag_in1_reg  | Flip-flop |  48   |  Y  | Y  | Y  | N  | N  | N  | N  |
+==================================================================================
+
+Inferred memory devices in process
+	in routine mmu_arb_TRANS_ID_WIDTH4 line 256 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'.
+==================================================================================
+|     Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+==================================================================================
+| ptw_l2tlb_data_in2_reg | Flip-flop |  42   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   ptw_write_vpn2_reg   | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| ptw_l2tlb_tag_in2_reg  | Flip-flop |  48   |  Y  | Y  | Y  | N  | N  | N  | N  |
+==================================================================================
+
+Inferred memory devices in process
+	in routine mmu_arb_TRANS_ID_WIDTH4 line 270 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_arb.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  prefetch_mask_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_arb_TRANS_ID_WIDTH4)
+Information: Elaborating HDL template WORK:ptw instantiated from 'ct_mmu_top' with the parameters {ID_WIDTH=7}. (ELAB-193)
+Warning:  Little argument or return value checking implemented for system task or function '$time'. (VER-209)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv:1188: Invalid escape sequence '\0' in call to '$display'. (VER-941)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv:1188: Invalid escape sequence '\0' in call to '$display'. (VER-941)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv:1188: Invalid escape sequence '\0' in call to '$display'. (VER-941)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv:1188: Invalid escape sequence '\0' in call to '$display'. (VER-941)
+
+Statistics for case statements in always block at line 874 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           875            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 921 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           922            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 982 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           983            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 998 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           999            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 1109 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           1110           |    auto/auto     |
+===============================================
+$display output: [][PTW LSU REQ] addr=0x0000000000000000 size=???????????????????????????????????????? satp_base=0x??
+
+Inferred memory devices in process
+	in routine ptw_ID_WIDTH7 line 280 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   abort_flop_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ptw_ID_WIDTH7 line 1163 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   l2tlb_miss_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw.sv:1180: Netlist for always_ff block does not contain a flip-flop. (ELAB-976)
+Presto compilation completed successfully. (ptw_ID_WIDTH7)
+Information: Elaborating HDL template WORK:ct_mmu_regs instantiated from 'ct_mmu_top'. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v:617: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+
+Statistics for case statements in always block at line 606 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           612            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 251 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| mir_tlbp_tfatal_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|    mir_probe_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 265 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    mir_index_reg    | Flip-flop |  12   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 326 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     mel_vld_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|     mel_ppn_reg     | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     mel_so_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|      mel_c_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|      mel_b_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|     mel_sh_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|     mel_sec_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|     mel_rsw_reg     | Flip-flop |   2   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    mel_dirty_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|   mel_access_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|   mel_global_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|    mel_user_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|     mel_exe_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|    mel_write_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|    mel_read_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 399 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    meh_asid_reg     | Flip-flop |  16   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     meh_vpn_reg     | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     meh_pgs_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 463 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   mcir_invall_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 473 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  mcir_invasid_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 493 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    mcir_tlbp_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 503 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   mcir_tlbwi_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 513 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   mcir_tlbwr_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 523 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    mcir_tlbr_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 534 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    mcir_asid_reg    | Flip-flop |  16   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 552 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   mcir_no_op_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 571 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    satp_mode_reg    | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_regs line 579 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_regs.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    satp_ppn_reg     | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    satp_asid_reg    | Flip-flop |  16   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (ct_mmu_regs)
+Information: Elaborating HDL template WORK:ct_mmu_tlboper instantiated from 'ct_mmu_top'. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v:511: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v:683: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+
+Statistics for case statements in always block at line 291 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           297            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 351 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           357            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 411 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           417            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 473 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           480            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 574 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           575            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 661 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           666            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 878 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           879            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 282 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   tlbp_cur_st_reg   | Flip-flop |   2   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 342 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   tlbr_cur_st_reg   | Flip-flop |   2   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 402 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  tlbwi_cur_st_reg   | Flip-flop |   2   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 464 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  tlbwr_cur_st_reg   | Flip-flop |   2   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 517 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| tlbwr_wt_grant_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 563 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| tlbiasid_cur_st_reg | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 648 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| tlbiall_cur_st_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 867 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  tlbiva_cur_st_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 973 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   tlb_inv_cnt_reg   | Flip-flop |  11   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 997 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+=================================================================================
+|     Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+=================================================================================
+| tlb_lsu_oper_flop_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+=================================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_tlboper line 1007 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_tlboper.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| lsu_oper_cmplt_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (ct_mmu_tlboper)
+Information: Elaborating HDL template WORK:ct_mmu_sysmap instantiated from 'ct_mmu_top'. (ELAB-193)
+
+Statistics for case statements in always block at line 165 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_sysmap.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           167            |    auto/auto     |
+===============================================
+Presto compilation completed successfully. (ct_mmu_sysmap)
+Information: Elaborating HDL template WORK:ct_mmu_iplru instantiated from 'mmu_l1itlb'. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v:309: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+
+Statistics for case statements in always block at line 272 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           275            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 325 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           327            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 378 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           380            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 315 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+================================================================================
+|    Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+================================================================================
+| refill_num_index_reg | Flip-flop |   5   |  Y  | Y  | Y  | N  | N  | N  | N  |
+================================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 419 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  hit_num_flop_reg   | Flip-flop |   5   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 460 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p00_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 481 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p10_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 498 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p11_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 521 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p20_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 540 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p21_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 559 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p22_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 578 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p23_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 601 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p30_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 620 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p31_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 639 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p32_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 658 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p33_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 677 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p34_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 696 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p35_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 715 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p36_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 734 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p37_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 756 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p40_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 775 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p41_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 794 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p42_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 813 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p43_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 832 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p44_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 851 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p45_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 870 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p46_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 889 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p47_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 908 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p48_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 927 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p49_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 946 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p4a_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 965 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p4b_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 984 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p4c_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 1003 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p4d_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 1022 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p4e_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iplru line 1041 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p4f_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (ct_mmu_iplru)
+Information: Elaborating HDL template WORK:ct_mmu_iutlb_fst_entry instantiated from 'mmu_l1itlb'. (ELAB-193)
+
+Inferred memory devices in process
+	in routine ct_mmu_iutlb_fst_entry line 125 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_fst_entry.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    utlb_vld_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iutlb_fst_entry line 141 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_fst_entry.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    utlb_vpn_reg     | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iutlb_fst_entry line 155 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_fst_entry.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    utlb_flg_reg     | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    utlb_pgs_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    utlb_ppn_reg     | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (ct_mmu_iutlb_fst_entry)
+Information: Elaborating HDL template WORK:ct_mmu_iutlb_entry instantiated from 'mmu_l1itlb'. (ELAB-193)
+
+Inferred memory devices in process
+	in routine ct_mmu_iutlb_entry line 124 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_entry.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    utlb_vld_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iutlb_entry line 140 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_entry.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    utlb_vpn_reg     | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_iutlb_entry line 154 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_iutlb_entry.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    utlb_flg_reg     | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    utlb_pgs_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    utlb_ppn_reg     | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (ct_mmu_iutlb_entry)
+Information: Elaborating HDL template WORK:mmu_l1dtlb_expt_cam instantiated from 'mmu_l1dtlb' with the parameters {CAM_DEPTH=8,IID_WIDTH=7,VPN_WIDTH=27}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_expt_cam.sv:63: signed to unsigned part selection occurs. (VER-318)
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_expt_cam_CAM_DEPTH8_IID_WIDTH7_VPN_WIDTH27 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_expt_cam.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       ent_reg       | Flip-flop |  296  |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l1dtlb_expt_cam_CAM_DEPTH8_IID_WIDTH7_VPN_WIDTH27)
+Information: Elaborating HDL template WORK:ct_mmu_dplru instantiated from 'mmu_l1dtlb'. (ELAB-193)
+
+Statistics for case statements in always block at line 253 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           256            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 289 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           291            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 327 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           329            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 363 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           365            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 279 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+================================================================================
+|    Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+================================================================================
+| refill_num_index_reg | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+================================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 352 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  hit_num_flop0_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 388 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  hit_num_flop1_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 434 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p00_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 462 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p10_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 488 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p11_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 521 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p20_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 551 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p21_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 581 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p22_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 610 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p23_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 643 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p30_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 672 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p31_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 701 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p32_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 730 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p33_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 759 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p34_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 789 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p35_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 818 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p36_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ct_mmu_dplru line 847 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/ct_mmu_dplru.v'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|       p37_reg       | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (ct_mmu_dplru)
+Information: Elaborating HDL template WORK:mmu_l1dtlb_hit_rd instantiated from 'mmu_l1dtlb' with the parameters {VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,NUM_ENTRY=16}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_hit_rd_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_NUM_ENTRY16 line 197 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv'.
+=====================================================================================
+|       Register Name       |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+=====================================================================================
+| dutlb_plru_read_hit_x_reg | Flip-flop |  16   |  Y  | Y  | Y  | N  | N  | N  | N  |
+=====================================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_hit_rd_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_NUM_ENTRY16 line 290 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+| jtlb_acc_fault_flop_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===================================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_hit_rd_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_NUM_ENTRY16 line 317 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   pmp_flg_vld_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_hit_rd_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_NUM_ENTRY16 line 323 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  pmp_read_type_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_hit_rd_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_NUM_ENTRY16 line 328 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_hit_rd.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  dutlb_pa_buf_reg   | Flip-flop |  28   |  Y  | Y  | N  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l1dtlb_hit_rd_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_NUM_ENTRY16)
+Information: Elaborating HDL template WORK:mmu_l1dtlb_allocator instantiated from 'mmu_l1dtlb' with the parameters {MB_DEPTH=8,VPN_WIDTH=27,IID_WIDTH=7,PORT_WIDTH=1}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_allocator.sv:68: signed to unsigned part selection occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_allocator.sv:76: signed to unsigned part selection occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_allocator.sv:74: signed to unsigned part selection occurs. (VER-318)
+Presto compilation completed successfully. (mmu_l1dtlb_allocator_MB_DEPTH8_VPN_WIDTH27_IID_WIDTH7_PORT_WIDTH1)
+Information: Elaborating HDL template WORK:mmu_l1dtlb_scheduler instantiated from 'mmu_l1dtlb' with the parameters {MB_DEPTH=8,VPN_WIDTH=27,IID_WIDTH=7,CREDIT_MAX=8}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv:164: signed to unsigned part selection occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv:237: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv:152: DEFAULT branch of CASE statement cannot be reached. (ELAB-311)
+
+Statistics for case statements in always block at line 64 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|            68            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 147 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           148            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_scheduler_MB_DEPTH8_VPN_WIDTH27_IID_WIDTH7_CREDIT_MAX8 line 64 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   credit_cnt_reg    | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   credit_cnt_reg    | Flip-flop |   1   |  N  | Y  | N  | Y  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_scheduler_MB_DEPTH8_VPN_WIDTH27_IID_WIDTH7_CREDIT_MAX8 line 100 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_scheduler.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  priority_oh_q_reg  | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  priority_oh_q_reg  | Flip-flop |   1   |  N  | Y  | N  | Y  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l1dtlb_scheduler_MB_DEPTH8_VPN_WIDTH27_IID_WIDTH7_CREDIT_MAX8)
+Information: Elaborating HDL template WORK:mmu_l1dtlb_mb_entry instantiated from 'mmu_l1dtlb' with the parameters {VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,IID_WIDTH=7,PORT_WIDTH=1}. (ELAB-193)
+
+Statistics for case statements in always block at line 127 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           130            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_mb_entry_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_IID_WIDTH7_PORT_WIDTH1 line 238 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     state_r_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_mb_entry_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_IID_WIDTH7_PORT_WIDTH1 line 249 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      pgs_r_reg      | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|      vpn_r_reg      | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|      iid_r_reg      | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     store_r_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+|      ppn_r_reg      | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|      flg_r_reg      | Flip-flop |  14   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l1dtlb_mb_entry_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_IID_WIDTH7_PORT_WIDTH1 line 281 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    issued_r_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l1dtlb_mb_entry_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_IID_WIDTH7_PORT_WIDTH1)
+Information: Elaborating HDL template WORK:mmu_l1dtlb_install instantiated from 'mmu_l1dtlb' with the parameters {MB_DEPTH=8,VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,IID_WIDTH=7}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_install.sv:119: signed to unsigned part selection occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l1dtlb_install.sv:200: signed to unsigned part selection occurs. (VER-318)
+Presto compilation completed successfully. (mmu_l1dtlb_install_MB_DEPTH8_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_IID_WIDTH7)
+Information: Elaborating HDL template WORK:mmu_l2tlb_reqq instantiated from 'mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4' with the parameters {DTLB_DEPTH=8,VPN_W=27,ASID_W=16,EID_W=3,TYPE_W=3}. (ELAB-193)
+Warning:  File /x2025/GPrj1/IC1/mmu_verification/syn/fc/HDL_LIBRARIES/WORK/mmu_l2tlb_reqq-verilog.pvl not found, or does not contain a usable description of mmu_l2tlb_reqq. (ELAB-320)
+Presto compilation completed successfully.
+Information: Elaborating HDL template WORK:ct_mmu_l2tlb_tag_array instantiated from 'mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4' with the parameters {WAY_NUM=8,ADDR_WIDTH=8,VPN_WIDTH=27,ASID_WIDTH=16,PGS_WIDTH=3}. (ELAB-193)
+Presto compilation completed successfully. (ct_mmu_l2tlb_tag_array_WAY_NUM8_ADDR_WIDTH8_VPN_WIDTH27_ASID_WIDTH16_PGS_WIDTH3)
+Information: Elaborating HDL template WORK:ct_mmu_l2tlb_data_array instantiated from 'mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4' with the parameters {WAY_NUM=8,ADDR_WIDTH=8,PPN_WIDTH=28,FLG_WIDTH=14}. (ELAB-193)
+Presto compilation completed successfully. (ct_mmu_l2tlb_data_array_WAY_NUM8_ADDR_WIDTH8_PPN_WIDTH28_FLG_WIDTH14)
+Information: Elaborating HDL template WORK:ct_mmu_l2tlb_rrpv_array instantiated from 'mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4' with the parameters {WAY_NUM=8,ADDR_WIDTH=8,RRPV_WIDTH=3}. (ELAB-193)
+Presto compilation completed successfully. (ct_mmu_l2tlb_rrpv_array_WAY_NUM8_ADDR_WIDTH8_RRPV_WIDTH3)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb instantiated from 'mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4' with the parameters {DTLB_DEPTH=8,VPN_WIDTH=27,L1EID_WIDTH=3,L2EID_WIDTH=4,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ACC_TYPE_WIDTH=3}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb.sv:129: signed to unsigned part selection occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb.sv:246: signed to unsigned part selection occurs. (VER-318)
+Presto compilation completed successfully. (mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3)
+Information: Elaborating HDL template WORK:mmu_l2tlb_replacement_policy instantiated from 'mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4' with the parameters {WAY_NUM=8,RRPV_WIDTH=3}. (ELAB-193)
+
+Statistics for case statements in always block at line 181 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_replacement_policy.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           185            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_replacement_policy_WAY_NUM8_RRPV_WIDTH3 line 167 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_replacement_policy.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| victim_way_out_reg  | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    rrpv_reg_reg     | Flip-flop |  24   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_replacement_policy_WAY_NUM8_RRPV_WIDTH3)
+Information: Elaborating HDL template WORK:mmu_l2tlb_rrpv_wbuf instantiated from 'mmu_l2tlb_L1EID_WIDTH3_L2EID_WIDTH4' with the parameters {WAY_NUM=8,IDX_WIDTH=8,RRPV_WIDTH=3,DEPTH=8}. (ELAB-193)
+Warning:  For svf checksum calculation , the original file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv not found (ELAB-2084)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:103: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:102: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:105: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:107: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:147: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:175: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:219: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:218: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:220: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv:223: signed to unsigned conversion occurs. (VER-318)
+
+Statistics for case statements in always block at line 133 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           180            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_rrpv_wbuf_WAY_NUM8_IDX_WIDTH8_RRPV_WIDTH3_DEPTH8 line 133 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     buffer_reg      | Flip-flop |  64   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     buffer_reg      | Flip-flop |  704  |  Y  | Y  | N  | N  | N  | N  | N  |
+|     wr_ptr_reg      | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     rd_ptr_reg      | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|      count_reg      | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_rrpv_wbuf_WAY_NUM8_IDX_WIDTH8_RRPV_WIDTH3_DEPTH8 line 252 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/mmu_l2tlb_rrpv_wbuf_dc.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+| bypassed_rrpv_rdata_reg | Flip-flop |  24   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     lookup_hit_reg      | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===================================================================================
+Presto compilation completed successfully. (mmu_l2tlb_rrpv_wbuf_WAY_NUM8_IDX_WIDTH8_RRPV_WIDTH3_DEPTH8)
+Information: Elaborating HDL template WORK:PDE_cache instantiated from 'ptw_ID_WIDTH7' with the parameters {VADDR_WIDTH=39,PADDR_WIDTH=40,VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,ASID_WIDTH=16,PGS_WIDTH=3,PTE_LEVEL=3,ID_WIDTH=7,TYPE_WIDTH=3,L1PDE_ENTRY_NUM=16,L2PDE_ENTRY_NUM=16,VPN_PERLEL=9,TAG_WIDTH=48,DATA_WIDTH=42}. (ELAB-193)
+
+Statistics for case statements in always block at line 314 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_PDE_cache.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           315            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42 line 145 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_PDE_cache.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     ptw_id_reg      | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     ptw_vpn_reg     | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    ptw_type_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42 line 161 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_PDE_cache.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     ptw_req_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42 line 263 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_PDE_cache.sv'.
+=================================================================================
+|     Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+=================================================================================
+| PDE_cache_acc_err_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+=================================================================================
+
+Inferred memory devices in process
+	in routine PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42 line 274 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_PDE_cache.sv'.
+========================================================================================
+|        Register Name         |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+========================================================================================
+|  L2PDE_cache_acc_err_id_reg  | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| L2PDE_cache_acc_err_type_reg | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+========================================================================================
+Presto compilation completed successfully. (PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42)
+Information: Elaborating HDL template WORK:one_to_four_xbar instantiated from 'ptw_ID_WIDTH7' with the parameters {VADDR_WIDTH=39,PADDR_WIDTH=40,VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,ASID_WIDTH=16,PGS_WIDTH=3,PTE_LEVEL=3,ID_WIDTH=7,TYPE_WIDTH=3,VPN_PERLEL=9,TAG_WIDTH=48,DATA_WIDTH=42}. (ELAB-193)
+Presto compilation completed successfully. (one_to_four_xbar_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42)
+Information: Elaborating HDL template WORK:twu instantiated from 'ptw_ID_WIDTH7' with the parameters {VADDR_WIDTH=39,PADDR_WIDTH=40,VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,ASID_WIDTH=16,PGS_WIDTH=3,PTE_LEVEL=3,ID_WIDTH=7,TYPE_WIDTH=3,VPN_PERLEL=9,TAG_WIDTH=48,RDATA_WIDTH=42}. (ELAB-193)
+
+Statistics for case statements in always block at line 1318 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           1319           |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 1479 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           1480           |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 977 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  pmp_unit_vld_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 994 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| pmp_unit_pmpflg_reg | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  pmp_unit_vpn_reg   | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  pmp_unit_type_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   pmp_unit_id_reg   | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  pmp_unit_ppn_reg   | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  pmp_unit_lvl_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1080 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  chk_unit_vld_reg   | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1093 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| chk_unit_pmpflg_reg | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  chk_unit_vpn_reg   | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  chk_unit_type_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   chk_unit_id_reg   | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  chk_unit_lvl_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  chk_unit_data_reg  | Flip-flop |  43   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1191 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  twu_pgflt_vld_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1202 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  twu_pgflt_id_reg   | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| twu_pgflt_type_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1217 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| twu_acc_err_vld_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1228 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+================================================================================
+|    Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+================================================================================
+|  twu_acc_err_id_reg  | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| twu_acc_err_type_reg | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+================================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1309 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   ptw_cur_st_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1355 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   csr_id_flop_reg   | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  csr_vpn_flop_reg   | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|  csr_type_flop_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1367 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+==================================================================================
+|     Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+==================================================================================
+| twu_sysmap_adderx2_reg | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| twu_sysmap_adderx1_reg | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+==================================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1386 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  csr_data_flop_reg  | Flip-flop |  38   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1397 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| csr_refill_pgs_reg  | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1490 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| twu_refill_vld_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 1522 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/twu.sv'.
+================================================================================
+|    Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+================================================================================
+|    twu_ref_id_reg    | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| twu_ref_data_din_reg | Flip-flop |  42   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| twu_ref_tag_din_reg  | Flip-flop |  48   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   twu_ref_pgs_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   twu_ref_type_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+================================================================================
+Presto compilation completed successfully. (twu_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42)
+Information: Elaborating HDL template WORK:ptw_mbuf instantiated from 'ptw_ID_WIDTH7' with the parameters {VADDR_WIDTH=39,PADDR_WIDTH=40,VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,ASID_WIDTH=16,PGS_WIDTH=3,PTE_LEVEL=3,ID_WIDTH=7,TYPE_WIDTH=3,VPN_PERLEL=9,TAG_WIDTH=48,RDATA_WIDTH=42}. (ELAB-193)
+
+Statistics for case statements in always block at line 248 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           249            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 260 in file
+	'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           261            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 332 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   create_ptr_reg    | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   create_ptr_reg    | Flip-flop |   1   |  N  | Y  | N  | Y  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 352 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+=====================================================================================
+|       Register Name       |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+=====================================================================================
+| tlboper_ptw_abort_reg_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+=====================================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 365 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     req_ptr_reg     | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     req_ptr_reg     | Flip-flop |   1   |  N  | Y  | N  | Y  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 382 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+================================================================================
+|    Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+================================================================================
+| mbuf_ptr_one_reg_reg | Flip-flop |   9   |  Y  | Y  | Y  | N  | N  | N  | N  |
+================================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 404 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+====================================================================================
+|      Register Name       |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+====================================================================================
+| mbuf_entry_empty_reg_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+====================================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 411 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+====================================================================================
+|      Register Name       |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+====================================================================================
+| lsu_mmu_data_vld_reg_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+====================================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 619 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+|  mbuf_bus_error_id_reg  | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| mbuf_bus_error_type_reg | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===================================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 629 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| mbuf_bus_error_reg  | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 690 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+===================================================================================
+|      Register Name      |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===================================================================================
+| pde_updata_data_vld_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===================================================================================
+
+Inferred memory devices in process
+	in routine ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42 line 699 in file
+		'/x2025/GPrj1/IC1/mmu_verification/syn/scripts/syn_ptw_mbuf.sv'.
+====================================================================================
+|      Register Name       |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+====================================================================================
+| pde_updata_l1pmpflg_reg  | Flip-flop |   4   |  Y  | Y  | N  | N  | N  | N  | N  |
+| pde_updata_data_flop_reg | Flip-flop |  32   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    pde_updata_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    pde_updata_lvl_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| pde_updata_l2pmpflg_reg  | Flip-flop |   4   |  Y  | Y  | N  | N  | N  | N  | N  |
+====================================================================================
+Presto compilation completed successfully. (ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42)
+Information: Elaborating HDL template WORK:ct_mmu_sysmap_hit instantiated from 'ct_mmu_sysmap'. (ELAB-193)
+Presto compilation completed successfully. (ct_mmu_sysmap_hit)
+Information: Elaborating HDL template WORK:ct_rtu_compare_iid instantiated from 'mmu_l1dtlb_allocator_MB_DEPTH8_VPN_WIDTH27_IID_WIDTH7_PORT_WIDTH1'. (ELAB-193)
+Presto compilation completed successfully. (ct_rtu_compare_iid)
+Information: Elaborating HDL template WORK:ct_spsram_wrapper instantiated from 'ct_mmu_l2tlb_tag_array_WAY_NUM8_ADDR_WIDTH8_VPN_WIDTH27_ASID_WIDTH16_PGS_WIDTH3' with the parameters {48,8}. (ELAB-193)
+Warning:  For svf checksum calculation , the original file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/sram_blackboxes.v not found (ELAB-2084)
+Presto compilation completed successfully. (ct_spsram_wrapper_DATA_WIDTH48_ADDR_WIDTH8)
+Information: Elaborating HDL template WORK:ct_spsram_wrapper instantiated from 'ct_mmu_l2tlb_data_array_WAY_NUM8_ADDR_WIDTH8_PPN_WIDTH28_FLG_WIDTH14' with the parameters {42,8}. (ELAB-193)
+Warning:  For svf checksum calculation , the original file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/sram_blackboxes.v not found (ELAB-2084)
+Presto compilation completed successfully. (ct_spsram_wrapper_DATA_WIDTH42_ADDR_WIDTH8)
+Information: Elaborating HDL template WORK:ct_spsram_wrapper instantiated from 'ct_mmu_l2tlb_rrpv_array_WAY_NUM8_ADDR_WIDTH8_RRPV_WIDTH3' with the parameters {DATA_WIDTH=3,ADDR_WIDTH=8}. (ELAB-193)
+Warning:  For svf checksum calculation , the original file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/sram_blackboxes.v not found (ELAB-2084)
+Presto compilation completed successfully. (ct_spsram_wrapper_DATA_WIDTH3_ADDR_WIDTH8)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=0}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID0 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID0 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID0 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID0)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=1}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID1 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID1 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID1 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID1)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=2}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID2 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID2 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID2 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID2)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=3}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID3 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID3 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID3 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID3)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=4}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID4 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID4 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID4 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID4)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=5}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID5 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID5 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID5 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID5)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=6}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID6 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID6 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID6 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID6)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=7}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID7 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID7 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID7 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID7)
+Information: Elaborating HDL template WORK:mmu_l2tlb_mb_entry instantiated from 'mmu_l2tlb_mb_DTLB_DEPTH8_VPN_WIDTH27_L1EID_WIDTH3_L2EID_WIDTH4_PTW_TYPE_WIDTH3_QUE_ID_WIDTH4_ACC_TYPE_WIDTH3' with the parameters {VPN_WIDTH=27,L1EID_WIDTH=3,PTW_TYPE_WIDTH=3,QUE_ID_WIDTH=4,ENTRY_ID=8}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID8 line 112 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|      r_vld_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID8 line 134 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     r_sent_reg      | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID8 line 153 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mmu_l2tlb_mb_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| entry_queue_id_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    entry_vpn_reg    | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_l1eid_reg   | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   entry_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mmu_l2tlb_mb_entry_VPN_WIDTH27_L1EID_WIDTH3_QUE_ID_WIDTH4_PTW_TYPE_WIDTH3_ENTRY_ID8)
+Information: Elaborating HDL template WORK:L1PDE_cache instantiated from 'PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42' with the parameters {VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,PGS_WIDTH=3,PTE_LEVEL=3,TAG_WIDTH=9,DATA_WIDTH=64}. (ELAB-193)
+
+Statistics for case statements in always block at line 113 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           114            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine L1PDE_cache_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_PGS_WIDTH3_PTE_LEVEL3_TAG_WIDTH9_DATA_WIDTH64 line 77 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    L1PDE_vld_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine L1PDE_cache_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_PGS_WIDTH3_PTE_LEVEL3_TAG_WIDTH9_DATA_WIDTH64 line 92 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L1PDE_cache.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| L1PDE_l1pmpflg_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    L1PDE_tag_reg    | Flip-flop |   9   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    L1PDE_ppn_reg    | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (L1PDE_cache_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_PGS_WIDTH3_PTE_LEVEL3_TAG_WIDTH9_DATA_WIDTH64)
+Information: Elaborating HDL template WORK:L2PDE_cache instantiated from 'PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42' with the parameters {VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,PGS_WIDTH=3,PTE_LEVEL=3,TAG_WIDTH=@28206b3a32373320743a20693a2028206b3a31373820743a31333a22696e74254e624d764f26262220693a20693a3220292028206b3a31383220743a33353a227369676e6564617272617928302533312530256c6f67696329255938315a6e48262220693a20763a39202920292000@,DATA_WIDTH=64}. (ELAB-193)
+
+Statistics for case statements in always block at line 120 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           121            |    auto/auto     |
+===============================================
+
+Statistics for case statements in always block at line 130 in file
+	'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv'
+===============================================
+|           Line           |  full/ parallel  |
+===============================================
+|           131            |    auto/auto     |
+===============================================
+
+Inferred memory devices in process
+	in routine L2PDE_cache_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_PGS_WIDTH3_PTE_LEVEL3_TAG_WIDTH18_DATA_WIDTH64 line 81 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    L2PDE_vld_reg    | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine L2PDE_cache_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_PGS_WIDTH3_PTE_LEVEL3_TAG_WIDTH18_DATA_WIDTH64 line 96 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/L2PDE_cache.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+| L2PDE_l2pmpflg_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    L2PDE_tag_reg    | Flip-flop |  18   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    L2PDE_ppn_reg    | Flip-flop |  28   |  Y  | Y  | Y  | N  | N  | N  | N  |
+| L2PDE_l1pmpflg_reg  | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (L2PDE_cache_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_PGS_WIDTH3_PTE_LEVEL3_TAG_WIDTH18_DATA_WIDTH64)
+Information: Elaborating HDL template WORK:pplru instantiated from 'PDE_cache_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_L1PDE_ENTRY_NUM16_L2PDE_ENTRY_NUM16_VPN_PERLEL9_TAG_WIDTH48_DATA_WIDTH42' with the parameters {PDE_ENTRY_NUM=16}. (ELAB-193)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv:62: signed to unsigned assignment occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv:77: signed to unsigned conversion occurs. (VER-318)
+Warning:  /x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv:102: signed to unsigned assignment occurs. (VER-318)
+
+Inferred memory devices in process
+	in routine pplru_PDE_ENTRY_NUM16 line 106 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  hit_num_flop_reg   | Flip-flop |   4   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine pplru_PDE_ENTRY_NUM16 line 149 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/pplru.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    plru_bits_reg    | Flip-flop |  15   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (pplru_PDE_ENTRY_NUM16)
+Information: Elaborating HDL template WORK:mbuf_entry instantiated from 'ptw_mbuf_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3_VPN_PERLEL9_TAG_WIDTH48_RDATA_WIDTH42' with the parameters {VADDR_WIDTH=39,PADDR_WIDTH=40,VPN_WIDTH=27,PPN_WIDTH=28,FLG_WIDTH=14,ASID_WIDTH=16,PGS_WIDTH=3,PTE_LEVEL=3,ID_WIDTH=7,TYPE_WIDTH=3}. (ELAB-193)
+
+Inferred memory devices in process
+	in routine mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3 line 102 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    mbuf_vld_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3 line 113 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|     mbuf_on_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3 line 128 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    mbuf_get_reg     | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3 line 143 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv'.
+=================================================================================
+|     Register Name     |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+=================================================================================
+| mbuf_bus_err_flop_reg | Flip-flop |   1   |  N  | N  | Y  | N  | N  | N  | N  |
+=================================================================================
+
+Inferred memory devices in process
+	in routine mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3 line 157 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|   mbuf_pmpflg_reg   | Flip-flop |   8   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3 line 166 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|    mbuf_lvl_reg     | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|   mbuf_padder_reg   | Flip-flop |  40   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    mbuf_vpn_reg     | Flip-flop |  27   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|    mbuf_type_reg    | Flip-flop |   3   |  Y  | Y  | Y  | N  | N  | N  | N  |
+|     mbuf_id_reg     | Flip-flop |   7   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+
+Inferred memory devices in process
+	in routine mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3 line 182 in file
+		'/x2025/GPrj1/IC1/mmu_verification/mmu/rtl/mbuf_entry.sv'.
+===============================================================================
+|    Register Name    |   Type    | Width | Bus | MB | AR | AS | SR | SS | ST |
+===============================================================================
+|  mbuf_lsu_data_reg  | Flip-flop |  64   |  Y  | Y  | Y  | N  | N  | N  | N  |
+===============================================================================
+Presto compilation completed successfully. (mbuf_entry_VADDR_WIDTH39_PADDR_WIDTH40_VPN_WIDTH27_PPN_WIDTH28_FLG_WIDTH14_ASID_WIDTH16_PGS_WIDTH3_PTE_LEVEL3_ID_WIDTH7_TYPE_WIDTH3)
+Information: Elaborating HDL template WORK:mmu_fpga_ram instantiated from 'ct_spsram_wrapper_DATA_WIDTH48_ADDR_WIDTH8' with the parameters {48,8}. (ELAB-193)
+Warning:  For svf checksum calculation , the original file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/sram_blackboxes.v not found (ELAB-2084)
+Presto compilation completed successfully. (mmu_fpga_ram_DATAWIDTH48_ADDRWIDTH8)
+Information: Elaborating HDL template WORK:mmu_fpga_ram instantiated from 'ct_spsram_wrapper_DATA_WIDTH42_ADDR_WIDTH8' with the parameters {42,8}. (ELAB-193)
+Warning:  For svf checksum calculation , the original file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/sram_blackboxes.v not found (ELAB-2084)
+Presto compilation completed successfully. (mmu_fpga_ram_DATAWIDTH42_ADDRWIDTH8)
+Information: Elaborating HDL template WORK:mmu_fpga_ram instantiated from 'ct_spsram_wrapper_DATA_WIDTH3_ADDR_WIDTH8' with the parameters {3,8}. (ELAB-193)
+Warning:  For svf checksum calculation , the original file /x2025/GPrj1/IC1/mmu_verification/syn/dc/scripts/sram_blackboxes.v not found (ELAB-2084)
+Presto compilation completed successfully. (mmu_fpga_ram_DATAWIDTH3_ADDRWIDTH8)
+Information: Design elaboration summary: (FLW-8550)
+Number of modules read: 51
+Top level ports:        1093
+Total in all modules
+  Ports:                14565
+  Nets:                 56780
+  Instances:            26677
+Design summary end. (FLW-8551)
+Elapsed = 00:00:04.37, CPU = 00:00:03.82
+# verify the top design now exists in the design DB
+if {[llength [get_designs -quiet $::TOP]] == 0} {
+    echo "******************************************************"
+    echo " FATAL: $::TOP not found after elaborate."
+    echo "        Search log for 'VER-' / 'Presto analyze failed'."
+    echo "******************************************************"
+    exit 1
+}
+echo "(2/3) elaborate OK"
+(2/3) elaborate OK
+# FC uses set_top_module to promote the elaborated block; DC-style link
+# is replaced.  current_design makes it the active design for queries.
+set_top_module $::TOP
+Warning: Cannot find port 'ptw_l2tlb_ref_vpn' on reference 'mmu_l2tlb with parameters L1EID_WIDTH=3,L2EID_WIDTH=4', referenced by instance 'x_mmu_l2tlb'. (LNK-008)
+Warning: Cannot find port 'ptw_l2tlb_ref_pgs' on reference 'mmu_l2tlb with parameters L1EID_WIDTH=3,L2EID_WIDTH=4', referenced by instance 'x_mmu_l2tlb'. (LNK-008)
+Warning: Cannot find port 'ptw_l2tlb_ref_ppn' on reference 'mmu_l2tlb with parameters L1EID_WIDTH=3,L2EID_WIDTH=4', referenced by instance 'x_mmu_l2tlb'. (LNK-008)
+Warning: Unable to resolve reference to 'mmu_l2tlb' first referenced from module 'ct_mmu_top'. (LNK-005)
+Warning: Cannot find port 'lsu_mmu_data_id' on reference 'ptw with parameters ID_WIDTH=7', referenced by instance 'x_ct_mmu_ptw'. (LNK-008)
+Warning: Cannot find port 'lsu_mmu_data_req_grant' on reference 'ptw with parameters ID_WIDTH=7', referenced by instance 'x_ct_mmu_ptw'. (LNK-008)
+Warning: Cannot find port 'mmu_lsu_data_req_id' on reference 'ptw with parameters ID_WIDTH=7', referenced by instance 'x_ct_mmu_ptw'. (LNK-008)
+Warning: Cannot find port 'ptw_l2tlb_ref_vpn' on reference 'ptw with parameters ID_WIDTH=7', referenced by instance 'x_ct_mmu_ptw'. (LNK-008)
+Warning: Cannot find port 'ptw_l2tlb_ref_pgs' on reference 'ptw with parameters ID_WIDTH=7', referenced by instance 'x_ct_mmu_ptw'. (LNK-008)
+Warning: Cannot find port 'ptw_l2tlb_ref_ppn' on reference 'ptw with parameters ID_WIDTH=7', referenced by instance 'x_ct_mmu_ptw'. (LNK-008)
+Warning: Unable to resolve reference to 'ptw' first referenced from module 'ct_mmu_top'. (LNK-005)
+Information: Block 'WORK.nlib:ct_mmu_top.design' has 2 unbound instances. (LNK-073)
+Information: Block 'WORK.nlib:ct_mmu_top.design' has 2 unresolved references. (LNK-074)
+Information: Total 125 mismatches are found on block 'WORK.nlib:ct_mmu_top.design'. (DMM-116)
+Information: Added key list 'DesignWare' to design 'ct_mmu_top'. (DWS-0216)
+Error: Block 'ct_mmu_top' failed to properly link during 'set_top_module'. (DES-220)
+Elapsed = 00:00:00.75, CPU = 00:00:00.74
+Information: script '/x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts/smoke.tcl'
+            	stopped at line 93 due to error. (CMD-081)
+Extended error info:
+
+    while executing
+"set_top_module $::TOP"
+    (file "/x2025/GPrj1/IC1/mmu_verification/syn/fc/scripts/smoke.tcl" line 93)
+ -- End Extended Error Info
+fc_shell> Maximum memory usage for this session: 1916.97 MB
+Maximum memory usage for this session including child processes: 1916.97 MB
+CPU usage for this session:     10 seconds (  0.00 hours)
+Elapsed time for this session:     14 seconds (  0.00 hours)
+Thank you for using Fusion Compiler.

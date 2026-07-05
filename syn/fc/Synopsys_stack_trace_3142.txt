@@ -1,0 +1,918 @@
+GNU gdb (GDB) Red Hat Enterprise Linux 7.6.1-120.el7
+Copyright (C) 2013 Free Software Foundation, Inc.
+License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
+This is free software: you are free to change and redistribute it.
+There is NO WARRANTY, to the extent permitted by law.  Type "show copying"
+and "show warranty" for details.
+This GDB was configured as "x86_64-redhat-linux-gnu".
+For bug reporting instructions, please see:
+<http://www.gnu.org/software/gdb/bugs/>.
+Attaching to process 3142
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/dgcom_exec...(no debugging symbols found)...done.
+Reading symbols from /lib64/libblkid.so.1...Reading symbols from /lib64/libblkid.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libblkid.so.1
+Reading symbols from /lib64/libpthread.so.0...(no debugging symbols found)...done.
+[New LWP 3303]
+[New LWP 3302]
+[New LWP 3301]
+[New LWP 3286]
+[New LWP 3198]
+[New LWP 3143]
+[Thread debugging using libthread_db enabled]
+Using host libthread_db library "/lib64/libthread_db.so.1".
+Loaded symbols for /lib64/libpthread.so.0
+Reading symbols from /lib64/librt.so.1...(no debugging symbols found)...done.
+Loaded symbols for /lib64/librt.so.1
+Reading symbols from /lib64/libdl.so.2...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libdl.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libz.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libz.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libNPI.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libNPI.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnpiL1.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnpiL1.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnclt.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnclt.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libvfs.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libvfs.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libndbWriter.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libndbWriter.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnffw.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnffw.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnffr.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnffr.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnsys.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libnsys.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_regex-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_regex-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_system-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_system-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_filesystem-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_filesystem-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_serialization-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_serialization-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_thread-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_thread-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_iostreams-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_iostreams-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_timer-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_timer-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_chrono-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_chrono-mt.so.1.79.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libFWMerge.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libFWMerge.so
+Reading symbols from /lib64/libcrypt.so.1...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libcrypt.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbb.so.12...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbb.so.12
+Reading symbols from /lib64/libuuid.so.1...Reading symbols from /lib64/libuuid.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libuuid.so.1
+Reading symbols from /lib64/libutil.so.1...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libutil.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbbmalloc.so.2...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbbmalloc.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/liblzma.so.5...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/liblzma.so.5...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/liblzma.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib_python/libpython3.6m.so.1.0...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib_python/libpython3.6m.so.1.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libhdf5.so.103...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libhdf5.so.103
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libhdf5_hl.so.100...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libhdf5_hl.so.100
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtensorflow_cc.so.2...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtensorflow_cc.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtensorflow_framework.so.2...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtensorflow_framework.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libprotobuf.so.19...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libprotobuf.so.19
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libpng16.so.16...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libpng16.so.16
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libgfortran.so.5...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libgfortran.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbcload-O.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbcload-O.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libAlembic.so.1.8...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libAlembic.so.1.8
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsmTools.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsmTools.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsthermal_all.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsthermal_all.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libHalf-2_5.so.25...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libHalf-2_5.so.25
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libIex-2_5.so.25...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libIex-2_5.so.25
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libIexMath-2_5.so.25...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libIexMath-2_5.so.25
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libIlmThread-2_5.so.25...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libIlmThread-2_5.so.25
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libImath-2_5.so.25...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libImath-2_5.so.25
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libQC2RcfxAPI.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libQC2RcfxAPI.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbb.so.2...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbb.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbbsupport.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libtbbsupport.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libpardiso2.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libpardiso2.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcholmod.so.3...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcholmod.so.3
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsuitesparseconfig.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsuitesparseconfig.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcolamd.so.2...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcolamd.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libccolamd.so.2...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libccolamd.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libamd.so.2...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libamd.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcamd.so.2...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcamd.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libmetis.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libmetis.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libLibScanFEcmdSTopo.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libLibScanFEcmdSTopo.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/mesa/libGL.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/mesa/libGL.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libxcb-glx.so.0...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libxcb-glx.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libxcb-glx.so.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkChartsCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkChartsCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonColor-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonColor-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonComputationalGeometry-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonComputationalGeometry-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonDataModel-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonDataModel-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonExecutionModel-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonExecutionModel-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonMath-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonMath-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonMisc-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonMisc-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonSystem-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonSystem-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonTransforms-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkCommonTransforms-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkDICOMParser-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkDICOMParser-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkDomainsChemistry-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkDomainsChemistry-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkdoubleconversion-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkdoubleconversion-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkexodusII-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkexodusII-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkexpat-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkexpat-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersAMR-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersAMR-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersExtraction-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersExtraction-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersFlowPaths-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersFlowPaths-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersGeneral-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersGeneral-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersGeneric-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersGeneric-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersGeometry-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersGeometry-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersHybrid-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersHybrid-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersHyperTree-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersHyperTree-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersImaging-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersImaging-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersModeling-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersModeling-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersParallel-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersParallel-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersParallelImaging-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersParallelImaging-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersPoints-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersPoints-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersProgrammable-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersProgrammable-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersSelection-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersSelection-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersSMP-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersSMP-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersSources-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersSources-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersStatistics-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersStatistics-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersTexture-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersTexture-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersTopology-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersTopology-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersVerdict-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkFiltersVerdict-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkfreetype-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkfreetype-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkGeovisCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkGeovisCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkgl2ps-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkgl2ps-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkglew-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkglew-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkGUISupportQt-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkGUISupportQt-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkGUISupportQtSQL-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkGUISupportQtSQL-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkhdf5-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkhdf5-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkhdf5_hl-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkhdf5_hl-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingColor-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingColor-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingFourier-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingFourier-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingGeneral-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingGeneral-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingHybrid-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingHybrid-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingMath-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingMath-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingMorphological-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingMorphological-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingSources-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingSources-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingStatistics-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingStatistics-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingStencil-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkImagingStencil-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInfovisCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInfovisCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInfovisLayout-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInfovisLayout-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInteractionImage-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInteractionImage-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInteractionStyle-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInteractionStyle-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInteractionWidgets-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkInteractionWidgets-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOAMR-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOAMR-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOAsynchronous-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOAsynchronous-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOCityGML-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOCityGML-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOEnSight-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOEnSight-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExodus-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExodus-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExport-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExport-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExportGL2PS-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExportGL2PS-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExportPDF-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOExportPDF-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOGeometry-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOGeometry-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOImage-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOImage-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOImport-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOImport-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOInfovis-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOInfovis-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOLegacy-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOLegacy-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOLSDyna-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOLSDyna-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOMINC-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOMINC-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOMotionFX-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOMotionFX-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOMovie-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOMovie-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIONetCDF-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIONetCDF-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOOggTheora-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOOggTheora-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOParallel-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOParallel-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOParallelXML-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOParallelXML-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOPLY-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOPLY-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOSegY-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOSegY-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOSQL-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOSQL-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOTecplotTable-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOTecplotTable-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOVeraOut-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOVeraOut-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOVideo-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOVideo-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOXML-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOXML-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOXMLParser-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkIOXMLParser-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkjpeg-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkjpeg-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkjsoncpp-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkjsoncpp-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklibharu-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklibharu-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklibproj-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklibproj-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklibxml2-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklibxml2-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkloguru-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkloguru-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklz4-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklz4-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklzma-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtklzma-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkmetaio-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkmetaio-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtknetcdf-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtknetcdf-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkogg-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkogg-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkParallelCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkParallelCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkParallelDIY-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkParallelDIY-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkpng-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkpng-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkpugixml-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkpugixml-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingAnnotation-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingAnnotation-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingContext2D-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingContext2D-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingFreeType-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingFreeType-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingGL2PSOpenGL2-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingGL2PSOpenGL2-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingImage-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingImage-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingLabel-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingLabel-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingLOD-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingLOD-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingOpenGL2-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingOpenGL2-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingQt-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingQt-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingSceneGraph-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingSceneGraph-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingUI-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingUI-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingVolume-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingVolume-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingVolumeOpenGL2-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingVolumeOpenGL2-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingVtkJS-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkRenderingVtkJS-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtksqlite-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtksqlite-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtksys-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtksys-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkTestingRendering-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkTestingRendering-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtktheora-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtktheora-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtktiff-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtktiff-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkverdict-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkverdict-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsContext2D-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsContext2D-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsCore-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsCore-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsInfovis-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsInfovis-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsQt-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkViewsQt-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkWrappingTools-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkWrappingTools-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkzlib-9.0.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/libvtkzlib-9.0.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libarrow.so.16...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libarrow.so.16
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libparquet.so.16...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libparquet.so.16
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libpugixml.so.1...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libpugixml.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libpugixml.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/librdkafka++.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/librdkafka++.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/librdkafka.so.1...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/librdkafka.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsamcpp.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsamcpp.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Widgets.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Widgets.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Svg.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Svg.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Gui.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Gui.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5X11Extras.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5X11Extras.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5PrintSupport.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5PrintSupport.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Network.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Network.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Xml.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Xml.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Core.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Core.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Sql.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Sql.so.5
+Reading symbols from /lib64/libX11.so.6...Reading symbols from /lib64/libX11.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libX11.so.6
+Reading symbols from /lib64/libxcb.so.1...Reading symbols from /lib64/libxcb.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libxcb.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libfontconfig.so.1...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libfontconfig.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libfontconfig.so.1
+Reading symbols from /lib64/libXft.so.2...Reading symbols from /lib64/libXft.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libXft.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libXss.so.1...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libXss.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libXss.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebChannel.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebChannel.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebSockets.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebSockets.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebKitWidgets.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebKitWidgets.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebKit.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5WebKit.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Test.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/libQt5Test.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libstdc++.so.6...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libstdc++.so.6
+Reading symbols from /lib64/libm.so.6...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libm.so.6
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libgomp.so.1...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libgomp.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libgcc_s.so.1...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libgcc_s.so.1
+Reading symbols from /lib64/libc.so.6...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libc.so.6
+Reading symbols from /lib64/ld-linux-x86-64.so.2...(no debugging symbols found)...done.
+Loaded symbols for /lib64/ld-linux-x86-64.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_atomic-mt.so.1.79.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_79_0_atomic-mt.so.1.79.0
+Reading symbols from /lib64/libbz2.so.1...Reading symbols from /lib64/libbz2.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libbz2.so.1
+Reading symbols from /lib64/libfreebl3.so...Reading symbols from /lib64/libfreebl3.so...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libfreebl3.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib_python/libssl.so.1.0.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib_python/libssl.so.1.0.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcrypto.so.1.0.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libcrypto.so.1.0.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libquadmath.so.0...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libquadmath.so.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_filesystem-mt.so.1.77.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_filesystem-mt.so.1.77.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_atomic-mt.so.1.77.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_atomic-mt.so.1.77.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_serialization-mt.so.1.77.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_serialization-mt.so.1.77.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_iostreams-mt.so.1.77.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_iostreams-mt.so.1.77.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_system-mt.so.1.77.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_system-mt.so.1.77.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_thread-mt.so.1.77.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libsnps_boost_1_77_0_thread-mt.so.1.77.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libScanFECommonSTopo.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libScanFECommonSTopo.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libStlUtilities.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libStlUtilities.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/liblpsolve55.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/liblpsolve55.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/mesa/libglapi.so.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/mesa/libglapi.so.0
+Reading symbols from /lib64/libXext.so.6...Reading symbols from /lib64/libXext.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libXext.so.6
+Reading symbols from /lib64/libtinfo.so.5...Reading symbols from /lib64/libtinfo.so.5...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libtinfo.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/mesa/libsensors.so.4...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/mesa/libsensors.so.4...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/mesa/libsensors.so.4
+Reading symbols from /lib64/libXau.so.6...Reading symbols from /lib64/libXau.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libXau.so.6
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libGLX.so.0...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libGLX.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libGLX.so.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libOpenGL.so.0...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libOpenGL.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libOpenGL.so.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libcrypto.so.10...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libcrypto.so.10...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libcrypto.so.10
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libssl.so.10...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libssl.so.10...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libssl.so.10
+Reading symbols from /lib64/libsasl2.so.3...Reading symbols from /lib64/libsasl2.so.3...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libsasl2.so.3
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libpng15.so.15...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libpng15.so.15...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libpng15.so.15
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libharfbuzz.so.0...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libharfbuzz.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libharfbuzz.so.0
+Reading symbols from /lib64/libgssapi_krb5.so.2...Reading symbols from /lib64/libgssapi_krb5.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgssapi_krb5.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicui18n.so.50...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicui18n.so.50...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicui18n.so.50
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicuuc.so.50...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicuuc.so.50...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicuuc.so.50
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicudata.so.50...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicudata.so.50...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libicudata.so.50
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libfreetype.so.6...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libfreetype.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/export/libfreetype.so.6
+Reading symbols from /lib64/libexpat.so.1...Reading symbols from /lib64/libexpat.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libexpat.so.1
+Reading symbols from /lib64/libXrender.so.1...Reading symbols from /lib64/libXrender.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libXrender.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Qml.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Qml.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libxslt.so.1...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libxslt.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libxslt.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libxml2.so.2...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libxml2.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libxml2.so.2
+Reading symbols from /lib64/libsqlite3.so.0...Reading symbols from /lib64/libsqlite3.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libsqlite3.so.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Sensors.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Sensors.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Positioning.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Positioning.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5MultimediaWidgets.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5MultimediaWidgets.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Multimedia.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Multimedia.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5OpenGL.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5OpenGL.so.5
+Reading symbols from /lib64/libXcomposite.so.1...Reading symbols from /lib64/libXcomposite.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libXcomposite.so.1
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libjpeg.so.62...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libjpeg.so.62...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libjpeg.so.62
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libwebp.so.4...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libwebp.so.4...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../export/libwebp.so.4
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Quick.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5Quick.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5QmlModels.so.5...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/qt/../qt/libQt5QmlModels.so.5
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libGLdispatch.so.0...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libGLdispatch.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/vtk/../export/libGLdispatch.so.0
+Reading symbols from /lib64/libkrb5.so.3...Reading symbols from /lib64/libkrb5.so.3...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libkrb5.so.3
+Reading symbols from /lib64/libcom_err.so.2...Reading symbols from /lib64/libcom_err.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libcom_err.so.2
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libk5crypto.so.3...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libk5crypto.so.3...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib/libk5crypto.so.3
+Reading symbols from /lib64/libresolv.so.2...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libresolv.so.2
+Reading symbols from /lib64/libkrb5support.so.0...Reading symbols from /lib64/libkrb5support.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libkrb5support.so.0
+Reading symbols from /lib64/libglib-2.0.so.0...Reading symbols from /lib64/libglib-2.0.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libglib-2.0.so.0
+Reading symbols from /lib64/libgraphite2.so.3...Reading symbols from /lib64/libgraphite2.so.3...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgraphite2.so.3
+Reading symbols from /lib64/libkeyutils.so.1...Reading symbols from /lib64/libkeyutils.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libkeyutils.so.1
+Reading symbols from /lib64/libpulse-mainloop-glib.so.0...Reading symbols from /lib64/libpulse-mainloop-glib.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libpulse-mainloop-glib.so.0
+Reading symbols from /lib64/libpulse.so.0...Reading symbols from /lib64/libpulse.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libpulse.so.0
+Reading symbols from /lib64/libselinux.so.1...Reading symbols from /lib64/libselinux.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libselinux.so.1
+Reading symbols from /lib64/libpcre.so.1...Reading symbols from /lib64/libpcre.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libpcre.so.1
+Reading symbols from /usr/lib64/pulseaudio/libpulsecommon-10.0.so...Reading symbols from /usr/lib64/pulseaudio/libpulsecommon-10.0.so...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /usr/lib64/pulseaudio/libpulsecommon-10.0.so
+Reading symbols from /lib64/libcap.so.2...Reading symbols from /lib64/libcap.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libcap.so.2
+Reading symbols from /lib64/libdbus-1.so.3...Reading symbols from /lib64/libdbus-1.so.3...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libdbus-1.so.3
+Reading symbols from /lib64/libX11-xcb.so.1...Reading symbols from /lib64/libX11-xcb.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libX11-xcb.so.1
+Reading symbols from /lib64/libICE.so.6...Reading symbols from /lib64/libICE.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libICE.so.6
+Reading symbols from /lib64/libSM.so.6...Reading symbols from /lib64/libSM.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libSM.so.6
+Reading symbols from /lib64/libXtst.so.6...Reading symbols from /lib64/libXtst.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libXtst.so.6
+Reading symbols from /lib64/libsystemd.so.0...Reading symbols from /lib64/libsystemd.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libsystemd.so.0
+Reading symbols from /lib64/libwrap.so.0...Reading symbols from /lib64/libwrap.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libwrap.so.0
+Reading symbols from /lib64/libsndfile.so.1...Reading symbols from /lib64/libsndfile.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libsndfile.so.1
+Reading symbols from /lib64/libasyncns.so.0...Reading symbols from /lib64/libasyncns.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libasyncns.so.0
+Reading symbols from /lib64/libattr.so.1...Reading symbols from /lib64/libattr.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libattr.so.1
+Reading symbols from /lib64/libXi.so.6...Reading symbols from /lib64/libXi.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libXi.so.6
+Reading symbols from /lib64/liblz4.so.1...Reading symbols from /lib64/liblz4.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/liblz4.so.1
+Reading symbols from /lib64/libgcrypt.so.11...Reading symbols from /lib64/libgcrypt.so.11...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgcrypt.so.11
+Reading symbols from /lib64/libgpg-error.so.0...Reading symbols from /lib64/libgpg-error.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgpg-error.so.0
+Reading symbols from /lib64/libdw.so.1...Reading symbols from /lib64/libdw.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libdw.so.1
+Reading symbols from /lib64/libnsl.so.1...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libnsl.so.1
+Reading symbols from /lib64/libgsm.so.1...Reading symbols from /lib64/libgsm.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgsm.so.1
+Reading symbols from /lib64/libFLAC.so.8...Reading symbols from /lib64/libFLAC.so.8...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libFLAC.so.8
+Reading symbols from /lib64/libvorbisenc.so.2...Reading symbols from /lib64/libvorbisenc.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libvorbisenc.so.2
+Reading symbols from /lib64/libvorbis.so.0...Reading symbols from /lib64/libvorbis.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libvorbis.so.0
+Reading symbols from /lib64/libogg.so.0...Reading symbols from /lib64/libogg.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libogg.so.0
+Reading symbols from /lib64/libelf.so.1...Reading symbols from /lib64/libelf.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libelf.so.1
+Reading symbols from /lib64/libnss_files.so.2...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libnss_files.so.2
+Reading symbols from /usr/lib64/gconv/UTF-16.so...(no debugging symbols found)...done.
+Loaded symbols for /usr/lib64/gconv/UTF-16.so
+Reading symbols from /lib64/libudev.so.1...Reading symbols from /lib64/libudev.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libudev.so.1
+Reading symbols from /lib64/libdbus-glib-1.so.2...Reading symbols from /lib64/libdbus-glib-1.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libdbus-glib-1.so.2
+Reading symbols from /lib64/libgio-2.0.so.0...Reading symbols from /lib64/libgio-2.0.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgio-2.0.so.0
+Reading symbols from /lib64/libgobject-2.0.so.0...Reading symbols from /lib64/libgobject-2.0.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgobject-2.0.so.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib_python/libffi.so.6...Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib_python/libffi.so.6...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/../shlib_python/libffi.so.6
+Reading symbols from /lib64/libgmodule-2.0.so.0...Reading symbols from /lib64/libgmodule-2.0.so.0...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libgmodule-2.0.so.0
+Reading symbols from /lib64/libmount.so.1...Reading symbols from /lib64/libmount.so.1...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libmount.so.1
+Reading symbols from /lib64/libnss_dns.so.2...(no debugging symbols found)...done.
+Loaded symbols for /lib64/libnss_dns.so.2
+Reading symbols from /usr/lib64/gconv/ISO8859-1.so...(no debugging symbols found)...done.
+Loaded symbols for /usr/lib64/gconv/ISO8859-1.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_heapq.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_heapq.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/_multiarray_umath.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/_multiarray_umath.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libopenblasp-r0-09e95953.3.13.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libopenblasp-r0-09e95953.3.13.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libgfortran-2e0d59d6.so.5.0.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libgfortran-2e0d59d6.so.5.0.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libquadmath-2d0c479f.so.0.0.0...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libquadmath-2d0c479f.so.0.0.0
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libz-eb09ad1d.so.1.2.3...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/../../numpy.libs/libz-eb09ad1d.so.1.2.3
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/math.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/math.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_datetime.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_datetime.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_struct.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_struct.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_pickle.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_pickle.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/_multiarray_tests.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/core/_multiarray_tests.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_posixsubprocess.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_posixsubprocess.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/select.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/select.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_ctypes.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_ctypes.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/linalg/lapack_lite.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/linalg/lapack_lite.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/linalg/_umath_linalg.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/linalg/_umath_linalg.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/zlib.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/zlib.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_bz2.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_bz2.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_lzma.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_lzma.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/grp.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/grp.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_decimal.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_decimal.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/fft/_pocketfft_internal.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/fft/_pocketfft_internal.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/mtrand.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/mtrand.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/bit_generator.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/bit_generator.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_common.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_common.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/binascii.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/binascii.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_md5.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_md5.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha1.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha1.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha256.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha256.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha512.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha512.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_blake2.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_blake2.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha3.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_sha3.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_bisect.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_bisect.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_random.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_random.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_bounded_integers.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_bounded_integers.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_mt19937.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_mt19937.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_philox.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_philox.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_pcg64.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_pcg64.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_sfc64.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_sfc64.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_generator.cpython-36m-x86_64-linux-gnu.so...(no debugging symbols found)...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/numpy/random/_generator.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_opcode.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_opcode.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_socket.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_socket.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/array.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/array.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_json.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_json.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_multiprocessing.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/_multiprocessing.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/mmap.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/lib-dynload/mmap.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/psutil/_psutil_linux.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/psutil/_psutil_linux.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/psutil/_psutil_posix.cpython-36m-x86_64-linux-gnu.so...done.
+Loaded symbols for /mnt/tools/synopsys/fc/V-2023.12-SP5/etc/Python/lib/python3.6/site-packages/psutil/_psutil_posix.cpython-36m-x86_64-linux-gnu.so
+Reading symbols from /lib64/libnss_sss.so.2...Reading symbols from /lib64/libnss_sss.so.2...(no debugging symbols found)...done.
+(no debugging symbols found)...done.
+Loaded symbols for /lib64/libnss_sss.so.2
+0x00007fb360ab3659 in waitpid () from /lib64/libc.so.6
+Missing separate debuginfos, use: debuginfo-install bzip2-libs-1.0.6-13.el7.x86_64 cyrus-sasl-lib-2.1.26-24.el7_9.x86_64 dbus-glib-0.100-7.el7.x86_64 dbus-libs-1.10.24-15.el7.x86_64 elfutils-libelf-0.176-5.el7.x86_64 elfutils-libs-0.176-5.el7.x86_64 expat-2.1.0-15.el7_9.x86_64 flac-libs-1.3.0-5.el7_1.x86_64 glib2-2.56.1-9.el7_9.x86_64 glibc-2.17-326.el7_9.3.x86_64 graphite2-1.3.10-1.el7_3.x86_64 gsm-1.0.13-11.el7.x86_64 keyutils-libs-1.5.8-3.el7.x86_64 krb5-libs-1.15.1-55.el7_9.x86_64 libICE-1.0.9-9.el7.x86_64 libSM-1.2.2-2.el7.x86_64 libX11-1.6.7-5.el7_9.x86_64 libXau-1.0.8-2.1.el7.x86_64 libXcomposite-0.4.4-4.1.el7.x86_64 libXext-1.3.3-3.el7.x86_64 libXft-2.3.2-2.el7.x86_64 libXi-1.7.9-1.el7.x86_64 libXrender-0.9.10-1.el7.x86_64 libXtst-1.2.3-1.el7.x86_64 libasyncns-0.8-7.el7.x86_64 libattr-2.4.46-13.el7.x86_64 libblkid-2.23.2-65.el7_9.1.x86_64 libcap-2.22-11.el7.x86_64 libcom_err-1.42.9-19.el7.x86_64 libgcrypt-1.5.3-14.el7.x86_64 libgpg-error-1.12-3.el7.x86_64 libmount-2.23.2-65.el7_9.1.x86_64 libogg-1.3.0-7.el7.x86_64 libselinux-2.5-15.el7.x86_64 libsndfile-1.0.25-12.el7_9.1.x86_64 libuuid-2.23.2-65.el7_9.1.x86_64 libvorbis-1.3.3-8.el7.1.x86_64 libxcb-1.13-1.el7.x86_64 lz4-1.8.3-1.el7.x86_64 ncurses-libs-5.9-14.20130511.el7_4.x86_64 nss-softokn-freebl-3.90.0-6.el7_9.x86_64 pcre-8.32-17.el7.x86_64 pulseaudio-libs-10.0-6.el7_9.x86_64 pulseaudio-libs-glib2-10.0-6.el7_9.x86_64 sqlite-3.7.17-8.el7_7.1.x86_64 sssd-client-1.16.5-10.el7_9.16.x86_64 systemd-libs-219-78.el7_9.9.x86_64 tcp_wrappers-libs-7.6-77.el7.x86_64
+(gdb) (gdb) 
+Thread 7 (Thread 0x7fb353fff700 (LWP 3143)):
+#0  0x00007fb39128da35 in pthread_cond_wait@@GLIBC_2.3.2 () from /lib64/libpthread.so.0
+#1  0x00007fb3676c5ea5 in background_thread_sleep (tsdn=<optimized out>, interval=<optimized out>, info=<optimized out>) at src/background_thread.c:232
+#2  background_work_sleep_once (ind=0, info=<optimized out>, tsdn=<optimized out>) at src/background_thread.c:307
+#3  background_thread0_work (tsd=<optimized out>) at src/background_thread.c:452
+#4  background_work (ind=<optimized out>, tsd=<optimized out>) at src/background_thread.c:490
+#5  background_thread_entry () at src/background_thread.c:522
+#6  0x000000004563c445 in SNPSee_d9c72da67e7a1f57e9891545cd875e2719332304182309de ()
+#7  0x00007fb391289ea5 in start_thread () from /lib64/libpthread.so.0
+#8  0x00007fb360aecb0d in clone () from /lib64/libc.so.6
+
+Thread 6 (Thread 0x7fb34c46b700 (LWP 3198)):
+#0  0x00007fb360ae3b43 in select () from /lib64/libc.so.6
+#1  0x0000000044bd9726 in SNPSee_554ec7c90557bab679d871cd58526530 ()
+#2  0x000000004563c445 in SNPSee_d9c72da67e7a1f57e9891545cd875e2719332304182309de ()
+#3  0x00007fb391289ea5 in start_thread () from /lib64/libpthread.so.0
+#4  0x00007fb360aecb0d in clone () from /lib64/libc.so.6
+
+Thread 5 (Thread 0x7fb34997a700 (LWP 3286)):
+#0  0x00007fb39128da35 in pthread_cond_wait@@GLIBC_2.3.2 () from /lib64/libpthread.so.0
+#1  0x0000000043277d87 in SNPSee_f3d53024dde1078e ()
+#2  0x000000004563c445 in SNPSee_d9c72da67e7a1f57e9891545cd875e2719332304182309de ()
+#3  0x00007fb391289ea5 in start_thread () from /lib64/libpthread.so.0
+#4  0x00007fb360aecb0d in clone () from /lib64/libc.so.6
+
+Thread 4 (Thread 0x7fb347f0b700 (LWP 3301)):
+#0  0x00007fb360ae6e29 in syscall () from /lib64/libc.so.6
+#1  0x00007fb385469d6c in futex_wait (comparand=2, futex=0x7fb352cd24ac) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/semaphore.h:290
+#2  tbb::detail::r1::binary_semaphore::P (this=0x7fb352cd24ac) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/semaphore.h:290
+#3  0x00007fb385463a48 in commit_wait (c=..., this=0x7fb352cd24a0) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/rml_thread_monitor.h:243
+#4  run (this=0x7fb352cd2480) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/private_server.cpp:274
+#5  tbb::detail::r1::rml::private_worker::thread_routine (arg=0x7fb352cd2480) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/private_server.cpp:221
+#6  0x000000004563c445 in SNPSee_d9c72da67e7a1f57e9891545cd875e2719332304182309de ()
+#7  0x00007fb391289ea5 in start_thread () from /lib64/libpthread.so.0
+#8  0x00007fb360aecb0d in clone () from /lib64/libc.so.6
+
+Thread 3 (Thread 0x7fb348b41700 (LWP 3302)):
+#0  0x00007fb360ae6e29 in syscall () from /lib64/libc.so.6
+#1  0x00007fb385469d6c in futex_wait (comparand=2, futex=0x7fb352cd252c) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/semaphore.h:290
+#2  tbb::detail::r1::binary_semaphore::P (this=0x7fb352cd252c) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/semaphore.h:290
+#3  0x00007fb385463a48 in commit_wait (c=..., this=0x7fb352cd2520) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/rml_thread_monitor.h:243
+#4  run (this=0x7fb352cd2500) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/private_server.cpp:274
+#5  tbb::detail::r1::rml::private_worker::thread_routine (arg=0x7fb352cd2500) at /remote/dept5188g/pfurnanz/p4/dgcom_t_dev2/third_party_sw/tbb/oneTBB-2021.5.0/src/tbb/private_server.cpp:221
+#6  0x000000004563c445 in SNPSee_d9c72da67e7a1f57e9891545cd875e2719332304182309de ()
+#7  0x00007fb391289ea5 in start_thread () from /lib64/libpthread.so.0
+#8  0x00007fb360aecb0d in clone () from /lib64/libc.so.6
+
+Thread 2 (Thread 0x7fb34669f700 (LWP 3303)):
+#0  0x00007fb360ab39fd in nanosleep () from /lib64/libc.so.6
+#1  0x00007fb360ab3894 in sleep () from /lib64/libc.so.6
+#2  0x00000000454d1810 in SNPSee_736c226cc0f9d19c9f03a5b629cc1ac67c55aabab371cb493cbe3cfa24e022212a2bcadfa6af024e0b25b9779f0423a5d122967b11fd1c59 ()
+#3  0x00007fb38a50d480 in execute_native_thread_routine () at ../../../../../src/gcc-9.2.0/libstdc++-v3/src/c++11/thread.cc:80
+#4  0x000000004563c445 in SNPSee_d9c72da67e7a1f57e9891545cd875e2719332304182309de ()
+#5  0x00007fb391289ea5 in start_thread () from /lib64/libpthread.so.0
+#6  0x00007fb360aecb0d in clone () from /lib64/libc.so.6
+
+Thread 1 (Thread 0x7fb354941240 (LWP 3142)):
+#0  0x00007fb360ab3659 in waitpid () from /lib64/libc.so.6
+#1  0x00007fb360a30f62 in do_system () from /lib64/libc.so.6
+#2  0x00007fb360a31311 in system () from /lib64/libc.so.6
+#3  0x0000000045643a5c in SNPSee_216f3c2f4c55dbceb170dcb7639b9c2cdd496024a8e266b98132685c735317487fd2aa296d8a7317 ()
+#4  0x0000000045645471 in SNPSee_216f3c2f4c55dbceb170dcb7639b9c2cdd496024a8e266b98132685c735317484a021951c8b3b34314fe2ade355c4696 ()
+#5  0x0000000045275c95 in SNPSee_9ea8dbbd5e74784445edf9ed12a0bc4777b489dcaefdb88f6c0991497dfc16a1f1ee4f39216b1e41 ()
+#6  0x00000000452790d5 in SNPSee_9ea8dbbd5e74784484d3cce2fced02c05a3783bc3b9f8fad49ba3bacacc1ac73ecf347a38534d06f ()
+#7  <signal handler called>
+#8  0x00007fb360addb5b in read () from /lib64/libc.so.6
+#9  0x00007fb360a69d54 in __GI__IO_file_underflow () from /lib64/libc.so.6
+#10 0x00007fb360a6af22 in __GI__IO_default_uflow () from /lib64/libc.so.6
+#11 0x00007fb360a5dcd4 in __GI__IO_getline_info () from /lib64/libc.so.6
+#12 0x00007fb360a5cad6 in fgets () from /lib64/libc.so.6
+#13 0x0000000042c8ec87 in SNPSee_5d373cd896410e630e5be4cb01b4f045 ()
+#14 0x0000000049a6b609 in SNPSee_84819e9227b2e0aa9cae34dc8be3b8a5cd8f264d30f37d0c6a8e358e8cb885004984e24a8c4868b7af29ce1919d3f9852683413c29440db55976ece412914bf7aae086d558d8e56cf6aad19cb919f4191408ebcf3080fe7b ()
+#15 0x00000000207dca2f in SNPSee_3ed686e8d4a659b5b71ddd12e447f33917cbb8a33ac076760fc4c1bbbacc2de678ec65c28e5937c601c2ef47280b3679 ()
+#16 0x00000000207d84cd in SNPSee_e52978fb95288b35702010462a2fb7521b19e6c7de02e749f68bb351c5fdf77d77dcb6d7ca3d86dfab86a645dee82a58b2bd32436fe9252678dfa79a3e0c83bf ()
+#17 0x0000000020453b4c in SNPSee_b81f4656f0d7d3ca1b0bca755b60caea2cb50375ef5e9df280c2a7ba1e2ca19f7750e3d580600edd04a01dc4363d697fcd6b18c4d0ab558c ()
+#18 0x0000000044d6826d in SNPSee_b3a63ca9beb66366a2beecdfa325f5f850e37c16b964335ba934f8a7afefeaf1 ()
+#19 0x00000000111a37eb in SNPSee_6188b3f9a7e769c7eb2dc22ab181ff5c0260e7bf3c6e6c5b6dd310362dd3e58b19a33122e2a80c1014bca5a076370ba0686492d474ef148ca36ababef5945158a888f7e536545dec88d039942c447aad829ec3c9a13ccf1352c7f068f1dc0d713b949058f841385ce96831542394be36f2ec7e463409336ff9646fa385cc5a553529ff78d8277054cb68eca1e74b2650bc52a0a187546145fe12efa21abc06a8 ()
+#20 0x00000000111a56f0 in SNPSee_5a24f30b88271223 ()
+#21 0x00007fb360a10555 in __libc_start_main () from /lib64/libc.so.6
+#22 0x0000000011190029 in SNPSee_d06eed713327be76 ()
+(gdb) Detaching from program: /mnt/tools/synopsys/fc/V-2023.12-SP5/linux64/nwtn/bin/dgcom_exec, process 3142
+[Inferior 1 (process 3142) detached]
+(gdb) 

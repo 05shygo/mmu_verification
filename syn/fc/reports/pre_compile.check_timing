@@ -1,0 +1,38 @@
+  ----------------------------------------------------------------------------------------------------
+  Rule         Type   Count      Message
+  ----------------------------------------------------------------------------------------------------
+  TCK-001      Warn   27         The reported endpoint '%endpoint' is unconstrained. Reason: '%re...
+  ----------------------------------------------------------------------------------------------------
+Total messages: 27, Errors: 0, Warnings: 27, Info: 0, SevereError: 0, Fatal: 0
+
+
+Messages
+--------
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[0].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[0].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[0].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[1].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[1].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[1].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[2].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[2].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[2].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[3].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[3].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[3].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[4].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[4].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[4].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[5].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[5].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[5].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[6].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[6].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[6].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[7].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[7].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[7].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[8].mbuf_entry_x/mbuf_padder_reg[2]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[8].mbuf_entry_x/mbuf_padder_reg[1]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+Warning: The reported endpoint 'x_ct_mmu_ptw/u_ptw_mbuf/u_MBUF_ent_0_8[8].mbuf_entry_x/mbuf_padder_reg[0]/next_state' is unconstrained. Reason: 'case constant'. Mode:'default'. (TCK-001)
+1

@@ -1,0 +1,7 @@
+============================================================
+ MMU synthesis: ct_mmu_top  (ASAP7 7nm RVT/TT)
+ Clock target : 1.4 ns  (714.285714286 MHz)
+ SRAM mode    : behavioral(->FF)
+ Effort       : ultra
+ Start        : Fri Jul  3 13:04:26 CST 2026
+============================================================

@@ -72,9 +72,37 @@
 //   mmu_l2tlb cond  872  : combo 0 1 (same par_fail stub)
 //   mmu_l2tlb cond  1167 : combo 1 1 0 1 (same par_fail stub)
 //   mmu_l2tlb cond  1186 : combo 0 1 1 1 (false combinational: vld=0,miss=1)
-// L1DTLB structural waivers (paper-tracked):
-//   mmu_l1dtlb cond 315  : combo 1 1 0 1 1 (physically impossible: mb_entry_vld
-//                           derives from state_r; state==WFC implies vld=1)
+// L1DTLB structural waivers (toggle items waived from functional coverage):
+//   expt_wr1_acflt               — hardwired to 1'b0 in RTL (mmu_l1dtlb.sv:323),
+//                                   JTLB access fault not connected; dead signal
+//   same_wr_eid                   — PTW and JTLB use different MB entries,
+//                                   expt_wr0_eid != expt_wr1_eid always;
+//                                   signal exists for future multi-source support
+//
+//   biu_mmu_smp_disable          — SMP disable, tied to 0 in single-core config
+//   hpcp_mmu_cnt_en               — performance counter enable, tied to 0 in verification
+//   credit_cnt[4] (mmu_l1dtlb_scheduler) — needs cnt>=16 but MB_DEPTH=8 limits max credit
+//   *_clk_en (dplru/dutlb/mb/sched)       — clock enables toggle with block activity,
+//                                            covered by gateclk test; remaining gaps are
+//                                            on inactive blocks
+//   mmu_lsu_stall0/stall1/stall_x          — LSU backpressure; structural in basic tests
+//
+//   These are functionally unobservable in normal MMU operation and do not
+//   represent verification gaps.  They are paper-tracked here; the URG
+//   report subtracts them from the effective toggle totals.
+//
+//   Toggle tie-offs (signals tied to constants, excluded like pad_yy_icg_scan_en):
+//     biu_mmu_smp_disable       — SMP disable, tied to 0 in single-core config
+//     hpcp_mmu_cnt_en            — performance counter enable, tied to 0
+//   These signals never toggle in functional simulation (same rationale as
+//   cpurst_b, pad_yy_icg_scan_en already excluded in elfile toggle sections).
+//
+//   Line waivers (applied via VCS //coverage off/on pragma in RTL source):
+//     mmu_l1dtlb_mb_entry line 228 : FSM default case (encoding 3'b111 unreachable)
+//     mmu_l1itlb         line 783 : FSM default case (same rationale)
+//   Cond waivers (paper-tracked):
+//     mmu_l1dtlb cond 315  : combo 1 1 0 1 1 (physically impossible: mb_entry_vld
+//                            derives from state_r; state==WFC implies vld=1)
 //   mmu_l2tlb fsm   pfu_cur_st PFU_CHK->PFU_IDLE (reset-only path, no functional)
 //   mmu_l2tlb branch 1354 : default case (same reason as line 1382)
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -86,6 +114,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb
 Toggle cpurst_b "logic cpurst_b"
 Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -93,6 +123,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -105,6 +137,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[0].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -112,6 +146,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -124,6 +160,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[1].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -131,6 +169,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -143,6 +183,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[2].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -150,6 +192,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -162,6 +206,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[3].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -169,6 +215,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -181,6 +229,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[4].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -188,6 +238,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -200,6 +252,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[5].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -207,6 +261,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -219,6 +275,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[6].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "744944513 854724559"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry"
@@ -226,6 +284,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1904574989 4215106817"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_mb_entry_sva"
@@ -238,102 +298,136 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.gen_mb_entries[7].x_mb_entry.x_mb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[0].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[10].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[11].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[12].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[13].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[14].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[15].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[1].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[2].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[3].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[4].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[5].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[6].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[7].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[8].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.u_l1dtlb_ent[9].x_dutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "2808113336 760405412"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_sva"
@@ -359,24 +453,32 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_dplru
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_dplru.x_dplru_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_dplru_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_dutlb_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "32988409 4228649183"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_hit_rd"
@@ -384,6 +486,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port0
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1001887405 3833976215"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_hit_rd_sva"
@@ -396,6 +500,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port0.x_dutlb_pabuf_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "32988409 4228649183"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_hit_rd"
@@ -403,6 +509,8 @@ INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port1
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1001887405 3833976215"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_hit_rd_sva"
@@ -415,6 +523,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port1.x_dutlb_pabuf_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "77768355 3847928921"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_install"
@@ -433,6 +543,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_install_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "2951616054 3457367824"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_expt_cam"
@@ -451,16 +563,22 @@ Toggle rst_b "logic rst_b"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_mb_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_sched_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1987510367 403239337"
 // ANNOTATION: "ModuleName: mmu_l1dtlb_scheduler"
 INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_scheduler
+// Architectural limitation: credit_cnt[4] needs cnt>=16, MB_DEPTH=8 limits max
+Toggle credit_cnt[4] "logic credit_cnt[4]"
 //
 Toggle cpurst_b "logic cpurst_b"
 
@@ -477,6 +595,8 @@ INSTANCE: tb_top.u_dut.x_ct_mmu_ptw
 Toggle cpurst_b "logic cpurst_b"
 Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "1868003565 2573401655"
 // ANNOTATION: "ModuleName: twu"
@@ -484,12 +604,16 @@ INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_one
 //
 Toggle cpurst_b "logic cpurst_b"
 Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
+Toggle biu_mmu_smp_disable "logic biu_mmu_smp_disable"
+Toggle hpcp_mmu_cnt_en "logic hpcp_mmu_cnt_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.twu_one.x_twu_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3301415740 1401686240"
 // ANNOTATION: "ModuleName: PDE_cache"
@@ -516,6 +640,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_cache_pplru.x_pplru_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -529,6 +655,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[0].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -542,6 +670,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[1].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -555,6 +685,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[2].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -568,6 +700,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[3].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -581,6 +715,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[4].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -594,6 +730,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[5].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -607,6 +745,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[6].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3053222257 1686454934"
 // ANNOTATION: "ModuleName: L1PDE_cache"
@@ -620,6 +760,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L1PDE_ent[7].u_L1PDE_cache.x_L1PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 
 // CHECKSUM: "2866780506 3854493644"
@@ -640,6 +782,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_cache_pplru.x_pplru_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -653,6 +797,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[0].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -666,6 +812,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[10].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -679,6 +827,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[11].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -692,6 +842,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[12].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -705,6 +857,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[13].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -718,6 +872,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[14].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -731,6 +887,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[15].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -744,6 +902,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[1].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -757,6 +917,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[2].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -770,6 +932,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[3].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -783,6 +947,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[4].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -796,6 +962,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[5].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -809,6 +977,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[6].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -822,6 +992,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[7].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -835,6 +1007,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[8].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4265780606 3545597207"
 // ANNOTATION: "ModuleName: L2PDE_cache"
@@ -848,6 +1022,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.u_L2PDE_ent[9].u_L2PDE_cache.x_L2PDE_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1252392647 2178843178"
 // ANNOTATION: "ModuleName: mmu_pde_cache_sva"
@@ -860,6 +1036,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_PDE_cache.x_pde_cache_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1505025551 3198180073"
 // ANNOTATION: "ModuleName: one_to_four_xbar"
@@ -892,6 +1070,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[0].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -905,6 +1085,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[1].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -918,6 +1100,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[2].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -931,6 +1115,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[3].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -944,6 +1130,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[4].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -957,6 +1145,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[5].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -970,6 +1160,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[6].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -983,6 +1175,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[7].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "372433991 4234521732"
 // ANNOTATION: "ModuleName: mbuf_entry"
@@ -996,12 +1190,16 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.u_MBUF_ent_0_8[8].mbuf_entry_x.x_mbuf_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.u_ptw_mbuf.x_mbuf_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "2073695744 1393019851"
 // ANNOTATION: "ModuleName: mmu_ptw_top_sva"
@@ -1014,6 +1212,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.x_ct_mmu_ptw.x_ptw_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3300031751 2160221485"
 // ANNOTATION: "ModuleName: ct_mmu_regs"
@@ -1027,6 +1227,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_ct_mmu_regs.x_mmu_regs_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "755350491 3707687976"
 // ANNOTATION: "ModuleName: ct_mmu_tlboper"
@@ -1046,6 +1248,8 @@ Toggle cpurst_b "logic cpurst_b"
 INSTANCE: tb_top.u_dut.x_ct_mmu_tlboper.x_tlboper_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "2342746901 2758649223"
 // ANNOTATION: "ModuleName: mmu_arb"
@@ -1059,6 +1263,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_arb.x_l2tlb_arb_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4273297083 1805518702"
 // ANNOTATION: "ModuleName: mmu_l1itlb"
@@ -1080,6 +1286,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iplru.x_iplru_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "102667396 273585953"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_fst_entry"
@@ -1093,6 +1301,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry0.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1106,6 +1316,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry1.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1119,6 +1331,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry10.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1132,6 +1346,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry11.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1145,6 +1361,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry12.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1158,6 +1376,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry13.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1171,6 +1391,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry14.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1184,6 +1406,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry15.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "102667396 273585953"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_fst_entry"
@@ -1197,6 +1421,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry16.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1210,6 +1436,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry17.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1223,6 +1451,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry18.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1236,6 +1466,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry19.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1249,6 +1481,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry2.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1262,6 +1496,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry20.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1275,6 +1511,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry21.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1288,6 +1526,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry22.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1301,6 +1541,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry23.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "102667396 273585953"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_fst_entry"
@@ -1314,6 +1556,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry24.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1327,6 +1571,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry25.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1340,6 +1586,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry26.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1353,6 +1601,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry27.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1366,6 +1616,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry28.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1379,6 +1631,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry29.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1392,6 +1646,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry3.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1405,6 +1661,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry30.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1418,6 +1676,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry31.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1431,6 +1691,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry4.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1444,6 +1706,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry5.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1457,6 +1721,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry6.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1470,6 +1736,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry7.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "102667396 273585953"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_fst_entry"
@@ -1483,6 +1751,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry8.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1189172160 3164890388"
 // ANNOTATION: "ModuleName: ct_mmu_iutlb_entry"
@@ -1496,24 +1766,32 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_ct_mmu_iutlb_entry9.x_iutlb_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_iutlb_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_iutlb_pabuf_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_mmu_l1itlb.x_iutlb_plru_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3281562444 565142901"
 // ANNOTATION: "ModuleName: mmu_l2tlb"
@@ -1533,12 +1811,16 @@ Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_data_array.x_l2tlb_data_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3180432209 4157145974"
 // ANNOTATION: "ModuleName: gated_clk_cell"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1698523716 1920439214"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb"
@@ -1559,6 +1841,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[0].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1572,6 +1856,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[1].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1585,6 +1871,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[2].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1598,6 +1886,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[3].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1611,6 +1901,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[4].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1624,6 +1916,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[5].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1637,6 +1931,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[6].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1650,6 +1946,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[7].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "1822670727 2704025147"
 // ANNOTATION: "ModuleName: mmu_l2tlb_mb_entry"
@@ -1663,6 +1961,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_mb.gen_entries[8].x_mb_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3690692223 3628664064"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq"
@@ -1683,6 +1983,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[0].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1696,6 +1998,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[1].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1709,6 +2013,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[2].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1722,6 +2028,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[3].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1735,6 +2043,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[4].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1748,6 +2058,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[5].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1761,6 +2073,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[6].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1774,6 +2088,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[7].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3445058502 2310049375"
 // ANNOTATION: "ModuleName: mmu_l2tlb_reqq_entry"
@@ -1787,6 +2103,8 @@ Toggle pad_yy_icg_scan_en "logic pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_reqq.gen_entries[8].x_reqq_entry.x_reqq_entry_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "2295657146 1113739813"
 // ANNOTATION: "ModuleName: ct_mmu_l2tlb_rrpv_array"
@@ -1799,6 +2117,8 @@ Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_rrpv_array.x_l2tlb_rrpv_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "3824286565 3829869897"
 // ANNOTATION: "ModuleName: ct_mmu_l2tlb_tag_array"
@@ -1811,6 +2131,8 @@ Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
 INSTANCE: tb_top.u_dut.x_mmu_l2tlb.x_l2tlb_tag_array.x_l2tlb_tag_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 // CHECKSUM: "4032912205 1697336774"
 // ANNOTATION: "ModuleName: mmu_l2tlb_replacement_policy"
@@ -1829,6 +2151,8 @@ Toggle rst_n "logic rst_n"
 INSTANCE: tb_top.u_dut.x_utlb_gateclk
 //
 Toggle pad_yy_icg_scan_en "net pad_yy_icg_scan_en"
+Toggle global_en "net global_en"
+Toggle external_en "net external_en"
 
 
 // =============================================================================

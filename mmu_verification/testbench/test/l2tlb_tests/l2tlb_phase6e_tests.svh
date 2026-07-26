@@ -931,3 +931,6 @@ endclass : test_l2tlb_p6e_rrpv_debug_pressure
 `include "test_mmu_l2tlb_cov_toggle_sweep.svh"
 `include "test_mmu_l2tlb_cov_sva_targeted.svh"
 `include "test_mmu_l2tlb_cov_sva_oneshot.svh"
+`include "test_mmu_l2tlb_cov_toggle_sram_001.svh"
+`include "test_mmu_l2tlb_cov_toggle_highaddr_001.svh"
+`include "test_mmu_l2tlb_cov_toggle_small_modules_001.svh"

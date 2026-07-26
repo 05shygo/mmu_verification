@@ -50,6 +50,7 @@ package mmu_env_pkg;
 `include "mmu_l2tlb_directed_vseq.svh"
 `include "mmu_l1_l2_tlb_common_vseq.svh"
 `include "mmu_l2tlb_coverage_vseq.svh"
+`include "mmu_toggle_closure_vseq.svh"  // toggle closure T-A..T-H (doc/toggle_closure_plan.md)
 
 endpackage : mmu_env_pkg
 

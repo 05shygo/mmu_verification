@@ -1,5 +1,6 @@
 // Auto-generated Phase 9 suite include list
 `include "test_mmu_l1itlb_cov_fsm_wfg_force_001.svh"
+`include "test_mmu_l1itlb_cov_toggle_entry_sweep_001.svh"
 `include "test_mmu_l1itlb_itlb_abort_001.svh"
 `include "test_mmu_l1itlb_itlb_asid_001.svh"
 `include "test_mmu_l1itlb_itlb_asid_002.svh"

@@ -629,6 +629,72 @@ canonical 的高半 VA**：
 3. 刷新 L2 URG 基线（§〇 前置条件 1），据新基线裁剪 T-F/T-G/T-H；
 4. H-2（rrpv_wbuf 满）可达性分析——T-H 中已显式**不做** force，注释说明原因；
 5. off-path `pa[27:26]`：需 ref model `translate()` 携带 64 bit VA 后才能闭合（本节 6.3 #2）；
-6. **实测覆盖率验收**：7 个用例目前只做了功能冒烟（0 error），尚未跑 `make cov` / URG
-   重新生成报告去比对 §四 的验收口径（L1 各模块 TOGGLE ≥ 92%、L2 各模块 TOGGLE ≥ 93%）。
-   下一步应把这 7 个用例并入覆盖率回归，出报告后按实测差距回填 §四"预测 vs 实测"两列。
+6. ~~实测覆盖率验收~~ → **已完成，见 §七**。
+
+---
+
+## 七、实测覆盖率结果（2026-07-26）
+
+完整报告：**`doc/toggle_closure_coverage_report_20260726.md`**
+
+**方法**：7 个用例各跑一次 `run_cov`（SEED=1）累加到独立 VDB
+`output/coverage/toggle_new.vdb`，再与官方基线 `output/coverage/phase14_merged.vdb`
+用同一份 `simu/exclude_v4.tgl` 合并出 `output/coverage/toggle_merged_urgReport`
+（`Number of tests: 8`）。已逐模块核对 URG `Total Bits` 分母全部一致，合并同口径。
+
+### 7.1 结果摘要
+
+| 范围 | TOGGLE 基线 → 合并 | Δ |
+|---|---|---:|
+| 全设计 `tb_top` | 77.67 → 81.85 | **+4.18** |
+| `x_mmu_l1itlb` 实例树 | 79.71 → 94.07 | **+14.36** |
+| `u_mmu_l1dtlb` 实例树 | 81.80 → 84.75 | **+2.95** |
+| `x_mmu_l2tlb` 实例树 | 85.98 → 88.43 | **+2.45** |
+
+模块级最大增益：`mmu_l1itlb` +18.67（92.57）、`ct_mmu_iutlb_fst_entry` +10.99（97.80）、
+`ct_mmu_iutlb_entry` +10.39（98.52）、`ct_mmu_tlboper` +7.34（82.82）、
+`ct_mmu_l2tlb_data_array` +4.32（97.61）、`mmu_l2tlb` +3.75（90.50）、
+`mmu_l1dtlb_hit_rd` +3.87（87.82）、`mmu_l1dtlb` +3.63（85.51）。
+
+位级：21 个 L1/L2 模块基线共 **6064** 个未覆盖方向位 → 本轮闭合 **1898（31.3%）**，
+剩余 4166（其中 160 属 §二-A 死信号豁免候选）。
+
+### 7.2 对评审意见的实测验证
+
+| 评审意见 | 实测 |
+|---|---|
+| ④ `ifu_mmu_va[62]` 未列入任何任务 | T-A Phase 1 已闭合，**两个方向均覆盖** |
+| ② 多数缺口只缺 1→0，单轮填充无效 | `mmu_l1itlb` 1→0 +22.47（67.16→89.63）> 0→1 +14.87，**两轮互补制生效** |
+| ① T-E 无效（`req0/1_port_id` 硬连线） | 合并后 `req0/1_port_id` 4 位仍全缺，**证实取消 T-E 正确**；豁免后 allocator 即达 100% |
+| ① `off_flg[8:0]`/`off_pgs` 等死信号 | 全部仍缺，且本轮**新证实** `iutlb_off_flg[8:0]`（`mmu_l1itlb.sv:2232`）、`dutlb_pre_flg[8:0]`/`dutlb_pre_pgs`（`mmu_l1dtlb_hit_rd.sv:272-273` 别名）同为硬连线常量，应一并豁免 |
+| ⑤ rrpv_wbuf 满高风险 | 未做 force，`count`/`fifo_full` 4 位仍缺，等 H-2 结论 |
+
+### 7.3 与 §四 验收口径的差距
+
+达标：`mmu_l1itlb` 92.57 ✅、`ct_mmu_iutlb_entry` 98.52 ✅、`ct_mmu_iutlb_fst_entry` 97.80 ✅、
+`mmu_l2tlb_replacement_policy` 100 ✅、`ct_mmu_l2tlb_rrpv_array` 100 ✅、`mmu_l2tlb_rrpv_wbuf` 99.83 ✅。
+
+未达标：D-TLB 侧（`mmu_l1dtlb` 85.51 / `hit_rd` 87.82 / `install` 77.06 / `expt_cam` 78.56 /
+`scheduler` 89.12 / `mb_entry` 92.72）与 L2 队列侧（`l2tlb` 90.50 / `reqq` 91.59 /
+`mb` 89.49 / `mb_entry` 88.06 / `reqq_entry` 76.97 / `tag_array` 93.17）。
+
+**根因不是用例失效，而是覆盖面**：这些缺口集中在"阵列/队列的逐条目多值写入"——
+T-A 对 iTLB 32 条目做的两轮扫描已证明该方法有效，但没有推广到
+D-TLB 16 条目（`entry_flg_vec`/`entry_ppn_vec` 剩 460 位）、
+MB 8 slot（`mb_entry_*[7:0]` 剩 ~300 位）、
+expt_cam 8 条目（`ent[2..7].vpn` 剩 190 位）、
+L2 8 way（`final_way_*`/`raw_way_*` 剩 ~450 位）。
+
+### 7.4 后续（更新版待办）
+
+| # | 事项 | 预计收益 |
+|---|---|---|
+| 1 | **T-B2**：把 T-A 的 entry sweep 方法照搬到 D-TLB（16 条目 + 8 MB slot × ≥3 轮互补值） | ~760 位 |
+| 2 | **T-D2**：连续 ≥8 个不同 VA 的故障，填满 expt_cam 8 条目 | ~190 位 |
+| 3 | **T-F2/T-G2**：写入互补 tag 后逐条 TLBR 读回；同 set 8 way 逐一命中 | ~580 位 |
+| 4 | **T-H2**：TLBWI 灌互补 VPN/ASID + 完整 INVALL 让 `invall_cnt` 走满 | ~230 位 |
+| 5 | `fullexclude.tgl` 豁免（§二-A + §7.2 新增两组常量）+ 豁免论证 | ~160 位（直接换算 allocator→100%） |
+| 6 | 问题单 B1–B7 提交设计确认 | — |
+| 7 | H-2（rrpv_wbuf 满）可达性分析 | 4 位 |
+| 8 | `mmu_l1itlb.entryN_flg[3]/[5] 1→0` 可达性分析（合法 PTE 下 X/A 恒为 1，疑似结构不可达） | ~300 位，用例 or 豁免二选一 |
+| 9 | off-path `pa[27:26]`：ref model `translate()` 打通 64 bit VA | 2 位 |

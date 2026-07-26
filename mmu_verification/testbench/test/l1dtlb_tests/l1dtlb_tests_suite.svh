@@ -93,3 +93,5 @@
 `include "test_mmu_l1dtlb_cov_toggle_highpa_1g_001.svh"
 `include "test_mmu_l1dtlb_cov_toggle_tail_001.svh"
 `include "test_mmu_l1dtlb_cov_toggle_expt_cam_001.svh"
+`include "test_mmu_l1dtlb_cov_toggle_entry_sweep_002.svh"
+`include "test_mmu_l1dtlb_cov_toggle_expt_cam_full_001.svh"

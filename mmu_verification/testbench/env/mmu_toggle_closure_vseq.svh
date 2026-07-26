@@ -1127,4 +1127,538 @@ class mmu_l2tlb_toggle_small_modules_vseq extends mmu_toggle_l2_base_vseq;
 
 endclass : mmu_l2tlb_toggle_small_modules_vseq
 
+// ═══════════════════════════════════════════════════════════════════════════
+// T-B2 — dTLB full entry sweep (wave 2, mirrors T-A for DTLB)
+//
+// Targets: entry_flg_vec[16*14-1:0], entry_ppn_vec[16*28-1:0],
+//          mb_entry_vpn/ppn/flg[8*27/28/14-1:0], entry_pgs[15:0]
+// Phase 1: 3 complementary PPN rounds × 16 entries (ppn_vec all bits both dirs)
+// Phase 2: flag-diversity rounds (W/D 1→0, X=1/R=0 exec-only, U both dirs)
+// Phase 3: sysmap window rounds (flg[13:9] 0x1F ↔ 0x00)
+// Phase 4: 2M + 1G superpages (entry_pgs[1]/[2] both dirs)
+// Phase 5: MB slot sweep — 8 concurrent misses, high PPN → complement (low)
+// ═══════════════════════════════════════════════════════════════════════════
+class mmu_l1dtlb_toggle_entry_sweep_vseq extends mmu_toggle_l1_base_vseq;
+
+  `uvm_object_utils(mmu_l1dtlb_toggle_entry_sweep_vseq)
+
+  function new(string name = "mmu_l1dtlb_toggle_entry_sweep_vseq");
+    super.new(name);
+  endfunction
+
+  // Private VA window for T-B2 (distinct from T-B's 0x34_0000)
+  localparam va_t TB2W = va_t'(39'h44_0000);
+  // MB sweep window base (8 pages)
+  localparam va_t MB2W = va_t'(39'h0_4800_0000);
+
+  protected task dtlb_map16(int unsigned round, bit u, bit r, bit w, bit x, bit g, bit d);
+    for (int unsigned i = 0; i < 16; i++) begin
+      m_env_h.m_pt_mem.m_builder.map_4k(
+        .va(TB2W + va_t'(i << 12)),
+        .pa(pa_t'({pat_ppn(round, i), 12'h000})),
+        .v(1), .r(r), .w(w), .x(x), .u(u), .g(g), .a(1), .d(d));
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+  endtask
+
+  protected task dtlb_load16(bit [6:0] iid_base);
+    for (int unsigned i = 0; i < 16; i++) begin
+      raw_pipe0(TB2W + va_t'(i << 12), 7'(iid_base + i[6:0]));
+      wait_lsu_cycles(24);
+    end
+    wait_lsu_cycles(64);
+  endtask
+
+  // Map + flood 8 DTLB miss-buffer slots then drain (mb_entry_ppn/vpn/flg sweep).
+  // Slow PTW ensures all 8 misses park in MB simultaneously.
+  protected task mb_sweep(ppn_t ppn0, bit [6:0] iid_base, bit d_bit);
+    for (int unsigned i = 0; i < 8; i++) begin
+      m_env_h.m_pt_mem.m_builder.map_4k(
+        .va(MB2W + va_t'(i << 12)),
+        .pa(pa_t'({ppn0 + ppn_t'(i), 12'h000})),
+        .v(1), .r(1), .w(1), .x(0), .u(0), .g(0), .a(1), .d(d_bit));
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+    configure_ptw_delay(150, 200);
+    for (int unsigned p = 0; p < 4; p++) begin
+      raw_pipe01(MB2W + va_t'((2*p)   << 12), MB2W + va_t'((2*p+1) << 12),
+                 7'(iid_base + 7'(2*p)), 7'(iid_base + 7'(2*p+1)),
+                 p[0], 1'b1);
+      wait_lsu_cycles(2);
+    end
+    wait_lsu_cycles(600);
+    configure_ptw_delay(1, 2);
+    raw_rtu_flush();
+    wait_lsu_cycles(400);
+  endtask
+
+  virtual task body();
+    bit mb_empty;
+    `uvm_info(get_type_name(), "===== T-B2 dTLB entry sweep START =====", UVM_NONE)
+    init_common_handles();
+    do_bringup(16, 39'h10_0000);
+    configure_ptw_delay(1, 2);
+
+    // ── Phase 1: 3 complementary PPN rounds over all 16 entries ──
+    for (int unsigned round = 0; round < 3; round++) begin
+      dtlb_map16(round, 1'b0, 1'b1, round[0], 1'b0, 1'b0, 1'b1);
+      tlb_inv_all_and_wait();
+      dtlb_load16(7'(round * 20 + 1));
+      // hit read-back to exercise PA output datapath both dirs
+      raw_pipe01(TB2W, TB2W + va_t'(15 << 12), 7'd90, 7'd91, 1'b0, 1'b1);
+      wait_lsu_cycles(16);
+    end
+
+    // ── Phase 2: flag diversity rounds (W/D 1→0; X=1; U both dirs) ──
+    // Sub-phase 2a: R=1,W=0,D=0 — closes W and D 1→0
+    dtlb_map16(0, 1'b0, 1'b1, 1'b0, 1'b0, 1'b0, 1'b0);
+    tlb_inv_all_and_wait();
+    dtlb_load16(7'd61);
+    // Sub-phase 2b: R=1,W=1,X=1,D=1 — sets W/D back to 1 (0→1)
+    dtlb_map16(1, 1'b0, 1'b1, 1'b1, 1'b1, 1'b0, 1'b1);
+    tlb_inv_all_and_wait();
+    dtlb_load16(7'd81);
+    // Sub-phase 2c: U=1 user pages then U=0 rewrite (U both dirs)
+    dtlb_map16(2, 1'b1, 1'b1, 1'b0, 1'b0, 1'b0, 1'b1);  // U=1
+    tlb_inv_all_and_wait();
+    set_priv(2'b00);
+    dtlb_load16(7'd10);   // U-mode loads → flg[4] 0→1
+    set_priv(2'b01);
+    dtlb_map16(0, 1'b0, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1);  // U=0
+    tlb_inv_all_and_wait();
+    dtlb_load16(7'd30);   // flg[4] 1→0
+    // Sub-phase 2d: flush faulting U-mode entries from MB
+    flush_and_drain("tb2_phase2");
+
+    // ── Phase 3: sysmap attribute window rounds (entry flg[13:9]) ──
+    // Map 16 pages into a fixed PPN window, then toggle sysmap region
+    for (int unsigned i = 0; i < 16; i++) begin
+      m_env_h.m_pt_mem.m_builder.map_4k(
+        .va(TB2W + va_t'(i << 12)),
+        .pa(pa_t'({ppn_t'(28'h066_0000) + ppn_t'(i), 12'h000})),
+        .v(1), .r(1), .w(1), .x(0), .u(0), .g(0), .a(1), .d(1));
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+    // Round A: sysmap flg = 5'b11111 over the PPN window
+    sysmap_window(28'h066_0000, 28'hFFF_0000, 5'b11111);
+    tlb_inv_all_and_wait();
+    dtlb_load16(7'd50);   // entries loaded with flg[13:9]=11111
+    // Round B: sysmap flg = 5'b00000 → flg[13:9] 1→0
+    sysmap_window(28'h066_0000, 28'hFFF_0000, 5'b00000);
+    tlb_inv_all_and_wait();
+    dtlb_load16(7'd70);
+    // Restore match-all window
+    sysmap_window(28'h000_0000, 28'h000_0000, 5'b01111);
+
+    // ── Phase 4: 2M and 1G superpages (entry_pgs[1]/[2] both dirs) ──
+    // 2M: 8 pages at distinct L2 slots
+    for (int unsigned i = 0; i < 8; i++) begin
+      m_env_h.m_pt_mem.m_builder.map_2m(
+        .va(va_t'(39'h0_5800_0000) + va_t'(i << 21)),
+        .pa(pa_t'({ppn_t'(28'hFF0_0000) | ppn_t'(i << 9), 12'h000})),
+        .v(1), .r(1), .w(1), .x(0), .u(0), .g(0), .a(1), .d(1));
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+    tlb_inv_all_and_wait();
+    for (int unsigned i = 0; i < 8; i++) begin
+      raw_pipe0(va_t'(39'h0_5800_0000) + va_t'(i << 21), 7'(7'd20 + i[6:0]));
+      wait_lsu_cycles(24);
+    end
+    // 1G: 4 pages
+    for (int unsigned i = 0; i < 4; i++) begin
+      m_env_h.m_pt_mem.m_builder.map_1g(
+        .va(va_t'(i + 20) << 30),
+        .pa(pa_t'({ppn_t'((i + 4) << 18), 12'h000})),
+        .v(1), .r(1), .w(1), .x(0), .u(0), .g(0), .a(1), .d(1));
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+    tlb_inv_all_and_wait();
+    for (int unsigned i = 0; i < 4; i++) begin
+      raw_pipe0(va_t'(i + 20) << 30, 7'(7'd50 + i[6:0]));
+      wait_lsu_cycles(24);
+    end
+    // Rewrite with 4K → pgs[2]/[1] 1→0
+    tlb_inv_all_and_wait();
+    dtlb_map16(0, 1'b0, 1'b1, 1'b1, 1'b0, 1'b0, 1'b1);
+    tlb_inv_all_and_wait();
+    dtlb_load16(7'd100);
+
+    // ── Phase 5: MB slot sweep — 3 PPN rounds, all 8 slots, high→complement ──
+    // Round 0: high PPN (fills mb_entry_ppn with 0xFFF_xxx)
+    mb_sweep(ppn_t'(28'hFFF_F000), 7'd1, 1'b1);
+    tlb_inv_all_and_wait();
+    // Round 1: complement PPN (mb_entry_ppn 1→0)
+    mb_sweep(ppn_t'(28'h000_0F00), 7'd20, 1'b0);
+    tlb_inv_all_and_wait();
+    // Round 2: alternating PPN (closes remaining bit patterns)
+    mb_sweep(ppn_t'(28'hAAA_A000), 7'd40, 1'b1);
+    tlb_inv_all_and_wait();
+
+    wait_l1d_mb_empty("tb2_final", mb_empty, 8192);
+    m_env_h.wait_for_quiescent_midtest("l1dtlb_entry_sweep_v2_done", 524288, 16);
+    `uvm_info(get_type_name(), "===== T-B2 dTLB entry sweep DONE =====", UVM_NONE)
+  endtask
+
+endclass : mmu_l1dtlb_toggle_entry_sweep_vseq
+
+// ═══════════════════════════════════════════════════════════════════════════
+// T-D2 — expt_cam full sweep (ent[4..7], wave 2)
+//
+// T-D covered ent[0..3] + port1 hits on ent[3..6].  T-D2 fills ent[4..7]
+// with complementary high/low VPN patterns so every CAM entry's vpn[26:0]
+// and iid[6:0] fields see both toggle directions.
+//
+// Phase 1: acflt writes into ent[4..7] — high-VPN diversity
+// Phase 2: complementary low-VPN rewrite of ent[4..7]
+// Phase 3: JTLB pgflt (wr1) writes into ent[4..7] (unmapped VAs)
+// Phase 4: dual-port same-entry hit on ent[5] (extends same_hit coverage)
+// ═══════════════════════════════════════════════════════════════════════════
+class mmu_l1dtlb_toggle_expt_cam_full_vseq extends mmu_l1dtlb_toggle_expt_cam_vseq;
+
+  `uvm_object_utils(mmu_l1dtlb_toggle_expt_cam_full_vseq)
+
+  function new(string name = "mmu_l1dtlb_toggle_expt_cam_full_vseq");
+    super.new(name);
+  endfunction
+
+  virtual task body();
+    `uvm_info(get_type_name(), "===== T-D2 expt_cam full sweep START =====", UVM_NONE)
+    init_common_handles();
+    do_bringup(16, 39'h10_0000);
+    configure_ptw_delay(4, 4);
+
+    // ── Phase 1: acflt writes into ent[4..7], high-VPN patterns ──
+    // ent[4]: alternating-bit VPN (lower half)
+    acflt_at(4, va_t'(39'h15_5555_5000), 7'd12, 1'b0);
+    // ent[5]: VPN[24]=VPN[22]=1
+    acflt_at(5, va_t'(39'h0A_AAAA_A000), 7'd10, 1'b0);
+    // ent[6]: upper-half VA — canonical raw_pipe0_hi
+    acflt_at(6, va_t'(39'h60_0000_0000), 7'd5,  1'b1);
+    // ent[7]: VPN[20:16] stress pattern
+    acflt_at(7, va_t'(39'h0F_F000_F000), 7'd9,  1'b0);
+
+    // ── Phase 2: complementary low-VPN rewrite of ent[4..7] ──
+    acflt_at(4, va_t'(39'h00_0001_0000), 7'd1, 1'b0);
+    acflt_at(5, va_t'(39'h00_0002_0000), 7'd2, 1'b0);
+    acflt_at(6, va_t'(39'h00_0003_0000), 7'd3, 1'b0);
+    acflt_at(7, va_t'(39'h00_0004_0000), 7'd4, 1'b0);
+
+    // ── Phase 3: JTLB pgflt (wr1) into ent[4..7] via unmapped VAs ──
+    for (int unsigned k = 4; k <= 7; k++) begin
+      if (k > 4) prefill_mb(k, 7'd90);
+      raw_pipe0(va_t'(39'h7E_0000) + va_t'(k << 12), 7'(7'd70 + k[6:0]));
+      wait_l1d_expt_write($sformatf("td2_pg_%0d", k));
+      drain_all($sformatf("td2_pgd_%0d", k));
+    end
+
+    // ── Phase 4: dual-port same-entry hit on ent[5] ──
+    map_special_page(210, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    raw_pipe0(va_page(210), 7'd55, 1'b0);
+    wait_l1d_expt_write("td2_sh5");
+    wait_lsu_cycles(16);
+    raw_pipe01(va_page(210), va_page(210), 7'd55, 7'd56, 1'b0, 1'b1);
+    wait_lsu_cycles(64);
+    drain_all("td2_shd5");
+
+    m_env_h.wait_for_quiescent_midtest("expt_cam_full_done", 524288, 16);
+    `uvm_info(get_type_name(), "===== T-D2 expt_cam full sweep DONE =====", UVM_NONE)
+  endtask
+
+endclass : mmu_l1dtlb_toggle_expt_cam_full_vseq
+
+// ═══════════════════════════════════════════════════════════════════════════
+// T-F2 — L2 SRAM tag_dout readback sweep (wave 2)
+//
+// T-F fills the SRAM arrays and reads them via LSU pipe.  T-F2 specifically
+// exercises l2tlb_tag_dout (134 bits = TAG_WIDTH×8 ways - 2 parity) by
+// writing all 256 sets × 8 ways via TLBWI (cp0_tlbwr_entry) with two
+// complementary PPN/ASID/VPN rounds, then issuing TLBR readback for each.
+// Also covers final_way_sel_vec[7:0] (one-hot hit on each of the 8 ways).
+//
+// Phase 1: TLBWI 8 ways of set 0 — high PPN/ASID (both dirs via TLBR)
+// Phase 2: complementary TLBWI of same 8 ways — low PPN/ASID
+// Phase 3: fill_and_read across 8 distinct sets (exercises per-set tag_dout)
+// ═══════════════════════════════════════════════════════════════════════════
+class mmu_l2tlb_toggle_sram_v2_vseq extends mmu_toggle_l2_base_vseq;
+
+  `uvm_object_utils(mmu_l2tlb_toggle_sram_v2_vseq)
+
+  function new(string name = "mmu_l2tlb_toggle_sram_v2_vseq");
+    super.new(name);
+    m_va_base = 39'h10_0000;
+  endfunction
+
+  // TLBWI `way` entries in set `set_idx`, then TLBR each back
+  // L2TLB physical index = set_idx[7:0] (IDX_WIDTH=8, 256 sets × 8 ways)
+  // cp0_tlbwr_entry(va, ppn, index, g, valid)
+  protected task write_8ways(int unsigned set_idx, ppn_t ppn0, bit [15:0] asid,
+                              bit [26:0] vpn0);
+    satp_write_asid(asid);
+    for (int unsigned w = 0; w < 8; w++) begin
+      // Distribute over 8 distinct VA pages so each maps to different way
+      // (the replacement policy fills ways sequentially on cold miss)
+      cp0_tlbwr_entry(
+        va_t'({vpn0 + 27'(w), 12'h0}),
+        ppn0 + ppn_t'(w),
+        int'(set_idx * 8 + w), 1'b0, 1'b1);
+    end
+    wait_lsu_cycles(32);
+    // TLBR readback for each entry (drives tag_dout[way*48 +: 48])
+    for (int unsigned w = 0; w < 8; w++) begin
+      cp0_write_reg(2'd0, 64'(set_idx * 8 + w));  // write INDEX CSR
+      cp0_write_reg(2'd3, 64'h0000_0000_4000_0000); // TLBR opcode
+      wait_lsu_cycles(16);
+    end
+  endtask
+
+  virtual task body();
+    `uvm_info(get_type_name(), "===== T-F2 L2 SRAM tag_dout sweep START =====", UVM_NONE)
+    init_common_handles();
+    if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
+
+    // ── Phase 1: high PPN/ASID/VPN — tag_dout all-ones pattern ──
+    write_8ways(0,   ppn_t'(28'hFFF_FF00), 16'hFFFF, 27'h7FF_FFF8);
+    write_8ways(1,   ppn_t'(28'hAAA_AA00), 16'hAAAA, 27'h555_5550);
+    write_8ways(127, ppn_t'(28'hF0F_0F00), 16'hF0F0, 27'h0F0_F0F0);
+    write_8ways(255, ppn_t'(28'h0FF_F000), 16'hFF00, 27'h3FF_F000);
+
+    // ── Phase 2: complementary low PPN/ASID/VPN — tag_dout 1→0 ──
+    write_8ways(0,   ppn_t'(28'h000_0000), 16'h0000, 27'h000_0000);
+    write_8ways(1,   ppn_t'(28'h555_5500), 16'h5555, 27'h2AA_AAA0);
+    write_8ways(127, ppn_t'(28'h0F0_F000), 16'h0F0F, 27'h707_0700);
+    write_8ways(255, ppn_t'(28'hF00_0F00), 16'h00FF, 27'h000_0FF0);
+
+    // ── Phase 3: miss-fill across 8 sets, read-back via pipe hits ──
+    // Re-uses fill_and_read from T-F parent; new VAs in untouched sets
+    // (set index driven by VA[19:12], so stride 8*4096 = 0x8000 per set)
+    for (int unsigned s = 0; s < 8; s++) begin
+      va_t base_va;
+      ppn_t base_ppn;
+      base_va  = va_t'(39'h0_F000_0000) + va_t'(s << 15);
+      base_ppn = ppn_t'(28'h0E0_0000)   + ppn_t'(s << 4);
+      for (int unsigned i = 0; i < 8; i++) begin
+        m_env_h.m_pt_mem.m_builder.map_4k(
+          .va(base_va + va_t'(i << 12)),
+          .pa(pa_t'({base_ppn + ppn_t'(i), 12'h000})),
+          .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(i[0]));
+      end
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+    satp_write_asid(16'hFFFF);
+    tlb_inv_all_and_wait();
+    for (int unsigned s = 0; s < 8; s++) begin
+      va_t base_va;
+      base_va = va_t'(39'h0_F000_0000) + va_t'(s << 15);
+      for (int unsigned i = 0; i < 8; i++) begin
+        raw_pipe0(base_va + va_t'(i << 12), 7'(7'd10 + i[6:0]));
+        wait_lsu_cycles(24);
+      end
+      // read-back hits (tag_dout driven for set s, all 8 ways)
+      for (int unsigned i = 0; i < 8; i++) begin
+        raw_pipe0(base_va + va_t'(i << 12), 7'(7'd20 + i[6:0]));
+        wait_lsu_cycles(8);
+      end
+      wait_lsu_cycles(32);
+    end
+
+    wait_lsu_cycles(2048);
+    `uvm_info(get_type_name(), "===== T-F2 L2 SRAM tag_dout sweep DONE =====", UVM_NONE)
+  endtask
+
+endclass : mmu_l2tlb_toggle_sram_v2_vseq
+
+// ═══════════════════════════════════════════════════════════════════════════
+// T-G2 — L2 all-8-ways hit sweep (wave 2)
+//
+// T-G covered 4 TLBWI entries and IFU/upper-half lookups.  T-G2 fills all
+// 8 ways of the same L2 set with distinct VPN/ASID combos, then issues a
+// hit lookup for each way so final_way_sel_vec[7:0] becomes fully one-hot
+// exercised (each bit sees 0→1 and 1→0 across consecutive hits).
+//
+// Phase 1: seed 8 distinct pages into the same L2 set (VA stride = 256×4K)
+//          under ASID=FFFF (high ASID bits both dirs)
+// Phase 2: hit each of the 8 entries in order (final_way/raw_way toggles)
+// Phase 3: ASID=0000 refill of same set (ASID 1→0 on tag)
+// Phase 4: complementary PPN rewrite (data_dout PPN[27:0] both dirs)
+// ═══════════════════════════════════════════════════════════════════════════
+class mmu_l2tlb_toggle_highaddr_v2_vseq extends mmu_toggle_l2_base_vseq;
+
+  `uvm_object_utils(mmu_l2tlb_toggle_highaddr_v2_vseq)
+
+  function new(string name = "mmu_l2tlb_toggle_highaddr_v2_vseq");
+    super.new(name);
+    m_va_base = 39'h10_0000;
+  endfunction
+
+  virtual task body();
+    // VA stride to land in the same L2 set: IDX_WIDTH=8 → set = VA[19:12]
+    // Fix set = 0x5A. VA = (vpn2 << 30) | (vpn1 << 21) | (0x5A << 12)
+    // 8 ways → 8 different VPN2/VPN1 combos, all with page-offset 0x5A000
+    localparam va_t SET_PAGE = va_t'(39'h0_0000_0000) | va_t'(39'h5A << 12);
+    // Way k uses VA at (k * (1<<21)) | SET_PAGE  — distinct VPN1 per way
+    `uvm_info(get_type_name(), "===== T-G2 L2 all-8-ways hit sweep START =====", UVM_NONE)
+    init_common_handles();
+    if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
+
+    // ── Phase 1: fill 8 ways under ASID=FFFF ──
+    satp_write_asid(16'hFFFF);
+    for (int unsigned w = 0; w < 8; w++) begin
+      m_env_h.m_pt_mem.m_builder.map_4k(
+        .va(SET_PAGE | va_t'(w << 21)),
+        .pa(pa_t'({ppn_t'(28'hFF0_0000) + ppn_t'(w), 12'h000})),
+        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(w[0]));
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+    tlb_inv_all_and_wait();
+    for (int unsigned w = 0; w < 8; w++) begin
+      raw_pipe0(SET_PAGE | va_t'(w << 21), 7'(7'd10 + w[6:0]));
+      wait_lsu_cycles(24);
+    end
+
+    // ── Phase 2: hit each way in order (final_way_sel_vec one-hot sweep) ──
+    for (int unsigned w = 0; w < 8; w++) begin
+      raw_pipe0(SET_PAGE | va_t'(w << 21), 7'(7'd20 + w[6:0]));
+      wait_lsu_cycles(8);
+    end
+    wait_lsu_cycles(32);
+
+    // ── Phase 3: ASID=0000 refill (tag ASID 1→0) ──
+    tlb_inv_all_and_wait();
+    satp_write_asid(16'h0000);
+    for (int unsigned w = 0; w < 8; w++) begin
+      raw_pipe0(SET_PAGE | va_t'(w << 21), 7'(7'd30 + w[6:0]));
+      wait_lsu_cycles(24);
+    end
+
+    // ── Phase 4: complementary PPN rewrite (data_dout PPN 1→0) ──
+    for (int unsigned w = 0; w < 8; w++) begin
+      m_env_h.m_pt_mem.m_builder.map_4k(
+        .va(SET_PAGE | va_t'(w << 21)),
+        .pa(pa_t'({ppn_t'(28'h000_0000) + ppn_t'(w), 12'h000})),
+        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    end
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+    tlb_inv_all_and_wait();
+    for (int unsigned w = 0; w < 8; w++) begin
+      raw_pipe0(SET_PAGE | va_t'(w << 21), 7'(7'd40 + w[6:0]));
+      wait_lsu_cycles(24);
+    end
+    // hit read-back (data_dout low PPN driven, both dirs closed)
+    for (int unsigned w = 0; w < 8; w++) begin
+      raw_pipe0(SET_PAGE | va_t'(w << 21), 7'(7'd50 + w[6:0]));
+      wait_lsu_cycles(8);
+    end
+
+    wait_lsu_cycles(2048);
+    `uvm_info(get_type_name(), "===== T-G2 L2 all-8-ways hit sweep DONE =====", UVM_NONE)
+  endtask
+
+endclass : mmu_l2tlb_toggle_highaddr_v2_vseq
+
+// ═══════════════════════════════════════════════════════════════════════════
+// T-H2 — L2 small-modules wave 2: invall_cnt sweep + TLBWI complementary
+//
+// T-H covers 8-concurrent-miss stacking.  T-H2 specifically targets:
+//   invall_cnt[7:0] — walk counter 0→255 (all 8 bits both dirs)
+//   req_entry_asid / eid / type bits under ASID 0xFFFF ↔ 0x0000
+//   TLBWI complementary VPN/ASID to close remaining invall-path signals
+//
+// Phase 1: TLBWI 256 entries (ASID=FFFF, VPN all-ones) then INVALL →
+//          invall_cnt walks 0..255, all bits toggle
+// Phase 2: TLBWI 256 entries (ASID=0000, VPN=0) — complementary rewrite
+//          → invall_cnt[7:0] walks again in opposite direction
+// Phase 3: burst_round under ASID=A5A5 (covers entry_asid[7:0] mid bits)
+//          followed by INVALL for invall-path ASID check
+// ═══════════════════════════════════════════════════════════════════════════
+class mmu_l2tlb_toggle_small_modules_v2_vseq extends mmu_toggle_l2_base_vseq;
+
+  `uvm_object_utils(mmu_l2tlb_toggle_small_modules_v2_vseq)
+
+  function new(string name = "mmu_l2tlb_toggle_small_modules_v2_vseq");
+    super.new(name);
+    m_va_base = 39'h10_0000;
+  endfunction
+
+  // Write `n` TLBWI entries starting at L2 index `idx0`, then issue INVALL
+  protected task tlbwi_n_then_invall(int unsigned n, int unsigned idx0,
+                                      ppn_t ppn0, bit [26:0] vpn0,
+                                      bit [15:0] asid);
+    satp_write_asid(asid);
+    for (int unsigned i = 0; i < n; i++) begin
+      cp0_tlbwr_entry(
+        va_t'({vpn0 + 27'(i), 12'h0}),
+        ppn0 + ppn_t'(i),
+        int'(idx0 + i), 1'b0, 1'b1);
+    end
+    wait_lsu_cycles(16);
+    cp0_tlb_all_inv("th2_invall");
+    // Allow invall_cnt to walk 0→n (invall pulses n times, one per entry)
+    wait_lsu_cycles(int'(n) * 2 + 200);
+  endtask
+
+  virtual task body();
+    `uvm_info(get_type_name(), "===== T-H2 L2 small-modules v2 START =====", UVM_NONE)
+    init_common_handles();
+    if (m_lsu_vif == null) `uvm_fatal(get_type_name(), "LSU VIF null")
+
+    // ── Phase 1: INVALL walk over 256 entries — invall_cnt all-bits high ──
+    // Write 256 entries @ ASID=FFFF with VPN all-F, PPN all-F
+    tlbwi_n_then_invall(256, 0,
+      ppn_t'(28'hFFF_FF00), 27'h7FF_FFF0, 16'hFFFF);
+
+    // ── Phase 2: complementary 256 entries — invall_cnt 1→0 sweep ──
+    tlbwi_n_then_invall(256, 0,
+      ppn_t'(28'h000_0000), 27'h000_0000, 16'h0000);
+
+    // ── Phase 3: mid-ASID burst (A5A5 exercises entry_asid[7:0] bits) ──
+    // Map 8 dTLB + 2 iTLB pages, slow PTW, stack misses
+    begin
+      va_t dw, iw;
+      dw = va_t'(39'h0_1600_0000);
+      iw = va_t'(39'h0_1700_0000);
+      satp_write_asid(16'hA5A5);
+      for (int unsigned i = 0; i < 8; i++) begin
+        m_env_h.m_pt_mem.m_builder.map_4k(
+          .va(dw + va_t'(i << 12)),
+          .pa(pa_t'({ppn_t'(28'h014_0000) + ppn_t'(i), 12'h000})),
+          .v(1), .r(1), .w(1), .x(0), .u(0), .g(0), .a(1), .d(i[0]));
+      end
+      for (int unsigned i = 0; i < 2; i++) begin
+        m_env_h.m_pt_mem.m_builder.map_4k(
+          .va(iw + va_t'(i << 12)),
+          .pa(pa_t'({ppn_t'(28'h015_0000) + ppn_t'(i), 12'h000})),
+          .v(1), .r(1), .w(0), .x(1), .u(0), .g(0), .a(1), .d(0));
+      end
+      if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+      configure_ptw_delay(150, 200);
+      fork
+        begin
+          for (int unsigned p = 0; p < 4; p++) begin
+            raw_pipe01(dw + va_t'((2*p)   << 12), dw + va_t'((2*p+1) << 12),
+                       7'(7'd1 + 7'(2*p)), 7'(7'd2 + 7'(2*p+1)),
+                       p[0], 1'b1);
+            wait_lsu_cycles(2);
+          end
+        end
+        begin
+          wait_lsu_cycles(6);
+          raw_ifu_fetch(iw, 16384);
+          raw_ifu_fetch(iw + va_t'(39'h1000), 16384);
+        end
+      join
+      wait_lsu_cycles(600);
+      configure_ptw_delay(1, 2);
+      raw_rtu_flush();
+      wait_lsu_cycles(400);
+      // INVALL to flush A5A5 entries (entry_asid A5A5 → 0→1 on mid bits)
+      cp0_tlb_all_inv("th2_a5a5_inv");
+      wait_lsu_cycles(600);
+    end
+
+    wait_lsu_cycles(2048);
+    `uvm_info(get_type_name(), "===== T-H2 L2 small-modules v2 DONE =====", UVM_NONE)
+  endtask
+
+endclass : mmu_l2tlb_toggle_small_modules_v2_vseq
+
 `endif // MMU_TOGGLE_CLOSURE_VSEQ_SVH

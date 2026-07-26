@@ -1776,10 +1776,11 @@ class mmu_l1itlb_toggle_flg_clear_vseq extends mmu_toggle_l1_base_vseq;
     super.new(name);
   endfunction
 
-  // Two private 32-page windows, disjoint from T-A (0x30_0000) and
-  // T-B2 (0x44_0000).  32 * 4K = 0x20000 each.
-  localparam va_t TIX = va_t'(39'h68_0000);   // X=W=D=1 round
-  localparam va_t TIN = va_t'(39'h6C_0000);   // X=W=D=0 round
+  // Two private windows, disjoint from T-A (0x30_0000) and T-B2 (0x44_0000):
+  //   TIX 32 pages -> 0x68_0000 .. 0x69_FFFF
+  //   TIN 64 pages -> 0x6C_0000 .. 0x6F_FFFF
+  localparam va_t TIX = va_t'(39'h68_0000);   // X=W=D=1 round (32 pages)
+  localparam va_t TIN = va_t'(39'h6C_0000);   // X=W=D=0 round (64 pages)
 
   protected function va_t vx(int unsigned i); return TIX + va_t'(i << 12); endfunction
   protected function va_t vn(int unsigned i); return TIN + va_t'(i << 12); endfunction
@@ -1797,8 +1798,13 @@ class mmu_l1itlb_toggle_flg_clear_vseq extends mmu_toggle_l1_base_vseq;
   // Round B mapping: read-only, non-executable, dirty-clear.  A *load* walk
   // succeeds (R=1, A=1, not a store so D=0 is fine) and installs the entry in
   // the L2 with flg[3]=flg[2]=flg[6]=0.
+  // 64 pages, i.e. 2x the 32-entry L1 ITLB, so phase 3 keeps cycling the PLRU
+  // long after every slot has been visited once.  Measured on the 32-page
+  // version: only 16 of the 30 open entries picked up the X=0 refill, because
+  // the iUTLB replacement is not a clean round robin (entries 0/8/16/24 are
+  // `fst` slots that are additionally fed by the scd->fst swap path).
   protected task map_noexec_round();
-    for (int unsigned i = 0; i < 32; i++)
+    for (int unsigned i = 0; i < 64; i++)
       m_env_h.m_pt_mem.m_builder.map_4k(
         .va(vn(i)), .pa(pa_t'({28'h055_0000 + ppn_t'(i), 12'h000})),
         .v(1), .r(1), .w(0), .x(0), .u(0), .g(0), .a(1), .d(0));
@@ -1815,7 +1821,7 @@ class mmu_l1itlb_toggle_flg_clear_vseq extends mmu_toggle_l1_base_vseq;
 
     // Two passes so that every entry sees 1->0 *and* 0->1 regardless of which
     // slot the PLRU happens to pick on a given pass.
-    for (int unsigned pass = 0; pass < 2; pass++) begin
+    for (int unsigned pass = 0; pass < 4; pass++) begin
 
       // ── Phase 1: 32 fetches of the fully-permitted window ──
       // Fills all 32 L1I entries with flg[3]=flg[2]=flg[6]=1.
@@ -1829,7 +1835,7 @@ class mmu_l1itlb_toggle_flg_clear_vseq extends mmu_toggle_l1_base_vseq;
       // ── Phase 2: seed the L2 with 32 X=0/W=0/D=0 entries ──
       // Loads, not fetches: a fetch walk on an X=0 PTE page-faults in the TWU
       // and never reaches the refill port, so the L2 would stay empty.
-      for (int unsigned i = 0; i < 32; i++) begin
+      for (int unsigned i = 0; i < 64; i++) begin
         raw_pipe0(vn(i), 7'(i[6:0]), 1'b0);
         wait_lsu_cycles(24);
       end
@@ -1840,8 +1846,10 @@ class mmu_l1itlb_toggle_flg_clear_vseq extends mmu_toggle_l1_base_vseq;
       // overwritten with flg[3]=flg[2]=flg[6]=0 -> the 1->0 transitions.  The
       // fetch itself then takes an instruction page fault, which is the
       // architecturally correct result and is what the ref model predicts.
-      for (int unsigned i = 0; i < 32; i++) begin
-        raw_ifu_fetch(vn(i));
+      // Rotate the start index per pass so a given VA does not always land on
+      // the same PLRU victim.
+      for (int unsigned k = 0; k < 64; k++) begin
+        raw_ifu_fetch(vn((k + pass * 13) % 64));
         wait_lsu_cycles(8);
       end
       wait_lsu_cycles(64);

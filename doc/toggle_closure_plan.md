@@ -707,15 +707,34 @@ L2 8 way（`final_way_*`/`raw_way_*` 剩 ~450 位）。
 
 | # | 事项 | 状态 | 产出 |
 |---|---|---|---|
-| 1 | T-B2 D-TLB entry sweep | ✅ 已实现并跑通（0 warning） | `mmu_l1dtlb_toggle_entry_sweep_vseq` / `test_mmu_l1dtlb_cov_toggle_entry_sweep_002` |
-| 2 | T-D2 expt_cam 8 条目 | ✅ 已实现并跑通（0 warning） | `mmu_l1dtlb_toggle_expt_cam_full_vseq` / `..._expt_cam_full_001` |
-| 3 | T-F2 / T-G2 | ✅ 已实现并跑通 | `mmu_l2tlb_toggle_sram_v2_vseq` / `..._highaddr_v2_vseq` + `..._sram_002` / `..._highaddr_002` |
-| 4 | T-H2 invall_cnt | ✅ 已实现并跑通（0 warning） | `mmu_l2tlb_toggle_small_modules_v2_vseq` / `..._small_modules_002` |
-| 5 | `fullexclude.tgl` 豁免 | ✅ 已验证生效 | `simu/fullexclude.tgl`（8 条 Toggle 指令，附 URG 语法结论） |
-| 6 | 问题单 B1–B7 | ✅ 已成文 | **`doc/toggle_closure_rtl_issues.md`** |
-| 7 | H-2（rrpv_wbuf 满）可达性 | ✅ 已分析，结论：不做 force，建议豁免 | 本节 §8.2 |
-| 8 | `entryN_flg[3]/[5] 1→0` 可达性 | ✅ 已分析，**flg[3] 可达并已实现用例**；flg[0]/[5] 结构不可达 | 本节 §8.3 + `test_mmu_l1itlb_cov_toggle_flg_clear_001` |
-| 9 | off-path `pa[27:26]`（ref model 64bit VA） | ⏸ 未做（2 位，优先级最低） | 本节 §8.5 |
+| 1 | T-B2 D-TLB entry sweep | ✅ SEED=1/2 通过，0 warning | `mmu_l1dtlb_toggle_entry_sweep2_vseq` / `test_mmu_l1dtlb_cov_toggle_entry_sweep_002` |
+| 2 | T-D2 expt_cam 8 条目 | ✅ SEED=1/2 通过，0 warning | `mmu_l1dtlb_toggle_expt_cam_full_vseq` / `..._expt_cam_full_001` |
+| 3 | T-F2 / T-G2 | ✅ SEED=1/2 通过，0 warning | `mmu_l2tlb_toggle_sram2_vseq` / `mmu_l2tlb_toggle_highaddr2_vseq` + `..._sram_002` / `..._highaddr_002` |
+| 4 | T-H2 invall_cnt | ✅ SEED=1/2 通过，0 warning | `mmu_l2tlb_toggle_small_modules2_vseq` / `..._small_modules_002` |
+| 5 | `fullexclude.tgl` 豁免 | ✅ 已验证生效（`-excl_bypass_checks` 消除 MCM，`x_allocator` 实例 = 100%） | `simu/fullexclude.tgl` |
+| 6 | 问题单 B1–B7 | ✅ 已成文，B2 升至 P0 | **`doc/toggle_closure_rtl_issues.md`**（含 N1/N2 两条新增项） |
+| 7 | H-2（rrpv_wbuf 满）可达性 | ✅ 已分析，结论：不可达，建议豁免 4 位 | §8.2 |
+| 8 | `entryN_flg[3]/[5] 1→0` 可达性 | ✅ flg[3] 可达，**T-I 闭合 17 项（30→13）**；flg[0]/[5] 结构不可达；剩 13 `scd` 槽建议豁免 | §8.3 + `test_mmu_l1itlb_cov_toggle_flg_clear_001`（SEED=1/2，0 warning） |
+| 9 | off-path `pa[27:26]`（ref model 64bit VA） | ⏸ 未做（2 位，优先级最低） | §8.5 |
+
+**Wave-2 实测覆盖率（2026-07-26，`w2_refD_bp`，16 test merges）**
+
+| 口径 | A 基线 | B (+Wave-1) | D (+Wave-2) | ΔW2 | Δ合计 |
+|---|---:|---:|---:|---:|---:|
+| tb_top TOGGLE | 77.71 | 81.90 | **82.46** | +0.56 | **+4.75** |
+| `x_mmu_l1itlb` | 79.71 | 94.07 | 94.32 | +0.25 | +14.61 |
+| `u_mmu_l1dtlb` | 81.98 | 84.93 | 85.21 | +0.28 | +3.23 |
+| `x_mmu_l2tlb` | 85.98 | 88.43 | **89.60** | +1.17 | +3.62 |
+| `x_ct_mmu_tlboper` | 77.20 | 83.99 | **91.86** | **+7.87** | +14.66 |
+| `x_mmu_arb` | 93.37 | 97.86 | **99.25** | +1.39 | +5.88 |
+| 22 L1/L2 模块（方向位） | 85.26% | 90.05% | **90.79%** | +0.74 | +5.53 |
+| 22 L1/L2 模块（未覆盖位） | 6805 | 4592 | **4249** | **−343** | **−2556** |
+
+**3 条 URG 用法确认（本轮新增，影响后续所有 URG 运行）**
+
+1. `-format both` 必须显式加，否则只产出 HTML，`dashboard.txt` / `modlist.txt` / `hierarchy.txt` 缺失。
+2. `-excl_bypass_checks` 用于跨编译合并：不加时报 `UCAPI-EL-MCM`；加了之后 MCM=0，且豁免确实生效（`x_allocator` 实例=100%；模块级 98.26 是聚合视图不套用实例豁免的报表问题）。
+3. URG HTML 信号表列序是 `Name | Toggle | Toggle 1->0 | Toggle 0->1`（1→0 在前）。按 0→1 在前解析会得出相反结论。
 
 ### 8.2 H-2：`mmu_l2tlb_rrpv_wbuf` 的 `count[3:2]` / `full` / `fifo_full`
 

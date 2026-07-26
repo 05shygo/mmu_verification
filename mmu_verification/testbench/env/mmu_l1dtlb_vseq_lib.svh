@@ -1738,19 +1738,40 @@ class l1dtlb_directed_vseq extends mmu_base_vseq;
     wait_lsu_cycles(2);
   endtask
 
+  // MMU_ELO is a raw Sv39 PTE, so the optional flag arguments below expose the
+  // full leaf-permission space to software TLB writes.  Defaults reproduce the
+  // historical hardcoded value {D=1,A=1,G=0,U=0,X=1,W=1,R=1} exactly, so every
+  // existing caller is unaffected.
+  //
+  // NOTE the software write path performs no permission check: the value lands
+  // straight in the L2 data array and is handed to the L1 TLBs verbatim on the
+  // next miss (`final_pa_vld = final_tlb_hit & final_vld`, mmu_l2tlb.sv:1013).
+  // That makes `a = 1'b0` the only way to observe an A=0 TLB entry in the DUT --
+  // a page-table walk can never produce one, because `!flg[5]` faults
+  // unconditionally in the TWU (twu.sv:1141).  See doc/toggle_closure_plan.md
+  // §8.3.
   protected task cp0_tlbwr_entry(
     va_t va,
     ppn_t ppn,
     int unsigned index,
     bit valid = 1'b1,
-    bit indexed = 1'b0
+    bit indexed = 1'b0,
+    bit r = 1'b1,
+    bit w = 1'b1,
+    bit x = 1'b1,
+    bit u = 1'b0,
+    bit g = 1'b0,
+    bit a = 1'b1,
+    bit d = 1'b1,
+    bit [1:0] rsw = 2'b00
   );
     bit [63:0] mel;
     bit [63:0] meh;
     set_cskyee(1'b1);
     cp0_write_reg(2'd0, 64'(index[11:0]));
-    mel = {5'b0, 21'b0, ppn[27:0], 2'b0, 1'b1, 1'b1,
-           1'b0, 1'b0, 1'b1, 1'b1, 1'b1, valid};
+    // PTE layout: [37:10]=PPN [9:8]=RSW [7]=D [6]=A [5]=G [4]=U [3]=X [2]=W [1]=R [0]=V
+    mel = {5'b0, 21'b0, ppn[27:0], rsw, d, a,
+           g, u, x, w, r, valid};
     meh = {18'b0, va[38:12], 3'b001, m_asid};
     cp0_write_reg(2'd1, mel);
     cp0_write_reg(2'd2, meh);

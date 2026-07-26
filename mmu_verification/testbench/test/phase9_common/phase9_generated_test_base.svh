@@ -184,6 +184,7 @@ class phase9_generated_test_base extends test_base;
       "mmu_l2tlb_mb_cond_vseq":               seq = mmu_l2tlb_mb_cond_vseq::type_id::create(seq_name);
       "mmu_l2tlb_toggle_sweep_vseq":          seq = mmu_l2tlb_toggle_sweep_vseq::type_id::create(seq_name);
       "mmu_l1itlb_toggle_entry_sweep_vseq":   seq = mmu_l1itlb_toggle_entry_sweep_vseq::type_id::create(seq_name);
+      "mmu_l1itlb_toggle_flg_clear_vseq":     seq = mmu_l1itlb_toggle_flg_clear_vseq::type_id::create(seq_name);
       "mmu_l1dtlb_toggle_highpa_1g_vseq":     seq = mmu_l1dtlb_toggle_highpa_1g_vseq::type_id::create(seq_name);
       "mmu_l1dtlb_toggle_tail_vseq":          seq = mmu_l1dtlb_toggle_tail_vseq::type_id::create(seq_name);
       "mmu_l1dtlb_toggle_expt_cam_vseq":      seq = mmu_l1dtlb_toggle_expt_cam_vseq::type_id::create(seq_name);

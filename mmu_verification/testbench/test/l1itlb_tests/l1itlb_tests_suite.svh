@@ -22,3 +22,4 @@
 `include "test_mmu_l1itlb_itlb_refill_001.svh"
 `include "test_mmu_l1itlb_itlb_refill_002.svh"
 `include "test_mmu_l1itlb_itlb_state_mix_001.svh"
+`include "test_mmu_l1itlb_cov_toggle_flg_clear_001.svh"

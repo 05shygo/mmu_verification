@@ -698,3 +698,184 @@ L2 8 way（`final_way_*`/`raw_way_*` 剩 ~450 位）。
 | 7 | H-2（rrpv_wbuf 满）可达性分析 | 4 位 |
 | 8 | `mmu_l1itlb.entryN_flg[3]/[5] 1→0` 可达性分析（合法 PTE 下 X/A 恒为 1，疑似结构不可达） | ~300 位，用例 or 豁免二选一 |
 | 9 | off-path `pa[27:26]`：ref model `translate()` 打通 64 bit VA | 2 位 |
+
+---
+
+## 八、§7.4 待办执行记录（2026-07-26 第二轮）
+
+### 8.1 完成情况总览
+
+| # | 事项 | 状态 | 产出 |
+|---|---|---|---|
+| 1 | T-B2 D-TLB entry sweep | ✅ 已实现并跑通（0 warning） | `mmu_l1dtlb_toggle_entry_sweep_vseq` / `test_mmu_l1dtlb_cov_toggle_entry_sweep_002` |
+| 2 | T-D2 expt_cam 8 条目 | ✅ 已实现并跑通（0 warning） | `mmu_l1dtlb_toggle_expt_cam_full_vseq` / `..._expt_cam_full_001` |
+| 3 | T-F2 / T-G2 | ✅ 已实现并跑通 | `mmu_l2tlb_toggle_sram_v2_vseq` / `..._highaddr_v2_vseq` + `..._sram_002` / `..._highaddr_002` |
+| 4 | T-H2 invall_cnt | ✅ 已实现并跑通（0 warning） | `mmu_l2tlb_toggle_small_modules_v2_vseq` / `..._small_modules_002` |
+| 5 | `fullexclude.tgl` 豁免 | ✅ 已验证生效 | `simu/fullexclude.tgl`（8 条 Toggle 指令，附 URG 语法结论） |
+| 6 | 问题单 B1–B7 | ✅ 已成文 | **`doc/toggle_closure_rtl_issues.md`** |
+| 7 | H-2（rrpv_wbuf 满）可达性 | ✅ 已分析，结论：不做 force，建议豁免 | 本节 §8.2 |
+| 8 | `entryN_flg[3]/[5] 1→0` 可达性 | ✅ 已分析，**flg[3] 可达并已实现用例**；flg[0]/[5] 结构不可达 | 本节 §8.3 + `test_mmu_l1itlb_cov_toggle_flg_clear_001` |
+| 9 | off-path `pa[27:26]`（ref model 64bit VA） | ⏸ 未做（2 位，优先级最低） | 本节 §8.5 |
+
+### 8.2 H-2：`mmu_l2tlb_rrpv_wbuf` 的 `count[3:2]` / `full` / `fifo_full`
+
+RTL 事实（`mmu_l2tlb_rrpv_wbuf.sv` + `mmu_l2tlb.sv:1070-1093`）：
+
+```
+DEPTH = 8                       (mmu_l2tlb.sv:1077)
+ARB_STALL_LEVEL = DEPTH - 3 = 5 (rrpv_wbuf.sv:94)
+full      = (count >= 5)        (rrpv_wbuf.sv:135)
+fifo_full = (count == 8)        (rrpv_wbuf.sv:134)
+wbuf_pop_grant = ~arb_l2tlb_req (mmu_l2tlb.sv:1071)
+wbuf_push_req  = push_req & (final_reqq_req | final_pfu_req)
+```
+
+关键点：**`pop_grant` 就是"仲裁器本周期没有请求"**。也就是说只要 L2 仲裁总线出现
+**任意一个空闲周期**，就会 pop 掉一项。且 push 对**相同 set index 会合并**
+（`push_new_entry` 门控，`mmu_l2tlb.sv:1083` 注释"merge same index data"），
+合并的 push 不增加 `count`。
+
+因此 `count` 要爬到 5 / 8，需要同时满足：
+1. 连续 ≥5（≥8）个周期 `arb_l2tlb_req` 不间断；
+2. 这 ≥5（≥8）次查找命中**不同的 set index**（否则被合并）。
+
+可用激励源只有 2 个 LSU 端口 + 1 个 IFU 端口 + PTW + PFU。要让 reqq 连续 5~8 拍
+不空档，必须把 reqq 压到深度积压——T-H2 Phase 3 已经做到 8 个 dTLB MB slot +
+2 个 iTLB miss 同时在飞，仍不足以消除空闲周期。
+
+**结论**：`count[3:2]`、`full`、`fifo_full` 共 4 个方向位属于**队列深水位**类缺口。
+可选路径：
+- (a) 白盒 `force arb_l2tlb_req = 1'b1` 若干周期 —— **不推荐**：强推仲裁内部信号
+  会同时伪造大量周边覆盖率，得不偿失；
+- (b) 加入 PFU 流式预取 + 双 LSU 端口满流 + 8 MB slot 的组合压力用例 —— 收益 4 位、
+  成本高、且不保证收敛；
+- (c) **建议采纳**：写入豁免并附本节论证。模块当前 99.83%，4 位不影响验收结论。
+
+### 8.3 `ct_mmu_iutlb_entry.utlb_flg[13:0]` 的 `1→0` 逐位可达性
+
+`utlb_flg` 只有三个写者（`ct_mmu_iutlb_entry.v:150-173`）：
+
+| 写者 | 数据源 |
+|---|---|
+| `!cpurst_b` | `14'h0` |
+| `utlb_entry_upd` | `utlb_upd_flg = ptw_l1tlb_ref_flg \| jtlb_utlb_ref_flg`（`mmu_l1itlb.sv:1936`） |
+| `utlb_entry_swp` | `utlb_swp_flg` ＝另一条 L1I 条目的 flg（同值域） |
+
+**注意：TLB invalidate 不清 flg**，只清 valid。所以 `flg[k] 1→0` 必须靠"再来一次
+携带 `flg[k]=0` 的 refill"（或整芯片复位）。
+
+存储布局（从 `twu.sv:1157` 的 refill 打包 `{data[37:10], high_flg[4:0], data[9:6],
+data[4:0]}` 与 `twu.sv:1114` 的 `chk_unit_flg[8:0] = {data[9:6], data[4:0]}` 反推）：
+
+| flg 位 | PTE 位 | 含义 |
+|---|---|---|
+| `[0]` | PTE[0] | V |
+| `[1]` | PTE[1] | R |
+| `[2]` | PTE[2] | W |
+| `[3]` | PTE[3] | X |
+| `[4]` | PTE[4] | U |
+| `[5]` | PTE[6] | A |
+| `[6]` | PTE[7] | D |
+| `[8:7]` | PTE[9:8] | RSW[1:0] |
+| `[13:9]` | sysmap_mmu_flg[4:0] / PTE[63:59] | MAEE 高位属性 |
+
+（**PTE[5] = G 不存在于 L1 flg 中**，G 只进 L2 tag 的最低位，见
+`twu.sv:1158` `..., chk_unit_data[5]}`。）
+
+因为 `chk_unit_refill_req = ... & (!chk_unit_page_flt)`（`twu.sv:1152`），逐位判定：
+
+| flg 位 | `chk_unit_page_flt` 中的相关项（`twu.sv:1131-1145`） | `1→0` 可达性 |
+|---|---|---|
+| `[0]` V | `!flg[0]` **无条件** fault | ❌ 结构不可达 |
+| `[5]` A | `!flg[5]` **无条件** fault | ❌ 结构不可达（页表通路） |
+| `[3]` X | `!flg[3] && fetch_type` fault | ✅ **可达**，见下 |
+| `[2]` W | 仅 `!flg[2] && store_type` fault | ✅ 可达（load/fetch walk 照装） |
+| `[6]` D | 仅 `!flg[6] && store_type` fault | ✅ 可达 |
+| `[1]` R | 仅 `!flg[1] && !flg[3] && thd` fault | ✅ 可达（execute-only 合法叶） |
+| `[4]` U | 与特权态相关，两向都合法 | ✅ 可达（T-A 已覆盖） |
+| `[8:7]` RSW | 纯软件位，MMU 不检查 | ✅ 可达，但 `map_4k()` API 未暴露 RSW → 见 §8.4 |
+| `[13:9]` | sysmap / MAEE | ✅ 可达（T-A/T-B2 sysmap 轮次） |
+
+**`flg[3]` 为什么可达 —— 关键 RTL 发现**
+
+取指 walk 遇到 `X=0` 一定 fault，所以 PTW 通路装不进 `X=0`。但
+
+```
+mmu_l2tlb.sv:1013  final_pa_vld = final_tlb_hit & final_vld;
+mmu_l2tlb.sv:1178  l2tlb_l1itlb_ref_pavld = final_pa_vld & (acc_type == 3'b011);
+```
+
+**L2→L1I 回填通路没有任何权限项**。于是：
+
+1. 用 **load** 访问一个 `R=1,W=0,X=0,A=1,D=0` 的页 → walk 成功（load 不查 X/W/D）
+   → 该表项以 `flg[3]=flg[2]=flg[6]=0` 装入 L2；
+2. 再对同一 VA 发 **取指** → L1I miss → L2 命中 → **原样回填 L1I**，
+   `flg[3]/[2]/[6]` 完成 `1→0`；
+3. 之后 L1I 命中检查才报 instruction page fault —— 架构上正确，且 ref model
+   看到的是同一张页表、预测同一个 fault，`translation_sb` 不会报错。
+
+已实现为 `mmu_l1itlb_toggle_flg_clear_vseq` /
+`test_mmu_l1itlb_cov_toggle_flg_clear_001`（2 pass × 32 条目，SEED=1 **0 warning**）。
+该通路同时被登记为 RTL 共识条目 N2（`doc/toggle_closure_rtl_issues.md`）。
+
+**`flg[0]`/`flg[5]` 的处置建议（二选一）**
+
+- (a) **软件 TLBWI 通路**：`cp0_tlbwr_entry()` 写的 `MMU_ELO` 就是一条裸 PTE
+  （`mmu_l1dtlb_vseq_lib.svh:1752`，当前把 A/D/R/W/X 写死为 1/1/1/1/1）。
+  软件写 L2 data array **不做权限检查**，因此写入 `A=0` 后再让 L1 miss→L2 命中，
+  即可让 `flg[5] 1→0`。代价：给 `cp0_tlbwr_entry` 增加 7 个带默认值的可选
+  flag 形参（向后兼容），再写一个 T-I2。
+- (b) **中途真复位**：`tb_top.sv:265-320` 已有 `cpurst_b` 注入器
+  （`+MMU_TLBOP_RESET_MODE=<mode>`），`assert_mid_test_reset()`
+  （`mmu_l1_l2_tlb_common_vseq.svh:122`）已在 T-A 尾部挂好钩子（当前因未加
+  plusarg 而以一条 warning 优雅跳过）。复位会把 32 条目的 `flg/ppn/pgs`
+  一次性从载值清零，**一发闭合所有 `1→0`**（含 V/A）。代价：复位后环境需重新
+  bringup，且必须用 `PLUS_ARGS=` 运行，无法纳入默认回归。
+
+**建议**：先走 (a) 覆盖 `flg[5]`（属功能可达，价值更高）；`flg[0]=V` 在有效条目里
+恒为 1，`1→0` 只能靠复位，直接豁免并附本节论证。
+
+### 8.4 `map_4k()` API 未暴露的 PTE 位
+
+`m_pt_mem.m_builder.map_4k()` 形参只有 `v/r/w/x/u/g/a/d`，没有 `rsw[1:0]`，
+所以 `flg[8:7]` 只能恒为 0（`0→1` 与 `1→0` 都缺）。这不是 RTL 不可达，而是
+**TB API 缺口**。建议给 `map_4k/map_2m/map_1g` 增加 `bit [1:0] rsw = 2'b00`
+形参（向后兼容），T-A/T-B2 各轮次交替写 `2'b01`/`2'b10` 即可闭合。
+
+### 8.5 off-path `pa[27:26]`（2 位）
+
+`m_ref.translate()` 目前按 39 bit VA 建模，off-path（`va[63:39]` 非规范）分支
+无法产出预期 PA，导致 `pa[27:26]` 的一个方向拿不到参考值。属 ref model 增强，
+收益 2 位，优先级最低，本轮不做。
+
+### 8.6 本轮新增的两个 TB 缺陷修复（非计划项，但影响所有 IFU 用例）
+
+**(1) `raw_ifu_fetch()` 多余保持一拍导致虚假响应**
+
+`mmu_toggle_closure_vseq.svh` 的两份 `raw_ifu_fetch`（L1 base / L2 base）原本在
+观察到 `mmu_ifu_pavld` 后**又等一拍**才撤 `ifu_mmu_va_vld`。那一拍里 MMU 看到的是
+"一个仍然有效的请求 + 刚刚被 walk 装进 L1I 的 VA" → **再答一次**；而
+`ifu_monitor`（`ifu_monitor.svh:127-131`）的 `m_rsp_tail_hold` 对同 va/abort 签名
+拒绝重开 pending，于是把第二次响应报成
+
+```
+IFU rsp observed without pending req: pa=0x...
+```
+
+只有 **miss→walk** 的长延迟取指才暴露（hit 时 req 与 rsp 同拍，不构成额外窗口），
+所以此前只在 T-H2 Phase 3 的 2 次 post-INVALL 取指上出现，一直被当成"偶发"。
+T-I 做 128 次 miss 取指后一次性放大到 **132 条 warning**，才定位到根因。
+
+修复：在观察到 `pavld` 的**同一拍**撤请求。T-A 回归 0 增量 warning
+（原有 1 条 `mid-test reset ... ensure +MMU_TLBOP_RESET_MODE` 属 plusarg 未加的
+预期提示）。**建议同步修正其他 vseq 库中同形状的裸 IFU 驱动。**
+
+**(2) T-D2 的 `acflt_at()` 竞争 与 保留编码误用**
+
+- `acflt_at()` 依赖 `force_ptw_bus_error_by_count(1)` 命中**下一个** PTW 访存，
+  该假设只在 bringup 之后立即成立。放在 8 次 `prefill_mb`+页故障之后，残余
+  JTLB/MB 流量会抢走那次访存 → 实测 `td_ac_0/td_ac_1` 超时。改用 pgflt 通路
+  （只需 MB 占用条件）后 0 warning。参见 RTL 共识条目 N1。
+- Phase 4 原用 `R=0,W=1` 造 fault —— 那是 **RISC-V 保留编码**，walker 会当指针
+  继续下探，ref model 报 `translate PAGE_FAULT (3-level exhausted)` warning。
+  改为 `R=0,W=0,X=1`（合法 execute-only 叶）后干净。

@@ -96,9 +96,13 @@ class mmu_toggle_l1_base_vseq extends mmu_l1_tlb_common_vseq;
     if (n >= timeout_cycles)
       `uvm_warning(get_type_name(),
         $sformatf("raw_ifu_fetch timeout va=0x%010h", {1'b0, va}))
-    @(ivif.driver_cb);
+    // Drop the request in the SAME cycle pavld is observed -- see the identical
+    // comment on mmu_toggle_l2_base_vseq::raw_ifu_fetch.  Holding va_vld one
+    // extra cycle lets the MMU answer the (now L1I-resident) VA a second time
+    // and ifu_monitor reports "IFU rsp observed without pending req".
     ivif.driver_cb.ifu_mmu_va_vld <= 1'b0;
     ivif.driver_cb.ifu_mmu_va     <= 63'h0;
+    @(ivif.driver_cb);
     @(ivif.driver_cb);
   endtask
 
@@ -798,9 +802,21 @@ class mmu_toggle_l2_base_vseq extends mmu_l2tlb_common_vseq;
       @(ivif.driver_cb);
       n++;
     end
-    @(ivif.driver_cb);
+    if (n >= timeout_cycles)
+      `uvm_warning(get_type_name(),
+        $sformatf("raw_ifu_fetch timeout va=0x%010h", {1'b0, va}))
+    // Drop the request in the SAME cycle pavld is observed.  Holding va_vld for
+    // one extra cycle (the old "@(driver_cb);" that used to sit here) lets the
+    // MMU see a still-valid request for a VA that the completing walk has just
+    // installed in the L1 ITLB, so it answers a second time.  ifu_monitor keeps
+    // m_rsp_tail_hold asserted for that same va/abort signature and refuses to
+    // reopen a pending request, so the extra response is reported as
+    // "IFU rsp observed without pending req: pa=0x...".  Only miss->walk fetches
+    // are long enough to expose it, which is why it showed up exactly twice in
+    // T-H2 phase 3 (the two post-INVALL ITLB misses at ppn 0x015_0000/1).
     ivif.driver_cb.ifu_mmu_va_vld <= 1'b0;
     ivif.driver_cb.ifu_mmu_va     <= 63'h0;
+    @(ivif.driver_cb);
     @(ivif.driver_cb);
   endtask
 
@@ -1321,38 +1337,77 @@ class mmu_l1dtlb_toggle_expt_cam_full_vseq extends mmu_l1dtlb_toggle_expt_cam_vs
     super.new(name);
   endfunction
 
+  // One JTLB page-fault write into ent[slot] at an UNMAPPED `va`.
+  //
+  // Why the pgflt path (and not acflt_at) for the high slots:
+  //   expt_wr0_eid == ptw_l1dtlb_ref_id, i.e. the CAM entry index IS the MB
+  //   slot that owns the faulting walk (mmu_l1dtlb.sv:309).  Reaching ent[4..7]
+  //   therefore requires 4..7 MB slots to be occupied at the moment the fault
+  //   retires.  acflt_at() adds a second constraint on top of that: it arms
+  //   force_ptw_bus_error_by_count(1) and needs the *next* PTW memory request
+  //   to be the target's.  With 4..7 JTLB-prefilled misses in flight that race
+  //   is lost often enough to matter — measured 6/8 acflt_at(4..7) calls timing
+  //   out ("timed out waiting for L1DTLB access exception write").
+  //   The pgflt path needs only the MB-occupancy condition, and T-D Phase 4
+  //   already proves it lands correctly on ent[3..6].  Since the CAM field
+  //   under test here is vpn[26:0]/iid[6:0] — written identically by wr0(acflt)
+  //   and wr1(pgflt) — the pgflt path gives the same toggle coverage without
+  //   the flaky bus-error dependency.  The acflt write path itself stays
+  //   covered by T-D Phase 1 on ent[0..3].
+  protected task pgflt_at(int unsigned slot, va_t va, bit [6:0] iid, bit hi);
+    if (slot > 0) prefill_mb(slot, 7'(iid + 7'd32));
+    if (hi) raw_pipe0_hi(va, iid);
+    else    raw_pipe0(va, iid);
+    wait_l1d_expt_write($sformatf("td2_pf_%0d", slot));
+    drain_all($sformatf("td2_pfd_%0d", slot));
+  endtask
+
   virtual task body();
     `uvm_info(get_type_name(), "===== T-D2 expt_cam full sweep START =====", UVM_NONE)
     init_common_handles();
     do_bringup(16, 39'h10_0000);
     configure_ptw_delay(4, 4);
 
-    // ── Phase 1: acflt writes into ent[4..7], high-VPN patterns ──
+    // ── Phase 1: pgflt writes into ent[4..7], high-VPN patterns ──
+    // All VAs are UNMAPPED (no map_4k) so the walk ends in a page fault whose
+    // wr1 write lands in ent[eid==MB slot]. Patterns chosen so that between
+    // Phase 1 and Phase 2 every vpn[26:0] bit sees BOTH directions.
     // ent[4]: alternating-bit VPN (lower half)
-    acflt_at(4, va_t'(39'h15_5555_5000), 7'd12, 1'b0);
-    // ent[5]: VPN[24]=VPN[22]=1
-    acflt_at(5, va_t'(39'h0A_AAAA_A000), 7'd10, 1'b0);
-    // ent[6]: upper-half VA — canonical raw_pipe0_hi
-    acflt_at(6, va_t'(39'h60_0000_0000), 7'd5,  1'b1);
-    // ent[7]: VPN[20:16] stress pattern
-    acflt_at(7, va_t'(39'h0F_F000_F000), 7'd9,  1'b0);
+    pgflt_at(4, va_t'(39'h15_5555_5000), 7'd12, 1'b0);
+    // ent[5]: complementary alternating pattern
+    pgflt_at(5, va_t'(39'h0A_AAAA_A000), 7'd10, 1'b0);
+    // ent[6]: upper-half VA (vpn[26]=1) — canonical raw_pipe0_hi
+    pgflt_at(6, va_t'(39'h60_0000_0000), 7'd5,  1'b1);
+    // ent[7]: VPN all-ones (closes every vpn bit 0->1)
+    pgflt_at(7, va_t'(39'h7F_FFFF_F000), 7'd9,  1'b1);
 
-    // ── Phase 2: complementary low-VPN rewrite of ent[4..7] ──
-    acflt_at(4, va_t'(39'h00_0001_0000), 7'd1, 1'b0);
-    acflt_at(5, va_t'(39'h00_0002_0000), 7'd2, 1'b0);
-    acflt_at(6, va_t'(39'h00_0003_0000), 7'd3, 1'b0);
-    acflt_at(7, va_t'(39'h00_0004_0000), 7'd4, 1'b0);
+    // ── Phase 2: complementary low-VPN rewrite of ent[4..7] (vpn 1->0) ──
+    pgflt_at(4, va_t'(39'h00_0001_0000), 7'd1, 1'b0);
+    pgflt_at(5, va_t'(39'h00_0002_0000), 7'd2, 1'b0);
+    pgflt_at(6, va_t'(39'h00_0003_0000), 7'd3, 1'b0);
+    pgflt_at(7, va_t'(39'h00_0004_0000), 7'd4, 1'b0);
 
-    // ── Phase 3: JTLB pgflt (wr1) into ent[4..7] via unmapped VAs ──
-    for (int unsigned k = 4; k <= 7; k++) begin
-      if (k > 4) prefill_mb(k, 7'd90);
-      raw_pipe0(va_t'(39'h7E_0000) + va_t'(k << 12), 7'(7'd70 + k[6:0]));
-      wait_l1d_expt_write($sformatf("td2_pg_%0d", k));
-      drain_all($sformatf("td2_pgd_%0d", k));
-    end
+    // ── Phase 3: iid[6:0] extremes on ent[2..3] (pgflt path) ──
+    // Deliberately NOT acflt_at() here.  acflt_at() arms
+    // force_ptw_bus_error_by_count(1) and needs the *next* PTW memory request to
+    // belong to the target walk.  That holds right after bringup (parent T-D
+    // Phase 1 relies on it and passes), but not after Phases 1/2 above have run
+    // eight prefill_mb()+page-fault sequences: the residual JTLB/MB traffic wins
+    // the race and the forced error lands on a foreign walk -- measured as
+    // "td_ac_0/td_ac_1: timed out waiting for L1DTLB access exception write".
+    // The wr0(acflt) port into ent[0..3] is already fully covered by parent
+    // T-D Phase 1, so nothing is lost by dropping it; instead spend the cycles
+    // on the one CAM field Phases 1/2 leave open -- iid[6:0] at its extremes.
+    // iid=127 closes every iid bit 0->1, iid=0 closes every bit 1->0.
+    pgflt_at(2, va_t'(39'h00_0006_0000), 7'd127, 1'b0);
+    pgflt_at(3, va_t'(39'h00_0007_0000), 7'd0,   1'b0);
 
     // ── Phase 4: dual-port same-entry hit on ent[5] ──
-    map_special_page(210, 1'b0, 1'b1, 1'b0, 1'b1, 1'b1, 1'b0);
+    // Execute-only leaf (R=0,W=0,X=1): a legal Sv39 leaf that page-faults on a
+    // load.  Do NOT use R=0/W=1 here -- that is the reserved encoding, the
+    // walker treats it as a pointer, descends past level 0 and the ref model
+    // reports "translate PAGE_FAULT (3-level exhausted)" as a UVM_WARNING.
+    map_special_page(210, 1'b0, 1'b0, 1'b1, 1'b1, 1'b1, 1'b0);
     raw_pipe0(va_page(210), 7'd55, 1'b0);
     wait_l1d_expt_write("td2_sh5");
     wait_lsu_cycles(16);
@@ -1664,5 +1719,145 @@ class mmu_l2tlb_toggle_small_modules_v2_vseq extends mmu_toggle_l2_base_vseq;
   endtask
 
 endclass : mmu_l2tlb_toggle_small_modules_v2_vseq
+
+// =============================================================================
+// T-I — mmu_l1itlb entryN_flg[3]/[2]/[6] 1->0
+//
+// The gap: after T-A, `ct_mmu_iutlb_entry.utlb_flg[13:0]` still misses 1->0 on
+// several bits for all 32 entries (~300 direction bits).  The register only has
+// three writers (ct_mmu_iutlb_entry.v:150-173):
+//
+//   reset          -> 14'h0            (no mid-sim reset in this environment)
+//   utlb_entry_upd -> utlb_upd_flg     (mmu_l1itlb.sv:1936)
+//   utlb_entry_swp -> utlb_swp_flg     (another L1I entry's flg -- same values)
+//
+// and utlb_upd_flg = ptw_l1tlb_ref_flg | jtlb_utlb_ref_flg, i.e. whatever a
+// completed walk or an L2 hit hands over.  So flg[k] 1->0 requires a *refill
+// that carries flg[k]=0*.  Decoding the stored layout from the TWU refill
+// packing (twu.sv:1157 `{data[37:10], high_flg[4:0], data[9:6], data[4:0]}`
+// and twu.sv:1114 `chk_unit_flg[8:0] = {data[9:6], data[4:0]}`):
+//
+//   flg[4:0] = PTE[4:0] = {U, X, W, R, V}      flg[3]=X  flg[2]=W  flg[1]=R
+//   flg[8:5] = PTE[9:6] = {RSW1, RSW0, D, A}   flg[5]=A  flg[6]=D
+//   flg[13:9]= sysmap_mmu_flg[4:0] / PTE[63:59]
+//
+// Per-bit reachability of a refill carrying 0, given
+// `chk_unit_refill_req = ... & !chk_unit_page_flt` (twu.sv:1152):
+//
+//   flg[0] V : `!flg[0]` faults unconditionally  -> 1->0 UNREACHABLE
+//   flg[5] A : `!flg[5]` faults unconditionally  -> 1->0 UNREACHABLE by any
+//              page-table stimulus.  (Reachable only by writing A=0 straight
+//              into the L2 data array with TLBWI, since the software write path
+//              performs no permission check -- see plan section 8.3.)
+//   flg[3] X : `!flg[3] && fetch_type` faults, so a *fetch* walk can never
+//              install X=0 -- but `l2tlb_l1itlb_ref_pavld = final_pa_vld &
+//              (acc_type==3'b011)` with `final_pa_vld = final_tlb_hit &
+//              final_vld` (mmu_l2tlb.sv:1013/1178) has NO permission term.
+//              => an L2 entry installed by a *load* to an X=0 page is handed to
+//              the L1 ITLB verbatim on the next fetch miss.  1->0 REACHABLE.
+//   flg[2] W : only `!flg[2] && store_type` faults -> a load/fetch walk happily
+//              installs W=0.  1->0 REACHABLE.
+//   flg[6] D : only `!flg[6] && store_type` faults -> same.  1->0 REACHABLE.
+//   flg[1] R : `!flg[1] && !flg[3] && thd` faults, but R=0/X=1 is a legal
+//              execute-only leaf.  1->0 REACHABLE (T-A already sweeps it).
+//
+// This sequence exploits the unchecked L2->L1I refill path: fill all 32 entries
+// with X=W=D=1, then re-fill all 32 from L2 entries whose PTE has X=W=D=0.  The
+// second-round fetches legitimately page-fault on the L1I permission check, but
+// the entry write has already happened, so the toggle is banked.  The ref model
+// sees the same X=0 PTE in the page table and predicts the same fault, so the
+// translation scoreboard stays quiet (cf. test_mmu_l1itlb_itlb_perm_001).
+// =============================================================================
+class mmu_l1itlb_toggle_flg_clear_vseq extends mmu_toggle_l1_base_vseq;
+
+  `uvm_object_utils(mmu_l1itlb_toggle_flg_clear_vseq)
+
+  function new(string name = "mmu_l1itlb_toggle_flg_clear_vseq");
+    super.new(name);
+  endfunction
+
+  // Two private 32-page windows, disjoint from T-A (0x30_0000) and
+  // T-B2 (0x44_0000).  32 * 4K = 0x20000 each.
+  localparam va_t TIX = va_t'(39'h68_0000);   // X=W=D=1 round
+  localparam va_t TIN = va_t'(39'h6C_0000);   // X=W=D=0 round
+
+  protected function va_t vx(int unsigned i); return TIX + va_t'(i << 12); endfunction
+  protected function va_t vn(int unsigned i); return TIN + va_t'(i << 12); endfunction
+
+  // Round A mapping: full permissions, so a fetch walk installs flg[3]=X=1,
+  // flg[2]=W=1, flg[6]=D=1, flg[1]=R=1.
+  protected task map_perm_round();
+    for (int unsigned i = 0; i < 32; i++)
+      m_env_h.m_pt_mem.m_builder.map_4k(
+        .va(vx(i)), .pa(pa_t'({28'h0AA_0000 + ppn_t'(i), 12'h000})),
+        .v(1), .r(1), .w(1), .x(1), .u(0), .g(0), .a(1), .d(1));
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+  endtask
+
+  // Round B mapping: read-only, non-executable, dirty-clear.  A *load* walk
+  // succeeds (R=1, A=1, not a store so D=0 is fine) and installs the entry in
+  // the L2 with flg[3]=flg[2]=flg[6]=0.
+  protected task map_noexec_round();
+    for (int unsigned i = 0; i < 32; i++)
+      m_env_h.m_pt_mem.m_builder.map_4k(
+        .va(vn(i)), .pa(pa_t'({28'h055_0000 + ppn_t'(i), 12'h000})),
+        .v(1), .r(1), .w(0), .x(0), .u(0), .g(0), .a(1), .d(0));
+    if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+  endtask
+
+  virtual task body();
+    `uvm_info(get_type_name(), "===== T-I iUTLB flg clear START =====", UVM_NONE)
+    init_common_handles();
+    do_bringup(16, 39'h10_0000);
+    configure_ptw_delay(1, 2);
+    map_perm_round();
+    map_noexec_round();
+
+    // Two passes so that every entry sees 1->0 *and* 0->1 regardless of which
+    // slot the PLRU happens to pick on a given pass.
+    for (int unsigned pass = 0; pass < 2; pass++) begin
+
+      // ── Phase 1: 32 fetches of the fully-permitted window ──
+      // Fills all 32 L1I entries with flg[3]=flg[2]=flg[6]=1.
+      tlb_inv_all_and_wait();
+      for (int unsigned i = 0; i < 32; i++) begin
+        raw_ifu_fetch(vx(i));
+        wait_lsu_cycles(8);
+      end
+      wait_lsu_cycles(64);
+
+      // ── Phase 2: seed the L2 with 32 X=0/W=0/D=0 entries ──
+      // Loads, not fetches: a fetch walk on an X=0 PTE page-faults in the TWU
+      // and never reaches the refill port, so the L2 would stay empty.
+      for (int unsigned i = 0; i < 32; i++) begin
+        raw_pipe0(vn(i), 7'(i[6:0]), 1'b0);
+        wait_lsu_cycles(24);
+      end
+      flush_and_drain($sformatf("ti_p2_%0d", pass));
+
+      // ── Phase 3: 32 fetch misses that hit those L2 entries ──
+      // l2tlb_l1itlb_ref_pavld carries no permission term, so each L1I entry is
+      // overwritten with flg[3]=flg[2]=flg[6]=0 -> the 1->0 transitions.  The
+      // fetch itself then takes an instruction page fault, which is the
+      // architecturally correct result and is what the ref model predicts.
+      for (int unsigned i = 0; i < 32; i++) begin
+        raw_ifu_fetch(vn(i));
+        wait_lsu_cycles(8);
+      end
+      wait_lsu_cycles(64);
+
+      // ── Phase 4: re-fetch two of the permitted pages ──
+      // Restores 0->1 on the same bits and proves the entries still work after
+      // having been poisoned with a non-executable translation.
+      raw_ifu_fetch(vx(0));
+      raw_ifu_fetch(vx(31));
+      wait_lsu_cycles(32);
+    end
+
+    flush_and_drain("ti_end");
+    `uvm_info(get_type_name(), "===== T-I iUTLB flg clear DONE =====", UVM_NONE)
+  endtask
+
+endclass : mmu_l1itlb_toggle_flg_clear_vseq
 
 `endif // MMU_TOGGLE_CLOSURE_VSEQ_SVH

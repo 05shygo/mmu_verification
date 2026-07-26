@@ -1630,22 +1630,26 @@ class mmu_l2tlb_toggle_small_modules_v2_vseq extends mmu_toggle_l2_base_vseq;
           .v(1), .r(1), .w(0), .x(1), .u(0), .g(0), .a(1), .d(0));
       end
       if (m_env_h.m_ref != null) m_env_h.m_ref.sync_shadow_state();
+      // ITLB-type L2 requests under ASID=A5A5, done FIRST with fast PTW.
+      // Rationale: running these inside a fork with the slow-PTW dTLB storm
+      // races — the ITLB walk queues behind 8 slow misses, raw_ifu_fetch
+      // abandons the request (deasserting va_vld cancels the monitor's pending
+      // req), and the late response then trips ifu_monitor "rsp without
+      // pending req".  The concurrent ITLB+dTLB-storm case is already covered
+      // by T-H under ASID FFFF/0000; what T-H2 adds is the A5A5 ASID value,
+      // which a sequential fetch exercises just as well.
+      raw_ifu_fetch(iw, 65536);
+      wait_lsu_cycles(32);
+      raw_ifu_fetch(iw + va_t'(39'h1000), 65536);
+      wait_lsu_cycles(32);
+      // Now the 8-deep dTLB miss storm (reqq/mb entry_asid under A5A5)
       configure_ptw_delay(150, 200);
-      fork
-        begin
-          for (int unsigned p = 0; p < 4; p++) begin
-            raw_pipe01(dw + va_t'((2*p)   << 12), dw + va_t'((2*p+1) << 12),
-                       7'(7'd1 + 7'(2*p)), 7'(7'd2 + 7'(2*p+1)),
-                       p[0], 1'b1);
-            wait_lsu_cycles(2);
-          end
-        end
-        begin
-          wait_lsu_cycles(6);
-          raw_ifu_fetch(iw, 16384);
-          raw_ifu_fetch(iw + va_t'(39'h1000), 16384);
-        end
-      join
+      for (int unsigned p = 0; p < 4; p++) begin
+        raw_pipe01(dw + va_t'((2*p)   << 12), dw + va_t'((2*p+1) << 12),
+                   7'(7'd1 + 7'(2*p)), 7'(7'd2 + 7'(2*p+1)),
+                   p[0], 1'b1);
+        wait_lsu_cycles(2);
+      end
       wait_lsu_cycles(600);
       configure_ptw_delay(1, 2);
       raw_rtu_flush();

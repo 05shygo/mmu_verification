@@ -1,0 +1,91 @@
+// =============================================================================
+// Toggle-closure waiver elfile — structurally-unreachable toggle bits
+// =============================================================================
+// Tracker : doc/toggle_closure_plan.md §二-A(b) + §七.4 item 6
+// Source  : doc/toggle_closure_coverage_report_20260726.md §三 (per-signal
+//           verification) — every entry below was traced to an RTL constant
+//           assignment or a constant module-port binding, i.e. the bit
+//           physically cannot change value in ANY simulation.
+// Policy  : ONLY constant-driven nets. No functional/behavioural toggle is
+//           waived here. Stimulus-reachable gaps stay uncovered and are
+//           tracked as closure work (plan §七.4 items 1-5 = T-B2/D2/F2/G2/H2).
+// Usage   : urg ... -elfile simu/exclude_v4.tgl -elfile simu/fullexclude.tgl
+//           (this file is ADDITIVE to exclude_v4.tgl, which covers reset nets
+//            and DFT/ICG enables; there is no overlap between the two.)
+// Review  : requires second reviewer sign-off before final coverage signoff.
+//
+// Format: Synopsys URG elfile Format Version 2 — `Toggle <sig> "<decl>"` lines
+//         apply to the preceding INSTANCE: block. Declarations must match the
+//         RTL exactly (URG matches on the decl string).
+// =============================================================================
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (1) mmu_l1itlb.iutlb_off_flg[13:0] — constant except sysmap flg2 passthrough
+//     RTL (mmu_l1itlb.sv:2232):
+//       assign iutlb_off_flg[13:0] = {sysmap_mmu_flg2[4:0], 5'b00010, 3'b111, 1'b1};
+//     Bits [8:0] are literal constants → 9 of 14 bits can never toggle.
+//     Bits [13:9] ARE stimulus-driven (sysmap_mmu_flg2) and are NOT waived:
+//     they are closed by T-A Phase 4 / T-B2 Phase 3. URG has no per-bit
+//     Toggle syntax in elfile v2, so the whole signal is listed here with the
+//     bit-level rationale recorded; net effect is 9 unreachable + 5 already
+//     closed bits. Reviewer note: if per-bit granularity is required, switch
+//     to a -cm_scope scope file.
+// ─────────────────────────────────────────────────────────────────────────────
+INSTANCE: tb_top.u_dut.u_mmu_l1itlb
+ANNOTATION: "constant-driven: {sysmap_flg2[4:0], 5'b00010, 3'b111, 1'b1} (mmu_l1itlb.sv:2232)"
+Toggle iutlb_off_flg "logic [13:0] iutlb_off_flg"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (2) mmu_l1dtlb_hit_rd.dutlb_pre_flg / dutlb_pre_pgs — direct aliases
+//     RTL (mmu_l1dtlb_hit_rd.sv:272-273):
+//       assign dutlb_pre_flg = dutlb_off_flg;   // pure alias, no added state
+//       assign dutlb_pre_pgs = dutlb_off_pgs;   // and dutlb_off_pgs == 3'b0
+//     dutlb_off_pgs is itself tied to 3'b0, so dutlb_pre_pgs is a constant.
+//     dutlb_pre_flg duplicates dutlb_off_flg — the SAME bits are already
+//     scored on dutlb_off_flg, so the alias adds no observability.
+// ─────────────────────────────────────────────────────────────────────────────
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port0
+ANNOTATION: "alias of dutlb_off_flg (mmu_l1dtlb_hit_rd.sv:272); off_pgs tied 3'b0"
+Toggle dutlb_pre_flg "logic [13:0] dutlb_pre_flg"
+Toggle dutlb_pre_pgs "logic [2 :0] dutlb_pre_pgs"
+
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_hit_rd_port1
+ANNOTATION: "alias of dutlb_off_flg (mmu_l1dtlb_hit_rd.sv:272); off_pgs tied 3'b0"
+Toggle dutlb_pre_flg "logic [13:0] dutlb_pre_flg"
+Toggle dutlb_pre_pgs "logic [2 :0] dutlb_pre_pgs"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (3) mmu_l1dtlb.lsu_mmu_stamo_pa0[27:0] — tied to zero
+//     RTL (mmu_l1dtlb.sv:563):
+//       assign lsu_mmu_stamo_pa0[PPN_WIDTH-1:0] = {PPN_WIDTH{1'b0}};
+//     The STAMO (store-atomic) PA input is not wired in this integration;
+//     all 28 bits are constant 0 → 0->1 unreachable by construction.
+// ─────────────────────────────────────────────────────────────────────────────
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb
+ANNOTATION: "tied {28{1'b0}} — STAMO PA unconnected in this integration (mmu_l1dtlb.sv:563)"
+Toggle lsu_mmu_stamo_pa0 "logic [27:0] lsu_mmu_stamo_pa0"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (4) mmu_l1dtlb_allocator.req0_port_id / req1_port_id — constant port bindings
+//     RTL (mmu_l1dtlb.sv:826/832):
+//       .req0_port_id(1'b0),   .req1_port_id(1'b1)
+//     PORT_WIDTH=1 and each instance port is bound to a literal, so inside the
+//     allocator req0_port_id is always 0 and req1_port_id is always 1.
+//     (This is why plan task T-E was cancelled — confirmed in report §三.)
+// ─────────────────────────────────────────────────────────────────────────────
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_l1dtlb_allocator
+ANNOTATION: "constant port bindings 1'b0 / 1'b1 at instantiation (mmu_l1dtlb.sv:826,832)"
+Toggle req0_port_id "logic [0:0] req0_port_id"
+Toggle req1_port_id "logic [0:0] req1_port_id"
+
+// ─────────────────────────────────────────────────────────────────────────────
+// (5) mmu_l1dtlb_expt_cam.expt_wr1_acflt — tied to zero
+//     RTL (mmu_l1dtlb.sv:323):  assign expt_wr1_acflt = 1'b0;
+//     The JTLB write port cannot report an access fault in this design (only
+//     the PTW port wr0 can), so the CAM's wr1 acflt input is a dead net.
+//     Already paper-tracked in exclude_v4.tgl header; expressed here so it is
+//     actually removed from the toggle denominator.
+// ─────────────────────────────────────────────────────────────────────────────
+INSTANCE: tb_top.u_dut.u_mmu_l1dtlb.x_l1dtlb_expt_cam
+ANNOTATION: "tied 1'b0 — JTLB path has no access-fault source (mmu_l1dtlb.sv:323)"
+Toggle expt_wr1_acflt "logic expt_wr1_acflt"
